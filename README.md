@@ -6,11 +6,27 @@
 
 > Generate competing patches, judge them with repo-local oracles, and promote only the survivors.
 
-Oraculum is a CLI-first patch search and invariant judgment engine for `Claude Code` and `Codex`.
+Oraculum is a design-stage concept for a CLI-first patch search and invariant judgment engine built on top of `Claude Code` and `Codex`.
 
-Instead of trusting the first plausible diff, Oraculum explores multiple candidate patches in parallel, eliminates weak directions early with executable repo rules, and carries only the strongest finalists into deeper verification.
+Instead of trusting the first plausible diff, Oraculum would explore multiple candidate patches in parallel, eliminate weak directions early with executable repo rules, and carry only the strongest finalists into deeper verification.
 
-Oraculum is not a new coding agent. It sits above existing coding-agent runtimes and adds structured patch search, repo-local judgment, staged elimination, and evidence-backed promotion.
+This repository is currently for publishing the idea, shaping the product boundary, and refining the harness model before a real implementation lands.
+
+## Status
+
+Oraculum is not a shipped tool yet.
+
+Today, this repository is primarily:
+
+- a public concept repo
+- a product-definition repo
+- an architecture and harness-design workspace
+
+It is not yet a production-ready CLI or an installable OSS package.
+
+## What Oraculum Is
+
+Oraculum is not a new coding agent. It is a planned system that sits above existing coding-agent runtimes and adds structured patch search, repo-local judgment, staged elimination, and evidence-backed promotion.
 
 ## Why Oraculum
 
@@ -146,6 +162,17 @@ That makes it especially useful for:
 - security-sensitive paths
 - legacy systems where the prompt alone is not enough
 
+## Why This Repo Is Public Early
+
+The goal of publishing early is not to claim completion. It is to make the product thesis inspectable while the shape is still being formed.
+
+That means this repository is being used to:
+
+- clarify the product boundary
+- refine the Oraculum-specific harness model
+- test whether the search/judge/promote framing is actually compelling
+- make future implementation choices easier to evaluate in public
+
 ## Repo-Local Oracles
 
 Oraculum is built around repo-local oracles: executable checks that encode what a repository must not break.
@@ -160,7 +187,7 @@ Examples:
 
 This is where repo truth lives.
 
-## Target CLI Shape
+## Intended CLI Shape
 
 The intended CLI shape looks like this:
 
@@ -201,9 +228,16 @@ Oraculum is not:
 
 Oraculum is a patch search and invariant judgment engine for coding agents.
 
-## Status
+## What Exists Today
 
-This repository is currently in design and early build planning. The public interface above describes the intended product direction, not a fully shipped CLI yet.
+Today, the repository should be read as:
+
+- product thesis
+- terminology and mental model
+- harness direction
+- public-facing concept material
+
+If you are looking for a ready-to-run tool, it is not here yet.
 
 ## The Idea In One Sentence
 
