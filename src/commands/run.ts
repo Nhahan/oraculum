@@ -1,4 +1,4 @@
-import type { Command } from "commander";
+import { type Command, InvalidArgumentError } from "commander";
 
 import { adapterSchema } from "../domain/config.js";
 import { executeRun } from "../services/execution.js";
@@ -9,10 +9,14 @@ export function registerRunCommand(program: Command): void {
     .command("run")
     .description("Create a planned run manifest and candidate workspace scaffold.")
     .requiredOption("-t, --task <path>", "task packet or task note path")
-    .option("-c, --candidates <count>", "number of candidate patches to plan", parseInteger)
+    .option(
+      "-c, --candidates <count>",
+      "number of candidate patches to plan",
+      parsePositiveInteger("candidate count"),
+    )
     .option("-a, --agent <agent>", "agent runtime to target")
     .option("--execute", "execute candidates after planning", false)
-    .option("--timeout-ms <ms>", "adapter timeout in milliseconds", parseInteger)
+    .option("--timeout-ms <ms>", "adapter timeout in milliseconds", parsePositiveInteger("timeout"))
     .action(
       async (options: {
         agent?: string;
@@ -60,6 +64,18 @@ export function registerRunCommand(program: Command): void {
     );
 }
 
-function parseInteger(value: string): number {
-  return Number.parseInt(value, 10);
+function parsePositiveInteger(label: string): (value: string) => number {
+  return (value: string) => {
+    const normalized = value.trim();
+    if (!/^[1-9]\d*$/u.test(normalized)) {
+      throw new InvalidArgumentError(`${label} must be a positive integer.`);
+    }
+
+    const parsed = Number(normalized);
+    if (!Number.isSafeInteger(parsed) || parsed < 1) {
+      throw new InvalidArgumentError(`${label} must be a positive integer.`);
+    }
+
+    return parsed;
+  };
 }

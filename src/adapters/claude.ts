@@ -43,9 +43,10 @@ export class ClaudeAdapter implements AgentAdapter {
 
     const result = await runSubprocess({
       command: this.binaryPath,
-      args: ["-p", "--output-format", "json", "--permission-mode", "bypassPermissions", prompt],
+      args: ["-p", "--output-format", "json", "--permission-mode", "bypassPermissions"],
       cwd: request.workspaceDir,
       ...(this.env ? { env: this.env } : {}),
+      stdin: prompt,
       timeoutMs: this.timeoutMs,
     });
 

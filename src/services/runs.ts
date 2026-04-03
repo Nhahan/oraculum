@@ -159,6 +159,11 @@ export async function buildExportPlan(
       `Candidate "${options.winnerId}" does not exist in run "${options.runId}".`,
     );
   }
+  if (winner.status !== "promoted") {
+    throw new OraculumError(
+      `Candidate "${winner.id}" is not exportable because its status is "${winner.status}".`,
+    );
+  }
 
   const plan: ExportPlan = {
     runId: manifest.id,

@@ -29,6 +29,7 @@ async function prepareGitWorktreeWorkspace(
   options: PrepareWorkspaceOptions,
 ): Promise<WorkspacePreparation> {
   if (await pathExists(join(options.workspaceDir, ".git"))) {
+    await resetGitWorktreeWorkspace(options.workspaceDir, options.projectRoot);
     return {
       mode: "git-worktree",
       workspaceDir: options.workspaceDir,
@@ -59,6 +60,25 @@ async function prepareGitWorktreeWorkspace(
     mode: "git-worktree",
     workspaceDir: options.workspaceDir,
   };
+}
+
+async function resetGitWorktreeWorkspace(workspaceDir: string, projectRoot: string): Promise<void> {
+  const reset = await runSubprocess({
+    command: "git",
+    args: ["-C", workspaceDir, "reset", "--hard", "HEAD"],
+    cwd: projectRoot,
+    timeoutMs: 30_000,
+  });
+  const clean = await runSubprocess({
+    command: "git",
+    args: ["-C", workspaceDir, "clean", "-fdx"],
+    cwd: projectRoot,
+    timeoutMs: 30_000,
+  });
+
+  if (reset.exitCode !== 0 || clean.exitCode !== 0) {
+    throw new OraculumError(`Failed to reset git worktree at ${workspaceDir}.`);
+  }
 }
 
 async function prepareCopiedWorkspace(
@@ -96,7 +116,35 @@ async function isGitRepository(projectRoot: string): Promise<boolean> {
 }
 
 function shouldCopyEntry(name: string): boolean {
-  return ![".git", ".oraculum", "dist", "node_modules"].includes(basename(name));
+  const base = basename(name);
+  if ([".git", ".oraculum", "dist", "node_modules"].includes(base)) {
+    return false;
+  }
+
+  if (
+    [
+      ".aws",
+      ".env",
+      ".env.local",
+      ".env.development",
+      ".env.production",
+      ".env.test",
+      ".gnupg",
+      ".kube",
+      ".netrc",
+      ".npmrc",
+      ".pypirc",
+      ".ssh",
+    ].includes(base)
+  ) {
+    return false;
+  }
+
+  if (base.startsWith(".env.")) {
+    return false;
+  }
+
+  return true;
 }
 
 async function pathExists(path: string): Promise<boolean> {

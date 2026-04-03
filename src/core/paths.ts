@@ -71,12 +71,30 @@ export function getCandidateVerdictsDir(
   return join(getCandidateDir(projectRoot, runId, candidateId), "verdicts");
 }
 
+export function getCandidateVerdictPath(
+  projectRoot: string,
+  runId: string,
+  candidateId: string,
+  oracleId: string,
+): string {
+  return join(getCandidateVerdictsDir(projectRoot, runId, candidateId), `${oracleId}.json`);
+}
+
 export function getCandidateWitnessesDir(
   projectRoot: string,
   runId: string,
   candidateId: string,
 ): string {
   return join(getCandidateDir(projectRoot, runId, candidateId), "witnesses");
+}
+
+export function getCandidateWitnessPath(
+  projectRoot: string,
+  runId: string,
+  candidateId: string,
+  witnessId: string,
+): string {
+  return join(getCandidateWitnessesDir(projectRoot, runId, candidateId), `${witnessId}.json`);
 }
 
 export function getCandidateLogsDir(

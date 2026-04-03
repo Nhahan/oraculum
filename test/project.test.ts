@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { getConfigPath, getExportPlanPath, getRunManifestPath } from "../src/core/paths.js";
 import { projectConfigSchema } from "../src/domain/config.js";
 import { exportPlanSchema, runManifestSchema } from "../src/domain/run.js";
+import { executeRun } from "../src/services/execution.js";
 import { initializeProject } from "../src/services/project.js";
 import { buildExportPlan, planRun } from "../src/services/runs.js";
 
@@ -58,11 +59,36 @@ describe("project scaffold", () => {
   it("creates an export plan for a selected candidate", async () => {
     const cwd = await createInitializedProject();
     await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
+    const fakeCodex = join(cwd, "fake-codex");
+    await writeExecutable(
+      fakeCodex,
+      `#!/bin/sh
+out=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-o" ]; then
+    out="$arg"
+  fi
+  prev="$arg"
+done
+cat >/dev/null
+if [ -n "$out" ]; then
+  printf 'Codex finished candidate patch' > "$out"
+fi
+`,
+    );
 
     const manifest = await planRun({
       cwd,
       taskPath: "tasks/fix-session-loss.md",
+      agent: "codex",
       candidates: 2,
+    });
+    await executeRun({
+      cwd,
+      runId: manifest.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
     });
 
     const result = await buildExportPlan({
@@ -81,6 +107,27 @@ describe("project scaffold", () => {
     expect(saved.branchName).toBe("fix/session-loss");
     expect(saved.withReport).toBe(true);
   });
+
+  it("rejects export plans for candidates that were not promoted", async () => {
+    const cwd = await createInitializedProject();
+    await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
+
+    const manifest = await planRun({
+      cwd,
+      taskPath: "tasks/fix-session-loss.md",
+      candidates: 1,
+    });
+
+    await expect(
+      buildExportPlan({
+        cwd,
+        runId: manifest.id,
+        winnerId: "cand-01",
+        branchName: "fix/session-loss",
+        withReport: false,
+      }),
+    ).rejects.toThrow('status is "planned"');
+  });
 });
 
 async function createInitializedProject(): Promise<string> {
@@ -93,4 +140,9 @@ async function createTempProject(): Promise<string> {
   const path = await mkdtemp(join(tmpdir(), "oraculum-"));
   tempRoots.push(path);
   return path;
+}
+
+async function writeExecutable(path: string, content: string): Promise<void> {
+  await writeFile(path, content, "utf8");
+  await chmod(path, 0o755);
 }

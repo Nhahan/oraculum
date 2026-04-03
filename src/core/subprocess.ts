@@ -16,6 +16,7 @@ interface RunSubprocessOptions {
   command: string;
   cwd: string;
   env?: NodeJS.ProcessEnv;
+  stdin?: string;
   timeoutMs?: number;
 }
 
@@ -25,6 +26,7 @@ export async function runSubprocess(options: RunSubprocessOptions): Promise<Subp
   return new Promise((resolve, reject) => {
     let stdout = "";
     let stderr = "";
+    let closed = false;
     let timedOut = false;
 
     const child = spawn(options.command, options.args, {
@@ -33,22 +35,35 @@ export async function runSubprocess(options: RunSubprocessOptions): Promise<Subp
         ...process.env,
         ...options.env,
       },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
 
+    let killTimeoutId: NodeJS.Timeout | undefined;
     const timeoutId =
       options.timeoutMs && options.timeoutMs > 0
         ? setTimeout(() => {
             timedOut = true;
             child.kill("SIGTERM");
 
-            setTimeout(() => {
-              if (!child.killed) {
+            killTimeoutId = setTimeout(() => {
+              if (!closed) {
                 child.kill("SIGKILL");
               }
             }, 500).unref();
           }, options.timeoutMs)
         : undefined;
+
+    if (child.stdin) {
+      child.stdin.on("error", () => {
+        // Ignore stdin stream errors when the child exits before consuming input.
+      });
+
+      if (options.stdin !== undefined) {
+        child.stdin.end(options.stdin);
+      } else {
+        child.stdin.end();
+      }
+    }
 
     child.stdout.on("data", (chunk: Buffer | string) => {
       stdout += chunk.toString();
@@ -62,6 +77,9 @@ export async function runSubprocess(options: RunSubprocessOptions): Promise<Subp
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
+      if (killTimeoutId) {
+        clearTimeout(killTimeoutId);
+      }
 
       reject(
         new OraculumError(`Failed to start subprocess "${options.command}": ${error.message}`),
@@ -69,8 +87,12 @@ export async function runSubprocess(options: RunSubprocessOptions): Promise<Subp
     });
 
     child.on("close", (code, signal) => {
+      closed = true;
       if (timeoutId) {
         clearTimeout(timeoutId);
+      }
+      if (killTimeoutId) {
+        clearTimeout(killTimeoutId);
       }
 
       resolve({

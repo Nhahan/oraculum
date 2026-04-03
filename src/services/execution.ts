@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { createAgentAdapter } from "../adapters/index.js";
 import { type AgentRunResult, agentRunResultSchema } from "../adapters/types.js";
@@ -6,6 +7,8 @@ import {
   getCandidateAgentResultPath,
   getCandidateLogsDir,
   getCandidateManifestPath,
+  getCandidateVerdictPath,
+  getCandidateWitnessPath,
   getRunManifestPath,
   resolveProjectRoot,
 } from "../core/paths.js";
@@ -17,6 +20,7 @@ import {
 } from "../domain/run.js";
 import { materializedTaskPacketSchema } from "../domain/task.js";
 
+import { evaluateCandidateOracles } from "./oracles.js";
 import { writeJsonFile } from "./project.js";
 import { readRunManifest } from "./runs.js";
 import { prepareCandidateWorkspace } from "./workspaces.js";
@@ -52,41 +56,84 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
   const updatedCandidates: CandidateManifest[] = [];
 
   for (const candidate of manifest.candidates) {
-    const workspace = await prepareCandidateWorkspace({
-      projectRoot,
-      workspaceDir: candidate.workspaceDir,
-    });
-
-    const taskPacket = materializedTaskPacketSchema.parse(
-      JSON.parse(await readFile(candidate.taskPacketPath, "utf8")) as unknown,
-    );
-
     const runningCandidate = candidateManifestSchema.parse({
       ...candidate,
       status: "running",
-      workspaceMode: workspace.mode,
     });
     await writeCandidateManifest(projectRoot, manifest.id, runningCandidate);
 
-    const result = await adapter.runCandidate({
-      runId: manifest.id,
-      candidateId: candidate.id,
-      strategyId: candidate.strategyId,
-      strategyLabel: candidate.strategyLabel,
-      workspaceDir: candidate.workspaceDir,
-      logDir: getCandidateLogsDir(projectRoot, manifest.id, candidate.id),
-      taskPacket,
-    });
+    const logDir = getCandidateLogsDir(projectRoot, manifest.id, candidate.id);
+    let parsedResult: AgentRunResult;
+    let workspaceMode = runningCandidate.workspaceMode;
 
-    const parsedResult = agentRunResultSchema.parse(result);
+    try {
+      const workspace = await prepareCandidateWorkspace({
+        projectRoot,
+        workspaceDir: candidate.workspaceDir,
+      });
+      workspaceMode = workspace.mode;
+
+      await writeCandidateManifest(
+        projectRoot,
+        manifest.id,
+        candidateManifestSchema.parse({
+          ...runningCandidate,
+          workspaceMode,
+        }),
+      );
+
+      const taskPacket = materializedTaskPacketSchema.parse(
+        JSON.parse(await readFile(candidate.taskPacketPath, "utf8")) as unknown,
+      );
+
+      const result = await adapter.runCandidate({
+        runId: manifest.id,
+        candidateId: candidate.id,
+        strategyId: candidate.strategyId,
+        strategyLabel: candidate.strategyLabel,
+        workspaceDir: candidate.workspaceDir,
+        logDir,
+        taskPacket,
+      });
+
+      parsedResult = agentRunResultSchema.parse(result);
+    } catch (error) {
+      parsedResult = await materializeExecutionFailure({
+        adapter: manifest.agent,
+        candidateId: candidate.id,
+        error,
+        logDir,
+        runId: manifest.id,
+      });
+    }
+
     const resultPath = getCandidateAgentResultPath(projectRoot, manifest.id, candidate.id);
     await writeJsonFile(resultPath, parsedResult);
 
+    const evaluation = evaluateCandidateOracles({
+      candidate,
+      result: parsedResult,
+    });
+    await Promise.all([
+      ...evaluation.verdicts.map(async (verdict) =>
+        writeJsonFile(
+          getCandidateVerdictPath(projectRoot, manifest.id, candidate.id, verdict.oracleId),
+          verdict,
+        ),
+      ),
+      ...evaluation.witnesses.map(async (witness) =>
+        writeJsonFile(
+          getCandidateWitnessPath(projectRoot, manifest.id, candidate.id, witness.id),
+          witness,
+        ),
+      ),
+    ]);
+
     const updatedCandidate = candidateManifestSchema.parse({
       ...candidate,
-      status: parsedResult.status === "completed" ? "executed" : "failed",
+      status: evaluation.promote ? "promoted" : "eliminated",
       lastRunResultPath: resultPath,
-      workspaceMode: workspace.mode,
+      ...(workspaceMode ? { workspaceMode } : {}),
     });
 
     await writeCandidateManifest(projectRoot, manifest.id, updatedCandidate);
@@ -117,4 +164,36 @@ async function writeCandidateManifest(
   candidate: CandidateManifest,
 ): Promise<void> {
   await writeJsonFile(getCandidateManifestPath(projectRoot, runId, candidate.id), candidate);
+}
+
+interface MaterializeExecutionFailureOptions {
+  adapter: AgentRunResult["adapter"];
+  candidateId: string;
+  error: unknown;
+  logDir: string;
+  runId: string;
+}
+
+async function materializeExecutionFailure(
+  options: MaterializeExecutionFailureOptions,
+): Promise<AgentRunResult> {
+  const errorMessage =
+    options.error instanceof Error ? options.error.message : String(options.error);
+  const errorPath = join(options.logDir, "execution-error.txt");
+  const timestamp = new Date().toISOString();
+
+  await mkdir(options.logDir, { recursive: true });
+  await writeFile(errorPath, `${errorMessage}\n`, "utf8");
+
+  return agentRunResultSchema.parse({
+    runId: options.runId,
+    candidateId: options.candidateId,
+    adapter: options.adapter,
+    status: "failed",
+    startedAt: timestamp,
+    completedAt: timestamp,
+    exitCode: 1,
+    summary: errorMessage,
+    artifacts: [{ kind: "log", path: errorPath }],
+  });
 }

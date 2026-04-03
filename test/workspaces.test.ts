@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -33,6 +33,24 @@ describe("candidate workspace preparation", () => {
     await expect(readFile(join(workspaceDir, "README.md"), "utf8")).resolves.toContain("hello");
   });
 
+  it("does not copy sensitive top-level files into copied workspaces", async () => {
+    const projectRoot = await createTempRoot();
+    const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");
+
+    await writeFile(join(projectRoot, "README.md"), "hello\n", "utf8");
+    await writeFile(join(projectRoot, ".env"), "SECRET=1\n", "utf8");
+    await writeFile(join(projectRoot, ".npmrc"), "//registry.example/\n", "utf8");
+    await mkdir(join(projectRoot, ".aws"), { recursive: true });
+    await writeFile(join(projectRoot, ".aws", "credentials"), "token\n", "utf8");
+
+    await prepareCandidateWorkspace({ projectRoot, workspaceDir });
+
+    await expect(readFile(join(workspaceDir, "README.md"), "utf8")).resolves.toContain("hello");
+    await expect(stat(join(workspaceDir, ".env"))).rejects.toThrow();
+    await expect(stat(join(workspaceDir, ".npmrc"))).rejects.toThrow();
+    await expect(stat(join(workspaceDir, ".aws"))).rejects.toThrow();
+  });
+
   it("creates a git worktree when the root is a git repository", async () => {
     const projectRoot = await createTempRoot();
     const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");
@@ -48,6 +66,28 @@ describe("candidate workspace preparation", () => {
 
     expect(prepared.mode).toBe("git-worktree");
     await expect(readFile(join(workspaceDir, "README.md"), "utf8")).resolves.toContain("hello");
+  });
+
+  it("resets an existing git worktree before reusing it", async () => {
+    const projectRoot = await createTempRoot();
+    const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");
+
+    execFileSync("git", ["init", "-q"], { cwd: projectRoot });
+    execFileSync("git", ["config", "user.name", "Test User"], { cwd: projectRoot });
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: projectRoot });
+    await writeFile(join(projectRoot, "README.md"), "hello\n", "utf8");
+    execFileSync("git", ["add", "README.md"], { cwd: projectRoot });
+    execFileSync("git", ["commit", "-qm", "init"], { cwd: projectRoot });
+
+    await prepareCandidateWorkspace({ projectRoot, workspaceDir });
+    await writeFile(join(workspaceDir, "README.md"), "modified\n", "utf8");
+    await writeFile(join(workspaceDir, "scratch.txt"), "temp\n", "utf8");
+
+    const prepared = await prepareCandidateWorkspace({ projectRoot, workspaceDir });
+
+    expect(prepared.mode).toBe("git-worktree");
+    await expect(readFile(join(workspaceDir, "README.md"), "utf8")).resolves.toContain("hello");
+    await expect(stat(join(workspaceDir, "scratch.txt"))).rejects.toThrow();
   });
 });
 

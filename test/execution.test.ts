@@ -4,7 +4,12 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 import { agentRunResultSchema } from "../src/adapters/types.js";
-import { getCandidateAgentResultPath } from "../src/core/paths.js";
+import {
+  getCandidateAgentResultPath,
+  getCandidateVerdictPath,
+  getCandidateWitnessPath,
+} from "../src/core/paths.js";
+import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
 import { executeRun } from "../src/services/execution.js";
 import { initializeProject } from "../src/services/project.js";
 import { planRun, readRunManifest } from "../src/services/runs.js";
@@ -59,17 +64,100 @@ fi
     });
 
     expect(executed.candidateResults[0]?.status).toBe("completed");
-    expect(executed.manifest.candidates[0]?.status).toBe("executed");
+    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
     expect(executed.manifest.candidates[0]?.workspaceMode).toBe("copy");
 
     const savedManifest = await readRunManifest(cwd, planned.id);
     expect(savedManifest.status).toBe("completed");
+    expect(savedManifest.candidates[0]?.status).toBe("promoted");
 
     const resultPath = getCandidateAgentResultPath(cwd, planned.id, "cand-01");
     const parsedResult = agentRunResultSchema.parse(
       JSON.parse(await readFile(resultPath, "utf8")) as unknown,
     );
     expect(parsedResult.summary).toContain("Codex finished candidate patch");
+
+    const verdictPath = getCandidateVerdictPath(cwd, planned.id, "cand-01", "agent-exit");
+    const verdict = oracleVerdictSchema.parse(
+      JSON.parse(await readFile(verdictPath, "utf8")) as unknown,
+    );
+    expect(verdict.status).toBe("pass");
+
+    const witnessPath = getCandidateWitnessPath(cwd, planned.id, "cand-01", "cand-01-agent-exit");
+    const witness = witnessSchema.parse(JSON.parse(await readFile(witnessPath, "utf8")) as unknown);
+    expect(witness.detail).toContain("status=completed");
+  });
+
+  it("eliminates candidates when the adapter exits non-zero", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fail.md"), "# Fail\nReturn non-zero.\n");
+
+    const fakeCodex = join(cwd, "fake-codex");
+    await writeExecutable(
+      fakeCodex,
+      `#!/bin/sh
+printf '{"event":"started"}\n'
+exit 3
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskPath: "tasks/fail.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.candidateResults[0]?.status).toBe("failed");
+    expect(executed.manifest.candidates[0]?.status).toBe("eliminated");
+
+    const verdictPath = getCandidateVerdictPath(cwd, planned.id, "cand-01", "agent-exit");
+    const verdict = oracleVerdictSchema.parse(
+      JSON.parse(await readFile(verdictPath, "utf8")) as unknown,
+    );
+    expect(verdict.status).toBe("fail");
+  });
+
+  it("marks the candidate terminal and completes the run when the host binary cannot start", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "missing-host.md"), "# Missing host\nFail to spawn.\n");
+
+    const planned = await planRun({
+      cwd,
+      taskPath: "tasks/missing-host.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: join(cwd, "missing-codex"),
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.status).toBe("completed");
+    expect(executed.candidateResults[0]?.status).toBe("failed");
+    expect(executed.manifest.candidates[0]?.status).toBe("eliminated");
+
+    const savedManifest = await readRunManifest(cwd, planned.id);
+    expect(savedManifest.status).toBe("completed");
+    expect(savedManifest.candidates[0]?.status).toBe("eliminated");
+
+    const resultPath = getCandidateAgentResultPath(cwd, planned.id, "cand-01");
+    const parsedResult = agentRunResultSchema.parse(
+      JSON.parse(await readFile(resultPath, "utf8")) as unknown,
+    );
+    expect(parsedResult.summary).toContain("Failed to start subprocess");
   });
 });
 

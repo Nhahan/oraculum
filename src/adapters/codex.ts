@@ -54,10 +54,10 @@ export class CodexAdapter implements AgentAdapter {
         "--json",
         "-o",
         finalMessagePath,
-        prompt,
       ],
       cwd: request.workspaceDir,
       ...(this.env ? { env: this.env } : {}),
+      stdin: prompt,
       timeoutMs: this.timeoutMs,
     });
 

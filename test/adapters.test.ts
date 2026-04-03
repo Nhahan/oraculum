@@ -29,7 +29,12 @@ describe("agent adapters", () => {
     await writeExecutable(
       binaryPath,
       `#!/bin/sh
-printf '{"result":"Claude finished candidate patch"}'
+prompt=$(cat)
+if [ -z "$prompt" ]; then
+  printf 'missing prompt' >&2
+  exit 9
+fi
+printf '{"result":"Claude finished candidate patch","summary":"'"$prompt"'"}'
 printf 'claude stderr' >&2
 `,
     );
@@ -50,7 +55,7 @@ printf 'claude stderr' >&2
     });
 
     expect(result.status).toBe("completed");
-    expect(result.summary).toContain("Claude finished candidate patch");
+    expect(result.summary).toContain("Minimal Change");
     await expect(readFile(join(logDir, "prompt.txt"), "utf8")).resolves.toContain("Minimal Change");
     await expect(readFile(join(logDir, "claude.stdout.txt"), "utf8")).resolves.toContain(
       "Claude finished candidate patch",
@@ -72,6 +77,11 @@ printf 'claude stderr' >&2
       `#!/bin/sh
 out=""
 prev=""
+prompt=$(cat)
+if [ -z "$prompt" ]; then
+  printf 'missing prompt' >&2
+  exit 9
+fi
 for arg in "$@"; do
   if [ "$prev" = "-o" ]; then
     out="$arg"
@@ -81,7 +91,7 @@ done
 printf '{"event":"started"}\n'
 printf 'codex stderr' >&2
 if [ -n "$out" ]; then
-  printf 'Codex finished candidate patch' > "$out"
+  printf 'Codex finished candidate patch: %s' "$prompt" > "$out"
 fi
 `,
     );
@@ -102,7 +112,7 @@ fi
     });
 
     expect(result.status).toBe("completed");
-    expect(result.summary).toContain("Codex finished candidate patch");
+    expect(result.summary).toContain("Safety First");
     await expect(readFile(join(logDir, "codex.final-message.txt"), "utf8")).resolves.toContain(
       "Codex finished candidate patch",
     );

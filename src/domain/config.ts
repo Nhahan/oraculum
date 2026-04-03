@@ -23,7 +23,6 @@ export const projectConfigSchema = z.object({
   adapters: z.array(adapterSchema).min(1),
   strategies: z.array(strategySchema).min(1),
   rounds: z.array(roundSchema).min(1),
-  artifactsDir: z.string().min(1),
 });
 
 export type Adapter = z.infer<typeof adapterSchema>;
@@ -75,5 +74,4 @@ export const defaultProjectConfig: ProjectConfig = {
       description: "Expensive suites, scenario validation, and release-level checks.",
     },
   ],
-  artifactsDir: ".oraculum/runs",
 };
