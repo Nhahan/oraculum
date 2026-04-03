@@ -47,6 +47,38 @@ export function getCandidateManifestPath(
   return join(getCandidateDir(projectRoot, runId, candidateId), "candidate.json");
 }
 
+export function getCandidateTaskPacketPath(
+  projectRoot: string,
+  runId: string,
+  candidateId: string,
+): string {
+  return join(getCandidateDir(projectRoot, runId, candidateId), "task-packet.json");
+}
+
+export function getCandidateVerdictsDir(
+  projectRoot: string,
+  runId: string,
+  candidateId: string,
+): string {
+  return join(getCandidateDir(projectRoot, runId, candidateId), "verdicts");
+}
+
+export function getCandidateWitnessesDir(
+  projectRoot: string,
+  runId: string,
+  candidateId: string,
+): string {
+  return join(getCandidateDir(projectRoot, runId, candidateId), "witnesses");
+}
+
+export function getCandidateLogsDir(
+  projectRoot: string,
+  runId: string,
+  candidateId: string,
+): string {
+  return join(getCandidateDir(projectRoot, runId, candidateId), "logs");
+}
+
 export function getReportsDir(projectRoot: string, runId: string): string {
   return join(getRunDir(projectRoot, runId), "reports");
 }

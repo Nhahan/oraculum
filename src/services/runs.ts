@@ -5,7 +5,11 @@ import { resolve } from "node:path";
 import { OraculumError } from "../core/errors.js";
 import {
   getCandidateDir,
+  getCandidateLogsDir,
   getCandidateManifestPath,
+  getCandidateTaskPacketPath,
+  getCandidateVerdictsDir,
+  getCandidateWitnessesDir,
   getConfigPath,
   getExportPlanPath,
   getReportsDir,
@@ -24,6 +28,7 @@ import {
   runManifestSchema,
 } from "../domain/run.js";
 import { loadProjectConfig, pathExists, writeJsonFile } from "./project.js";
+import { loadTaskPacket } from "./task-packets.js";
 
 interface PlanRunOptions {
   cwd: string;
@@ -53,6 +58,7 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
     throw new OraculumError(`Task file not found: ${resolvedTaskPath}`);
   }
 
+  const taskPacket = await loadTaskPacket(resolvedTaskPath);
   const agent = options.agent ?? config.defaultAgent;
   if (!config.adapters.includes(agent)) {
     throw new OraculumError(`Agent "${agent}" is not enabled in the project config.`);
@@ -76,10 +82,18 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
     strategies.map(async (strategy, index) => {
       const candidateId = `cand-${String(index + 1).padStart(2, "0")}`;
       const candidateDir = getCandidateDir(projectRoot, runId, candidateId);
+      const taskPacketPath = getCandidateTaskPacketPath(projectRoot, runId, candidateId);
       const workspaceDir = getWorkspaceDir(projectRoot, runId, candidateId);
+      const verdictsDir = getCandidateVerdictsDir(projectRoot, runId, candidateId);
+      const witnessesDir = getCandidateWitnessesDir(projectRoot, runId, candidateId);
+      const logsDir = getCandidateLogsDir(projectRoot, runId, candidateId);
 
       await mkdir(candidateDir, { recursive: true });
       await mkdir(workspaceDir, { recursive: true });
+      await mkdir(verdictsDir, { recursive: true });
+      await mkdir(witnessesDir, { recursive: true });
+      await mkdir(logsDir, { recursive: true });
+      await writeJsonFile(taskPacketPath, taskPacket);
 
       const candidate: CandidateManifest = {
         id: candidateId,
@@ -87,6 +101,7 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
         strategyLabel: strategy.label,
         status: "planned",
         workspaceDir,
+        taskPacketPath,
         createdAt,
       };
 
@@ -101,6 +116,12 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
     id: runId,
     status: "planned",
     taskPath: resolvedTaskPath,
+    taskPacket: {
+      id: taskPacket.id,
+      title: taskPacket.title,
+      sourceKind: taskPacket.source.kind,
+      sourcePath: taskPacket.source.path,
+    },
     agent,
     candidateCount,
     createdAt,

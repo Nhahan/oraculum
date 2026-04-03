@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { adapterSchema } from "./config.js";
+import { taskPacketSummarySchema } from "./task.js";
 
 export const candidateStatusSchema = z.enum([
   "planned",
@@ -17,6 +18,7 @@ export const candidateManifestSchema = z.object({
   strategyLabel: z.string().min(1),
   status: candidateStatusSchema,
   workspaceDir: z.string().min(1),
+  taskPacketPath: z.string().min(1),
   createdAt: z.string().min(1),
 });
 
@@ -26,6 +28,7 @@ export const runManifestSchema = z.object({
   id: z.string().min(1),
   status: runStatusSchema,
   taskPath: z.string().min(1),
+  taskPacket: taskPacketSummarySchema,
   agent: adapterSchema,
   candidateCount: z.number().int().min(1),
   createdAt: z.string().min(1),
