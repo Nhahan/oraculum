@@ -14,16 +14,16 @@ This file is a pointer, not a spec. Keep durable detail in repo docs, not here.
 
 ## Harness Engineering
 
-Harness engineering = engineering the environment around agents so work is reliable, inspectable, and repeatable. The harness is the repo-level system of:
+Harness engineering = encoding agent work into repo-native operating surfaces so it is directed, stateful, inspectable, and repeatable. The harness lives in:
 
 - specs and acceptance criteria
-- typed schemas and stable commands
-- tests, linters, and deterministic checks
-- invariants / oracles
-- tool boundaries and safety limits
-- logs, artifacts, replay, and reports
+- stable commands, modes, skills, and hooks
+- typed schemas, state stores, session/job ownership, and context injection
+- workspaces / worktrees / isolation boundaries
+- tests, linters, deterministic checks, and oracles
+- artifacts, evals, replay, and reports
 
-Treat the harness as an operating system for agent work, not a prompt pack. If an agent fails, first assume a harness gap and add the missing thing to the repo: clearer spec, better oracle/check, fixture/repro, safer boundary, or better logs/replay/report.
+Treat the harness as an operating system for agent work, not a prompt pack. Source of truth is repo state and artifacts, not chat transcript. On failure, assume a harness gap first: spec, command/mode/hook, state boundary, context injection, workspace isolation, oracle/check, fixture/repro, or artifacts/eval/replay.
 
 ## Oraculum-Specific Harness
 
@@ -50,24 +50,22 @@ Optimize for falsification and selection of patches, not maximum agent freedom.
 ## Working Bias
 
 - Humans set intent and judge tradeoffs; agents execute loops.
-- Prefer mechanized enforcement over prose; encode durable rules as code, config, test, oracle, or hook.
+- Prefer mechanized enforcement over prose; if a behavior must survive runs, encode it as command, mode, skill, hook, state transition, config, test, oracle, or evaluator.
 - Prefer small, legible, in-repo abstractions over cleverness.
 - Keep context lean; link outward instead of bloating root instructions.
 - Prefer replayable, machine-readable outputs.
-- Use an opinionated workflow, not ad-hoc chatting.
-- Force clarification before coding when intent is vague.
+- Use an opinionated workflow, not ad-hoc chatting; force clarification before coding when intent is vague.
+- Build harness surfaces before polish: one product workflow across hosts, thin adapters at the edge, stable orchestration operations, state flow, isolation, evaluators, artifacts.
 - Pass artifacts forward: `spec -> plan -> implementation -> review -> test -> release`.
 - Use fresh-context review/QA when independent judgment matters.
 - Parallel workers require isolated workspaces and explicit coordination.
-- When borrowing harness ideas, adapt them to `candidate -> oracle -> witness -> promotion`, not generic team orchestration.
+- Borrow the references' command/hook/state-machine discipline, but adapt it to `candidate -> oracle -> witness -> promotion`, not generic team orchestration.
 - Preferred execution cadence: `clarify/specify -> plan -> build -> review -> test -> ship/export -> reflect/learn`.
 
 ## Doc Visibility
 
-- Root docs should be user-facing.
-- Public docs that are not root-required belong under `/docs/`.
-- Internal governance/process/meta docs belong under `/internal/`.
-- Proposal / strategy / operating-design docs are internal by default.
+- Root docs should be user-facing; public docs that are not root-required belong under `/docs/`.
+- Internal governance/process/meta docs belong under `/internal/`; proposal / strategy / operating-design docs are internal by default.
 - If mixed, publish the sanitized user-facing doc and keep the operating appendix private.
 
 ## System Shape
