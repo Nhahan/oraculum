@@ -6,11 +6,11 @@
 
 > Generate competing patches, judge them with repo-local oracles, and promote only the survivors.
 
-Oraculum is a design-stage concept for a CLI-first patch search and invariant judgment engine built on top of `Claude Code` and `Codex`.
+Oraculum is an early-stage CLI-first patch search and invariant judgment engine being built on top of `Claude Code` and `Codex`.
 
 Instead of trusting the first plausible diff, Oraculum would explore multiple candidate patches in parallel, eliminate weak directions early with executable repo rules, and carry only the strongest finalists into deeper verification.
 
-This repository is currently for publishing the idea, shaping the product boundary, and refining the harness model before a real implementation lands.
+This repository is currently for publishing the idea, shaping the product boundary, refining the harness model, and growing the first real implementation scaffold.
 
 ## Status
 
@@ -21,8 +21,20 @@ Today, this repository is primarily:
 - a public concept repo
 - a product-definition repo
 - an architecture and harness-design workspace
+- an early CLI scaffold
 
-It is not yet a production-ready CLI or an installable OSS package.
+It is not yet a production-ready CLI or a published OSS package.
+
+## Development
+
+The repository now includes a minimal `TypeScript + Node.js` scaffold for the intended CLI shape.
+
+```bash
+npm install
+npm run check
+npm run build
+npm run dev -- --help
+```
 
 ## What Oraculum Is
 
