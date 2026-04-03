@@ -118,7 +118,10 @@ describe("oracle and adapter contracts", () => {
     const result = await adapter.runCandidate({
       runId: "run_1",
       candidateId: "cand-01",
+      strategyId: "minimal-change",
+      strategyLabel: "Minimal Change",
       workspaceDir: "/tmp/oraculum-workspace",
+      logDir: "/tmp/oraculum-logs",
       taskPacket: materializedTaskPacketSchema.parse({
         id: "session-loss",
         title: "Fix session loss",

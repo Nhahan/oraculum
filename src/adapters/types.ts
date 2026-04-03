@@ -6,6 +6,7 @@ import type { MaterializedTaskPacket } from "../domain/task.js";
 export const agentArtifactKindSchema = z.enum([
   "log",
   "patch",
+  "prompt",
   "report",
   "stderr",
   "stdout",
@@ -33,7 +34,10 @@ export const agentRunResultSchema = z.object({
 export interface AgentRunRequest {
   runId: string;
   candidateId: string;
+  strategyId: string;
+  strategyLabel: string;
   workspaceDir: string;
+  logDir: string;
   taskPacket: MaterializedTaskPacket;
 }
 
