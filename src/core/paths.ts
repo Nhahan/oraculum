@@ -47,6 +47,14 @@ export function getCandidateManifestPath(
   return join(getCandidateDir(projectRoot, runId, candidateId), "candidate.json");
 }
 
+export function getCandidateAgentResultPath(
+  projectRoot: string,
+  runId: string,
+  candidateId: string,
+): string {
+  return join(getCandidateDir(projectRoot, runId, candidateId), "agent-run.json");
+}
+
 export function getCandidateTaskPacketPath(
   projectRoot: string,
   runId: string,

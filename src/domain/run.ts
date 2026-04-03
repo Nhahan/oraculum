@@ -6,11 +6,15 @@ import { taskPacketSummarySchema } from "./task.js";
 export const candidateStatusSchema = z.enum([
   "planned",
   "running",
+  "executed",
+  "failed",
   "judged",
   "eliminated",
   "promoted",
   "exported",
 ]);
+
+export const workspaceModeSchema = z.enum(["copy", "git-worktree"]);
 
 export const candidateManifestSchema = z.object({
   id: z.string().min(1),
@@ -19,6 +23,8 @@ export const candidateManifestSchema = z.object({
   status: candidateStatusSchema,
   workspaceDir: z.string().min(1),
   taskPacketPath: z.string().min(1),
+  lastRunResultPath: z.string().min(1).optional(),
+  workspaceMode: workspaceModeSchema.optional(),
   createdAt: z.string().min(1),
 });
 
@@ -52,3 +58,4 @@ export const exportPlanSchema = z.object({
 export type CandidateManifest = z.infer<typeof candidateManifestSchema>;
 export type RunManifest = z.infer<typeof runManifestSchema>;
 export type ExportPlan = z.infer<typeof exportPlanSchema>;
+export type WorkspaceMode = z.infer<typeof workspaceModeSchema>;

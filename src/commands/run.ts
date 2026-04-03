@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 
 import { adapterSchema } from "../domain/config.js";
+import { executeRun } from "../services/execution.js";
 import { planRun } from "../services/runs.js";
 
 export function registerRunCommand(program: Command): void {
@@ -10,27 +11,53 @@ export function registerRunCommand(program: Command): void {
     .requiredOption("-t, --task <path>", "task packet or task note path")
     .option("-c, --candidates <count>", "number of candidate patches to plan", parseInteger)
     .option("-a, --agent <agent>", "agent runtime to target")
-    .action(async (options: { agent?: string; candidates?: number; task: string }) => {
-      const agent = options.agent ? adapterSchema.parse(options.agent) : undefined;
-      const manifest = await planRun({
-        cwd: process.cwd(),
-        taskPath: options.task,
-        ...(agent ? { agent } : {}),
-        ...(options.candidates !== undefined ? { candidates: options.candidates } : {}),
-      });
+    .option("--execute", "execute candidates after planning", false)
+    .option("--timeout-ms <ms>", "adapter timeout in milliseconds", parseInteger)
+    .action(
+      async (options: {
+        agent?: string;
+        candidates?: number;
+        execute?: boolean;
+        task: string;
+        timeoutMs?: number;
+      }) => {
+        const agent = options.agent ? adapterSchema.parse(options.agent) : undefined;
+        const manifest = await planRun({
+          cwd: process.cwd(),
+          taskPath: options.task,
+          ...(agent ? { agent } : {}),
+          ...(options.candidates !== undefined ? { candidates: options.candidates } : {}),
+        });
 
-      process.stdout.write(`Planned run: ${manifest.id}\n`);
-      process.stdout.write(`Task: ${manifest.taskPath}\n`);
-      process.stdout.write(`Agent: ${manifest.agent}\n`);
-      process.stdout.write(`Candidates: ${manifest.candidateCount}\n`);
-      process.stdout.write("Scaffolded candidates:\n");
-      for (const candidate of manifest.candidates) {
-        process.stdout.write(`- ${candidate.id}: ${candidate.strategyLabel}\n`);
-      }
-      process.stdout.write(
-        "Execution is not implemented yet; this command currently creates the run artifact layout.\n",
-      );
-    });
+        process.stdout.write(`Planned run: ${manifest.id}\n`);
+        process.stdout.write(`Task: ${manifest.taskPath}\n`);
+        process.stdout.write(`Agent: ${manifest.agent}\n`);
+        process.stdout.write(`Candidates: ${manifest.candidateCount}\n`);
+        process.stdout.write("Scaffolded candidates:\n");
+        for (const candidate of manifest.candidates) {
+          process.stdout.write(`- ${candidate.id}: ${candidate.strategyLabel}\n`);
+        }
+        if (!(options.execute ?? false)) {
+          process.stdout.write(
+            "Execution was skipped. Re-run with --execute to call the selected host adapter.\n",
+          );
+          return;
+        }
+
+        const execution = await executeRun({
+          cwd: process.cwd(),
+          runId: manifest.id,
+          ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+        });
+
+        process.stdout.write("Execution results:\n");
+        for (const result of execution.candidateResults) {
+          process.stdout.write(
+            `- ${result.candidateId}: ${result.status} (exit ${result.exitCode})\n`,
+          );
+        }
+      },
+    );
 }
 
 function parseInteger(value: string): number {
