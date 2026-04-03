@@ -1,2 +1,6 @@
 /refs/
 /internal/
+node_modules/
+dist/
+.oraculum/
+.DS_Store

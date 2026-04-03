@@ -1,0 +1,45 @@
+{
+  "name": "oraculum",
+  "version": "0.1.0",
+  "description": "Patch search and judgment harness for Claude Code and Codex.",
+  "type": "module",
+  "bin": {
+    "oraculum": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.20.0"
+  },
+  "packageManager": "npm@10.9.3",
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
+    "check": "npm run lint && npm run typecheck && npm run test",
+    "dev": "tsx src/cli.ts",
+    "format": "biome check --write .",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "ai-native",
+    "claude-code",
+    "codex",
+    "developer-tools",
+    "harness-engineering",
+    "oraculum"
+  ],
+  "dependencies": {
+    "commander": "^14.0.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.10",
+    "@types/node": "^25.5.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.2"
+  }
+}
