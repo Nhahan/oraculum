@@ -6,17 +6,30 @@ export function registerExportCommand(program: Command): void {
   program
     .command("export")
     .description("Write an export plan for a selected candidate.")
-    .requiredOption("-r, --run <runId>", "run identifier")
-    .requiredOption("-w, --winner <candidateId>", "candidate to export")
-    .requiredOption("-b, --as-branch <branchName>", "branch name to propose")
+    .argument("<candidate-id>", "promoted candidate to export")
+    .option("-r, --run <runId>", "run identifier; defaults to the latest run")
+    .option("-b, --branch <branchName>", "branch name to propose")
+    .option("--as-branch <branchName>", "legacy branch option")
     .option("--with-report", "include report packaging metadata", false)
     .action(
-      async (options: { asBranch: string; run: string; winner: string; withReport?: boolean }) => {
+      async (
+        winner: string,
+        options: {
+          asBranch?: string;
+          branch?: string;
+          run?: string;
+          withReport?: boolean;
+        },
+      ) => {
+        const branchName = options.branch ?? options.asBranch;
+        if (!branchName) {
+          throw new Error("branch name is required. Use --branch <name>.");
+        }
         const result = await buildExportPlan({
           cwd: process.cwd(),
-          runId: options.run,
-          winnerId: options.winner,
-          branchName: options.asBranch,
+          ...(options.run ? { runId: options.run } : {}),
+          winnerId: winner,
+          branchName,
           withReport: options.withReport ?? false,
         });
 

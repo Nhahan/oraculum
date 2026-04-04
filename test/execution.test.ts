@@ -51,7 +51,7 @@ fi
 
     const planned = await planRun({
       cwd,
-      taskPath: "tasks/fix-session-loss.md",
+      taskInput: "tasks/fix-session-loss.md",
       agent: "codex",
       candidates: 1,
     });
@@ -119,7 +119,7 @@ exit 3
 
     const planned = await planRun({
       cwd,
-      taskPath: "tasks/fail.md",
+      taskInput: "tasks/fail.md",
       agent: "codex",
       candidates: 1,
     });
@@ -148,7 +148,7 @@ exit 3
 
     const planned = await planRun({
       cwd,
-      taskPath: "tasks/missing-host.md",
+      taskInput: "tasks/missing-host.md",
       agent: "codex",
       candidates: 1,
     });

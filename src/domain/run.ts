@@ -61,8 +61,14 @@ export const exportPlanSchema = z.object({
   createdAt: z.string().min(1),
 });
 
+export const latestRunStateSchema = z.object({
+  runId: z.string().min(1),
+  updatedAt: z.string().min(1),
+});
+
 export type CandidateManifest = z.infer<typeof candidateManifestSchema>;
 export type RunManifest = z.infer<typeof runManifestSchema>;
 export type RunRound = z.infer<typeof roundManifestSchema>;
 export type ExportPlan = z.infer<typeof exportPlanSchema>;
+export type LatestRunState = z.infer<typeof latestRunStateSchema>;
 export type WorkspaceMode = z.infer<typeof workspaceModeSchema>;

@@ -146,7 +146,7 @@ describe("run scaffold artifacts", () => {
 
     const run = await planRun({
       cwd,
-      taskPath: "tasks/fix-session-loss.md",
+      taskInput: "tasks/fix-session-loss.md",
       candidates: 1,
     });
 

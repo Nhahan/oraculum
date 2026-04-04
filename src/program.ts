@@ -1,9 +1,9 @@
 import { Command } from "commander";
 
 import { registerExportCommand } from "./commands/export.js";
-import { registerFinalistsCommand } from "./commands/finalists.js";
 import { registerInitCommand } from "./commands/init.js";
 import { registerRunCommand } from "./commands/run.js";
+import { registerShowCommand } from "./commands/show.js";
 import { APP_NAME, APP_VERSION } from "./core/constants.js";
 
 export function buildProgram(): Command {
@@ -16,7 +16,7 @@ export function buildProgram(): Command {
 
   registerInitCommand(program);
   registerRunCommand(program);
-  registerFinalistsCommand(program);
+  registerShowCommand(program);
   registerExportCommand(program);
 
   return program;

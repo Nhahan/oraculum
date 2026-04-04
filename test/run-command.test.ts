@@ -8,17 +8,25 @@ vi.mock("../src/services/execution.js", () => ({
   executeRun: vi.fn(),
 }));
 
+vi.mock("../src/services/project.js", () => ({
+  ensureProjectInitialized: vi.fn(),
+}));
+
 import { buildProgram } from "../src/program.js";
 import { executeRun } from "../src/services/execution.js";
+import { ensureProjectInitialized } from "../src/services/project.js";
 import { planRun } from "../src/services/runs.js";
 
 const mockedPlanRun = vi.mocked(planRun);
 const mockedExecuteRun = vi.mocked(executeRun);
+const mockedEnsureProjectInitialized = vi.mocked(ensureProjectInitialized);
 
 describe("run command", () => {
   beforeEach(() => {
     mockedPlanRun.mockReset();
     mockedExecuteRun.mockReset();
+    mockedEnsureProjectInitialized.mockReset();
+    mockedEnsureProjectInitialized.mockResolvedValue(undefined);
 
     const manifest = createPlannedManifest();
     mockedPlanRun.mockResolvedValue(manifest);
@@ -50,19 +58,38 @@ describe("run command", () => {
   it("executes by default after planning", async () => {
     const program = createProgram();
 
-    await program.parseAsync(["run", "--task", "tasks/task.md"], { from: "user" });
+    await program.parseAsync(["run", "tasks/task.md"], { from: "user" });
 
     expect(mockedPlanRun).toHaveBeenCalledTimes(1);
+    expect(mockedPlanRun).toHaveBeenCalledWith(
+      expect.objectContaining({ taskInput: "tasks/task.md" }),
+    );
     expect(mockedExecuteRun).toHaveBeenCalledTimes(1);
   });
 
   it("skips execution only when plan-only is explicitly requested", async () => {
     const program = createProgram();
 
-    await program.parseAsync(["run", "--task", "tasks/task.md", "--plan-only"], { from: "user" });
+    await program.parseAsync(["run", "tasks/task.md", "--plan-only"], { from: "user" });
 
     expect(mockedPlanRun).toHaveBeenCalledTimes(1);
     expect(mockedExecuteRun).not.toHaveBeenCalled();
+  });
+
+  it("auto-initializes the project before planning when needed", async () => {
+    const program = createProgram();
+    mockedEnsureProjectInitialized.mockResolvedValue({
+      projectRoot: "/tmp/project",
+      configPath: "/tmp/project/.oraculum/config.json",
+      createdPaths: [],
+    });
+
+    await program.parseAsync(["run", "fix session loss on refresh"], { from: "user" });
+
+    expect(mockedEnsureProjectInitialized).toHaveBeenCalledTimes(1);
+    expect(mockedPlanRun).toHaveBeenCalledWith(
+      expect.objectContaining({ taskInput: "fix session loss on refresh" }),
+    );
   });
 });
 

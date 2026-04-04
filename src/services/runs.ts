@@ -12,6 +12,8 @@ import {
   getCandidateWitnessesDir,
   getConfigPath,
   getExportPlanPath,
+  getGeneratedTasksDir,
+  getLatestRunStatePath,
   getReportsDir,
   getRunDir,
   getRunManifestPath,
@@ -24,6 +26,7 @@ import {
   candidateManifestSchema,
   type ExportPlan,
   exportPlanSchema,
+  latestRunStateSchema,
   type RunManifest,
   type RunRound,
   runManifestSchema,
@@ -33,14 +36,14 @@ import { loadTaskPacket } from "./task-packets.js";
 
 interface PlanRunOptions {
   cwd: string;
-  taskPath: string;
+  taskInput: string;
   agent?: Adapter;
   candidates?: number;
 }
 
 interface BuildExportPlanOptions {
   cwd: string;
-  runId: string;
+  runId?: string;
   winnerId: string;
   branchName: string;
   withReport: boolean;
@@ -49,7 +52,7 @@ interface BuildExportPlanOptions {
 export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
   const projectRoot = resolveProjectRoot(options.cwd);
   const config = await loadProjectConfig(projectRoot);
-  const resolvedTaskPath = resolve(projectRoot, options.taskPath);
+  const resolvedTaskPath = await materializeTaskInput(projectRoot, options.taskInput);
 
   if (!(await pathExists(getConfigPath(projectRoot)))) {
     throw new OraculumError(`Missing project config in ${projectRoot}. Run "oraculum init" first.`);
@@ -139,6 +142,7 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
 
   runManifestSchema.parse(manifest);
   await writeJsonFile(getRunManifestPath(projectRoot, runId), manifest);
+  await writeLatestRunState(projectRoot, runId);
 
   return manifest;
 }
@@ -159,7 +163,8 @@ export async function buildExportPlan(
   options: BuildExportPlanOptions,
 ): Promise<{ plan: ExportPlan; path: string }> {
   const projectRoot = resolveProjectRoot(options.cwd);
-  const manifest = await readRunManifest(projectRoot, options.runId);
+  const resolvedRunId = options.runId ?? (await readLatestRunId(projectRoot));
+  const manifest = await readRunManifest(projectRoot, resolvedRunId);
   const winner = manifest.candidates.find((candidate) => candidate.id === options.winnerId);
 
   if (!winner) {
@@ -183,11 +188,29 @@ export async function buildExportPlan(
 
   exportPlanSchema.parse(plan);
 
-  const planPath = getExportPlanPath(projectRoot, options.runId);
-  await mkdir(getReportsDir(projectRoot, options.runId), { recursive: true });
+  const planPath = getExportPlanPath(projectRoot, manifest.id);
+  await mkdir(getReportsDir(projectRoot, manifest.id), { recursive: true });
   await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
 
   return { plan, path: planPath };
+}
+
+export async function readLatestRunManifest(cwd: string): Promise<RunManifest> {
+  const projectRoot = resolveProjectRoot(cwd);
+  return readRunManifest(projectRoot, await readLatestRunId(projectRoot));
+}
+
+export async function readLatestRunId(cwd: string): Promise<string> {
+  const projectRoot = resolveProjectRoot(cwd);
+  const latestRunStatePath = getLatestRunStatePath(projectRoot);
+
+  if (!(await pathExists(latestRunStatePath))) {
+    throw new OraculumError("No previous run found. Start with `oraculum run ...`.");
+  }
+
+  const raw = await readFile(latestRunStatePath, "utf8");
+  const parsed = latestRunStateSchema.parse(JSON.parse(raw) as unknown);
+  return parsed.runId;
 }
 
 function createRunId(): string {
@@ -215,5 +238,73 @@ function selectStrategies(config: ProjectConfig, candidateCount: number): Strate
       id: `${strategy.id}-${index + 1}`,
       label: `${strategy.label} ${index + 1}`,
     };
+  });
+}
+
+async function materializeTaskInput(projectRoot: string, taskInput: string): Promise<string> {
+  const normalized = taskInput.trim();
+  if (!normalized) {
+    throw new OraculumError("Task input must not be empty.");
+  }
+
+  const asPath = resolve(projectRoot, normalized);
+  if (await pathExists(asPath)) {
+    return asPath;
+  }
+  if (looksLikeTaskPath(normalized)) {
+    throw new OraculumError(`Task file not found: ${asPath}`);
+  }
+
+  const generatedTasksDir = getGeneratedTasksDir(projectRoot);
+  await mkdir(generatedTasksDir, { recursive: true });
+
+  const inlineTaskId = createInlineTaskId(normalized);
+  const inlineTaskPath = resolve(generatedTasksDir, `${inlineTaskId}.md`);
+  await writeFile(inlineTaskPath, buildInlineTaskNote(normalized), "utf8");
+  return inlineTaskPath;
+}
+
+function buildInlineTaskNote(taskInput: string): string {
+  const normalized = taskInput.trim();
+  if (normalized.startsWith("# ")) {
+    return normalized.endsWith("\n") ? normalized : `${normalized}\n`;
+  }
+
+  return `# ${buildInlineTaskTitle(normalized)}\n${normalized}\n`;
+}
+
+function buildInlineTaskTitle(taskInput: string): string {
+  const firstLine = taskInput.split(/\r?\n/u)[0]?.trim() ?? "Inline task";
+  const withoutTrailingPunctuation = firstLine.replace(/[.?!]+$/u, "").trim();
+  if (withoutTrailingPunctuation) {
+    return withoutTrailingPunctuation.slice(0, 80);
+  }
+
+  return "Inline task";
+}
+
+function createInlineTaskId(taskInput: string): string {
+  const label = buildInlineTaskTitle(taskInput)
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/gu, "-")
+    .replaceAll(/^-+|-+$/gu, "");
+  return `${label || "task"}-${randomUUID().slice(0, 8)}`;
+}
+
+function looksLikeTaskPath(taskInput: string): boolean {
+  return (
+    taskInput.includes("/") ||
+    taskInput.includes("\\") ||
+    taskInput.startsWith(".") ||
+    taskInput.endsWith(".md") ||
+    taskInput.endsWith(".json") ||
+    taskInput.endsWith(".txt")
+  );
+}
+
+async function writeLatestRunState(projectRoot: string, runId: string): Promise<void> {
+  await writeJsonFile(getLatestRunStatePath(projectRoot), {
+    runId,
+    updatedAt: new Date().toISOString(),
   });
 }

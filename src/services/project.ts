@@ -3,6 +3,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { OraculumError } from "../core/errors.js";
 import {
   getConfigPath,
+  getGeneratedTasksDir,
   getOraculumDir,
   getRunsDir,
   getTasksDir,
@@ -26,6 +27,7 @@ export async function initializeProject(
 ): Promise<InitializeProjectResult> {
   const projectRoot = resolveProjectRoot(options.cwd);
   const oraculumDir = getOraculumDir(projectRoot);
+  const generatedTasksDir = getGeneratedTasksDir(projectRoot);
   const runsDir = getRunsDir(projectRoot);
   const tasksDir = getTasksDir(projectRoot);
   const configPath = getConfigPath(projectRoot);
@@ -37,6 +39,7 @@ export async function initializeProject(
   }
 
   await mkdir(oraculumDir, { recursive: true });
+  await mkdir(generatedTasksDir, { recursive: true });
   await mkdir(runsDir, { recursive: true });
   await mkdir(tasksDir, { recursive: true });
   await writeJsonFile(configPath, defaultProjectConfig);
@@ -44,8 +47,22 @@ export async function initializeProject(
   return {
     projectRoot,
     configPath,
-    createdPaths: [oraculumDir, runsDir, tasksDir],
+    createdPaths: [oraculumDir, generatedTasksDir, runsDir, tasksDir],
   };
+}
+
+export async function ensureProjectInitialized(
+  cwd: string,
+): Promise<InitializeProjectResult | undefined> {
+  const projectRoot = resolveProjectRoot(cwd);
+  if (await pathExists(getConfigPath(projectRoot))) {
+    return undefined;
+  }
+
+  return initializeProject({
+    cwd: projectRoot,
+    force: false,
+  });
 }
 
 export async function loadProjectConfig(cwd: string): Promise<ProjectConfig> {

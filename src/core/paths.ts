@@ -15,6 +15,14 @@ export function getConfigPath(projectRoot: string): string {
   return join(getOraculumDir(projectRoot), "config.json");
 }
 
+export function getGeneratedTasksDir(projectRoot: string): string {
+  return join(getOraculumDir(projectRoot), "tasks");
+}
+
+export function getLatestRunStatePath(projectRoot: string): string {
+  return join(getOraculumDir(projectRoot), "latest-run.json");
+}
+
 export function getTasksDir(projectRoot: string): string {
   return join(projectRoot, TASKS_DIRNAME);
 }
