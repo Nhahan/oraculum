@@ -12,6 +12,8 @@
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> ·
+  <a href="#simple-path">Simple Path</a> ·
+  <a href="#advanced-path">Advanced Path</a> ·
   <a href="#why-oraculum">Why</a> ·
   <a href="#the-loop">The Loop</a> ·
   <a href="#artifacts">Artifacts</a> ·
@@ -34,13 +36,13 @@ Current implementation includes:
 
 - `Claude Code` and `Codex` adapters
 - isolated candidate workspaces
+- config-driven repo-local oracle commands
 - machine-readable run artifacts under `.oraculum/`
 - round-aware judging: `fast -> impact -> deep`
 - finalist selection and export plan generation
 
 Not implemented yet:
 
-- repo-defined oracle plugins
 - rich comparison reports
 - direct branch / PR export
 
@@ -49,38 +51,28 @@ Not implemented yet:
 ```bash
 npm install
 npm run check
+```
+
+## Simple Path
+
+```bash
+npm run dev -- run "fix session loss on refresh"
+npm run dev -- show
+npm run dev -- export cand-01 --branch fix/session-loss
+```
+
+`run` auto-initializes the project on first use, materializes inline task text if needed, executes the full tournament, and records the latest run so `show` and `export` can default to it.
+
+## Advanced Path
+
+```bash
 npm run dev -- init
+npm run dev -- run tasks/fix-session-loss.md --agent codex --candidates 4
+npm run dev -- show run_20260404_xxxx
+npm run dev -- export cand-01 --run run_20260404_xxxx --branch fix/session-loss --with-report
 ```
 
-Create a task:
-
-```bash
-cat > tasks/fix-session-loss.md <<'EOF'
-# Fix session loss
-Preserve login state during refresh.
-Do not redesign auth.
-EOF
-```
-
-Run Oraculum:
-
-```bash
-npm run dev -- run --task tasks/fix-session-loss.md --candidates 4 --agent codex
-```
-
-Inspect promoted finalists:
-
-```bash
-npm run dev -- finalists <run-id>
-```
-
-Prepare export metadata for a promoted candidate:
-
-```bash
-npm run dev -- export --run <run-id> --winner cand-01 --as-branch fix/session-loss --with-report
-```
-
-`run` is the default end-to-end command. `run --plan-only` exists only for internal or development use.
+`run --plan-only` still exists for internal or development use, but it is not the default path.
 
 ## Why Oraculum
 
@@ -127,7 +119,10 @@ The source of truth is run state and artifacts, not transcript.
 
 ```bash
 oraculum init
-oraculum run --task tasks/fix-session-loss.md --candidates 4 --agent codex
-oraculum finalists <run-id>
-oraculum export --run <run-id> --winner cand-01 --as-branch fix/session-loss --with-report
+oraculum run "fix session loss on refresh"
+oraculum run tasks/fix-session-loss.md --agent codex --candidates 4
+oraculum show
+oraculum show <run-id>
+oraculum export cand-01 --branch fix/session-loss
+oraculum export cand-01 --run <run-id> --branch fix/session-loss --with-report
 ```
