@@ -3,6 +3,7 @@ import { z } from "zod";
 import { CONFIG_VERSION } from "../core/constants.js";
 
 export const adapterSchema = z.enum(["claude-code", "codex"]);
+export const roundIdSchema = z.enum(["fast", "impact", "deep"]);
 
 export const strategySchema = z.object({
   id: z.string().min(1),
@@ -11,7 +12,7 @@ export const strategySchema = z.object({
 });
 
 export const roundSchema = z.object({
-  id: z.enum(["fast", "impact", "deep"]),
+  id: roundIdSchema,
   label: z.string().min(1),
   description: z.string().min(1),
 });
@@ -26,6 +27,7 @@ export const projectConfigSchema = z.object({
 });
 
 export type Adapter = z.infer<typeof adapterSchema>;
+export type RoundId = z.infer<typeof roundIdSchema>;
 export type Strategy = z.infer<typeof strategySchema>;
 export type Round = z.infer<typeof roundSchema>;
 export type ProjectConfig = z.infer<typeof projectConfigSchema>;

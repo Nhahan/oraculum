@@ -84,6 +84,7 @@ describe("oracle and adapter contracts", () => {
 
     const verdict = oracleVerdictSchema.parse({
       oracleId: "session-regression",
+      roundId: "impact",
       status: "repairable",
       severity: "error",
       summary: "Session refresh still drops auth state.",

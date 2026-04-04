@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { adapterSchema } from "./config.js";
+import { adapterSchema, roundIdSchema } from "./config.js";
 import { taskPacketSummarySchema } from "./task.js";
 
 export const candidateStatusSchema = z.enum([
@@ -15,6 +15,7 @@ export const candidateStatusSchema = z.enum([
 ]);
 
 export const workspaceModeSchema = z.enum(["copy", "git-worktree"]);
+export const roundExecutionStatusSchema = z.enum(["pending", "running", "completed"]);
 
 export const candidateManifestSchema = z.object({
   id: z.string().min(1),
@@ -29,6 +30,16 @@ export const candidateManifestSchema = z.object({
 });
 
 export const runStatusSchema = z.enum(["planned", "running", "completed"]);
+export const roundManifestSchema = z.object({
+  id: roundIdSchema,
+  label: z.string().min(1),
+  status: roundExecutionStatusSchema,
+  verdictCount: z.number().int().min(0),
+  survivorCount: z.number().int().min(0),
+  eliminatedCount: z.number().int().min(0),
+  startedAt: z.string().min(1).optional(),
+  completedAt: z.string().min(1).optional(),
+});
 
 export const runManifestSchema = z.object({
   id: z.string().min(1),
@@ -38,12 +49,7 @@ export const runManifestSchema = z.object({
   agent: adapterSchema,
   candidateCount: z.number().int().min(1),
   createdAt: z.string().min(1),
-  rounds: z.array(
-    z.object({
-      id: z.string().min(1),
-      label: z.string().min(1),
-    }),
-  ),
+  rounds: z.array(roundManifestSchema).min(1),
   candidates: z.array(candidateManifestSchema).min(1),
 });
 
@@ -57,5 +63,6 @@ export const exportPlanSchema = z.object({
 
 export type CandidateManifest = z.infer<typeof candidateManifestSchema>;
 export type RunManifest = z.infer<typeof runManifestSchema>;
+export type RunRound = z.infer<typeof roundManifestSchema>;
 export type ExportPlan = z.infer<typeof exportPlanSchema>;
 export type WorkspaceMode = z.infer<typeof workspaceModeSchema>;

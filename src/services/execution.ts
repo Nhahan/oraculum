@@ -16,11 +16,12 @@ import {
   type CandidateManifest,
   candidateManifestSchema,
   type RunManifest,
+  roundManifestSchema,
   runManifestSchema,
 } from "../domain/run.js";
 import { materializedTaskPacketSchema } from "../domain/task.js";
 
-import { evaluateCandidateOracles } from "./oracles.js";
+import { evaluateCandidateRound } from "./oracles.js";
 import { writeJsonFile } from "./project.js";
 import { readRunManifest } from "./runs.js";
 import { prepareCandidateWorkspace } from "./workspaces.js";
@@ -39,6 +40,11 @@ export interface ExecuteRunResult {
   manifest: RunManifest;
 }
 
+interface CandidateExecutionRecord {
+  candidate: CandidateManifest;
+  result: AgentRunResult;
+}
+
 export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRunResult> {
   const projectRoot = resolveProjectRoot(options.cwd);
   const manifest = await readRunManifest(projectRoot, options.runId);
@@ -53,7 +59,8 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
   await writeRunManifest(projectRoot, manifest);
 
   const candidateResults: AgentRunResult[] = [];
-  const updatedCandidates: CandidateManifest[] = [];
+  const executionRecords: CandidateExecutionRecord[] = [];
+  const candidateMap = new Map<string, CandidateManifest>();
 
   for (const candidate of manifest.candidates) {
     const runningCandidate = candidateManifestSchema.parse({
@@ -110,41 +117,119 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     const resultPath = getCandidateAgentResultPath(projectRoot, manifest.id, candidate.id);
     await writeJsonFile(resultPath, parsedResult);
 
-    const evaluation = evaluateCandidateOracles({
-      candidate,
-      result: parsedResult,
-    });
-    await Promise.all([
-      ...evaluation.verdicts.map(async (verdict) =>
-        writeJsonFile(
-          getCandidateVerdictPath(projectRoot, manifest.id, candidate.id, verdict.oracleId),
-          verdict,
-        ),
-      ),
-      ...evaluation.witnesses.map(async (witness) =>
-        writeJsonFile(
-          getCandidateWitnessPath(projectRoot, manifest.id, candidate.id, witness.id),
-          witness,
-        ),
-      ),
-    ]);
-
     const updatedCandidate = candidateManifestSchema.parse({
       ...candidate,
-      status: evaluation.promote ? "promoted" : "eliminated",
+      status: parsedResult.status === "completed" ? "executed" : "failed",
       lastRunResultPath: resultPath,
       ...(workspaceMode ? { workspaceMode } : {}),
     });
 
     await writeCandidateManifest(projectRoot, manifest.id, updatedCandidate);
-    updatedCandidates.push(updatedCandidate);
+    candidateMap.set(updatedCandidate.id, updatedCandidate);
+    executionRecords.push({
+      candidate: updatedCandidate,
+      result: parsedResult,
+    });
     candidateResults.push(parsedResult);
+  }
+
+  const roundStates = manifest.rounds.map((round) => ({ ...round }));
+  const survivors = new Set(executionRecords.map((record) => record.candidate.id));
+
+  for (const [index, round] of roundStates.entries()) {
+    const startedAt = new Date().toISOString();
+    roundStates[index] = {
+      ...round,
+      status: "running",
+      startedAt,
+    };
+    await writeRunManifest(
+      projectRoot,
+      runManifestSchema.parse({
+        ...manifest,
+        status: "running",
+        rounds: roundStates,
+        candidates: Array.from(candidateMap.values()),
+      }),
+    );
+
+    let verdictCount = 0;
+    let eliminatedCount = 0;
+    let survivorCount = 0;
+
+    for (const record of executionRecords) {
+      if (!survivors.has(record.candidate.id)) {
+        continue;
+      }
+
+      const currentCandidate = candidateMap.get(record.candidate.id) ?? record.candidate;
+      const evaluation = evaluateCandidateRound({
+        candidate: currentCandidate,
+        result: record.result,
+        roundId: round.id,
+      });
+
+      verdictCount += evaluation.verdicts.length;
+      await Promise.all([
+        ...evaluation.verdicts.map(async (verdict) =>
+          writeJsonFile(
+            getCandidateVerdictPath(
+              projectRoot,
+              manifest.id,
+              currentCandidate.id,
+              round.id,
+              verdict.oracleId,
+            ),
+            verdict,
+          ),
+        ),
+        ...evaluation.witnesses.map(async (witness) =>
+          writeJsonFile(
+            getCandidateWitnessPath(
+              projectRoot,
+              manifest.id,
+              currentCandidate.id,
+              round.id,
+              witness.id,
+            ),
+            witness,
+          ),
+        ),
+      ]);
+
+      const survives = evaluation.survives;
+      const isLastRound = index === roundStates.length - 1;
+      const nextCandidate = candidateManifestSchema.parse({
+        ...currentCandidate,
+        status: survives ? (isLastRound ? "promoted" : "judged") : "eliminated",
+      });
+
+      if (!survives) {
+        survivors.delete(currentCandidate.id);
+        eliminatedCount += 1;
+      } else {
+        survivorCount += 1;
+      }
+
+      candidateMap.set(nextCandidate.id, nextCandidate);
+      await writeCandidateManifest(projectRoot, manifest.id, nextCandidate);
+    }
+
+    roundStates[index] = roundManifestSchema.parse({
+      ...roundStates[index],
+      status: "completed",
+      verdictCount,
+      survivorCount,
+      eliminatedCount,
+      completedAt: new Date().toISOString(),
+    });
   }
 
   const completedManifest = runManifestSchema.parse({
     ...manifest,
     status: "completed",
-    candidates: updatedCandidates,
+    rounds: roundStates,
+    candidates: Array.from(candidateMap.values()),
   });
   await writeRunManifest(projectRoot, completedManifest);
 

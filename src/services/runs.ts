@@ -25,6 +25,7 @@ import {
   type ExportPlan,
   exportPlanSchema,
   type RunManifest,
+  type RunRound,
   runManifestSchema,
 } from "../domain/run.js";
 import { loadProjectConfig, pathExists, writeJsonFile } from "./project.js";
@@ -125,7 +126,14 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
     agent,
     candidateCount,
     createdAt,
-    rounds: config.rounds.map((round) => ({ id: round.id, label: round.label })),
+    rounds: config.rounds.map<RunRound>((round) => ({
+      id: round.id,
+      label: round.label,
+      status: "pending",
+      verdictCount: 0,
+      survivorCount: 0,
+      eliminatedCount: 0,
+    })),
     candidates,
   };
 

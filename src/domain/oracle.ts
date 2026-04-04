@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { roundIdSchema } from "./config.js";
+
 export const witnessKindSchema = z.enum([
   "command-output",
   "diff",
@@ -27,6 +29,7 @@ export const witnessSchema = z.object({
 
 export const oracleVerdictSchema = z.object({
   oracleId: z.string().min(1),
+  roundId: roundIdSchema,
   status: verdictStatusSchema,
   severity: verdictSeveritySchema,
   summary: z.string().min(1),

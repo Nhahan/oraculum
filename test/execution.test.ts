@@ -77,15 +77,30 @@ fi
     );
     expect(parsedResult.summary).toContain("Codex finished candidate patch");
 
-    const verdictPath = getCandidateVerdictPath(cwd, planned.id, "cand-01", "agent-exit");
+    const verdictPath = getCandidateVerdictPath(cwd, planned.id, "cand-01", "fast", "agent-exit");
     const verdict = oracleVerdictSchema.parse(
       JSON.parse(await readFile(verdictPath, "utf8")) as unknown,
     );
     expect(verdict.status).toBe("pass");
+    expect(verdict.roundId).toBe("fast");
 
-    const witnessPath = getCandidateWitnessPath(cwd, planned.id, "cand-01", "cand-01-agent-exit");
+    const witnessPath = getCandidateWitnessPath(
+      cwd,
+      planned.id,
+      "cand-01",
+      "fast",
+      "cand-01-agent-exit",
+    );
     const witness = witnessSchema.parse(JSON.parse(await readFile(witnessPath, "utf8")) as unknown);
     expect(witness.detail).toContain("status=completed");
+    expect(savedManifest.rounds.map((round) => round.status)).toEqual([
+      "completed",
+      "completed",
+      "completed",
+    ]);
+    expect(savedManifest.rounds[0]?.verdictCount).toBeGreaterThan(0);
+    expect(savedManifest.rounds[1]?.verdictCount).toBeGreaterThan(0);
+    expect(savedManifest.rounds[2]?.verdictCount).toBe(0);
   });
 
   it("eliminates candidates when the adapter exits non-zero", async () => {
@@ -119,7 +134,7 @@ exit 3
     expect(executed.candidateResults[0]?.status).toBe("failed");
     expect(executed.manifest.candidates[0]?.status).toBe("eliminated");
 
-    const verdictPath = getCandidateVerdictPath(cwd, planned.id, "cand-01", "agent-exit");
+    const verdictPath = getCandidateVerdictPath(cwd, planned.id, "cand-01", "fast", "agent-exit");
     const verdict = oracleVerdictSchema.parse(
       JSON.parse(await readFile(verdictPath, "utf8")) as unknown,
     );
@@ -158,6 +173,8 @@ exit 3
       JSON.parse(await readFile(resultPath, "utf8")) as unknown,
     );
     expect(parsedResult.summary).toContain("Failed to start subprocess");
+    expect(savedManifest.rounds[0]?.status).toBe("completed");
+    expect(savedManifest.rounds[0]?.eliminatedCount).toBe(1);
   });
 });
 
