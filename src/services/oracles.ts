@@ -209,11 +209,13 @@ async function evaluateRepoOracle(
   await mkdir(logDir, { recursive: true });
 
   try {
+    const shell = oracle.shell ?? oracle.args.length === 0;
     const commandResult = await runSubprocess({
-      command: process.env.SHELL ?? "/bin/sh",
-      args: ["-lc", oracle.command],
+      command: oracle.command,
+      args: oracle.args,
       cwd: oracle.cwd === "project" ? options.projectRoot : options.candidate.workspaceDir,
       env: buildOracleEnvironment(options, oracle),
+      shell,
       ...(oracle.timeoutMs !== undefined ? { timeoutMs: oracle.timeoutMs } : {}),
     });
 
@@ -302,6 +304,7 @@ function buildOracleEnvironment(
 ): NodeJS.ProcessEnv {
   return {
     ...oracle.env,
+    ORACULUM_ORACLE_ARGS_JSON: JSON.stringify(oracle.args),
     ORACULUM_PROJECT_ROOT: options.projectRoot,
     ORACULUM_RUN_ID: options.runId,
     ORACULUM_ROUND_ID: options.roundId,

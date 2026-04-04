@@ -16,12 +16,15 @@ interface RunSubprocessOptions {
   command: string;
   cwd: string;
   env?: NodeJS.ProcessEnv;
+  shell?: boolean | string;
   stdin?: string;
   timeoutMs?: number;
 }
 
 export async function runSubprocess(options: RunSubprocessOptions): Promise<SubprocessResult> {
   const startedAt = Date.now();
+  const shell =
+    options.shell ?? (process.platform === "win32" && /\.(cmd|bat)$/iu.test(options.command));
 
   return new Promise((resolve, reject) => {
     let stdout = "";
@@ -35,7 +38,9 @@ export async function runSubprocess(options: RunSubprocessOptions): Promise<Subp
         ...process.env,
         ...options.env,
       },
+      ...(shell !== undefined ? { shell } : {}),
       stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
     });
 
     let killTimeoutId: NodeJS.Timeout | undefined;
@@ -43,11 +48,11 @@ export async function runSubprocess(options: RunSubprocessOptions): Promise<Subp
       options.timeoutMs && options.timeoutMs > 0
         ? setTimeout(() => {
             timedOut = true;
-            child.kill("SIGTERM");
+            terminateChild(child, false);
 
             killTimeoutId = setTimeout(() => {
               if (!closed) {
-                child.kill("SIGKILL");
+                terminateChild(child, true);
               }
             }, 500).unref();
           }, options.timeoutMs)
@@ -105,4 +110,29 @@ export async function runSubprocess(options: RunSubprocessOptions): Promise<Subp
       });
     });
   });
+}
+
+function terminateChild(child: ReturnType<typeof spawn>, force: boolean): void {
+  if (process.platform === "win32") {
+    const pid = child.pid;
+    if (!pid) {
+      return;
+    }
+
+    const args = ["/pid", String(pid), "/T"];
+    if (force) {
+      args.push("/F");
+    }
+
+    const killer = spawn("taskkill", args, {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    killer.on("error", () => {
+      child.kill(force ? "SIGKILL" : "SIGTERM");
+    });
+    return;
+  }
+
+  child.kill(force ? "SIGKILL" : "SIGTERM");
 }

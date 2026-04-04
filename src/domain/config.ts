@@ -24,6 +24,8 @@ export const repoOracleSchema = z.object({
   id: z.string().min(1),
   roundId: roundIdSchema,
   command: z.string().min(1),
+  args: z.array(z.string()).default([]),
+  shell: z.boolean().optional(),
   invariant: z.string().min(1),
   cwd: oracleScopeSchema.default("workspace"),
   enforcement: oracleEnforcementSchema.default("hard"),

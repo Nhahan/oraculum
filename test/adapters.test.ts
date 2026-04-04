@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ClaudeAdapter } from "../src/adapters/claude.js";
 import { CodexAdapter } from "../src/adapters/codex.js";
 import { materializedTaskPacketSchema } from "../src/domain/task.js";
+import { writeNodeBinary } from "./helpers/fake-binary.js";
 
 const tempRoots: string[] = [];
 
@@ -25,17 +26,19 @@ describe("agent adapters", () => {
     const logDir = join(root, "logs");
     await mkdir(workspaceDir, { recursive: true });
 
-    const binaryPath = join(root, "fake-claude");
-    await writeExecutable(
-      binaryPath,
-      `#!/bin/sh
-prompt=$(cat)
-if [ -z "$prompt" ]; then
-  printf 'missing prompt' >&2
-  exit 9
-fi
-printf '{"result":"Claude finished candidate patch","summary":"'"$prompt"'"}'
-printf 'claude stderr' >&2
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-claude",
+      `const fs = require("node:fs");
+const prompt = fs.readFileSync(0, "utf8");
+if (!prompt) {
+  process.stderr.write("missing prompt");
+  process.exit(9);
+}
+process.stdout.write(JSON.stringify({
+  summary: prompt,
+}));
+process.stderr.write("claude stderr");
 `,
     );
 
@@ -58,7 +61,7 @@ printf 'claude stderr' >&2
     expect(result.summary).toContain("Minimal Change");
     await expect(readFile(join(logDir, "prompt.txt"), "utf8")).resolves.toContain("Minimal Change");
     await expect(readFile(join(logDir, "claude.stdout.txt"), "utf8")).resolves.toContain(
-      "Claude finished candidate patch",
+      '"summary":"You are generating one Oraculum patch candidate.',
     );
     await expect(readFile(join(logDir, "claude.stderr.txt"), "utf8")).resolves.toContain(
       "claude stderr",
@@ -71,28 +74,26 @@ printf 'claude stderr' >&2
     const logDir = join(root, "logs");
     await mkdir(workspaceDir, { recursive: true });
 
-    const binaryPath = join(root, "fake-codex");
-    await writeExecutable(
-      binaryPath,
-      `#!/bin/sh
-out=""
-prev=""
-prompt=$(cat)
-if [ -z "$prompt" ]; then
-  printf 'missing prompt' >&2
-  exit 9
-fi
-for arg in "$@"; do
-  if [ "$prev" = "-o" ]; then
-    out="$arg"
-  fi
-  prev="$arg"
-done
-printf '{"event":"started"}\n'
-printf 'codex stderr' >&2
-if [ -n "$out" ]; then
-  printf 'Codex finished candidate patch: %s' "$prompt" > "$out"
-fi
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-codex",
+      `const fs = require("node:fs");
+const prompt = fs.readFileSync(0, "utf8");
+if (!prompt) {
+  process.stderr.write("missing prompt");
+  process.exit(9);
+}
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+process.stdout.write('{"event":"started"}\\n');
+process.stderr.write("codex stderr");
+if (out) {
+  fs.writeFileSync(out, \`Codex finished candidate patch: \${prompt}\`, "utf8");
+}
 `,
     );
 
@@ -128,24 +129,25 @@ fi
     const root = await createTempRoot();
     const logDir = join(root, "judge-logs");
 
-    const binaryPath = join(root, "fake-codex");
-    await writeExecutable(
-      binaryPath,
-      `#!/bin/sh
-out=""
-prev=""
-prompt=$(cat)
-for arg in "$@"; do
-  if [ "$prev" = "-o" ]; then
-    out="$arg"
-  fi
-  prev="$arg"
-done
-printf '{"event":"started"}\n'
-if [ -n "$out" ]; then
-  printf '{"candidateId":"cand-02","confidence":"medium","summary":"cand-02 preserved the strongest evidence."}' > "$out"
-fi
-printf '%s' "$prompt" >/dev/null
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-codex",
+      `const fs = require("node:fs");
+fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+process.stdout.write('{"event":"started"}\\n');
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"candidateId":"cand-02","confidence":"medium","summary":"cand-02 preserved the strongest evidence."}',
+    "utf8",
+  );
+}
 `,
     );
 
@@ -202,9 +204,4 @@ async function createTempRoot(): Promise<string> {
   const path = await mkdtemp(join(tmpdir(), "oraculum-adapters-"));
   tempRoots.push(path);
   return path;
-}
-
-async function writeExecutable(path: string, content: string): Promise<void> {
-  await writeFile(path, content, "utf8");
-  await chmod(path, 0o755);
 }

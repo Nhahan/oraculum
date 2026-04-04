@@ -60,6 +60,7 @@ export class CodexAdapter implements AgentAdapter {
       ],
       cwd: request.workspaceDir,
       ...(this.env ? { env: this.env } : {}),
+      shell: process.platform === "win32",
       stdin: prompt,
       timeoutMs: this.timeoutMs,
     });
@@ -117,6 +118,7 @@ export class CodexAdapter implements AgentAdapter {
       ],
       cwd: request.projectRoot,
       ...(this.env ? { env: this.env } : {}),
+      shell: process.platform === "win32",
       stdin: prompt,
       timeoutMs: this.timeoutMs,
     });

@@ -49,6 +49,7 @@ export class ClaudeAdapter implements AgentAdapter {
       args: ["-p", "--output-format", "json", "--permission-mode", "bypassPermissions"],
       cwd: request.workspaceDir,
       ...(this.env ? { env: this.env } : {}),
+      shell: process.platform === "win32",
       stdin: prompt,
       timeoutMs: this.timeoutMs,
     });
@@ -89,6 +90,7 @@ export class ClaudeAdapter implements AgentAdapter {
       args: ["-p", "--output-format", "json", "--permission-mode", "bypassPermissions"],
       cwd: request.projectRoot,
       ...(this.env ? { env: this.env } : {}),
+      shell: process.platform === "win32",
       stdin: prompt,
       timeoutMs: this.timeoutMs,
     });
