@@ -7,10 +7,11 @@ Build `Oraculum`: a `CLI-first`, `TypeScript + Node.js` system for `Claude Code`
 ## Read Order
 
 - `README.md`: shortest overview
+- `/docs/`: public detail docs, if present
 - `internal/proposal.md`: local/internal proposal, if present
 - `internal/HARNESS_RESEARCH.md`: local/internal harness reference synthesis, if present
 
-This file is a pointer, not a spec. Keep durable detail in repo docs, not here.
+This file is a pointer, not a spec. Keep durable detail in repo docs, not here. If docs and the current working tree diverge, trust the current code, tests, and artifacts first.
 
 ## Harness Engineering
 
@@ -46,10 +47,15 @@ Default loop:
 - export winner
 
 Optimize for falsification and selection of patches, not maximum agent freedom.
+`oraculum run` is the default end-to-end tournament command: one user command should cover candidate generation, execution, judging, elimination/promotion, and artifactization. Planning-only flows are internal/dev-only and must not become the default UX.
 
 ## Working Bias
 
 - Humans set intent and judge tradeoffs; agents execute loops.
+- Prevent errors early: before editing, read the full affected files plus the immediate contracts, call sites, and tests; do not patch from partial context.
+- Any new field, state, path, flag, or schema must be traced through read path, write path, CLI/API boundary, persistence, and tests; wire it fully or do not add it.
+- Validate at boundaries first: parse and reject bad CLI input early, normalize external inputs, and turn host/process/workspace failures into explicit terminal states.
+- For execution, state, isolation, subprocess, or artifact changes, add or update failure-path tests, not just happy-path tests.
 - Prefer mechanized enforcement over prose; if a behavior must survive runs, encode it as command, mode, skill, hook, state transition, config, test, oracle, or evaluator.
 - Prefer small, legible, in-repo abstractions over cleverness.
 - Keep context lean; link outward instead of bloating root instructions.
@@ -57,6 +63,8 @@ Optimize for falsification and selection of patches, not maximum agent freedom.
 - Use an opinionated workflow, not ad-hoc chatting; force clarification before coding when intent is vague.
 - Build harness surfaces before polish: one product workflow across hosts, thin adapters at the edge, stable orchestration operations, state flow, isolation, evaluators, artifacts.
 - Pass artifacts forward: `spec -> plan -> implementation -> review -> test -> release`.
+- Review is iterative, not one-shot: after substantial implementation or after fixing review findings, re-read the affected files in full and rerun validation before claiming the tree is clean.
+- A full code review means reviewing the current working tree line-by-line; do not rely on earlier review conclusions once code has changed.
 - Use fresh-context review/QA when independent judgment matters.
 - Parallel workers require isolated workspaces and explicit coordination.
 - Borrow the references' command/hook/state-machine discipline, but adapt it to `candidate -> oracle -> witness -> promotion`, not generic team orchestration.
