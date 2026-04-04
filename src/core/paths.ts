@@ -23,6 +23,10 @@ export function getLatestRunStatePath(projectRoot: string): string {
   return join(getOraculumDir(projectRoot), "latest-run.json");
 }
 
+export function getLatestExportableRunStatePath(projectRoot: string): string {
+  return join(getOraculumDir(projectRoot), "latest-exportable-run.json");
+}
+
 export function getTasksDir(projectRoot: string): string {
   return join(projectRoot, TASKS_DIRNAME);
 }
@@ -153,6 +157,14 @@ export function getReportsDir(projectRoot: string, runId: string): string {
 
 export function getExportPlanPath(projectRoot: string, runId: string): string {
   return join(getReportsDir(projectRoot, runId), "export-plan.json");
+}
+
+export function getFinalistComparisonJsonPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "comparison.json");
+}
+
+export function getFinalistComparisonMarkdownPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "comparison.md");
 }
 
 export function getWinnerSelectionPath(projectRoot: string, runId: string): string {

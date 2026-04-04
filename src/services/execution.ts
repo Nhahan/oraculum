@@ -24,9 +24,10 @@ import {
 import { materializedTaskPacketSchema } from "../domain/task.js";
 
 import { recommendWinnerWithJudge } from "./finalist-judge.js";
+import { writeFinalistComparisonReport } from "./finalist-report.js";
 import { evaluateCandidateRound } from "./oracles.js";
 import { loadProjectConfig, writeJsonFile } from "./project.js";
-import { readRunManifest } from "./runs.js";
+import { readRunManifest, writeLatestExportableRunState, writeLatestRunState } from "./runs.js";
 import { prepareCandidateWorkspace } from "./workspaces.js";
 
 interface ExecuteRunOptions {
@@ -284,6 +285,20 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     ...(recommendedWinner ? { recommendedWinner } : {}),
   });
   await writeRunManifest(projectRoot, completedManifest);
+  await writeLatestRunState(projectRoot, completedManifest.id);
+  if (completedManifest.recommendedWinner) {
+    await writeLatestExportableRunState(projectRoot, completedManifest.id);
+  }
+  await writeFinalistComparisonReport({
+    agent: completedManifest.agent,
+    candidateResults,
+    candidates: completedManifest.candidates,
+    projectRoot,
+    ...(recommendedWinner ? { recommendedWinner } : {}),
+    runId: completedManifest.id,
+    taskPacket: completedManifest.taskPacket,
+    verdictsByCandidate,
+  });
 
   return {
     candidateResults,

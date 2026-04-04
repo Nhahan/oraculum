@@ -86,6 +86,9 @@ export function registerRunCommand(program: Command): void {
             `Recommended winner: ${execution.manifest.recommendedWinner.candidateId} (${execution.manifest.recommendedWinner.confidence}, ${execution.manifest.recommendedWinner.source})\n`,
           );
           process.stdout.write(`${execution.manifest.recommendedWinner.summary}\n`);
+          process.stdout.write(
+            `Comparison report: .oraculum/runs/${manifest.id}/reports/comparison.md\n`,
+          );
           process.stdout.write("Export next: oraculum export --branch <branch-name>\n");
         } else {
           process.stdout.write(

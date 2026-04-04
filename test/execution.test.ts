@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,11 +11,14 @@ import {
   getCandidateVerdictPath,
   getCandidateWitnessPath,
   getConfigPath,
+  getFinalistComparisonJsonPath,
+  getFinalistComparisonMarkdownPath,
 } from "../src/core/paths.js";
 import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
 import { executeRun } from "../src/services/execution.js";
 import { initializeProject } from "../src/services/project.js";
 import { planRun, readRunManifest } from "../src/services/runs.js";
+import { writeNodeBinary } from "./helpers/fake-binary.js";
 
 const tempRoots: string[] = [];
 
@@ -33,27 +36,24 @@ describe("run execution", () => {
     await initializeProject({ cwd, force: false });
     await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# Fix session loss\nKeep auth.\n");
 
-    const fakeCodex = join(cwd, "fake-codex");
-    await writeExecutable(
-      fakeCodex,
-      `#!/bin/sh
-out=""
-prev=""
-prompt=$(cat)
-for arg in "$@"; do
-  if [ "$prev" = "-o" ]; then
-    out="$arg"
-  fi
-  prev="$arg"
-done
-printf '{"event":"started"}\n'
-if [ -n "$out" ]; then
-  if printf '%s' "$prompt" | grep -q "You are selecting the best Oraculum finalist."; then
-    printf '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the only surviving finalist."}' > "$out"
-  else
-    printf 'Codex finished candidate patch' > "$out"
-  fi
-fi
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+process.stdout.write('{"event":"started"}\\n');
+if (out) {
+  const body = prompt.includes("You are selecting the best Oraculum finalist.")
+    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the only surviving finalist."}'
+    : "Codex finished candidate patch";
+  fs.writeFileSync(out, body, "utf8");
+}
 `,
     );
 
@@ -113,6 +113,18 @@ fi
     expect(savedManifest.rounds[0]?.verdictCount).toBeGreaterThan(0);
     expect(savedManifest.rounds[1]?.verdictCount).toBeGreaterThan(0);
     expect(savedManifest.rounds[2]?.verdictCount).toBe(0);
+
+    const comparisonJson = JSON.parse(
+      await readFile(getFinalistComparisonJsonPath(cwd, planned.id), "utf8"),
+    ) as {
+      recommendedWinner?: { candidateId: string };
+      finalistCount: number;
+    };
+    expect(comparisonJson.finalistCount).toBe(1);
+    expect(comparisonJson.recommendedWinner?.candidateId).toBe("cand-01");
+    await expect(
+      readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
+    ).resolves.toContain("Finalist Comparison");
   });
 
   it("eliminates candidates when the adapter exits non-zero", async () => {
@@ -120,12 +132,11 @@ fi
     await initializeProject({ cwd, force: false });
     await writeFile(join(cwd, "tasks", "fail.md"), "# Fail\nReturn non-zero.\n");
 
-    const fakeCodex = join(cwd, "fake-codex");
-    await writeExecutable(
-      fakeCodex,
-      `#!/bin/sh
-printf '{"event":"started"}\n'
-exit 3
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `process.stdout.write('{"event":"started"}\\n');
+process.exit(3);
 `,
     );
 
@@ -197,33 +208,31 @@ exit 3
       {
         id: "workspace-sanity",
         roundId: "impact",
-        command: "printf 'missing expected file' >&2; exit 7",
+        command: process.execPath,
+        args: ["-e", "process.stderr.write('missing expected file'); process.exit(7);"],
         invariant: "Impact checks must pass before promotion.",
         enforcement: "hard",
       },
     ]);
     await writeFile(join(cwd, "tasks", "repo-oracle.md"), "# Repo oracle\nValidate impact.\n");
 
-    const fakeCodex = join(cwd, "fake-codex");
-    await writeExecutable(
-      fakeCodex,
-      `#!/bin/sh
-out=""
-prev=""
-prompt=$(cat)
-for arg in "$@"; do
-  if [ "$prev" = "-o" ]; then
-    out="$arg"
-  fi
-  prev="$arg"
-done
-if [ -n "$out" ]; then
-  if printf '%s' "$prompt" | grep -q "You are selecting the best Oraculum finalist."; then
-    printf 'not-json' > "$out"
-  else
-    printf 'Codex finished candidate patch' > "$out"
-  fi
-fi
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  const body = prompt.includes("You are selecting the best Oraculum finalist.")
+    ? "not-json"
+    : "Codex finished candidate patch";
+  fs.writeFileSync(out, body, "utf8");
+}
 `,
     );
 
@@ -273,7 +282,8 @@ fi
       {
         id: "comparison-signal",
         roundId: "impact",
-        command: "printf 'needs human review' >&2; exit 9",
+        command: process.execPath,
+        args: ["-e", "process.stderr.write('needs human review'); process.exit(9);"],
         invariant: "Comparison signals should be preserved even when they do not block promotion.",
         enforcement: "signal",
         failureSummary: "Candidate should still be promoted, but the signal must be preserved.",
@@ -281,21 +291,19 @@ fi
     ]);
     await writeFile(join(cwd, "tasks", "signal-oracle.md"), "# Signal oracle\nKeep going.\n");
 
-    const fakeCodex = join(cwd, "fake-codex");
-    await writeExecutable(
-      fakeCodex,
-      `#!/bin/sh
-out=""
-prev=""
-for arg in "$@"; do
-  if [ "$prev" = "-o" ]; then
-    out="$arg"
-  fi
-  prev="$arg"
-done
-if [ -n "$out" ]; then
-  printf 'Codex finished candidate patch' > "$out"
-fi
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
+}
 `,
     );
 
@@ -345,6 +353,62 @@ fi
     );
     expect(await readFile(stdoutPath, "utf8")).toBe("");
     expect(await readFile(stderrPath, "utf8")).toContain("needs human review");
+    await expect(
+      readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
+    ).resolves.toContain("fallback-policy");
+  });
+
+  it("falls back to deterministic winner selection when the judge exits non-zero", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "judge-failure.md"), "# Judge failure\nUse fallback.\n");
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  if (prompt.includes("You are selecting the best Oraculum finalist.")) {
+    fs.writeFileSync(
+      out,
+      '{"candidateId":"cand-01","confidence":"high","summary":"this should be ignored"}',
+      "utf8",
+    );
+    process.exit(7);
+  }
+
+  fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/judge-failure.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+    expect(executed.manifest.recommendedWinner?.candidateId).toBe("cand-01");
+    expect(executed.manifest.recommendedWinner?.source).toBe("fallback-policy");
+    await expect(
+      readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
+    ).resolves.toContain("fallback-policy");
   });
 });
 
@@ -352,11 +416,6 @@ async function createTempRoot(): Promise<string> {
   const path = await mkdtemp(join(tmpdir(), "oraculum-execution-"));
   tempRoots.push(path);
   return path;
-}
-
-async function writeExecutable(path: string, content: string): Promise<void> {
-  await writeFile(path, content, "utf8");
-  await chmod(path, 0o755);
 }
 
 async function configureProjectOracles(cwd: string, oracles: unknown[]): Promise<void> {

@@ -12,11 +12,15 @@ import {
   getCandidateWitnessesDir,
   getConfigPath,
   getExportPlanPath,
+  getFinalistComparisonJsonPath,
+  getFinalistComparisonMarkdownPath,
   getGeneratedTasksDir,
+  getLatestExportableRunStatePath,
   getLatestRunStatePath,
   getReportsDir,
   getRunDir,
   getRunManifestPath,
+  getWinnerSelectionPath,
   getWorkspaceDir,
   resolveProjectRoot,
 } from "../core/paths.js";
@@ -142,7 +146,6 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
 
   runManifestSchema.parse(manifest);
   await writeJsonFile(getRunManifestPath(projectRoot, runId), manifest);
-  await writeLatestRunState(projectRoot, runId);
 
   return manifest;
 }
@@ -163,7 +166,7 @@ export async function buildExportPlan(
   options: BuildExportPlanOptions,
 ): Promise<{ plan: ExportPlan; path: string }> {
   const projectRoot = resolveProjectRoot(options.cwd);
-  const resolvedRunId = options.runId ?? (await readLatestRunId(projectRoot));
+  const resolvedRunId = options.runId ?? (await readLatestExportableRunId(projectRoot));
   const manifest = await readRunManifest(projectRoot, resolvedRunId);
   const resolvedWinnerId = options.winnerId ?? manifest.recommendedWinner?.candidateId;
   if (!resolvedWinnerId) {
@@ -185,11 +188,21 @@ export async function buildExportPlan(
     );
   }
 
+  const reportFiles = options.withReport ? await collectReportFiles(projectRoot, manifest.id) : [];
+
   const plan: ExportPlan = {
     runId: manifest.id,
     winnerId: winner.id,
     branchName: options.branchName,
     withReport: options.withReport,
+    ...(options.withReport && reportFiles.length > 0
+      ? {
+          reportBundle: {
+            rootDir: getReportsDir(projectRoot, manifest.id),
+            files: reportFiles,
+          },
+        }
+      : {}),
     createdAt: new Date().toISOString(),
   };
 
@@ -213,6 +226,21 @@ export async function readLatestRunId(cwd: string): Promise<string> {
 
   if (!(await pathExists(latestRunStatePath))) {
     throw new OraculumError("No previous run found. Start with `oraculum run ...`.");
+  }
+
+  const raw = await readFile(latestRunStatePath, "utf8");
+  const parsed = latestRunStateSchema.parse(JSON.parse(raw) as unknown);
+  return parsed.runId;
+}
+
+export async function readLatestExportableRunId(cwd: string): Promise<string> {
+  const projectRoot = resolveProjectRoot(cwd);
+  const latestRunStatePath = getLatestExportableRunStatePath(projectRoot);
+
+  if (!(await pathExists(latestRunStatePath))) {
+    throw new OraculumError(
+      "No exportable run found yet. Complete a run with a recommended winner first.",
+    );
   }
 
   const raw = await readFile(latestRunStatePath, "utf8");
@@ -271,6 +299,20 @@ async function materializeTaskInput(projectRoot: string, taskInput: string): Pro
   return inlineTaskPath;
 }
 
+async function collectReportFiles(projectRoot: string, runId: string): Promise<string[]> {
+  const candidates = [
+    getFinalistComparisonJsonPath(projectRoot, runId),
+    getFinalistComparisonMarkdownPath(projectRoot, runId),
+    getWinnerSelectionPath(projectRoot, runId),
+  ];
+
+  const existing = await Promise.all(
+    candidates.map(async (path) => ((await pathExists(path)) ? path : undefined)),
+  );
+
+  return existing.filter((path): path is string => Boolean(path));
+}
+
 function buildInlineTaskNote(taskInput: string): string {
   const normalized = taskInput.trim();
   if (normalized.startsWith("# ")) {
@@ -309,8 +351,18 @@ function looksLikeTaskPath(taskInput: string): boolean {
   );
 }
 
-async function writeLatestRunState(projectRoot: string, runId: string): Promise<void> {
+export async function writeLatestRunState(projectRoot: string, runId: string): Promise<void> {
   await writeJsonFile(getLatestRunStatePath(projectRoot), {
+    runId,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function writeLatestExportableRunState(
+  projectRoot: string,
+  runId: string,
+): Promise<void> {
+  await writeJsonFile(getLatestExportableRunStatePath(projectRoot), {
     runId,
     updatedAt: new Date().toISOString(),
   });

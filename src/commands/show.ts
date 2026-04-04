@@ -25,6 +25,9 @@ export function registerShowCommand(program: Command): void {
         );
         process.stdout.write(`${manifest.recommendedWinner.summary}\n`);
       }
+      process.stdout.write(
+        `Comparison report: .oraculum/runs/${manifest.id}/reports/comparison.md\n`,
+      );
 
       if (finalists.length === 0) {
         process.stdout.write("No finalists yet. Candidate states:\n");

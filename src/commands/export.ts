@@ -37,6 +37,10 @@ export function registerExportCommand(program: Command): void {
         process.stdout.write(`Run: ${result.plan.runId}\n`);
         process.stdout.write(`Branch: ${result.plan.branchName}\n`);
         process.stdout.write(`Report bundle: ${result.plan.withReport ? "yes" : "no"}\n`);
+        if (result.plan.reportBundle) {
+          process.stdout.write(`Reports: ${result.plan.reportBundle.files.length}\n`);
+          process.stdout.write(`Report root: ${result.plan.reportBundle.rootDir}\n`);
+        }
         process.stdout.write(`Plan: ${result.path}\n`);
       },
     );

@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 
-import type { AgentAdapter, AgentRunResult, FinalistSummary } from "../adapters/types.js";
+import type { AgentAdapter, AgentJudgeResult, AgentRunResult } from "../adapters/types.js";
 import { agentJudgeResultSchema } from "../adapters/types.js";
 import {
   getWinnerJudgeLogsDir,
@@ -15,6 +15,7 @@ import {
 } from "../domain/run.js";
 import { materializedTaskPacketSchema } from "../domain/task.js";
 
+import { buildFinalistSummaries } from "./finalists.js";
 import { writeJsonFile } from "./project.js";
 
 interface RecommendWinnerOptions {
@@ -30,7 +31,7 @@ interface RecommendWinnerOptions {
 export async function recommendWinnerWithJudge(
   options: RecommendWinnerOptions,
 ): Promise<RunRecommendation | undefined> {
-  const finalists = buildFinalists(
+  const finalists = buildFinalistSummaries(
     options.candidates,
     options.candidateResults,
     options.verdictsByCandidate,
@@ -43,22 +44,44 @@ export async function recommendWinnerWithJudge(
   const projectRoot = resolveProjectRoot(options.projectRoot);
   const logDir = getWinnerJudgeLogsDir(projectRoot, options.runId);
   await mkdir(logDir, { recursive: true });
-
-  const judgeResult = agentJudgeResultSchema.parse(
-    await options.adapter.recommendWinner({
-      runId: options.runId,
-      projectRoot,
-      logDir,
-      taskPacket,
-      finalists,
-    }),
-  );
-
   const persistedResultPath = getWinnerSelectionPath(projectRoot, options.runId);
+
+  let judgeResult: AgentJudgeResult;
+  try {
+    judgeResult = agentJudgeResultSchema.parse(
+      await options.adapter.recommendWinner({
+        runId: options.runId,
+        projectRoot,
+        logDir,
+        taskPacket,
+        finalists,
+      }),
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await writeJudgeWarning(
+      persistedResultPath,
+      `Winner selection judge failed to start or complete: ${message}`,
+    );
+    return undefined;
+  }
+
   await writeJsonFile(persistedResultPath, judgeResult);
+
+  if (judgeResult.status !== "completed") {
+    await writeJudgeWarning(
+      persistedResultPath,
+      `Winner selection judge status was "${judgeResult.status}", so the deterministic fallback policy was used instead.`,
+    );
+    return undefined;
+  }
 
   const recommendation = judgeResult.recommendation;
   if (!recommendation) {
+    await writeJudgeWarning(
+      persistedResultPath,
+      "Winner selection judge did not return a structured recommendation, so the deterministic fallback policy was used instead.",
+    );
     return undefined;
   }
 
@@ -66,10 +89,9 @@ export async function recommendWinnerWithJudge(
     (finalist) => finalist.candidateId === recommendation.candidateId,
   );
   if (!matchingFinalist) {
-    await writeFile(
-      `${persistedResultPath}.warning.txt`,
-      `Judge returned unknown candidate "${recommendation.candidateId}".\n`,
-      "utf8",
+    await writeJudgeWarning(
+      persistedResultPath,
+      `Judge returned unknown candidate "${recommendation.candidateId}".`,
     );
     return undefined;
   }
@@ -82,29 +104,6 @@ export async function recommendWinnerWithJudge(
   });
 }
 
-function buildFinalists(
-  candidates: CandidateManifest[],
-  candidateResults: AgentRunResult[],
-  verdictsByCandidate: Map<string, OracleVerdict[]>,
-): FinalistSummary[] {
-  const resultByCandidate = new Map(candidateResults.map((result) => [result.candidateId, result]));
-
-  return candidates
-    .filter((candidate) => candidate.status === "promoted")
-    .map((candidate) => {
-      const result = resultByCandidate.get(candidate.id);
-      return {
-        candidateId: candidate.id,
-        strategyLabel: candidate.strategyLabel,
-        summary: result?.summary ?? "No agent summary captured.",
-        artifactKinds: result?.artifacts.map((artifact) => artifact.kind) ?? [],
-        verdicts: (verdictsByCandidate.get(candidate.id) ?? []).map((verdict) => ({
-          roundId: verdict.roundId,
-          oracleId: verdict.oracleId,
-          status: verdict.status,
-          severity: verdict.severity,
-          summary: verdict.summary,
-        })),
-      };
-    });
+async function writeJudgeWarning(resultPath: string, message: string): Promise<void> {
+  await writeFile(`${resultPath}.warning.txt`, `${message}\n`, "utf8");
 }

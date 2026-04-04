@@ -48,6 +48,11 @@ export const runRecommendationSchema = z.object({
   source: z.enum(["llm-judge", "fallback-policy"]),
 });
 
+export const reportBundleSchema = z.object({
+  rootDir: z.string().min(1),
+  files: z.array(z.string().min(1)).min(1),
+});
+
 export const runManifestSchema = z.object({
   id: z.string().min(1),
   status: runStatusSchema,
@@ -66,6 +71,7 @@ export const exportPlanSchema = z.object({
   winnerId: z.string().min(1),
   branchName: z.string().min(1),
   withReport: z.boolean(),
+  reportBundle: reportBundleSchema.optional(),
   createdAt: z.string().min(1),
 });
 
