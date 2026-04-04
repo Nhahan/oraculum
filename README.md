@@ -11,118 +11,101 @@
 </p>
 
 <p align="center">
+  <a href="#overview">Overview</a> ·
+  <a href="#requirements">Requirements</a> ·
+  <a href="#installation">Installation</a> ·
   <a href="#quick-start">Quick Start</a> ·
-  <a href="#simple-path">Simple Path</a> ·
-  <a href="#advanced-path">Advanced Path</a> ·
-  <a href="#why-oraculum">Why</a> ·
-  <a href="#the-loop">The Loop</a> ·
-  <a href="#artifacts">Artifacts</a> ·
-  <a href="#commands">Commands</a>
+  <a href="#how-it-works">How It Works</a> ·
+  <a href="#advanced-usage">Advanced Usage</a>
 </p>
 
 ---
 
-Oraculum sits between your repository and an AI coding runtime.
+## Overview
 
-Instead of trusting one patch from one run, it creates multiple candidates, executes them in isolated workspaces, judges them with deterministic oracles, and keeps only the promoted finalists.
+Oraculum sits between your codebase and an AI coding runtime.
 
----
+Instead of trusting the first patch an AI gives you, Oraculum tries multiple candidate fixes, checks them, and helps you keep only the survivors.
 
 ## Status
 
-Oraculum is early, but it is already executable.
+Oraculum is early, but it already runs end to end.
 
-Current implementation includes:
+It can already:
 
-- `Claude Code` and `Codex` adapters
-- isolated candidate workspaces
-- config-driven repo-local oracle commands
-- machine-readable run artifacts under `.oraculum/`
-- round-aware judging: `fast -> impact -> deep`
-- finalist selection and export plan generation
+- run multiple candidates in isolated workspaces
+- call `Claude Code` or `Codex`
+- run repo-local command checks
+- save machine-readable run artifacts under `.oraculum/`
+- keep finalists and prepare an export plan
 
-Not implemented yet:
+Packaging and public release flow are still being finalized.
 
-- rich comparison reports
-- direct branch / PR export
+## Requirements
+
+- `Node.js 22+`
+- the project folder whose code you want Oraculum to work on
+- either `Claude Code` or `Codex` installed and available on your `PATH`
+
+If that project folder is under Git, Oraculum uses Git worktrees for candidate isolation. If it is not, Oraculum falls back to copied workspaces.
+
+## Installation
+
+Planned public install:
+
+```bash
+npm install -g oraculum
+```
 
 ## Quick Start
 
-```bash
-npm install
-npm run check
-```
+Open a terminal in the project folder you want Oraculum to work on:
 
-## Simple Path
+Run a task:
 
 ```bash
-npm run dev -- run "fix session loss on refresh"
-npm run dev -- show
-npm run dev -- export cand-01 --branch fix/session-loss
-```
-
-`run` auto-initializes the project on first use, materializes inline task text if needed, executes the full tournament, and records the latest run so `show` and `export` can default to it.
-
-## Advanced Path
-
-```bash
-npm run dev -- init
-npm run dev -- run tasks/fix-session-loss.md --agent codex --candidates 4
-npm run dev -- show run_20260404_xxxx
-npm run dev -- export cand-01 --run run_20260404_xxxx --branch fix/session-loss --with-report
-```
-
-`run --plan-only` still exists for internal or development use, but it is not the default path.
-
-## Why Oraculum
-
-Most AI coding flows fail in predictable ways:
-
-- they converge too early on the first plausible diff
-- repo invariants stay trapped in prompts or tribal memory
-- expensive verification happens after the wrong direction is already overbuilt
-
-Oraculum turns one task into a small patch tournament.
-
-## The Loop
-
-```text
-specify -> generate -> execute -> judge -> eliminate/promote -> export
-```
-
-Current judging rounds:
-
-- `fast`: execution viability and artifact capture
-- `impact`: reviewable output checks
-- `deep`: framework exists; real deep oracles are still to be added
-
-## Artifacts
-
-```text
-.oraculum/
-  config.json
-  runs/<run-id>/
-    run.json
-    candidates/<candidate-id>/
-      candidate.json
-      task-packet.json
-      agent-run.json
-      verdicts/
-      witnesses/
-      logs/
-  workspaces/<run-id>/<candidate-id>/
-```
-
-The source of truth is run state and artifacts, not transcript.
-
-## Commands
-
-```bash
-oraculum init
 oraculum run "fix session loss on refresh"
-oraculum run tasks/fix-session-loss.md --agent codex --candidates 4
-oraculum show
-oraculum show <run-id>
-oraculum export cand-01 --branch fix/session-loss
-oraculum export cand-01 --run <run-id> --branch fix/session-loss --with-report
 ```
+
+This runs the full tournament and prints the result summary, including the recommended winner.
+
+Export the recommended winner:
+
+```bash
+oraculum export --branch fix/session-loss
+```
+
+If you want to look at the latest result again later:
+
+```bash
+oraculum show
+```
+
+What happens in the default flow:
+
+- `run` starts the full flow in one command
+- Oraculum initializes itself on first use
+- the latest run is remembered automatically
+- `run` prints the latest result summary immediately
+- `export` uses the recommended winner by default
+- `show` lets you reopen the latest result later
+
+## How It Works
+
+1. You give Oraculum one task.
+2. Oraculum creates multiple candidate fixes.
+3. Each candidate runs in its own workspace.
+4. Checks remove weak candidates in stages.
+5. You inspect the survivors and export the one you want.
+
+Current judging stages:
+
+- `fast`: basic execution and artifact checks
+- `impact`: reviewable-output checks
+- `deep`: stage exists, but real deep checks are still to be added
+
+Results are saved under `.oraculum/`. The source of truth is the saved run state and artifacts, not chat transcript.
+
+## Advanced Usage
+
+If you want more control over runtimes, candidate counts, specific run IDs, report packaging, repo-local oracle configuration, or manually overriding the recommended winner, see [Advanced Usage](docs/advanced-usage.md).
