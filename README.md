@@ -43,11 +43,7 @@ Packaging and public release flow are still being finalized.
 
 ## Requirements
 
-- `Node.js 22+`
-- the project folder whose code you want Oraculum to work on
-- either `Claude Code` or `Codex` installed and available on your `PATH`
-
-If that project folder is under Git, Oraculum uses Git worktrees for candidate isolation. If it is not, Oraculum falls back to copied workspaces.
+- `Node.js 18+`
 
 ## Installation
 
@@ -59,7 +55,7 @@ npm install -g oraculum
 
 ## Quick Start
 
-Open a terminal in the project folder you want Oraculum to work on:
+In the folder containing the code you want Oraculum to work on:
 
 Run a task:
 
@@ -67,7 +63,7 @@ Run a task:
 oraculum run "fix session loss on refresh"
 ```
 
-This runs the full tournament and prints the result summary, including the recommended winner.
+This runs the full tournament and prints the result summary, including the recommended winner and the comparison report path.
 
 Export the recommended winner:
 
@@ -85,9 +81,9 @@ What happens in the default flow:
 
 - `run` starts the full flow in one command
 - Oraculum initializes itself on first use
-- the latest run is remembered automatically
+- the latest completed run is remembered automatically
 - `run` prints the latest result summary immediately
-- `export` uses the recommended winner by default
+- `export` uses the latest exportable run and its recommended winner by default
 - `show` lets you reopen the latest result later
 
 ## How It Works

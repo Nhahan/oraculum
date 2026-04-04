@@ -48,7 +48,7 @@ Without a run ID, `show` uses the latest run automatically.
 oraculum export --run run_20260404_xxxx --branch fix/session-loss --with-report
 ```
 
-Without `--run`, `export` uses the latest run automatically. Without a candidate id, it uses the recommended winner automatically.
+Without `--run`, `export` uses the latest exportable run automatically. Without a candidate id, it uses the recommended winner automatically.
 
 ## Manually Override The Recommended Winner
 
@@ -60,16 +60,21 @@ Choosing a candidate id yourself is the advanced path. The default path is to le
 
 `export` currently writes an export plan. It does not create a real branch or PR yet.
 
-## Planned Advanced Reporting
+## Report Bundle
 
-Richer finalist comparison reports are intended to live in the advanced path, not in the default quick-start path.
+Use `--with-report` when you want the export plan to carry report metadata for later review.
 
-That future reporting layer may include things like:
+```bash
+oraculum export --branch fix/session-loss --with-report
+```
+
+When available, the report bundle points at artifacts such as:
 
 - finalist-to-finalist comparison summaries
-- witness rollups
-- stronger report bundles for human review
-- richer export metadata
+- Markdown comparison reports
+- winner selection records
+
+This keeps the default path short while leaving richer review material in the advanced path.
 
 ## Explicit Init
 
@@ -99,13 +104,16 @@ Example:
     {
       "id": "lint-fast",
       "roundId": "fast",
-      "command": "npm run lint",
+      "command": "npm",
+      "args": ["run", "lint"],
       "invariant": "The candidate must satisfy lint checks.",
       "enforcement": "hard"
     }
   ]
 }
 ```
+
+Use `command` with `args` when you want an exact executable invocation. Use a shell-style command string only when that is the behavior you want.
 
 Supported enforcement levels:
 

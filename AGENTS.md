@@ -57,6 +57,7 @@ Protect the quick-start path as a product contract: first success should stay on
 - Any new field, state, path, flag, or schema must be traced through read path, write path, CLI/API boundary, persistence, and tests; wire it fully or do not add it.
 - Validate at boundaries first: parse and reject bad CLI input early, normalize external inputs, and turn host/process/workspace failures into explicit terminal states.
 - For execution, state, isolation, subprocess, or artifact changes, add or update failure-path tests, not just happy-path tests.
+- Cross-platform support is mandatory: avoid POSIX-only shell, signal, or path assumptions in user-facing flows; prefer Node APIs or explicit `command + args` execution and keep CI coverage across supported operating systems.
 - Prefer mechanized enforcement over prose; if a behavior must survive runs, encode it as command, mode, skill, hook, state transition, config, test, oracle, or evaluator.
 - Prefer small, legible, in-repo abstractions over cleverness.
 - Keep context lean; link outward instead of bloating root instructions.
