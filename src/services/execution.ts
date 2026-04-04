@@ -12,15 +12,18 @@ import {
   getRunManifestPath,
   resolveProjectRoot,
 } from "../core/paths.js";
+import type { OracleVerdict } from "../domain/oracle.js";
 import {
   type CandidateManifest,
   candidateManifestSchema,
   type RunManifest,
+  type RunRecommendation,
   roundManifestSchema,
   runManifestSchema,
 } from "../domain/run.js";
 import { materializedTaskPacketSchema } from "../domain/task.js";
 
+import { recommendWinnerWithJudge } from "./finalist-judge.js";
 import { evaluateCandidateRound } from "./oracles.js";
 import { loadProjectConfig, writeJsonFile } from "./project.js";
 import { readRunManifest } from "./runs.js";
@@ -45,6 +48,16 @@ interface CandidateExecutionRecord {
   result: AgentRunResult;
 }
 
+interface CandidateSelectionMetrics {
+  candidateId: string;
+  passCount: number;
+  repairableCount: number;
+  warningCount: number;
+  errorCount: number;
+  criticalCount: number;
+  artifactCount: number;
+}
+
 export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRunResult> {
   const projectRoot = resolveProjectRoot(options.cwd);
   const projectConfig = await loadProjectConfig(projectRoot);
@@ -62,6 +75,8 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
   const candidateResults: AgentRunResult[] = [];
   const executionRecords: CandidateExecutionRecord[] = [];
   const candidateMap = new Map<string, CandidateManifest>();
+  const selectionMetrics = new Map<string, CandidateSelectionMetrics>();
+  const verdictsByCandidate = new Map<string, OracleVerdict[]>();
 
   for (const candidate of manifest.candidates) {
     const runningCandidate = candidateManifestSchema.parse({
@@ -132,6 +147,15 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
       result: parsedResult,
     });
     candidateResults.push(parsedResult);
+    selectionMetrics.set(updatedCandidate.id, {
+      candidateId: updatedCandidate.id,
+      passCount: 0,
+      repairableCount: 0,
+      warningCount: 0,
+      errorCount: 0,
+      criticalCount: 0,
+      artifactCount: parsedResult.artifacts.length,
+    });
   }
 
   const roundStates = manifest.rounds.map((round) => ({ ...round }));
@@ -174,6 +198,9 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
       });
 
       verdictCount += evaluation.verdicts.length;
+      const existingVerdicts = verdictsByCandidate.get(currentCandidate.id) ?? [];
+      verdictsByCandidate.set(currentCandidate.id, [...existingVerdicts, ...evaluation.verdicts]);
+      recordVerdictMetrics(selectionMetrics, currentCandidate.id, evaluation.verdicts);
       await Promise.all([
         ...evaluation.verdicts.map(async (verdict) =>
           writeJsonFile(
@@ -229,11 +256,32 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     });
   }
 
+  const taskPacketPath = manifest.candidates[0]?.taskPacketPath;
+  const taskPacket = taskPacketPath
+    ? materializedTaskPacketSchema.parse(
+        JSON.parse(await readFile(taskPacketPath, "utf8")) as unknown,
+      )
+    : undefined;
+  const llmRecommendation = taskPacket
+    ? await recommendWinnerWithJudge({
+        adapter,
+        candidateResults,
+        candidates: Array.from(candidateMap.values()),
+        projectRoot,
+        runId: manifest.id,
+        taskPacket,
+        verdictsByCandidate,
+      })
+    : undefined;
+  const recommendedWinner =
+    llmRecommendation ?? chooseFallbackWinner(Array.from(candidateMap.values()), selectionMetrics);
+
   const completedManifest = runManifestSchema.parse({
     ...manifest,
     status: "completed",
     rounds: roundStates,
     candidates: Array.from(candidateMap.values()),
+    ...(recommendedWinner ? { recommendedWinner } : {}),
   });
   await writeRunManifest(projectRoot, completedManifest);
 
@@ -241,6 +289,115 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     candidateResults,
     manifest: completedManifest,
   };
+}
+
+function recordVerdictMetrics(
+  metricsByCandidate: Map<string, CandidateSelectionMetrics>,
+  candidateId: string,
+  verdicts: OracleVerdict[],
+): void {
+  const metrics = metricsByCandidate.get(candidateId);
+  if (!metrics) {
+    return;
+  }
+
+  for (const verdict of verdicts) {
+    if (verdict.status === "pass") {
+      metrics.passCount += 1;
+    } else if (verdict.status === "repairable") {
+      metrics.repairableCount += 1;
+    }
+
+    if (verdict.severity === "warning") {
+      metrics.warningCount += 1;
+    } else if (verdict.severity === "error") {
+      metrics.errorCount += 1;
+    } else if (verdict.severity === "critical") {
+      metrics.criticalCount += 1;
+    }
+  }
+}
+
+function chooseFallbackWinner(
+  candidates: CandidateManifest[],
+  metricsByCandidate: Map<string, CandidateSelectionMetrics>,
+): RunRecommendation | undefined {
+  const finalists = candidates.filter((candidate) => candidate.status === "promoted");
+  if (finalists.length === 0) {
+    return undefined;
+  }
+
+  const ranked = [...finalists].sort((left, right) => {
+    const leftMetrics = metricsByCandidate.get(left.id);
+    const rightMetrics = metricsByCandidate.get(right.id);
+
+    const leftPenalty = buildPenalty(leftMetrics);
+    const rightPenalty = buildPenalty(rightMetrics);
+    if (leftPenalty !== rightPenalty) {
+      return leftPenalty - rightPenalty;
+    }
+
+    const leftPassCount = leftMetrics?.passCount ?? 0;
+    const rightPassCount = rightMetrics?.passCount ?? 0;
+    if (leftPassCount !== rightPassCount) {
+      return rightPassCount - leftPassCount;
+    }
+
+    const leftArtifactCount = leftMetrics?.artifactCount ?? 0;
+    const rightArtifactCount = rightMetrics?.artifactCount ?? 0;
+    if (leftArtifactCount !== rightArtifactCount) {
+      return rightArtifactCount - leftArtifactCount;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+
+  const winner = ranked[0];
+  if (!winner) {
+    return undefined;
+  }
+
+  const winnerMetrics = metricsByCandidate.get(winner.id);
+  if (finalists.length === 1) {
+    return {
+      candidateId: winner.id,
+      confidence: "high",
+      summary: `Selected by fallback policy because ${winner.id} is the only surviving finalist.`,
+      source: "fallback-policy",
+    };
+  }
+
+  const runnerUp = ranked[1];
+  const runnerUpMetrics = runnerUp ? metricsByCandidate.get(runnerUp.id) : undefined;
+  const winnerPenalty = buildPenalty(winnerMetrics);
+  const runnerUpPenalty = buildPenalty(runnerUpMetrics);
+  const winnerPassCount = winnerMetrics?.passCount ?? 0;
+  const runnerUpPassCount = runnerUpMetrics?.passCount ?? 0;
+  const confidence =
+    winnerPenalty < runnerUpPenalty || winnerPassCount > runnerUpPassCount ? "medium" : "low";
+
+  return {
+    candidateId: winner.id,
+    confidence,
+    summary:
+      confidence === "medium"
+        ? `Selected by fallback policy from ${finalists.length} finalists using current deterministic signals: fewer warnings/errors, stronger pass coverage, and better artifact coverage.`
+        : `Selected by fallback policy from ${finalists.length} finalists; finalists were close, so confidence is limited.`,
+    source: "fallback-policy",
+  };
+}
+
+function buildPenalty(metrics: CandidateSelectionMetrics | undefined): number {
+  if (!metrics) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return (
+    metrics.criticalCount * 1000 +
+    metrics.errorCount * 100 +
+    metrics.warningCount * 10 +
+    metrics.repairableCount
+  );
 }
 
 async function writeRunManifest(projectRoot: string, manifest: RunManifest): Promise<void> {

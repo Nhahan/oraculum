@@ -47,6 +47,12 @@ describe("run command", () => {
       manifest: {
         ...manifest,
         status: "completed",
+        recommendedWinner: {
+          candidateId: "cand-01",
+          confidence: "high" as const,
+          source: "llm-judge" as const,
+          summary: "cand-01 is the recommended winner.",
+        },
         candidates: manifest.candidates.map((candidate) => ({
           ...candidate,
           status: "promoted" as const,

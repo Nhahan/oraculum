@@ -39,6 +39,7 @@ describe("run execution", () => {
       `#!/bin/sh
 out=""
 prev=""
+prompt=$(cat)
 for arg in "$@"; do
   if [ "$prev" = "-o" ]; then
     out="$arg"
@@ -47,7 +48,11 @@ for arg in "$@"; do
 done
 printf '{"event":"started"}\n'
 if [ -n "$out" ]; then
-  printf 'Codex finished candidate patch' > "$out"
+  if printf '%s' "$prompt" | grep -q "You are selecting the best Oraculum finalist."; then
+    printf '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the only surviving finalist."}' > "$out"
+  else
+    printf 'Codex finished candidate patch' > "$out"
+  fi
 fi
 `,
     );
@@ -69,10 +74,14 @@ fi
     expect(executed.candidateResults[0]?.status).toBe("completed");
     expect(executed.manifest.candidates[0]?.status).toBe("promoted");
     expect(executed.manifest.candidates[0]?.workspaceMode).toBe("copy");
+    expect(executed.manifest.recommendedWinner?.candidateId).toBe("cand-01");
+    expect(executed.manifest.recommendedWinner?.confidence).toBe("high");
+    expect(executed.manifest.recommendedWinner?.source).toBe("llm-judge");
 
     const savedManifest = await readRunManifest(cwd, planned.id);
     expect(savedManifest.status).toBe("completed");
     expect(savedManifest.candidates[0]?.status).toBe("promoted");
+    expect(savedManifest.recommendedWinner?.candidateId).toBe("cand-01");
 
     const resultPath = getCandidateAgentResultPath(cwd, planned.id, "cand-01");
     const parsedResult = agentRunResultSchema.parse(
@@ -136,6 +145,7 @@ exit 3
 
     expect(executed.candidateResults[0]?.status).toBe("failed");
     expect(executed.manifest.candidates[0]?.status).toBe("eliminated");
+    expect(executed.manifest.recommendedWinner).toBeUndefined();
 
     const verdictPath = getCandidateVerdictPath(cwd, planned.id, "cand-01", "fast", "agent-exit");
     const verdict = oracleVerdictSchema.parse(
@@ -200,6 +210,7 @@ exit 3
       `#!/bin/sh
 out=""
 prev=""
+prompt=$(cat)
 for arg in "$@"; do
   if [ "$prev" = "-o" ]; then
     out="$arg"
@@ -207,7 +218,11 @@ for arg in "$@"; do
   prev="$arg"
 done
 if [ -n "$out" ]; then
-  printf 'Codex finished candidate patch' > "$out"
+  if printf '%s' "$prompt" | grep -q "You are selecting the best Oraculum finalist."; then
+    printf 'not-json' > "$out"
+  else
+    printf 'Codex finished candidate patch' > "$out"
+  fi
 fi
 `,
     );
@@ -299,6 +314,7 @@ fi
     });
 
     expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+    expect(executed.manifest.recommendedWinner?.source).toBe("fallback-policy");
 
     const verdictPath = getCandidateVerdictPath(
       cwd,

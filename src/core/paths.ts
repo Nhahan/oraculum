@@ -155,6 +155,14 @@ export function getExportPlanPath(projectRoot: string, runId: string): string {
   return join(getReportsDir(projectRoot, runId), "export-plan.json");
 }
 
+export function getWinnerSelectionPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "winner-selection.json");
+}
+
+export function getWinnerJudgeLogsDir(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "judge");
+}
+
 export function getWorkspaceDir(projectRoot: string, runId: string, candidateId: string): string {
   return join(getOraculumDir(projectRoot), "workspaces", runId, candidateId);
 }

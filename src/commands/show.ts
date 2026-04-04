@@ -19,6 +19,12 @@ export function registerShowCommand(program: Command): void {
       process.stdout.write(`Agent: ${manifest.agent}\n`);
       process.stdout.write(`Candidates: ${manifest.candidateCount}\n`);
       process.stdout.write(`Status: ${manifest.status}\n`);
+      if (manifest.recommendedWinner) {
+        process.stdout.write(
+          `Recommended winner: ${manifest.recommendedWinner.candidateId} (${manifest.recommendedWinner.confidence}, ${manifest.recommendedWinner.source})\n`,
+        );
+        process.stdout.write(`${manifest.recommendedWinner.summary}\n`);
+      }
 
       if (finalists.length === 0) {
         process.stdout.write("No finalists yet. Candidate states:\n");

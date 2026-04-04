@@ -41,6 +41,13 @@ export const roundManifestSchema = z.object({
   completedAt: z.string().min(1).optional(),
 });
 
+export const runRecommendationSchema = z.object({
+  candidateId: z.string().min(1),
+  summary: z.string().min(1),
+  confidence: z.enum(["low", "medium", "high"]),
+  source: z.enum(["llm-judge", "fallback-policy"]),
+});
+
 export const runManifestSchema = z.object({
   id: z.string().min(1),
   status: runStatusSchema,
@@ -51,6 +58,7 @@ export const runManifestSchema = z.object({
   createdAt: z.string().min(1),
   rounds: z.array(roundManifestSchema).min(1),
   candidates: z.array(candidateManifestSchema).min(1),
+  recommendedWinner: runRecommendationSchema.optional(),
 });
 
 export const exportPlanSchema = z.object({
@@ -69,6 +77,7 @@ export const latestRunStateSchema = z.object({
 export type CandidateManifest = z.infer<typeof candidateManifestSchema>;
 export type RunManifest = z.infer<typeof runManifestSchema>;
 export type RunRound = z.infer<typeof roundManifestSchema>;
+export type RunRecommendation = z.infer<typeof runRecommendationSchema>;
 export type ExportPlan = z.infer<typeof exportPlanSchema>;
 export type LatestRunState = z.infer<typeof latestRunStateSchema>;
 export type WorkspaceMode = z.infer<typeof workspaceModeSchema>;

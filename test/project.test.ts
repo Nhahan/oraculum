@@ -205,12 +205,32 @@ fi
 
     const result = await buildExportPlan({
       cwd,
-      winnerId: "cand-01",
       branchName: "fix/session-loss",
       withReport: true,
     });
 
     expect(result.plan.runId).toBe(manifest.id);
+    expect(result.plan.winnerId).toBe("cand-01");
+  });
+
+  it("rejects implicit export when no recommended winner exists", async () => {
+    const cwd = await createInitializedProject();
+    await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
+
+    const manifest = await planRun({
+      cwd,
+      taskInput: "tasks/fix-session-loss.md",
+      candidates: 1,
+    });
+
+    await expect(
+      buildExportPlan({
+        cwd,
+        runId: manifest.id,
+        branchName: "fix/session-loss",
+        withReport: false,
+      }),
+    ).rejects.toThrow("does not have a recommended winner");
   });
 });
 

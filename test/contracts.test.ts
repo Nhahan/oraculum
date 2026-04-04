@@ -4,7 +4,11 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { type AgentAdapter, agentRunResultSchema } from "../src/adapters/types.js";
+import {
+  type AgentAdapter,
+  agentJudgeResultSchema,
+  agentRunResultSchema,
+} from "../src/adapters/types.js";
 import {
   getCandidateLogsDir,
   getCandidateTaskPacketPath,
@@ -186,6 +190,23 @@ describe("oracle and adapter contracts", () => {
           completedAt: "2026-04-03T00:00:01.000Z",
           exitCode: 0,
           summary: "Stub adapter run completed.",
+          artifacts: [],
+        });
+      },
+      async recommendWinner(request) {
+        return agentJudgeResultSchema.parse({
+          runId: request.runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-03T00:00:00.000Z",
+          completedAt: "2026-04-03T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Stub judge selected a winner.",
+          recommendation: {
+            candidateId: request.finalists[0]?.candidateId ?? "cand-01",
+            confidence: "medium",
+            summary: "Stub judge recommendation.",
+          },
           artifacts: [],
         });
       },

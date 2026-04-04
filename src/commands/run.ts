@@ -81,6 +81,17 @@ export function registerRunCommand(program: Command): void {
             process.stdout.write(`  - ${finalist.id}: ${finalist.strategyLabel}\n`);
           }
         }
+        if (execution.manifest.recommendedWinner) {
+          process.stdout.write(
+            `Recommended winner: ${execution.manifest.recommendedWinner.candidateId} (${execution.manifest.recommendedWinner.confidence}, ${execution.manifest.recommendedWinner.source})\n`,
+          );
+          process.stdout.write(`${execution.manifest.recommendedWinner.summary}\n`);
+          process.stdout.write("Export next: oraculum export --branch <branch-name>\n");
+        } else {
+          process.stdout.write(
+            "No recommended winner was selected automatically. Inspect the run with `oraculum show` and choose a candidate explicitly if needed.\n",
+          );
+        }
         process.stdout.write(`Artifacts: .oraculum/runs/${manifest.id}\n`);
       },
     );

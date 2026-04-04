@@ -123,6 +123,67 @@ fi
       "codex stderr",
     );
   });
+
+  it("asks Codex to recommend a winner and parses structured output", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "judge-logs");
+
+    const binaryPath = join(root, "fake-codex");
+    await writeExecutable(
+      binaryPath,
+      `#!/bin/sh
+out=""
+prev=""
+prompt=$(cat)
+for arg in "$@"; do
+  if [ "$prev" = "-o" ]; then
+    out="$arg"
+  fi
+  prev="$arg"
+done
+printf '{"event":"started"}\n'
+if [ -n "$out" ]; then
+  printf '{"candidateId":"cand-02","confidence":"medium","summary":"cand-02 preserved the strongest evidence."}' > "$out"
+fi
+printf '%s' "$prompt" >/dev/null
+`,
+    );
+
+    const adapter = new CodexAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendWinner({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      finalists: [
+        {
+          candidateId: "cand-01",
+          strategyLabel: "Minimal Change",
+          summary: "Small diff.",
+          artifactKinds: ["report"],
+          verdicts: [],
+        },
+        {
+          candidateId: "cand-02",
+          strategyLabel: "Safety First",
+          summary: "More evidence.",
+          artifactKinds: ["report", "transcript"],
+          verdicts: [],
+        },
+      ],
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation?.candidateId).toBe("cand-02");
+    expect(result.recommendation?.confidence).toBe("medium");
+    await expect(
+      readFile(join(logDir, "winner-judge.final-message.txt"), "utf8"),
+    ).resolves.toContain('"candidateId":"cand-02"');
+  });
 });
 
 function createTaskPacket() {

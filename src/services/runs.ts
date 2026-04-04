@@ -44,7 +44,7 @@ interface PlanRunOptions {
 interface BuildExportPlanOptions {
   cwd: string;
   runId?: string;
-  winnerId: string;
+  winnerId?: string;
   branchName: string;
   withReport: boolean;
 }
@@ -165,11 +165,18 @@ export async function buildExportPlan(
   const projectRoot = resolveProjectRoot(options.cwd);
   const resolvedRunId = options.runId ?? (await readLatestRunId(projectRoot));
   const manifest = await readRunManifest(projectRoot, resolvedRunId);
-  const winner = manifest.candidates.find((candidate) => candidate.id === options.winnerId);
+  const resolvedWinnerId = options.winnerId ?? manifest.recommendedWinner?.candidateId;
+  if (!resolvedWinnerId) {
+    throw new OraculumError(
+      `Run "${manifest.id}" does not have a recommended winner. Pass a candidate id explicitly.`,
+    );
+  }
+
+  const winner = manifest.candidates.find((candidate) => candidate.id === resolvedWinnerId);
 
   if (!winner) {
     throw new OraculumError(
-      `Candidate "${options.winnerId}" does not exist in run "${options.runId}".`,
+      `Candidate "${resolvedWinnerId}" does not exist in run "${resolvedRunId}".`,
     );
   }
   if (winner.status !== "promoted") {
