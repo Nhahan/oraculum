@@ -7,7 +7,7 @@ import { planRun } from "../services/runs.js";
 export function registerRunCommand(program: Command): void {
   program
     .command("run")
-    .description("Create a planned run manifest and candidate workspace scaffold.")
+    .description("Plan, execute, and judge a full Oraculum run.")
     .requiredOption("-t, --task <path>", "task packet or task note path")
     .option(
       "-c, --candidates <count>",
@@ -15,13 +15,13 @@ export function registerRunCommand(program: Command): void {
       parsePositiveInteger("candidate count"),
     )
     .option("-a, --agent <agent>", "agent runtime to target")
-    .option("--execute", "execute candidates after planning", false)
+    .option("--plan-only", "only scaffold the run without executing it", false)
     .option("--timeout-ms <ms>", "adapter timeout in milliseconds", parsePositiveInteger("timeout"))
     .action(
       async (options: {
         agent?: string;
         candidates?: number;
-        execute?: boolean;
+        planOnly?: boolean;
         task: string;
         timeoutMs?: number;
       }) => {
@@ -41,10 +41,8 @@ export function registerRunCommand(program: Command): void {
         for (const candidate of manifest.candidates) {
           process.stdout.write(`- ${candidate.id}: ${candidate.strategyLabel}\n`);
         }
-        if (!(options.execute ?? false)) {
-          process.stdout.write(
-            "Execution was skipped. Re-run with --execute to call the selected host adapter.\n",
-          );
+        if (options.planOnly ?? false) {
+          process.stdout.write("Execution was skipped because --plan-only was requested.\n");
           return;
         }
 
@@ -59,6 +57,16 @@ export function registerRunCommand(program: Command): void {
           process.stdout.write(
             `- ${result.candidateId}: ${result.status} (exit ${result.exitCode})\n`,
           );
+        }
+
+        const finalists = execution.manifest.candidates.filter(
+          (candidate) => candidate.status === "promoted",
+        );
+        process.stdout.write(`Promoted finalists: ${finalists.length}\n`);
+        if (finalists.length > 0) {
+          for (const finalist of finalists) {
+            process.stdout.write(`  - ${finalist.id}: ${finalist.strategyLabel}\n`);
+          }
         }
       },
     );
