@@ -1,5 +1,14 @@
+import { mkdir, writeFile } from "node:fs/promises";
+
 import type { AgentRunResult } from "../adapters/types.js";
-import type { RoundId } from "../domain/config.js";
+import {
+  getCandidateAgentResultPath,
+  getCandidateLogsDir,
+  getCandidateOracleStderrLogPath,
+  getCandidateOracleStdoutLogPath,
+} from "../core/paths.js";
+import { runSubprocess } from "../core/subprocess.js";
+import type { OracleEnforcement, ProjectConfig, RepoOracle, RoundId } from "../domain/config.js";
 import {
   type OracleVerdict,
   oracleVerdictSchema,
@@ -10,8 +19,11 @@ import type { CandidateManifest } from "../domain/run.js";
 
 interface EvaluateCandidateRoundOptions {
   candidate: CandidateManifest;
+  projectConfig: ProjectConfig;
+  projectRoot: string;
   result: AgentRunResult;
   roundId: RoundId;
+  runId: string;
 }
 
 interface EvaluateCandidateRoundResult {
@@ -20,16 +32,18 @@ interface EvaluateCandidateRoundResult {
   witnesses: Witness[];
 }
 
+interface OracleEvaluation {
+  verdict: OracleVerdict;
+  witnesses: Witness[];
+}
+
 interface OracleDefinition {
-  evaluate(options: EvaluateCandidateRoundOptions): {
-    verdict: OracleVerdict;
-    witnesses: Witness[];
-  };
+  evaluate(options: EvaluateCandidateRoundOptions): Promise<OracleEvaluation> | OracleEvaluation;
   oracleId: string;
   roundId: RoundId;
 }
 
-const registeredOracles: OracleDefinition[] = [
+const builtInOracles: OracleDefinition[] = [
   {
     oracleId: "agent-exit",
     roundId: "fast",
@@ -140,15 +154,24 @@ const registeredOracles: OracleDefinition[] = [
   },
 ];
 
-export function evaluateCandidateRound(
+export async function evaluateCandidateRound(
   options: EvaluateCandidateRoundOptions,
-): EvaluateCandidateRoundResult {
-  const selectedOracles = registeredOracles.filter((oracle) => oracle.roundId === options.roundId);
+): Promise<EvaluateCandidateRoundResult> {
   const verdicts: OracleVerdict[] = [];
   const witnesses: Witness[] = [];
 
-  for (const oracle of selectedOracles) {
-    const evaluation = oracle.evaluate(options);
+  const selectedBuiltIns = builtInOracles.filter((oracle) => oracle.roundId === options.roundId);
+  for (const oracle of selectedBuiltIns) {
+    const evaluation = await oracle.evaluate(options);
+    verdicts.push(evaluation.verdict);
+    witnesses.push(...evaluation.witnesses);
+  }
+
+  const selectedRepoOracles = options.projectConfig.oracles.filter(
+    (oracle) => oracle.roundId === options.roundId,
+  );
+  for (const oracle of selectedRepoOracles) {
+    const evaluation = await evaluateRepoOracle(options, oracle);
     verdicts.push(evaluation.verdict);
     witnesses.push(...evaluation.witnesses);
   }
@@ -161,4 +184,186 @@ export function evaluateCandidateRound(
     verdicts,
     witnesses,
   };
+}
+
+async function evaluateRepoOracle(
+  options: EvaluateCandidateRoundOptions,
+  oracle: RepoOracle,
+): Promise<OracleEvaluation> {
+  const logDir = getCandidateLogsDir(options.projectRoot, options.runId, options.candidate.id);
+  const stdoutPath = getCandidateOracleStdoutLogPath(
+    options.projectRoot,
+    options.runId,
+    options.candidate.id,
+    oracle.roundId,
+    oracle.id,
+  );
+  const stderrPath = getCandidateOracleStderrLogPath(
+    options.projectRoot,
+    options.runId,
+    options.candidate.id,
+    oracle.roundId,
+    oracle.id,
+  );
+
+  await mkdir(logDir, { recursive: true });
+
+  try {
+    const commandResult = await runSubprocess({
+      command: process.env.SHELL ?? "/bin/sh",
+      args: ["-lc", oracle.command],
+      cwd: oracle.cwd === "project" ? options.projectRoot : options.candidate.workspaceDir,
+      env: buildOracleEnvironment(options, oracle),
+      ...(oracle.timeoutMs !== undefined ? { timeoutMs: oracle.timeoutMs } : {}),
+    });
+
+    await Promise.all([
+      writeFile(stdoutPath, commandResult.stdout, "utf8"),
+      writeFile(stderrPath, commandResult.stderr, "utf8"),
+    ]);
+
+    const failed = commandResult.exitCode !== 0 || commandResult.timedOut;
+    const failureMapping = mapFailureEnforcement(oracle.enforcement);
+    const status = failed ? failureMapping.status : "pass";
+    const severity = failed ? failureMapping.severity : "info";
+    const preferredPath = failed ? stderrPath : stdoutPath;
+    const excerpt = summarizeOracleOutput(commandResult.stderr, commandResult.stdout);
+    const witness = witnessSchema.parse({
+      id: `${options.candidate.id}-${oracle.id}`,
+      kind: "command-output",
+      title: `Repo-local oracle ${oracle.id}`,
+      detail: buildOracleWitnessDetail(
+        options,
+        oracle,
+        commandResult.exitCode,
+        commandResult.timedOut,
+      ),
+      path: preferredPath,
+      ...(excerpt ? { excerpt } : {}),
+      scope: [options.candidate.id, oracle.id],
+    });
+
+    return {
+      verdict: oracleVerdictSchema.parse({
+        oracleId: oracle.id,
+        roundId: oracle.roundId,
+        status,
+        severity,
+        summary: failed
+          ? (oracle.failureSummary ??
+            buildFailureSummary(oracle, commandResult.exitCode, commandResult.timedOut))
+          : (oracle.passSummary ?? `Repo-local oracle "${oracle.id}" passed.`),
+        invariant: oracle.invariant,
+        confidence: oracle.confidence,
+        ...(failed && oracle.repairHint ? { repairHint: oracle.repairHint } : {}),
+        affectedScope: [options.candidate.id],
+        witnesses: [witness],
+      }),
+      witnesses: [witness],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await Promise.all([
+      writeFile(stdoutPath, "", "utf8"),
+      writeFile(stderrPath, `${message}\n`, "utf8"),
+    ]);
+
+    const witness = witnessSchema.parse({
+      id: `${options.candidate.id}-${oracle.id}`,
+      kind: "command-output",
+      title: `Repo-local oracle ${oracle.id}`,
+      detail: `Repo-local oracle command could not start: ${message}`,
+      path: stderrPath,
+      excerpt: message.slice(0, 500),
+      scope: [options.candidate.id, oracle.id],
+    });
+
+    return {
+      verdict: oracleVerdictSchema.parse({
+        oracleId: oracle.id,
+        roundId: oracle.roundId,
+        status: "fail",
+        severity: "critical",
+        summary: oracle.failureSummary ?? `Repo-local oracle "${oracle.id}" could not start.`,
+        invariant: oracle.invariant,
+        confidence: oracle.confidence,
+        ...(oracle.repairHint ? { repairHint: oracle.repairHint } : {}),
+        affectedScope: [options.candidate.id],
+        witnesses: [witness],
+      }),
+      witnesses: [witness],
+    };
+  }
+}
+
+function buildOracleEnvironment(
+  options: EvaluateCandidateRoundOptions,
+  oracle: RepoOracle,
+): NodeJS.ProcessEnv {
+  return {
+    ...oracle.env,
+    ORACULUM_PROJECT_ROOT: options.projectRoot,
+    ORACULUM_RUN_ID: options.runId,
+    ORACULUM_ROUND_ID: options.roundId,
+    ORACULUM_AGENT: options.result.adapter,
+    ORACULUM_AGENT_STATUS: options.result.status,
+    ORACULUM_CANDIDATE_ID: options.candidate.id,
+    ORACULUM_CANDIDATE_STRATEGY_ID: options.candidate.strategyId,
+    ORACULUM_CANDIDATE_STRATEGY_LABEL: options.candidate.strategyLabel,
+    ORACULUM_CANDIDATE_WORKSPACE_DIR: options.candidate.workspaceDir,
+    ORACULUM_CANDIDATE_LOG_DIR: getCandidateLogsDir(
+      options.projectRoot,
+      options.runId,
+      options.candidate.id,
+    ),
+    ORACULUM_CANDIDATE_TASK_PACKET_PATH: options.candidate.taskPacketPath,
+    ORACULUM_CANDIDATE_AGENT_RESULT_PATH: getCandidateAgentResultPath(
+      options.projectRoot,
+      options.runId,
+      options.candidate.id,
+    ),
+  };
+}
+
+function buildFailureSummary(oracle: RepoOracle, exitCode: number, timedOut: boolean): string {
+  if (timedOut) {
+    return `Repo-local oracle "${oracle.id}" timed out.`;
+  }
+
+  return `Repo-local oracle "${oracle.id}" failed with exit code ${exitCode}.`;
+}
+
+function buildOracleWitnessDetail(
+  options: EvaluateCandidateRoundOptions,
+  oracle: RepoOracle,
+  exitCode: number,
+  timedOut: boolean,
+): string {
+  return [
+    `Command exited with code ${exitCode}.`,
+    timedOut ? "The command timed out." : undefined,
+    `Scope=${oracle.cwd === "project" ? "project" : "workspace"}.`,
+    `Workspace=${options.candidate.workspaceDir}.`,
+  ]
+    .filter((part) => part !== undefined)
+    .join(" ");
+}
+
+function mapFailureEnforcement(enforcement: OracleEnforcement): {
+  severity: OracleVerdict["severity"];
+  status: OracleVerdict["status"];
+} {
+  switch (enforcement) {
+    case "hard":
+      return { status: "fail", severity: "error" };
+    case "repairable":
+      return { status: "repairable", severity: "warning" };
+    case "signal":
+      return { status: "pass", severity: "warning" };
+  }
+}
+
+function summarizeOracleOutput(stderr: string, stdout: string): string | undefined {
+  const preferred = stderr.trim() || stdout.trim();
+  return preferred ? preferred.slice(0, 500) : undefined;
 }

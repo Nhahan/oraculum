@@ -121,6 +121,32 @@ export function getCandidateLogsDir(
   return join(getCandidateDir(projectRoot, runId, candidateId), "logs");
 }
 
+export function getCandidateOracleStdoutLogPath(
+  projectRoot: string,
+  runId: string,
+  candidateId: string,
+  roundId: string,
+  oracleId: string,
+): string {
+  return join(
+    getCandidateLogsDir(projectRoot, runId, candidateId),
+    `${roundId}--${oracleId}.stdout.log`,
+  );
+}
+
+export function getCandidateOracleStderrLogPath(
+  projectRoot: string,
+  runId: string,
+  candidateId: string,
+  roundId: string,
+  oracleId: string,
+): string {
+  return join(
+    getCandidateLogsDir(projectRoot, runId, candidateId),
+    `${roundId}--${oracleId}.stderr.log`,
+  );
+}
+
 export function getReportsDir(projectRoot: string, runId: string): string {
   return join(getRunDir(projectRoot, runId), "reports");
 }

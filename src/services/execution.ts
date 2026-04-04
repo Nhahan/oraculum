@@ -22,7 +22,7 @@ import {
 import { materializedTaskPacketSchema } from "../domain/task.js";
 
 import { evaluateCandidateRound } from "./oracles.js";
-import { writeJsonFile } from "./project.js";
+import { loadProjectConfig, writeJsonFile } from "./project.js";
 import { readRunManifest } from "./runs.js";
 import { prepareCandidateWorkspace } from "./workspaces.js";
 
@@ -47,6 +47,7 @@ interface CandidateExecutionRecord {
 
 export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRunResult> {
   const projectRoot = resolveProjectRoot(options.cwd);
+  const projectConfig = await loadProjectConfig(projectRoot);
   const manifest = await readRunManifest(projectRoot, options.runId);
   const adapter = createAgentAdapter(manifest.agent, {
     ...(options.claudeBinaryPath ? { claudeBinaryPath: options.claudeBinaryPath } : {}),
@@ -163,10 +164,13 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
       }
 
       const currentCandidate = candidateMap.get(record.candidate.id) ?? record.candidate;
-      const evaluation = evaluateCandidateRound({
+      const evaluation = await evaluateCandidateRound({
         candidate: currentCandidate,
+        projectConfig,
+        projectRoot,
         result: record.result,
         roundId: round.id,
+        runId: manifest.id,
       });
 
       verdictCount += evaluation.verdicts.length;

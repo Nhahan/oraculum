@@ -11,6 +11,7 @@ import {
   getCandidateVerdictsDir,
   getCandidateWitnessesDir,
 } from "../src/core/paths.js";
+import { projectConfigSchema } from "../src/domain/config.js";
 import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
 import { materializedTaskPacketSchema, taskPacketSchema } from "../src/domain/task.js";
 import { initializeProject } from "../src/services/project.js";
@@ -73,6 +74,80 @@ describe("task packet contracts", () => {
 });
 
 describe("oracle and adapter contracts", () => {
+  it("supports repo-local command oracle configuration", () => {
+    const config = projectConfigSchema.parse({
+      version: 1,
+      defaultAgent: "claude-code",
+      defaultCandidates: 4,
+      adapters: ["claude-code", "codex"],
+      strategies: [
+        {
+          id: "minimal-change",
+          label: "Minimal Change",
+          description: "Keep the diff small.",
+        },
+      ],
+      rounds: [
+        {
+          id: "fast",
+          label: "Fast",
+          description: "Quick checks.",
+        },
+      ],
+      oracles: [
+        {
+          id: "lint-fast",
+          roundId: "fast",
+          command: "npm run lint",
+          invariant: "The candidate must satisfy lint checks.",
+          enforcement: "hard",
+        },
+      ],
+    });
+
+    expect(config.oracles[0]?.cwd).toBe("workspace");
+    expect(config.oracles[0]?.confidence).toBe("medium");
+  });
+
+  it("rejects repo-local oracle ids that collide within a round or with built-ins", () => {
+    expect(() =>
+      projectConfigSchema.parse({
+        version: 1,
+        defaultAgent: "claude-code",
+        defaultCandidates: 4,
+        adapters: ["claude-code", "codex"],
+        strategies: [
+          {
+            id: "minimal-change",
+            label: "Minimal Change",
+            description: "Keep the diff small.",
+          },
+        ],
+        rounds: [
+          {
+            id: "fast",
+            label: "Fast",
+            description: "Quick checks.",
+          },
+        ],
+        oracles: [
+          {
+            id: "agent-exit",
+            roundId: "fast",
+            command: "true",
+            invariant: "Must not shadow built-in oracle ids.",
+          },
+          {
+            id: "agent-exit",
+            roundId: "fast",
+            command: "true",
+            invariant: "Must not duplicate repo-local oracle ids either.",
+          },
+        ],
+      }),
+    ).toThrow();
+  });
+
   it("validates oracle verdicts with witnesses", () => {
     const witness = witnessSchema.parse({
       id: "w-1",
