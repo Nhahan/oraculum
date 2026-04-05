@@ -1,11 +1,14 @@
-import { cp, mkdir, readdir, rm, stat } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { mkdir, rm, stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import { OraculumError } from "../core/errors.js";
 import { runSubprocess } from "../core/subprocess.js";
 import type { WorkspaceMode } from "../domain/run.js";
 
+import { copyManagedProjectTree } from "./managed-tree.js";
+
 interface PrepareWorkspaceOptions {
+  baseRevision?: string;
   projectRoot: string;
   workspaceDir: string;
 }
@@ -18,18 +21,26 @@ export interface WorkspacePreparation {
 export async function prepareCandidateWorkspace(
   options: PrepareWorkspaceOptions,
 ): Promise<WorkspacePreparation> {
-  if (await isGitRepository(options.projectRoot)) {
+  if ((await detectWorkspaceMode(options.projectRoot)) === "git-worktree") {
     return prepareGitWorktreeWorkspace(options);
   }
 
   return prepareCopiedWorkspace(options);
 }
 
+export async function detectWorkspaceMode(projectRoot: string): Promise<WorkspaceMode> {
+  return (await isGitRepository(projectRoot)) ? "git-worktree" : "copy";
+}
+
 async function prepareGitWorktreeWorkspace(
   options: PrepareWorkspaceOptions,
 ): Promise<WorkspacePreparation> {
   if (await pathExists(join(options.workspaceDir, ".git"))) {
-    await resetGitWorktreeWorkspace(options.workspaceDir, options.projectRoot);
+    await resetGitWorktreeWorkspace(
+      options.workspaceDir,
+      options.projectRoot,
+      options.baseRevision ?? "HEAD",
+    );
     return {
       mode: "git-worktree",
       workspaceDir: options.workspaceDir,
@@ -41,7 +52,7 @@ async function prepareGitWorktreeWorkspace(
 
   await runSubprocess({
     command: "git",
-    args: ["worktree", "add", "--detach", options.workspaceDir, "HEAD"],
+    args: ["worktree", "add", "--detach", options.workspaceDir, options.baseRevision ?? "HEAD"],
     cwd: options.projectRoot,
     timeoutMs: 60_000,
   });
@@ -62,10 +73,14 @@ async function prepareGitWorktreeWorkspace(
   };
 }
 
-async function resetGitWorktreeWorkspace(workspaceDir: string, projectRoot: string): Promise<void> {
+async function resetGitWorktreeWorkspace(
+  workspaceDir: string,
+  projectRoot: string,
+  baseRevision: string,
+): Promise<void> {
   const reset = await runSubprocess({
     command: "git",
-    args: ["-C", workspaceDir, "reset", "--hard", "HEAD"],
+    args: ["-C", workspaceDir, "reset", "--hard", baseRevision],
     cwd: projectRoot,
     timeoutMs: 30_000,
   });
@@ -86,17 +101,7 @@ async function prepareCopiedWorkspace(
 ): Promise<WorkspacePreparation> {
   await rm(options.workspaceDir, { recursive: true, force: true });
   await mkdir(options.workspaceDir, { recursive: true });
-
-  const entries = await readdir(options.projectRoot, { withFileTypes: true });
-  for (const entry of entries) {
-    if (!shouldCopyEntry(entry.name)) {
-      continue;
-    }
-
-    const sourcePath = join(options.projectRoot, entry.name);
-    const destinationPath = join(options.workspaceDir, entry.name);
-    await cp(sourcePath, destinationPath, { recursive: true });
-  }
+  await copyManagedProjectTree(options.projectRoot, options.workspaceDir);
 
   return {
     mode: "copy",
@@ -114,39 +119,6 @@ async function isGitRepository(projectRoot: string): Promise<boolean> {
 
   return result.exitCode === 0 && result.stdout.trim().length > 0;
 }
-
-function shouldCopyEntry(name: string): boolean {
-  const base = basename(name);
-  if ([".git", ".oraculum", "dist", "node_modules"].includes(base)) {
-    return false;
-  }
-
-  if (
-    [
-      ".aws",
-      ".env",
-      ".env.local",
-      ".env.development",
-      ".env.production",
-      ".env.test",
-      ".gnupg",
-      ".kube",
-      ".netrc",
-      ".npmrc",
-      ".pypirc",
-      ".ssh",
-    ].includes(base)
-  ) {
-    return false;
-  }
-
-  if (base.startsWith(".env.")) {
-    return false;
-  }
-
-  return true;
-}
-
 async function pathExists(path: string): Promise<boolean> {
   try {
     await stat(path);

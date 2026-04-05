@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -312,6 +312,107 @@ if (out) {
 
     expect(result.plan.runId).toBe(completedRun.id);
     expect(await readLatestExportableRunId(cwd)).toBe(completedRun.id);
+  });
+
+  it("rejects older exportable runs that do not record base metadata", async () => {
+    const cwd = await createInitializedProject();
+    const runId = "run_legacy";
+    const createdAt = "2026-04-06T00:00:00.000Z";
+    await mkdir(dirname(getRunManifestPath(cwd, runId)), { recursive: true });
+
+    await writeFile(
+      getRunManifestPath(cwd, runId),
+      `${JSON.stringify(
+        {
+          id: runId,
+          status: "completed",
+          taskPath: join(cwd, "tasks", "legacy-task.md"),
+          taskPacket: {
+            id: "task_legacy",
+            title: "Legacy task",
+            sourceKind: "task-note",
+            sourcePath: join(cwd, "tasks", "legacy-task.md"),
+          },
+          agent: "codex",
+          candidateCount: 1,
+          createdAt,
+          rounds: [
+            {
+              id: "fast",
+              label: "Fast",
+              status: "completed",
+              verdictCount: 1,
+              survivorCount: 1,
+              eliminatedCount: 0,
+              startedAt: createdAt,
+              completedAt: createdAt,
+            },
+            {
+              id: "impact",
+              label: "Impact",
+              status: "completed",
+              verdictCount: 1,
+              survivorCount: 1,
+              eliminatedCount: 0,
+              startedAt: createdAt,
+              completedAt: createdAt,
+            },
+            {
+              id: "deep",
+              label: "Deep",
+              status: "completed",
+              verdictCount: 0,
+              survivorCount: 1,
+              eliminatedCount: 0,
+              startedAt: createdAt,
+              completedAt: createdAt,
+            },
+          ],
+          recommendedWinner: {
+            candidateId: "cand-01",
+            confidence: "high",
+            summary: "cand-01 is the recommended winner.",
+            source: "fallback-policy",
+          },
+          candidates: [
+            {
+              id: "cand-01",
+              strategyId: "minimal-change",
+              strategyLabel: "Minimal Change",
+              status: "promoted",
+              workspaceDir: join(cwd, ".oraculum", "workspaces", runId, "cand-01"),
+              taskPacketPath: join(
+                cwd,
+                ".oraculum",
+                "runs",
+                runId,
+                "candidates",
+                "cand-01",
+                "task-packet.json",
+              ),
+              workspaceMode: "git-worktree",
+              createdAt,
+            },
+          ],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      getLatestExportableRunStatePath(cwd),
+      `${JSON.stringify({ runId, updatedAt: createdAt }, null, 2)}\n`,
+      "utf8",
+    );
+
+    await expect(
+      buildExportPlan({
+        cwd,
+        branchName: "fix/session-loss",
+        withReport: false,
+      }),
+    ).rejects.toThrow("older run artifact");
   });
 });
 

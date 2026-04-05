@@ -26,6 +26,8 @@ export const candidateManifestSchema = z.object({
   taskPacketPath: z.string().min(1),
   lastRunResultPath: z.string().min(1).optional(),
   workspaceMode: workspaceModeSchema.optional(),
+  baseRevision: z.string().min(1).optional(),
+  baseSnapshotPath: z.string().min(1).optional(),
   createdAt: z.string().min(1),
 });
 
@@ -53,6 +55,8 @@ export const reportBundleSchema = z.object({
   files: z.array(z.string().min(1)).min(1),
 });
 
+export const exportModeSchema = z.enum(["git-branch", "workspace-sync"]);
+
 export const runManifestSchema = z.object({
   id: z.string().min(1),
   status: runStatusSchema,
@@ -70,6 +74,11 @@ export const exportPlanSchema = z.object({
   runId: z.string().min(1),
   winnerId: z.string().min(1),
   branchName: z.string().min(1),
+  mode: exportModeSchema,
+  workspaceDir: z.string().min(1),
+  patchPath: z.string().min(1).optional(),
+  appliedPathCount: z.number().int().min(0).optional(),
+  removedPathCount: z.number().int().min(0).optional(),
   withReport: z.boolean(),
   reportBundle: reportBundleSchema.optional(),
   createdAt: z.string().min(1),
@@ -87,3 +96,4 @@ export type RunRecommendation = z.infer<typeof runRecommendationSchema>;
 export type ExportPlan = z.infer<typeof exportPlanSchema>;
 export type LatestRunState = z.infer<typeof latestRunStateSchema>;
 export type WorkspaceMode = z.infer<typeof workspaceModeSchema>;
+export type ExportMode = z.infer<typeof exportModeSchema>;

@@ -12,7 +12,9 @@ export function registerShowCommand(program: Command): void {
       const manifest = runId
         ? await readRunManifest(process.cwd(), runId)
         : await readLatestRunManifest(process.cwd());
-      const finalists = manifest.candidates.filter((candidate) => candidate.status === "promoted");
+      const finalists = manifest.candidates.filter(
+        (candidate) => candidate.status === "promoted" || candidate.status === "exported",
+      );
 
       process.stdout.write(`Run: ${manifest.id}\n`);
       process.stdout.write(`Task: ${manifest.taskPacket.title}\n`);

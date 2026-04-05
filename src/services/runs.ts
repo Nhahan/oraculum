@@ -11,6 +11,7 @@ import {
   getCandidateVerdictsDir,
   getCandidateWitnessesDir,
   getConfigPath,
+  getExportPatchPath,
   getExportPlanPath,
   getFinalistComparisonJsonPath,
   getFinalistComparisonMarkdownPath,
@@ -182,18 +183,39 @@ export async function buildExportPlan(
       `Candidate "${resolvedWinnerId}" does not exist in run "${resolvedRunId}".`,
     );
   }
-  if (winner.status !== "promoted") {
+  if (winner.status !== "promoted" && winner.status !== "exported") {
     throw new OraculumError(
       `Candidate "${winner.id}" is not exportable because its status is "${winner.status}".`,
     );
   }
 
+  if (!winner.workspaceMode) {
+    throw new OraculumError(
+      `Candidate "${winner.id}" does not have a materialized workspace mode. Run the candidate before exporting it.`,
+    );
+  }
+
   const reportFiles = options.withReport ? await collectReportFiles(projectRoot, manifest.id) : [];
+  const mode = winner.workspaceMode === "git-worktree" ? "git-branch" : "workspace-sync";
+  if (mode === "git-branch" && !winner.baseRevision) {
+    throw new OraculumError(
+      `Candidate "${winner.id}" was produced by an older run artifact that does not record its git base revision. Re-run the task before exporting it.`,
+    );
+  }
+
+  if (mode === "workspace-sync" && !winner.baseSnapshotPath) {
+    throw new OraculumError(
+      `Candidate "${winner.id}" was produced by an older run artifact that does not record its base snapshot. Re-run the task before exporting it.`,
+    );
+  }
 
   const plan: ExportPlan = {
     runId: manifest.id,
     winnerId: winner.id,
     branchName: options.branchName,
+    mode,
+    workspaceDir: winner.workspaceDir,
+    ...(mode === "git-branch" ? { patchPath: getExportPatchPath(projectRoot, manifest.id) } : {}),
     withReport: options.withReport,
     ...(options.withReport && reportFiles.length > 0
       ? {

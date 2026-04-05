@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { basename } from "node:path";
 
 import type { AgentRunResult } from "../adapters/types.js";
 import {
@@ -209,13 +210,13 @@ async function evaluateRepoOracle(
   await mkdir(logDir, { recursive: true });
 
   try {
-    const shell = oracle.shell ?? oracle.args.length === 0;
+    const shell = oracle.shell ?? inferRepoOracleShell(oracle.command, oracle.args);
     const commandResult = await runSubprocess({
       command: oracle.command,
       args: oracle.args,
       cwd: oracle.cwd === "project" ? options.projectRoot : options.candidate.workspaceDir,
       env: buildOracleEnvironment(options, oracle),
-      shell,
+      ...(shell !== undefined ? { shell } : {}),
       ...(oracle.timeoutMs !== undefined ? { timeoutMs: oracle.timeoutMs } : {}),
     });
 
@@ -326,6 +327,23 @@ function buildOracleEnvironment(
       options.candidate.id,
     ),
   };
+}
+
+function inferRepoOracleShell(command: string, args: string[]): boolean | undefined {
+  if (args.length === 0) {
+    return true;
+  }
+
+  if (process.platform !== "win32") {
+    return undefined;
+  }
+
+  const base = basename(command).toLowerCase();
+  if (["bun", "npm", "npx", "pnpm", "yarn", "yarnpkg"].includes(base)) {
+    return true;
+  }
+
+  return undefined;
 }
 
 function buildFailureSummary(oracle: RepoOracle, exitCode: number, timedOut: boolean): string {

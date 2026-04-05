@@ -5,6 +5,7 @@ import { createAgentAdapter } from "../adapters/index.js";
 import { type AgentRunResult, agentRunResultSchema } from "../adapters/types.js";
 import {
   getCandidateAgentResultPath,
+  getCandidateBaseSnapshotPath,
   getCandidateLogsDir,
   getCandidateManifestPath,
   getCandidateVerdictPath,
@@ -12,6 +13,7 @@ import {
   getRunManifestPath,
   resolveProjectRoot,
 } from "../core/paths.js";
+import { runSubprocess } from "../core/subprocess.js";
 import type { OracleVerdict } from "../domain/oracle.js";
 import {
   type CandidateManifest,
@@ -23,12 +25,13 @@ import {
 } from "../domain/run.js";
 import { materializedTaskPacketSchema } from "../domain/task.js";
 
+import { captureManagedProjectSnapshot } from "./base-snapshots.js";
 import { recommendWinnerWithJudge } from "./finalist-judge.js";
 import { writeFinalistComparisonReport } from "./finalist-report.js";
 import { evaluateCandidateRound } from "./oracles.js";
 import { loadProjectConfig, writeJsonFile } from "./project.js";
 import { readRunManifest, writeLatestExportableRunState, writeLatestRunState } from "./runs.js";
-import { prepareCandidateWorkspace } from "./workspaces.js";
+import { detectWorkspaceMode, prepareCandidateWorkspace } from "./workspaces.js";
 
 interface ExecuteRunOptions {
   claudeBinaryPath?: string;
@@ -89,9 +92,21 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     const logDir = getCandidateLogsDir(projectRoot, manifest.id, candidate.id);
     let parsedResult: AgentRunResult;
     let workspaceMode = runningCandidate.workspaceMode;
+    let baseRevision: string | undefined;
+    let baseSnapshotPath: string | undefined;
 
     try {
+      const intendedWorkspaceMode = await detectWorkspaceMode(projectRoot);
+      if (intendedWorkspaceMode === "git-worktree") {
+        baseRevision = await readProjectRevision(projectRoot);
+      } else {
+        baseSnapshotPath = getCandidateBaseSnapshotPath(projectRoot, manifest.id, candidate.id);
+        const snapshot = await captureManagedProjectSnapshot(projectRoot);
+        await writeJsonFile(baseSnapshotPath, snapshot);
+      }
+
       const workspace = await prepareCandidateWorkspace({
+        ...(baseRevision ? { baseRevision } : {}),
         projectRoot,
         workspaceDir: candidate.workspaceDir,
       });
@@ -103,6 +118,8 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
         candidateManifestSchema.parse({
           ...runningCandidate,
           workspaceMode,
+          ...(baseRevision ? { baseRevision } : {}),
+          ...(baseSnapshotPath ? { baseSnapshotPath } : {}),
         }),
       );
 
@@ -139,6 +156,8 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
       status: parsedResult.status === "completed" ? "executed" : "failed",
       lastRunResultPath: resultPath,
       ...(workspaceMode ? { workspaceMode } : {}),
+      ...(baseRevision ? { baseRevision } : {}),
+      ...(baseSnapshotPath ? { baseSnapshotPath } : {}),
     });
 
     await writeCandidateManifest(projectRoot, manifest.id, updatedCandidate);
@@ -457,4 +476,18 @@ async function materializeExecutionFailure(
     summary: errorMessage,
     artifacts: [{ kind: "log", path: errorPath }],
   });
+}
+
+async function readProjectRevision(projectRoot: string): Promise<string> {
+  const result = await runSubprocess({
+    command: "git",
+    args: ["rev-parse", "HEAD"],
+    cwd: projectRoot,
+    timeoutMs: 15_000,
+  });
+  if (result.exitCode !== 0 || !result.stdout.trim()) {
+    throw new Error(`Failed to read project revision in ${projectRoot}.`);
+  }
+
+  return result.stdout.trim();
 }

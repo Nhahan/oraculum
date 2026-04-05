@@ -358,6 +358,70 @@ if (out) {
     ).resolves.toContain("fallback-policy");
   });
 
+  it("runs repo-local command plus args oracles through the platform-safe default shell", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    const fakeOracle = await writeNodeBinary(
+      cwd,
+      "fake-oracle",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const marker = path.join(process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR, "oracle-marker.txt");
+fs.writeFileSync(marker, process.argv.slice(2).join(" "), "utf8");
+process.stdout.write("oracle ok");
+`,
+    );
+    await configureProjectOracles(cwd, [
+      {
+        id: "wrapper-oracle",
+        roundId: "impact",
+        command: fakeOracle,
+        args: ["lint", "--strict"],
+        invariant: "Repo-local wrapper commands should run across supported platforms.",
+        enforcement: "hard",
+      },
+    ]);
+    await writeFile(join(cwd, "tasks", "wrapper-oracle.md"), "# Wrapper oracle\nRun wrapper.\n");
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/wrapper-oracle.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+    await expect(
+      readFile(
+        join(cwd, ".oraculum", "workspaces", planned.id, "cand-01", "oracle-marker.txt"),
+        "utf8",
+      ),
+    ).resolves.toBe("lint --strict");
+  });
+
   it("falls back to deterministic winner selection when the judge exits non-zero", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });

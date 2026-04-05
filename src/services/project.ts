@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 
 import { OraculumError } from "../core/errors.js";
 import {
@@ -83,7 +83,7 @@ export async function loadProjectConfig(cwd: string): Promise<ProjectConfig> {
 
 export async function pathExists(path: string): Promise<boolean> {
   try {
-    await stat(path);
+    await lstat(path);
     return true;
   } catch {
     return false;

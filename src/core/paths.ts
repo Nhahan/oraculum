@@ -75,6 +75,14 @@ export function getCandidateTaskPacketPath(
   return join(getCandidateDir(projectRoot, runId, candidateId), "task-packet.json");
 }
 
+export function getCandidateBaseSnapshotPath(
+  projectRoot: string,
+  runId: string,
+  candidateId: string,
+): string {
+  return join(getCandidateDir(projectRoot, runId, candidateId), "base-snapshot.json");
+}
+
 export function getCandidateVerdictsDir(
   projectRoot: string,
   runId: string,
@@ -157,6 +165,14 @@ export function getReportsDir(projectRoot: string, runId: string): string {
 
 export function getExportPlanPath(projectRoot: string, runId: string): string {
   return join(getReportsDir(projectRoot, runId), "export-plan.json");
+}
+
+export function getExportPatchPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "export.patch");
+}
+
+export function getExportSyncSummaryPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "export-sync.json");
 }
 
 export function getFinalistComparisonJsonPath(projectRoot: string, runId: string): string {
