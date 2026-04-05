@@ -58,15 +58,15 @@ oraculum export cand-01 --run run_20260404_xxxx --branch fix/session-loss
 
 Choosing a candidate id yourself is the advanced path. The default path is to let Oraculum recommend a winner and export that choice.
 
-`export` currently writes an export plan. It does not create a real branch or PR yet.
-
 ## Report Bundle
 
-Use `--with-report` when you want the export plan to carry report metadata for later review.
+Use `--with-report` when you want the export record to carry report metadata for later review.
 
 ```bash
 oraculum export --branch fix/session-loss --with-report
 ```
+
+In a Git-backed project, `export` creates the target branch and applies the winner there. In a non-Git project, it syncs the winner workspace back into the project folder.
 
 When available, the report bundle points at artifacts such as:
 

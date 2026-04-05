@@ -37,7 +37,7 @@ It can already:
 - call `Claude Code` or `Codex`
 - run repo-local command checks
 - save machine-readable run artifacts under `.oraculum/`
-- keep finalists and prepare an export plan
+- materialize the recommended winner back into your project
 
 Packaging and public release flow are still being finalized.
 
@@ -70,6 +70,8 @@ Export the recommended winner:
 ```bash
 oraculum export --branch fix/session-loss
 ```
+
+In a Git-backed project, this creates the branch and applies the winner there. In a non-Git project, it syncs the winner back into the project folder.
 
 If you want to look at the latest result again later:
 
