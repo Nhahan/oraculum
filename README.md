@@ -37,7 +37,7 @@ It can already:
 - call `Claude Code` or `Codex`
 - run repo-local command checks
 - save machine-readable run artifacts under `.oraculum/`
-- materialize the recommended winner back into your project
+- materialize the recommended promotion back into your project
 
 Packaging and public release flow are still being finalized.
 
@@ -57,18 +57,18 @@ npm install -g oraculum
 
 In the folder containing the code you want Oraculum to work on:
 
-Run a task:
+Consult Oraculum on a task:
 
 ```bash
-oraculum run "fix session loss on refresh"
+oraculum consult "fix session loss on refresh"
 ```
 
-This runs the full tournament and prints the result summary, including the recommended winner and the comparison report path.
+This runs the full tournament and prints the result summary, including the recommended promotion and the comparison report path.
 
-Export the recommended winner:
+Promote the recommended result:
 
 ```bash
-oraculum export --branch fix/session-loss
+oraculum promote --branch fix/session-loss
 ```
 
 In a Git-backed project, this creates the branch and applies the winner there. In a non-Git project, it syncs the winner back into the project folder.
@@ -76,17 +76,17 @@ In a Git-backed project, this creates the branch and applies the winner there. I
 If you want to look at the latest result again later:
 
 ```bash
-oraculum show
+oraculum verdict
 ```
 
 What happens in the default flow:
 
-- `run` starts the full flow in one command
+- `consult` starts the full flow in one command
 - Oraculum initializes itself on first use
-- the latest completed run is remembered automatically
-- `run` prints the latest result summary immediately
-- `export` uses the latest exportable run and its recommended winner by default
-- `show` lets you reopen the latest result later
+- the latest completed consultation is remembered automatically
+- `consult` prints the latest result summary immediately
+- `promote` uses the latest exportable consultation and its recommended promotion by default
+- `verdict` lets you reopen the latest result later
 
 ## How It Works
 
@@ -94,7 +94,7 @@ What happens in the default flow:
 2. Oraculum creates multiple candidate fixes.
 3. Each candidate runs in its own workspace.
 4. Checks remove weak candidates in stages.
-5. You inspect the survivors and export the one you want.
+5. Oraculum recommends a survivor, and you can inspect or promote it.
 
 Current judging stages:
 
@@ -106,4 +106,4 @@ Results are saved under `.oraculum/`. The source of truth is the saved run state
 
 ## Advanced Usage
 
-If you want more control over runtimes, candidate counts, specific run IDs, report packaging, repo-local oracle configuration, or manually overriding the recommended winner, see [Advanced Usage](docs/advanced-usage.md).
+If you want more control over runtimes, candidate counts, specific consultation IDs, report packaging, repo-local oracle configuration, or manually overriding the recommended promotion, see [Advanced Usage](docs/advanced-usage.md).

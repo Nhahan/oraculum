@@ -5,19 +5,19 @@ This page is for users who want more control than the default one-command flow.
 The normal path is still:
 
 ```bash
-oraculum run "fix session loss on refresh"
-oraculum export --branch fix/session-loss
+oraculum consult "fix session loss on refresh"
+oraculum promote --branch fix/session-loss
 ```
 
-`run` already prints the latest summary. Use `show` only when you want to see the result again later. Use the options below only when you need them.
+`consult` already prints the latest summary. Use `verdict` only when you want to see the result again later. Use the options below only when you need them.
 
 ## Run A Task File
 
 ```bash
-oraculum run tasks/fix-session-loss.md
+oraculum consult tasks/fix-session-loss.md
 ```
 
-`run` accepts:
+`consult` accepts:
 
 - inline task text
 - a Markdown task note
@@ -26,7 +26,7 @@ oraculum run tasks/fix-session-loss.md
 ## Choose Runtime And Candidate Count
 
 ```bash
-oraculum run tasks/fix-session-loss.md --agent codex --candidates 4
+oraculum consult tasks/fix-session-loss.md --agent codex --candidates 4
 ```
 
 Available runtimes today:
@@ -37,36 +37,36 @@ Available runtimes today:
 ## Inspect A Specific Run
 
 ```bash
-oraculum show run_20260404_xxxx
+oraculum verdict consultation run_20260404_xxxx
 ```
 
-Without a run ID, `show` uses the latest run automatically.
+Without a consultation id, `verdict` uses the latest consultation automatically.
 
 ## Export From A Specific Run
 
 ```bash
-oraculum export --run run_20260404_xxxx --branch fix/session-loss --with-report
+oraculum promote --consultation run_20260404_xxxx --branch fix/session-loss --with-report
 ```
 
-Without `--run`, `export` uses the latest exportable run automatically. Without a candidate id, it uses the recommended winner automatically.
+Without `--consultation`, `promote` uses the latest exportable consultation automatically. Without a candidate id, it uses the recommended promotion automatically.
 
 ## Manually Override The Recommended Winner
 
 ```bash
-oraculum export cand-01 --run run_20260404_xxxx --branch fix/session-loss
+oraculum promote cand-01 --consultation run_20260404_xxxx --branch fix/session-loss
 ```
 
-Choosing a candidate id yourself is the advanced path. The default path is to let Oraculum recommend a winner and export that choice.
+Choosing a candidate id yourself is the advanced path. The default path is to let Oraculum recommend a promotion and materialize that choice.
 
 ## Report Bundle
 
-Use `--with-report` when you want the export record to carry report metadata for later review.
+Use `--with-report` when you want the promotion record to carry report metadata for later review.
 
 ```bash
-oraculum export --branch fix/session-loss --with-report
+oraculum promote --branch fix/session-loss --with-report
 ```
 
-In a Git-backed project, `export` creates the target branch and applies the winner there. In a non-Git project, it syncs the winner workspace back into the project folder.
+In a Git-backed project, `promote` creates the target branch and applies the winner there. In a non-Git project, it syncs the winner workspace back into the project folder.
 
 When available, the report bundle points at artifacts such as:
 
@@ -82,15 +82,15 @@ This keeps the default path short while leaving richer review material in the ad
 oraculum init
 ```
 
-You usually do not need this because `run` auto-initializes the project on first use.
+You usually do not need this because `consult` auto-initializes the project on first use.
 
 ## Plan Only
 
 ```bash
-oraculum run tasks/fix-session-loss.md --plan-only
+oraculum consult draft tasks/fix-session-loss.md
 ```
 
-This is mainly for development or internal inspection. It scaffolds the run without executing candidates.
+This is mainly for development or internal inspection. It scaffolds the consultation without executing candidates.
 
 ## Repo-Local Oracles
 
@@ -131,6 +131,6 @@ Use advanced settings only for things like:
 - changing candidate count
 - changing timeout budget
 - adding repo-local oracle commands
-- selecting a specific run for inspection or export
+- selecting a specific consultation for verdict inspection or promotion
 
 If a workflow can be expressed without these controls, prefer the simple path.

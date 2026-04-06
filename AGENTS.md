@@ -47,7 +47,7 @@ Default loop:
 - export winner
 
 Optimize for falsification and selection of patches, not maximum agent freedom.
-`oraculum run` is the default end-to-end tournament command: one user command should cover candidate generation, execution, judging, elimination/promotion, and artifactization. Planning-only flows are internal/dev-only and must not become the default UX.
+`oraculum consult` is the default end-to-end tournament command: one user command should cover candidate generation, execution, judging, elimination/promotion, and artifactization. Planning-only flows belong under structured advanced subcommands and must not become the default UX.
 Protect the quick-start path as a product contract: first success should stay one-command and near-zero-config. Keep advanced controls available, but move operator complexity into optional flags, profiles, or advanced config rather than the default path.
 
 ## Working Bias
