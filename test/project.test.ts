@@ -87,7 +87,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 }
 if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
-    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended winner."}'
+    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}'
     : "Codex finished candidate patch";
   fs.writeFileSync(out, body, "utf8");
 }
@@ -164,8 +164,10 @@ if (out) {
     expect(manifest.taskPath).toContain(".oraculum/tasks/");
     const taskNote = await readFile(manifest.taskPath, "utf8");
     expect(taskNote).toContain("# fix session loss on refresh");
-    await expect(readLatestRunId(cwd)).rejects.toThrow("No previous run found");
-    await expect(readLatestExportableRunId(cwd)).rejects.toThrow("No exportable run found yet");
+    await expect(readLatestRunId(cwd)).rejects.toThrow("No previous consultation found");
+    await expect(readLatestExportableRunId(cwd)).rejects.toThrow(
+      "No exportable consultation found yet",
+    );
   });
 
   it("rejects missing task paths instead of treating them as inline text", async () => {
@@ -196,7 +198,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 }
 if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
-    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended winner."}'
+    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}'
     : "Codex finished candidate patch";
   fs.writeFileSync(out, body, "utf8");
 }
@@ -242,7 +244,7 @@ if (out) {
     expect(latestExportableRunState.runId).toBe(manifest.id);
   });
 
-  it("rejects implicit export when no recommended winner exists", async () => {
+  it("rejects implicit export when no recommended promotion exists", async () => {
     const cwd = await createInitializedProject();
     await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
 
@@ -259,7 +261,7 @@ if (out) {
         branchName: "fix/session-loss",
         withReport: false,
       }),
-    ).rejects.toThrow("does not have a recommended winner");
+    ).rejects.toThrow("does not have a recommended promotion");
   });
 
   it("keeps the latest exportable run when a later run is only planned", async () => {
@@ -278,7 +280,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 }
 if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
-    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended winner."}'
+    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}'
     : "Codex finished candidate patch";
   fs.writeFileSync(out, body, "utf8");
 }
@@ -371,7 +373,7 @@ if (out) {
           recommendedWinner: {
             candidateId: "cand-01",
             confidence: "high",
-            summary: "cand-01 is the recommended winner.",
+            summary: "cand-01 is the recommended promotion.",
             source: "fallback-policy",
           },
           candidates: [

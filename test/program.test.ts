@@ -1,3 +1,4 @@
+import type { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
 import { buildProgram } from "../src/program.js";
@@ -7,9 +8,7 @@ describe("CLI argument parsing", () => {
     const program = createProgram();
 
     await expect(
-      program.parseAsync(["run", "--task", "tasks/task.md", "--candidates", "abc"], {
-        from: "user",
-      }),
+      program.parseAsync(["consult", "tasks/task.md", "--candidates", "abc"], { from: "user" }),
     ).rejects.toMatchObject({
       code: "commander.invalidArgument",
     });
@@ -19,9 +18,7 @@ describe("CLI argument parsing", () => {
     const program = createProgram();
 
     await expect(
-      program.parseAsync(["run", "--task", "tasks/task.md", "--timeout-ms", "abc"], {
-        from: "user",
-      }),
+      program.parseAsync(["consult", "tasks/task.md", "--timeout-ms", "abc"], { from: "user" }),
     ).rejects.toMatchObject({
       code: "commander.invalidArgument",
     });
@@ -31,7 +28,17 @@ describe("CLI argument parsing", () => {
     const program = createProgram();
 
     await expect(
-      program.parseAsync(["run", "--task", "tasks/task.md", "--candidates", "3abc"], {
+      program.parseAsync(["consult", "tasks/task.md", "--candidates", "3abc"], { from: "user" }),
+    ).rejects.toMatchObject({
+      code: "commander.invalidArgument",
+    });
+  });
+
+  it("rejects partially numeric candidate counts for consult draft", async () => {
+    const program = createProgram();
+
+    await expect(
+      program.parseAsync(["consult", "draft", "tasks/task.md", "--candidates", "3abc"], {
         from: "user",
       }),
     ).rejects.toMatchObject({
@@ -43,7 +50,7 @@ describe("CLI argument parsing", () => {
     const program = createProgram();
 
     await expect(
-      program.parseAsync(["run", "--task", "tasks/task.md", "--timeout-ms", "100ms"], {
+      program.parseAsync(["consult", "tasks/task.md", "--timeout-ms", "100ms"], {
         from: "user",
       }),
     ).rejects.toMatchObject({
@@ -54,17 +61,17 @@ describe("CLI argument parsing", () => {
 
 function createProgram() {
   const program = buildProgram();
+  configureCommandTree(program);
+  return program;
+}
+
+function configureCommandTree(program: Command) {
   program.exitOverride();
   program.configureOutput({
     writeErr() {},
     writeOut() {},
   });
   for (const command of program.commands) {
-    command.exitOverride();
-    command.configureOutput({
-      writeErr() {},
-      writeOut() {},
-    });
+    configureCommandTree(command);
   }
-  return program;
 }

@@ -172,7 +172,7 @@ export async function buildExportPlan(
   const resolvedWinnerId = options.winnerId ?? manifest.recommendedWinner?.candidateId;
   if (!resolvedWinnerId) {
     throw new OraculumError(
-      `Run "${manifest.id}" does not have a recommended winner. Pass a candidate id explicitly.`,
+      `Consultation "${manifest.id}" does not have a recommended promotion. Pass a candidate id explicitly.`,
     );
   }
 
@@ -247,7 +247,7 @@ export async function readLatestRunId(cwd: string): Promise<string> {
   const latestRunStatePath = getLatestRunStatePath(projectRoot);
 
   if (!(await pathExists(latestRunStatePath))) {
-    throw new OraculumError("No previous run found. Start with `oraculum run ...`.");
+    throw new OraculumError("No previous consultation found. Start with `oraculum consult ...`.");
   }
 
   const raw = await readFile(latestRunStatePath, "utf8");
@@ -261,7 +261,7 @@ export async function readLatestExportableRunId(cwd: string): Promise<string> {
 
   if (!(await pathExists(latestRunStatePath))) {
     throw new OraculumError(
-      "No exportable run found yet. Complete a run with a recommended winner first.",
+      "No exportable consultation found yet. Complete a consultation with a recommended promotion first.",
     );
   }
 

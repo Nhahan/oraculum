@@ -1,9 +1,9 @@
 import { Command } from "commander";
 
-import { registerExportCommand } from "./commands/export.js";
+import { registerConsultCommand } from "./commands/consult.js";
 import { registerInitCommand } from "./commands/init.js";
-import { registerRunCommand } from "./commands/run.js";
-import { registerShowCommand } from "./commands/show.js";
+import { registerPromoteCommand } from "./commands/promote.js";
+import { registerVerdictCommand } from "./commands/verdict.js";
 import { APP_NAME, APP_VERSION } from "./core/constants.js";
 
 export function buildProgram(): Command {
@@ -11,13 +11,13 @@ export function buildProgram(): Command {
 
   program
     .name(APP_NAME)
-    .description("Patch search and judgment harness for Claude Code and Codex.")
+    .description("Patch consultation and promotion harness for AI-native development workflows.")
     .version(APP_VERSION);
 
+  registerConsultCommand(program);
+  registerVerdictCommand(program);
+  registerPromoteCommand(program);
   registerInitCommand(program);
-  registerRunCommand(program);
-  registerShowCommand(program);
-  registerExportCommand(program);
 
   return program;
 }

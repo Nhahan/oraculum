@@ -1,3 +1,4 @@
+import type { Command } from "commander";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/services/exports.js", () => ({
@@ -9,7 +10,7 @@ import { materializeExport } from "../src/services/exports.js";
 
 const mockedMaterializeExport = vi.mocked(materializeExport);
 
-describe("export command", () => {
+describe("promote command", () => {
   beforeEach(() => {
     mockedMaterializeExport.mockReset();
     mockedMaterializeExport.mockResolvedValue({
@@ -26,10 +27,10 @@ describe("export command", () => {
     });
   });
 
-  it("exports the recommended winner when no candidate id is provided", async () => {
+  it("promotes the recommended result when no candidate id is provided", async () => {
     const program = createProgram();
 
-    await program.parseAsync(["export", "--branch", "fix/session-loss"], {
+    await program.parseAsync(["promote", "--branch", "fix/session-loss"], {
       from: "user",
     });
 
@@ -40,15 +41,17 @@ describe("export command", () => {
     });
   });
 
-  it("exports an explicitly selected candidate when provided", async () => {
+  it("promotes an explicitly selected candidate when provided", async () => {
     const program = createProgram();
 
-    await program.parseAsync(["export", "cand-02", "--branch", "fix/session-loss"], {
-      from: "user",
-    });
+    await program.parseAsync(
+      ["promote", "cand-02", "--consultation", "run_9", "--branch", "fix/session-loss"],
+      { from: "user" },
+    );
 
     expect(mockedMaterializeExport).toHaveBeenCalledWith({
       cwd: process.cwd(),
+      runId: "run_9",
       winnerId: "cand-02",
       branchName: "fix/session-loss",
       withReport: false,
@@ -58,18 +61,18 @@ describe("export command", () => {
 
 function createProgram() {
   const program = buildProgram();
+  configureCommandTree(program);
+
+  return program;
+}
+
+function configureCommandTree(program: Command) {
   program.exitOverride();
   program.configureOutput({
     writeErr() {},
     writeOut() {},
   });
   for (const command of program.commands) {
-    command.exitOverride();
-    command.configureOutput({
-      writeErr() {},
-      writeOut() {},
-    });
+    configureCommandTree(command);
   }
-
-  return program;
 }

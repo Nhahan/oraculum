@@ -1,3 +1,4 @@
+import type { Command } from "commander";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/services/runs.js", () => ({
@@ -21,7 +22,7 @@ const mockedPlanRun = vi.mocked(planRun);
 const mockedExecuteRun = vi.mocked(executeRun);
 const mockedEnsureProjectInitialized = vi.mocked(ensureProjectInitialized);
 
-describe("run command", () => {
+describe("consult command", () => {
   beforeEach(() => {
     mockedPlanRun.mockReset();
     mockedExecuteRun.mockReset();
@@ -51,7 +52,7 @@ describe("run command", () => {
           candidateId: "cand-01",
           confidence: "high" as const,
           source: "llm-judge" as const,
-          summary: "cand-01 is the recommended winner.",
+          summary: "cand-01 is the recommended promotion.",
         },
         candidates: manifest.candidates.map((candidate) => ({
           ...candidate,
@@ -64,7 +65,7 @@ describe("run command", () => {
   it("executes by default after planning", async () => {
     const program = createProgram();
 
-    await program.parseAsync(["run", "tasks/task.md"], { from: "user" });
+    await program.parseAsync(["consult", "tasks/task.md"], { from: "user" });
 
     expect(mockedPlanRun).toHaveBeenCalledTimes(1);
     expect(mockedPlanRun).toHaveBeenCalledWith(
@@ -73,10 +74,10 @@ describe("run command", () => {
     expect(mockedExecuteRun).toHaveBeenCalledTimes(1);
   });
 
-  it("skips execution only when plan-only is explicitly requested", async () => {
+  it("skips execution when consult draft is requested", async () => {
     const program = createProgram();
 
-    await program.parseAsync(["run", "tasks/task.md", "--plan-only"], { from: "user" });
+    await program.parseAsync(["consult", "draft", "tasks/task.md"], { from: "user" });
 
     expect(mockedPlanRun).toHaveBeenCalledTimes(1);
     expect(mockedExecuteRun).not.toHaveBeenCalled();
@@ -90,7 +91,7 @@ describe("run command", () => {
       createdPaths: [],
     });
 
-    await program.parseAsync(["run", "fix session loss on refresh"], { from: "user" });
+    await program.parseAsync(["consult", "fix session loss on refresh"], { from: "user" });
 
     expect(mockedEnsureProjectInitialized).toHaveBeenCalledTimes(1);
     expect(mockedPlanRun).toHaveBeenCalledWith(
@@ -101,20 +102,20 @@ describe("run command", () => {
 
 function createProgram() {
   const program = buildProgram();
+  configureCommandTree(program);
+
+  return program;
+}
+
+function configureCommandTree(program: Command) {
   program.exitOverride();
   program.configureOutput({
     writeErr() {},
     writeOut() {},
   });
   for (const command of program.commands) {
-    command.exitOverride();
-    command.configureOutput({
-      writeErr() {},
-      writeOut() {},
-    });
+    configureCommandTree(command);
   }
-
-  return program;
 }
 
 function createPlannedManifest() {
