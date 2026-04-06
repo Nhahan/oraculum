@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { runSubprocess } from "../core/subprocess.js";
 
+import { shouldUseWindowsShell } from "./platform.js";
 import { buildCandidatePrompt, buildWinnerSelectionPrompt } from "./prompt.js";
 import {
   type AgentAdapter,
@@ -49,7 +50,7 @@ export class ClaudeAdapter implements AgentAdapter {
       args: ["-p", "--output-format", "json", "--permission-mode", "bypassPermissions"],
       cwd: request.workspaceDir,
       ...(this.env ? { env: this.env } : {}),
-      shell: process.platform === "win32",
+      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
       stdin: prompt,
       timeoutMs: this.timeoutMs,
     });
@@ -90,7 +91,7 @@ export class ClaudeAdapter implements AgentAdapter {
       args: ["-p", "--output-format", "json", "--permission-mode", "bypassPermissions"],
       cwd: request.projectRoot,
       ...(this.env ? { env: this.env } : {}),
-      shell: process.platform === "win32",
+      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
       stdin: prompt,
       timeoutMs: this.timeoutMs,
     });
@@ -171,7 +172,6 @@ function extractRecommendation(
     return undefined;
   }
 }
-
 function pickObject(parsed: Record<string, unknown>): Record<string, unknown> | undefined {
   if ("candidateId" in parsed && "summary" in parsed && "confidence" in parsed) {
     return parsed;

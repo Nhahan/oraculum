@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { runSubprocess } from "../core/subprocess.js";
 
+import { shouldUseWindowsShell } from "./platform.js";
 import { buildCandidatePrompt, buildWinnerSelectionPrompt } from "./prompt.js";
 import {
   type AgentAdapter,
@@ -60,7 +61,7 @@ export class CodexAdapter implements AgentAdapter {
       ],
       cwd: request.workspaceDir,
       ...(this.env ? { env: this.env } : {}),
-      shell: process.platform === "win32",
+      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
       stdin: prompt,
       timeoutMs: this.timeoutMs,
     });
@@ -118,7 +119,7 @@ export class CodexAdapter implements AgentAdapter {
       ],
       cwd: request.projectRoot,
       ...(this.env ? { env: this.env } : {}),
-      shell: process.platform === "win32",
+      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
       stdin: prompt,
       timeoutMs: this.timeoutMs,
     });

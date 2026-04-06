@@ -96,14 +96,14 @@ export async function materializeExport(
       await outcome.rollback();
     } catch (rollbackError) {
       throw new OraculumError(
-        `Export bookkeeping failed after applying changes and rollback did not complete cleanly: ${formatUnknownError(error)}; rollback error: ${formatUnknownError(rollbackError)}`,
+        `Promotion bookkeeping failed after applying changes and rollback did not complete cleanly: ${formatUnknownError(error)}; rollback error: ${formatUnknownError(rollbackError)}`,
       );
     } finally {
       await outcome.cleanup();
     }
 
     throw new OraculumError(
-      `Export bookkeeping failed after applying changes and the export was rolled back: ${formatUnknownError(error)}`,
+      `Promotion bookkeeping failed after applying changes and the promotion was rolled back: ${formatUnknownError(error)}`,
     );
   }
 
@@ -118,12 +118,14 @@ export async function materializeExport(
 function findExportCandidate(manifest: RunManifest, candidateId: string): CandidateManifest {
   const candidate = manifest.candidates.find((entry) => entry.id === candidateId);
   if (!candidate) {
-    throw new OraculumError(`Candidate "${candidateId}" does not exist in run "${manifest.id}".`);
+    throw new OraculumError(
+      `Candidate "${candidateId}" does not exist in consultation "${manifest.id}".`,
+    );
   }
 
   if (candidate.status !== "promoted" && candidate.status !== "exported") {
     throw new OraculumError(
-      `Candidate "${candidate.id}" is not exportable because its status is "${candidate.status}".`,
+      `Candidate "${candidate.id}" is not eligible for promotion because its status is "${candidate.status}".`,
     );
   }
 
@@ -151,14 +153,14 @@ async function materializeGitBranchExport(
   const initialDirectoryPaths = await listProjectDirectoryPaths(projectRoot);
   if (currentRevision !== winner.baseRevision) {
     throw new OraculumError(
-      `Cannot export candidate "${winner.id}" because the current HEAD (${currentRevision}) no longer matches its recorded base revision (${winner.baseRevision}).`,
+      `Cannot promote candidate "${winner.id}" because the current HEAD (${currentRevision}) no longer matches its recorded base revision (${winner.baseRevision}).`,
     );
   }
 
   const patch = await generateWorkspacePatch(projectRoot, winner.workspaceDir, winner.baseRevision);
   if (!patch.trim()) {
     throw new OraculumError(
-      `Candidate "${winner.id}" has no materialized patch to export from ${winner.workspaceDir}.`,
+      `Candidate "${winner.id}" has no materialized patch to promote from ${winner.workspaceDir}.`,
     );
   }
 
@@ -172,7 +174,7 @@ async function materializeGitBranchExport(
     timeoutMs: 30_000,
   });
   if (checkout.exitCode !== 0) {
-    throw new OraculumError(`Failed to create export branch "${plan.branchName}".`);
+    throw new OraculumError(`Failed to create promotion branch "${plan.branchName}".`);
   }
 
   const apply = await runSubprocess({
@@ -193,11 +195,11 @@ async function materializeGitBranchExport(
       );
     } catch (rollbackError) {
       throw new OraculumError(
-        `Failed to apply exported patch onto branch "${plan.branchName}", and rollback did not complete cleanly: ${formatUnknownError(rollbackError)}`,
+        `Failed to apply the promoted patch onto branch "${plan.branchName}", and rollback did not complete cleanly: ${formatUnknownError(rollbackError)}`,
       );
     }
 
-    throw new OraculumError(`Failed to apply exported patch onto branch "${plan.branchName}".`);
+    throw new OraculumError(`Failed to apply the promoted patch onto branch "${plan.branchName}".`);
   }
 
   return {
@@ -254,7 +256,7 @@ async function materializeWorkspaceSyncExport(
       const rollbackError = await restoreManagedProjectBackup(projectRoot, backupRoot);
       if (rollbackError) {
         throw new OraculumError(
-          `Workspace-sync export failed and rollback did not complete cleanly: ${formatUnknownError(error)}; rollback error: ${rollbackError.message}`,
+          `Workspace-sync promotion failed and rollback did not complete cleanly: ${formatUnknownError(error)}; rollback error: ${rollbackError.message}`,
         );
       }
     } finally {
@@ -287,7 +289,7 @@ async function ensureCleanGitWorkingTree(projectRoot: string): Promise<void> {
   const hasTrackedChanges = unstaged.exitCode === 1 || staged.exitCode === 1;
   if (hasTrackedChanges) {
     throw new OraculumError(
-      "Cannot export to a git branch while the current working tree has tracked local changes.",
+      "Cannot promote to a git branch while the current working tree has tracked local changes.",
     );
   }
 }
@@ -350,7 +352,7 @@ async function generateWorkspacePatch(
     timeoutMs: 30_000,
   });
   if (diff.exitCode !== 0) {
-    throw new OraculumError(`Failed to generate export patch from ${workspaceDir}.`);
+    throw new OraculumError(`Failed to generate promotion patch from ${workspaceDir}.`);
   }
 
   return diff.stdout;
@@ -863,7 +865,7 @@ async function markCandidateExported(
 
     if (restoreFailures.length > 0) {
       throw new OraculumError(
-        `Failed to update export bookkeeping and restore previous metadata cleanly: ${restoreFailures.join(", ")}.`,
+        `Failed to update promotion bookkeeping and restore previous metadata cleanly: ${restoreFailures.join(", ")}.`,
       );
     }
 

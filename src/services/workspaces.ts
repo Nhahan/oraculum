@@ -1,4 +1,4 @@
-import { mkdir, rm, stat } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { OraculumError } from "../core/errors.js";
@@ -6,6 +6,7 @@ import { runSubprocess } from "../core/subprocess.js";
 import type { WorkspaceMode } from "../domain/run.js";
 
 import { copyManagedProjectTree } from "./managed-tree.js";
+import { pathExists } from "./project.js";
 
 interface PrepareWorkspaceOptions {
   baseRevision?: string;
@@ -50,12 +51,16 @@ async function prepareGitWorktreeWorkspace(
   await rm(options.workspaceDir, { recursive: true, force: true });
   await mkdir(dirname(options.workspaceDir), { recursive: true });
 
-  await runSubprocess({
+  const worktreeAdd = await runSubprocess({
     command: "git",
     args: ["worktree", "add", "--detach", options.workspaceDir, options.baseRevision ?? "HEAD"],
     cwd: options.projectRoot,
     timeoutMs: 60_000,
   });
+  if (worktreeAdd.exitCode !== 0) {
+    await rm(options.workspaceDir, { recursive: true, force: true });
+    throw new OraculumError(`Failed to create git worktree at ${options.workspaceDir}.`);
+  }
 
   const verification = await runSubprocess({
     command: "git",
@@ -118,12 +123,4 @@ async function isGitRepository(projectRoot: string): Promise<boolean> {
   });
 
   return result.exitCode === 0 && result.stdout.trim().length > 0;
-}
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await stat(path);
-    return true;
-  } catch {
-    return false;
-  }
 }

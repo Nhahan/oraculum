@@ -31,6 +31,11 @@ import { readSymlinkTargetType as readManagedSymlinkTargetType } from "../src/se
 import { initializeProject, writeJsonFile } from "../src/services/project.js";
 import { planRun } from "../src/services/runs.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
+import {
+  createDirectoryLink,
+  normalizeLineEndings,
+  normalizeLinkedPath,
+} from "./helpers/platform.js";
 
 const tempRoots: string[] = [];
 
@@ -75,8 +80,8 @@ describe("materialized exports", () => {
 
     expect(result.plan.mode).toBe("git-branch");
     expect(result.plan.patchPath).toBe(getExportPatchPath(cwd, planned.id));
-    expect(await readFile(join(cwd, "app.txt"), "utf8")).toBe("patched\n");
-    expect(await readFile(join(cwd, "added.txt"), "utf8")).toBe("new file\n");
+    expect(normalizeLineEndings(await readFile(join(cwd, "app.txt"), "utf8"))).toBe("patched\n");
+    expect(normalizeLineEndings(await readFile(join(cwd, "added.txt"), "utf8"))).toBe("new file\n");
     await expect(readFile(join(cwd, "remove.txt"), "utf8")).rejects.toThrow();
     expect(await currentBranch(cwd)).toBe("fix/session-loss");
 
@@ -224,7 +229,9 @@ if (out) {
       withReport: false,
     });
 
-    expect(await readFile(join(cwd, "app.txt"), "utf8")).toBe("patched from commit\n");
+    expect(normalizeLineEndings(await readFile(join(cwd, "app.txt"), "utf8"))).toBe(
+      "patched from commit\n",
+    );
     expect(await currentBranch(cwd)).toBe("fix/session-loss");
   });
 
@@ -263,11 +270,11 @@ if (out) {
         withReport: false,
       }),
     ).rejects.toThrow(
-      "Export bookkeeping failed after applying changes and the export was rolled back",
+      "Promotion bookkeeping failed after applying changes and the promotion was rolled back",
     );
 
     expect(await currentBranch(cwd)).toBe(baseBranch);
-    expect(await readFile(join(cwd, "app.txt"), "utf8")).toBe("original\n");
+    expect(normalizeLineEndings(await readFile(join(cwd, "app.txt"), "utf8"))).toBe("original\n");
     const savedManifest = runManifestSchema.parse(
       JSON.parse(await readFile(getRunManifestPath(cwd, planned.id), "utf8")) as unknown,
     );
@@ -335,17 +342,16 @@ if (out) {
       await initializeProject({ cwd, force: false });
       await mkdir(join(cwd, "target-dir"), { recursive: true });
       await writeFile(join(cwd, "target-dir", "file.txt"), "target\n", "utf8");
-      await symlink(join(cwd, "target-dir"), join(cwd, "linked-dir"), "junction");
+      await createDirectoryLink(join(cwd, "target-dir"), join(cwd, "linked-dir"));
 
       await mkdir(candidateDir, { recursive: true });
       await writeJsonFile(baseSnapshotPath, await captureManagedProjectSnapshot(cwd));
       await mkdir(workspaceDir, { recursive: true });
       await mkdir(join(workspaceDir, "next-target"), { recursive: true });
       await writeFile(join(workspaceDir, "next-target", "file.txt"), "next\n", "utf8");
-      await symlink(
+      await createDirectoryLink(
         join(workspaceDir, "next-target"),
         join(workspaceDir, "linked-dir"),
-        "junction",
       );
 
       const candidate = candidateManifestSchema.parse({
@@ -405,11 +411,103 @@ if (out) {
 
       const linkedPath = join(cwd, "linked-dir");
       expect((await lstat(linkedPath)).isSymbolicLink()).toBe(true);
-      expect(await readlink(linkedPath)).toBe(join(cwd, "next-target"));
+      expect(normalizeLinkedPath(await readlink(linkedPath))).toBe(
+        normalizeLinkedPath(join(cwd, "next-target")),
+      );
       expect(await readManagedSymlinkTargetType(linkedPath)).toBe("junction");
     } finally {
       restorePlatform();
     }
+  });
+
+  const nativeWindowsDescribe = process.platform === "win32" ? describe : describe.skip;
+
+  nativeWindowsDescribe("native Windows reparse-point exports", () => {
+    it("retargets absolute directory links during workspace-sync export", async () => {
+      const cwd = await createTempRoot();
+      const runId = "run_native_win32";
+      const candidateId = "cand-01";
+      const candidateDir = getCandidateDir(cwd, runId, candidateId);
+      const workspaceDir = join(cwd, ".oraculum", "workspaces", runId, candidateId);
+      const baseSnapshotPath = join(candidateDir, "base-snapshot.json");
+
+      await initializeProject({ cwd, force: false });
+      await mkdir(join(cwd, "target-dir"), { recursive: true });
+      await writeFile(join(cwd, "target-dir", "file.txt"), "target\n", "utf8");
+      await createDirectoryLink(join(cwd, "target-dir"), join(cwd, "linked-dir"));
+
+      await mkdir(candidateDir, { recursive: true });
+      await writeJsonFile(baseSnapshotPath, await captureManagedProjectSnapshot(cwd));
+      await mkdir(workspaceDir, { recursive: true });
+      await mkdir(join(workspaceDir, "next-target"), { recursive: true });
+      await writeFile(join(workspaceDir, "next-target", "file.txt"), "next\n", "utf8");
+      await createDirectoryLink(
+        join(workspaceDir, "next-target"),
+        join(workspaceDir, "linked-dir"),
+      );
+
+      const candidate = candidateManifestSchema.parse({
+        id: candidateId,
+        strategyId: "minimal-change",
+        strategyLabel: "Minimal Change",
+        status: "promoted",
+        workspaceDir,
+        taskPacketPath: join(candidateDir, "task-packet.json"),
+        workspaceMode: "copy",
+        baseSnapshotPath,
+        createdAt: "2026-04-06T00:00:00.000Z",
+      });
+      await writeJsonFile(getCandidateManifestPath(cwd, runId, candidateId), candidate);
+      await writeJsonFile(
+        getRunManifestPath(cwd, runId),
+        runManifestSchema.parse({
+          id: runId,
+          status: "completed",
+          taskPath: join(cwd, "tasks", "task.md"),
+          taskPacket: {
+            id: "task_1",
+            title: "Task",
+            sourceKind: "task-note",
+            sourcePath: join(cwd, "tasks", "task.md"),
+          },
+          agent: "codex",
+          candidateCount: 1,
+          createdAt: "2026-04-06T00:00:00.000Z",
+          rounds: [
+            {
+              id: "fast",
+              label: "Fast",
+              status: "completed",
+              verdictCount: 1,
+              survivorCount: 1,
+              eliminatedCount: 0,
+            },
+          ],
+          recommendedWinner: {
+            candidateId,
+            confidence: "high",
+            summary: "cand-01 is the recommended winner.",
+            source: "llm-judge",
+          },
+          candidates: [candidate],
+        }),
+      );
+
+      await materializeExport({
+        cwd,
+        runId,
+        winnerId: candidateId,
+        branchName: "fix/session-loss",
+        withReport: false,
+      });
+
+      const linkedPath = join(cwd, "linked-dir");
+      expect((await lstat(linkedPath)).isSymbolicLink()).toBe(true);
+      expect(normalizeLinkedPath(await readlink(linkedPath))).toBe(
+        normalizeLinkedPath(join(cwd, "next-target")),
+      );
+      expect(await readManagedSymlinkTargetType(linkedPath)).toBe("junction");
+    });
   });
 
   it("rejects workspace-sync export when the project changed after the run", async () => {
@@ -895,6 +993,8 @@ async function initializeGitProject(cwd: string): Promise<void> {
   await runGit(cwd, ["init"]);
   await runGit(cwd, ["config", "user.name", "Oraculum Test"]);
   await runGit(cwd, ["config", "user.email", "oraculum@example.com"]);
+  await runGit(cwd, ["config", "core.autocrlf", "false"]);
+  await runGit(cwd, ["config", "core.eol", "lf"]);
 }
 
 async function commitAll(cwd: string, message: string): Promise<void> {

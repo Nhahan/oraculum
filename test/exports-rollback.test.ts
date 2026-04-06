@@ -146,7 +146,7 @@ describe("git export rollback", () => {
         branchName: "fix/session-loss",
         withReport: false,
       }),
-    ).rejects.toThrow('Failed to apply exported patch onto branch "fix/session-loss".');
+    ).rejects.toThrow('Failed to apply the promoted patch onto branch "fix/session-loss".');
 
     expect(
       mockedRunSubprocess.mock.calls.some(
@@ -335,7 +335,7 @@ describe("git export rollback", () => {
         withReport: false,
       }),
     ).rejects.toThrow(
-      "Export bookkeeping failed after applying changes and the export was rolled back",
+      "Promotion bookkeeping failed after applying changes and the promotion was rolled back",
     );
 
     expect(
