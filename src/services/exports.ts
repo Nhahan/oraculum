@@ -37,6 +37,7 @@ import {
   copyManagedProjectTree,
   listManagedProjectEntries,
   type ManagedPathEntry,
+  normalizeManagedSymlinkTarget,
   readSymlinkTargetType as readManagedSymlinkTargetType,
 } from "./managed-tree.js";
 import { pathExists, writeJsonFile } from "./project.js";
@@ -562,7 +563,7 @@ async function syncManagedPath(
   }
 
   if (entry.kind === "symlink") {
-    return syncManagedSymlink(sourcePath, destinationRoot, entry.path);
+    return syncManagedSymlink(sourceRoot, sourcePath, destinationRoot, entry.path);
   }
 
   const destinationExists = await pathExists(destinationPath);
@@ -626,6 +627,7 @@ async function syncManagedDirectory(sourcePath: string, destinationPath: string)
 }
 
 async function syncManagedSymlink(
+  sourceRoot: string,
   sourcePath: string,
   destinationRoot: string,
   relativePath: string,
@@ -633,8 +635,16 @@ async function syncManagedSymlink(
   const destinationPath = join(destinationRoot, relativePath);
   const sourceTarget = await readlink(sourcePath);
   const sourceTargetType = await readSymlinkTargetType(sourcePath);
+  const replicatedTarget = normalizeManagedSymlinkTarget({
+    destinationPath,
+    destinationRoot,
+    sourcePath,
+    sourceRoot,
+    target: sourceTarget,
+    targetType: sourceTargetType,
+  });
 
-  if (await symlinkMatches(destinationPath, sourceTarget, sourceTargetType)) {
+  if (await symlinkMatches(destinationPath, replicatedTarget, sourceTargetType)) {
     return false;
   }
 
@@ -647,7 +657,7 @@ async function syncManagedSymlink(
     }
   }
   await mkdir(dirname(destinationPath), { recursive: true });
-  await symlink(sourceTarget, destinationPath, sourceTargetType);
+  await symlink(replicatedTarget, destinationPath, sourceTargetType);
   return true;
 }
 
@@ -681,7 +691,13 @@ async function readSymlinkTargetType(
 
 async function createManagedProjectBackup(projectRoot: string, runId: string): Promise<string> {
   const backupRoot = await mkdtemp(join(tmpdir(), `oraculum-export-${runId}-`));
-  await copyManagedProjectTree(projectRoot, backupRoot);
+  try {
+    await copyManagedProjectTree(projectRoot, backupRoot);
+  } catch (error) {
+    await rm(backupRoot, { recursive: true, force: true });
+    throw error;
+  }
+
   return backupRoot;
 }
 
@@ -792,6 +808,9 @@ async function markCandidateExported(
   candidateId: string,
 ): Promise<void> {
   const originalCandidate = manifest.candidates.find((candidate) => candidate.id === candidateId);
+  const originalCandidateJson = originalCandidate
+    ? `${JSON.stringify(originalCandidate, null, 2)}\n`
+    : undefined;
   const updatedCandidates = manifest.candidates.map((candidate) =>
     candidate.id === candidateId
       ? candidateManifestSchema.parse({ ...candidate, status: "exported" })
@@ -827,8 +846,14 @@ async function markCandidateExported(
     }
 
     try {
-      if (candidateManifestExisted && originalCandidate) {
-        await writeJsonFile(candidateManifestPath, originalCandidate);
+      if (candidateManifestExisted && originalCandidate && originalCandidateJson) {
+        const currentManifestMatchesOriginal =
+          (await pathExists(candidateManifestPath)) &&
+          (await currentFileContentsMatch(candidateManifestPath, originalCandidateJson));
+        if (!currentManifestMatchesOriginal) {
+          await rm(candidateManifestPath, { recursive: true, force: true });
+          await writeFile(candidateManifestPath, originalCandidateJson, "utf8");
+        }
       } else if (!candidateManifestExisted) {
         await rm(candidateManifestPath, { force: true });
       }
@@ -843,6 +868,19 @@ async function markCandidateExported(
     }
 
     throw error;
+  }
+}
+
+async function currentFileContentsMatch(path: string, expected: string): Promise<boolean> {
+  try {
+    const stats = await lstat(path);
+    if (!stats.isFile()) {
+      return false;
+    }
+
+    return (await readFile(path, "utf8")) === expected;
+  } catch {
+    return false;
   }
 }
 

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -57,8 +57,6 @@ describe("git export rollback", () => {
     await mkdir(candidateDir, { recursive: true });
     await mkdir(reportsDir, { recursive: true });
     await mkdir(workspaceDir, { recursive: true });
-    await mkdir(transientDirectory, { recursive: true });
-    await writeFile(transientFile, "temp\n", "utf8");
 
     mockedBuildExportPlan.mockResolvedValue({
       path: join(reportsDir, "export-plan.json"),
@@ -127,7 +125,11 @@ describe("git export rollback", () => {
       .mockResolvedValueOnce(result({ exitCode: 0 }))
       .mockResolvedValueOnce(result({ exitCode: 0, stdout: "diff --git a/app.txt b/app.txt\n" }))
       .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(result({ exitCode: 1, stderr: "apply failed\n" }))
+      .mockImplementationOnce(async () => {
+        await mkdir(transientDirectory, { recursive: true });
+        await writeFile(transientFile, "temp\n", "utf8");
+        return result({ exitCode: 1, stderr: "apply failed\n" });
+      })
       .mockResolvedValueOnce(result({ exitCode: 0 }))
       .mockResolvedValueOnce(
         result({
@@ -169,8 +171,8 @@ describe("git export rollback", () => {
           options.command === "git" && options.args.join(" ") === "branch -D fix/session-loss",
       ),
     ).toBe(true);
-    await expect(readFile(transientFile, "utf8")).rejects.toThrow();
-    await expect(readFile(transientDirectory, "utf8")).rejects.toThrow();
+    await expect(lstat(transientFile)).rejects.toThrow();
+    await expect(lstat(transientDirectory)).rejects.toThrow();
   });
 
   it("rolls back a successful apply when bookkeeping fails afterward", async () => {

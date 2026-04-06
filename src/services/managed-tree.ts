@@ -1,5 +1,5 @@
 import { chmod, cp, lstat, mkdir, readdir, readlink, stat, symlink } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 export type ManagedPathKind = "dir" | "file" | "symlink";
 
@@ -109,8 +109,16 @@ export async function copyManagedProjectTree(
 
     const target = await readlink(sourcePath);
     const targetType = await readSymlinkTargetType(sourcePath);
+    const replicatedTarget = normalizeManagedSymlinkTarget({
+      destinationPath,
+      destinationRoot,
+      sourcePath,
+      sourceRoot,
+      target,
+      targetType,
+    });
     await mkdir(dirname(destinationPath), { recursive: true });
-    await symlink(target, destinationPath, targetType);
+    await symlink(replicatedTarget, destinationPath, targetType);
   }
 }
 
@@ -118,15 +126,47 @@ export async function readSymlinkTargetType(
   absolutePath: string,
 ): Promise<"file" | "dir" | "junction" | undefined> {
   try {
+    const target = await readlink(absolutePath);
     const targetStats = await stat(absolutePath);
     if (!targetStats.isDirectory()) {
       return "file";
     }
 
-    return process.platform === "win32" ? "junction" : "dir";
+    if (process.platform !== "win32") {
+      return "dir";
+    }
+
+    return isAbsolute(target) ? "junction" : "dir";
   } catch {
     return undefined;
   }
+}
+
+interface ManagedSymlinkTargetOptions {
+  destinationPath: string;
+  destinationRoot: string;
+  sourcePath: string;
+  sourceRoot: string;
+  target: string;
+  targetType: "file" | "dir" | "junction" | undefined;
+}
+
+export function normalizeManagedSymlinkTarget(options: ManagedSymlinkTargetOptions): string {
+  if (options.targetType !== "junction" || !isAbsolute(options.target)) {
+    return options.target;
+  }
+
+  const relativeToSourceRoot = relative(options.sourceRoot, options.target);
+  if (isPathWithinRoot(relativeToSourceRoot)) {
+    return join(options.destinationRoot, relativeToSourceRoot);
+  }
+
+  const relativeToSourceLink = relative(dirname(options.sourcePath), options.target);
+  if (isPathWithinRoot(relativeToSourceLink)) {
+    return resolve(dirname(options.destinationPath), relativeToSourceLink);
+  }
+
+  return options.target;
 }
 
 function compareManagedEntriesForApply(left: ManagedPathEntry, right: ManagedPathEntry): number {
@@ -144,4 +184,8 @@ function getPathDepth(relativePath: string): number {
 
 function getManagedMode(mode: number): number {
   return mode & 0o777;
+}
+
+function isPathWithinRoot(relativePath: string): boolean {
+  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
 }

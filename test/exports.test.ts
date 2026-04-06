@@ -4,6 +4,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readlink,
   rm,
   stat,
   symlink,
@@ -15,15 +16,19 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  getCandidateDir,
+  getCandidateManifestPath,
   getExportPatchPath,
   getExportSyncSummaryPath,
   getRunManifestPath,
 } from "../src/core/paths.js";
 import { runSubprocess } from "../src/core/subprocess.js";
-import { exportPlanSchema, runManifestSchema } from "../src/domain/run.js";
+import { candidateManifestSchema, exportPlanSchema, runManifestSchema } from "../src/domain/run.js";
+import { captureManagedProjectSnapshot } from "../src/services/base-snapshots.js";
 import { executeRun } from "../src/services/execution.js";
 import { materializeExport } from "../src/services/exports.js";
-import { initializeProject } from "../src/services/project.js";
+import { readSymlinkTargetType as readManagedSymlinkTargetType } from "../src/services/managed-tree.js";
+import { initializeProject, writeJsonFile } from "../src/services/project.js";
 import { planRun } from "../src/services/runs.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
 
@@ -223,6 +228,56 @@ if (out) {
     expect(await currentBranch(cwd)).toBe("fix/session-loss");
   });
 
+  it("rolls back a real git export when bookkeeping fails on disk", async () => {
+    const cwd = await createTempRoot();
+    await initializeGitProject(cwd);
+    await writeFile(join(cwd, ".gitignore"), ".oraculum/\n", "utf8");
+    await writeFile(join(cwd, "app.txt"), "original\n", "utf8");
+    await commitAll(cwd, "initial project");
+    const baseBranch = await currentBranch(cwd);
+    await initializeProject({ cwd, force: false });
+
+    const fakeCodex = await writeExportingCodex(cwd);
+    const planned = await planRun({
+      cwd,
+      taskInput: "fix session loss on refresh",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    const candidateManifestPath = getCandidateManifestPath(cwd, planned.id, "cand-01");
+    await rm(candidateManifestPath, { force: true });
+    await mkdir(candidateManifestPath, { recursive: true });
+
+    await expect(
+      materializeExport({
+        cwd,
+        branchName: "fix/session-loss",
+        withReport: false,
+      }),
+    ).rejects.toThrow(
+      "Export bookkeeping failed after applying changes and the export was rolled back",
+    );
+
+    expect(await currentBranch(cwd)).toBe(baseBranch);
+    expect(await readFile(join(cwd, "app.txt"), "utf8")).toBe("original\n");
+    const savedManifest = runManifestSchema.parse(
+      JSON.parse(await readFile(getRunManifestPath(cwd, planned.id), "utf8")) as unknown,
+    );
+    expect(savedManifest.candidates[0]?.status).toBe("promoted");
+    const restoredCandidate = runManifestSchema.shape.candidates.element.parse(
+      JSON.parse(await readFile(candidateManifestPath, "utf8")) as unknown,
+    );
+    expect(restoredCandidate.status).toBe("promoted");
+  });
+
   it("syncs a non-git winner workspace back into the project folder", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
@@ -265,6 +320,96 @@ if (out) {
     };
     expect(syncSummary.appliedFiles).toEqual(expect.arrayContaining(["added.txt", "app.txt"]));
     expect(syncSummary.removedFiles).toEqual(["remove.txt"]);
+  });
+
+  it("retargets absolute directory links during workspace-sync export under win32 semantics", async () => {
+    const restorePlatform = forceWin32Semantics();
+    try {
+      const cwd = await createTempRoot();
+      const runId = "run_manual";
+      const candidateId = "cand-01";
+      const candidateDir = getCandidateDir(cwd, runId, candidateId);
+      const workspaceDir = join(cwd, ".oraculum", "workspaces", runId, candidateId);
+      const baseSnapshotPath = join(candidateDir, "base-snapshot.json");
+
+      await initializeProject({ cwd, force: false });
+      await mkdir(join(cwd, "target-dir"), { recursive: true });
+      await writeFile(join(cwd, "target-dir", "file.txt"), "target\n", "utf8");
+      await symlink(join(cwd, "target-dir"), join(cwd, "linked-dir"), "junction");
+
+      await mkdir(candidateDir, { recursive: true });
+      await writeJsonFile(baseSnapshotPath, await captureManagedProjectSnapshot(cwd));
+      await mkdir(workspaceDir, { recursive: true });
+      await mkdir(join(workspaceDir, "next-target"), { recursive: true });
+      await writeFile(join(workspaceDir, "next-target", "file.txt"), "next\n", "utf8");
+      await symlink(
+        join(workspaceDir, "next-target"),
+        join(workspaceDir, "linked-dir"),
+        "junction",
+      );
+
+      const candidate = candidateManifestSchema.parse({
+        id: candidateId,
+        strategyId: "minimal-change",
+        strategyLabel: "Minimal Change",
+        status: "promoted",
+        workspaceDir,
+        taskPacketPath: join(candidateDir, "task-packet.json"),
+        workspaceMode: "copy",
+        baseSnapshotPath,
+        createdAt: "2026-04-06T00:00:00.000Z",
+      });
+      await writeJsonFile(getCandidateManifestPath(cwd, runId, candidateId), candidate);
+      await writeJsonFile(
+        getRunManifestPath(cwd, runId),
+        runManifestSchema.parse({
+          id: runId,
+          status: "completed",
+          taskPath: join(cwd, "tasks", "task.md"),
+          taskPacket: {
+            id: "task_1",
+            title: "Task",
+            sourceKind: "task-note",
+            sourcePath: join(cwd, "tasks", "task.md"),
+          },
+          agent: "codex",
+          candidateCount: 1,
+          createdAt: "2026-04-06T00:00:00.000Z",
+          rounds: [
+            {
+              id: "fast",
+              label: "Fast",
+              status: "completed",
+              verdictCount: 1,
+              survivorCount: 1,
+              eliminatedCount: 0,
+            },
+          ],
+          recommendedWinner: {
+            candidateId,
+            confidence: "high",
+            summary: "cand-01 is the recommended winner.",
+            source: "llm-judge",
+          },
+          candidates: [candidate],
+        }),
+      );
+
+      await materializeExport({
+        cwd,
+        runId,
+        winnerId: candidateId,
+        branchName: "fix/session-loss",
+        withReport: false,
+      });
+
+      const linkedPath = join(cwd, "linked-dir");
+      expect((await lstat(linkedPath)).isSymbolicLink()).toBe(true);
+      expect(await readlink(linkedPath)).toBe(join(cwd, "next-target"));
+      expect(await readManagedSymlinkTargetType(linkedPath)).toBe("junction");
+    } finally {
+      restorePlatform();
+    }
   });
 
   it("rejects workspace-sync export when the project changed after the run", async () => {
@@ -760,6 +905,25 @@ async function commitAll(cwd: string, message: string): Promise<void> {
 async function currentBranch(cwd: string): Promise<string> {
   const result = await runGit(cwd, ["branch", "--show-current"]);
   return result.stdout.trim();
+}
+
+function overridePlatform(platform: NodeJS.Platform): () => void {
+  const original = process.platform;
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    value: platform,
+  });
+
+  return () => {
+    Object.defineProperty(process, "platform", {
+      configurable: true,
+      value: original,
+    });
+  };
+}
+
+function forceWin32Semantics(): () => void {
+  return process.platform === "win32" ? () => {} : overridePlatform("win32");
 }
 
 async function runGit(cwd: string, args: string[]) {
