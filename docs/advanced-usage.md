@@ -11,7 +11,7 @@ oraculum promote --branch fix/session-loss
 
 `consult` already prints the latest summary. Use `verdict` only when you want to see the result again later. Use the options below only when you need them.
 
-## Run A Task File
+## Consult On A Task File
 
 ```bash
 oraculum consult tasks/fix-session-loss.md
@@ -34,7 +34,7 @@ Available runtimes today:
 - `codex`
 - `claude-code`
 
-## Inspect A Specific Run
+## Inspect A Specific Consultation
 
 ```bash
 oraculum verdict consultation run_20260404_xxxx
@@ -42,13 +42,13 @@ oraculum verdict consultation run_20260404_xxxx
 
 Without a consultation id, `verdict` uses the latest consultation automatically.
 
-## Export From A Specific Run
+## Promote From A Specific Consultation
 
 ```bash
 oraculum promote --consultation run_20260404_xxxx --branch fix/session-loss --with-report
 ```
 
-Without `--consultation`, `promote` uses the latest exportable consultation automatically. Without a candidate id, it uses the recommended promotion automatically.
+Without `--consultation`, `promote` uses the latest promotable consultation automatically. Without a candidate id, it uses the recommended promotion automatically.
 
 ## Manually Override The Recommended Winner
 
@@ -66,13 +66,13 @@ Use `--with-report` when you want the promotion record to carry report metadata 
 oraculum promote --branch fix/session-loss --with-report
 ```
 
-In a Git-backed project, `promote` creates the target branch and applies the winner there. In a non-Git project, it syncs the winner workspace back into the project folder.
+In a Git-backed project, `promote` creates the target branch and applies the recommended promotion there. In a non-Git project, it syncs the promoted workspace back into the project folder.
 
 When available, the report bundle points at artifacts such as:
 
 - finalist-to-finalist comparison summaries
 - Markdown comparison reports
-- winner selection records
+- recommended promotion records
 
 This keeps the default path short while leaving richer review material in the advanced path.
 
@@ -83,23 +83,25 @@ oraculum init
 ```
 
 You usually do not need this because `consult` auto-initializes the project on first use.
+If you run `oraculum init --force`, Oraculum resets the quick-start config and removes any existing `.oraculum/advanced.json`.
 
 ## Plan Only
 
 ```bash
-oraculum consult draft tasks/fix-session-loss.md
+oraculum draft tasks/fix-session-loss.md
 ```
 
 This is mainly for development or internal inspection. It scaffolds the consultation without executing candidates.
 
 ## Repo-Local Oracles
 
-You can add repo-specific command checks in `.oraculum/config.json`.
+Put repo-specific command checks in `.oraculum/advanced.json`.
 
 Example:
 
 ```json
 {
+  "version": 1,
   "oracles": [
     {
       "id": "lint-fast",
@@ -125,12 +127,22 @@ Supported enforcement levels:
 
 Quick start should stay simple.
 
+Use `.oraculum/config.json` for quick-start defaults such as:
+
+- `defaultAgent`
+- `defaultCandidates`
+
+Use `.oraculum/advanced.json` for operator controls such as:
+
+- repo-local oracles
+- custom rounds and strategy portfolios
+- future profile- or policy-level overrides
+
 Use advanced settings only for things like:
 
 - choosing a specific runtime
 - changing candidate count
-- changing timeout budget
-- adding repo-local oracle commands
+- adding repo-local oracle commands in `.oraculum/advanced.json`
 - selecting a specific consultation for verdict inspection or promotion
 
 If a workflow can be expressed without these controls, prefer the simple path.

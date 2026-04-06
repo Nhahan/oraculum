@@ -1,6 +1,6 @@
 import { Command } from "commander";
 
-import { registerConsultCommand } from "./commands/consult.js";
+import { registerConsultCommand, registerDraftCommand } from "./commands/consult.js";
 import { registerInitCommand } from "./commands/init.js";
 import { registerPromoteCommand } from "./commands/promote.js";
 import { registerVerdictCommand } from "./commands/verdict.js";
@@ -15,6 +15,7 @@ export function buildProgram(): Command {
     .version(APP_VERSION);
 
   registerConsultCommand(program);
+  registerDraftCommand(program);
   registerVerdictCommand(program);
   registerPromoteCommand(program);
   registerInitCommand(program);

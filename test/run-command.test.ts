@@ -17,6 +17,7 @@ import { buildProgram } from "../src/program.js";
 import { executeRun } from "../src/services/execution.js";
 import { ensureProjectInitialized } from "../src/services/project.js";
 import { planRun } from "../src/services/runs.js";
+import { captureStdout } from "./helpers/stdout.js";
 
 const mockedPlanRun = vi.mocked(planRun);
 const mockedExecuteRun = vi.mocked(executeRun);
@@ -74,10 +75,10 @@ describe("consult command", () => {
     expect(mockedExecuteRun).toHaveBeenCalledTimes(1);
   });
 
-  it("skips execution when consult draft is requested", async () => {
+  it("skips execution when draft is requested", async () => {
     const program = createProgram();
 
-    await program.parseAsync(["consult", "draft", "tasks/task.md"], { from: "user" });
+    await program.parseAsync(["draft", "tasks/task.md"], { from: "user" });
 
     expect(mockedPlanRun).toHaveBeenCalledTimes(1);
     expect(mockedExecuteRun).not.toHaveBeenCalled();
@@ -97,6 +98,53 @@ describe("consult command", () => {
     expect(mockedPlanRun).toHaveBeenCalledWith(
       expect.objectContaining({ taskInput: "fix session loss on refresh" }),
     );
+  });
+
+  it("treats inline tasks starting with draft as normal consultations", async () => {
+    const program = createProgram();
+
+    await program.parseAsync(["consult", "draft fix session loss on refresh"], { from: "user" });
+
+    expect(mockedPlanRun).toHaveBeenCalledWith(
+      expect.objectContaining({ taskInput: "draft fix session loss on refresh" }),
+    );
+    expect(mockedExecuteRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("prints manual guidance when no recommended promotion is selected", async () => {
+    const program = createProgram();
+    const manifest = createPlannedManifest();
+    mockedExecuteRun.mockResolvedValue({
+      candidateResults: [
+        {
+          runId: manifest.id,
+          candidateId: "cand-01",
+          adapter: "codex",
+          status: "failed",
+          startedAt: "2026-04-04T00:00:00.000Z",
+          completedAt: "2026-04-04T00:00:01.000Z",
+          exitCode: 1,
+          summary: "candidate failed",
+          artifacts: [],
+        },
+      ],
+      manifest: {
+        ...manifest,
+        status: "completed",
+        candidates: manifest.candidates.map((candidate) => ({
+          ...candidate,
+          status: "eliminated" as const,
+        })),
+      },
+    });
+
+    const output = await captureStdout(async () => {
+      await program.parseAsync(["consult", "tasks/task.md"], { from: "user" });
+    });
+
+    expect(output).toContain("Finalists: 0");
+    expect(output).toContain("No recommended promotion was selected automatically.");
+    expect(output).toContain("oraculum promote <candidate-id> --branch <branch-name>");
   });
 });
 

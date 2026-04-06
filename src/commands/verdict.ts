@@ -1,57 +1,72 @@
 import type { Command } from "commander";
 
+import { getFinalistComparisonMarkdownPath } from "../core/paths.js";
+import type { RunManifest } from "../domain/run.js";
 import { readLatestRunManifest, readRunManifest } from "../services/runs.js";
 
 export function registerVerdictCommand(program: Command): void {
   const verdict = program
     .command("verdict")
     .description("Reopen the latest verdict or inspect a specific consultation.")
-    .argument("[run-id]", "consultation identifier; defaults to the latest consultation")
-    .action(async (runId?: string) => {
-      await writeVerdict(runId);
+    .argument("[consultation-id]", "consultation identifier; defaults to the latest consultation")
+    .action(async (consultationId?: string) => {
+      await writeVerdict(consultationId);
     });
 
   verdict
     .command("consultation")
     .description("Inspect a specific consultation by id.")
     .argument("<consultation-id>", "consultation identifier")
-    .action(async (runId: string) => {
-      await writeVerdict(runId);
+    .action(async (consultationId: string) => {
+      await writeVerdict(consultationId);
     });
 }
 
-async function writeVerdict(runId?: string): Promise<void> {
-  const manifest = runId
-    ? await readRunManifest(process.cwd(), runId)
+async function writeVerdict(consultationId?: string): Promise<void> {
+  const manifest = consultationId
+    ? await readRunManifest(process.cwd(), consultationId)
     : await readLatestRunManifest(process.cwd());
+  process.stdout.write(renderVerdict(manifest, process.cwd()));
+}
+
+export function renderVerdict(manifest: RunManifest, cwd: string): string {
+  const lines = [
+    `Consultation: ${manifest.id}`,
+    `Task: ${manifest.taskPacket.title}`,
+    `Agent: ${manifest.agent}`,
+    `Candidates: ${manifest.candidateCount}`,
+    `Status: ${manifest.status}`,
+  ];
   const finalists = manifest.candidates.filter(
     (candidate) => candidate.status === "promoted" || candidate.status === "exported",
   );
 
-  process.stdout.write(`Consultation: ${manifest.id}\n`);
-  process.stdout.write(`Task: ${manifest.taskPacket.title}\n`);
-  process.stdout.write(`Agent: ${manifest.agent}\n`);
-  process.stdout.write(`Candidates: ${manifest.candidateCount}\n`);
-  process.stdout.write(`Status: ${manifest.status}\n`);
   if (manifest.recommendedWinner) {
-    process.stdout.write(
-      `Recommended promotion: ${manifest.recommendedWinner.candidateId} (${manifest.recommendedWinner.confidence}, ${manifest.recommendedWinner.source})\n`,
+    lines.push(
+      `Recommended promotion: ${manifest.recommendedWinner.candidateId} (${manifest.recommendedWinner.confidence}, ${manifest.recommendedWinner.source})`,
+      manifest.recommendedWinner.summary,
     );
-    process.stdout.write(`${manifest.recommendedWinner.summary}\n`);
   }
-  process.stdout.write(`Comparison report: .oraculum/runs/${manifest.id}/reports/comparison.md\n`);
+
+  lines.push(
+    manifest.status === "completed"
+      ? `Comparison report: ${getFinalistComparisonMarkdownPath(cwd, manifest.id)}`
+      : "Comparison report: not available yet",
+  );
 
   if (finalists.length === 0) {
-    process.stdout.write("No finalists yet. Candidate states:\n");
+    lines.push("No finalists yet. Candidate states:");
   } else {
-    process.stdout.write("Finalists:\n");
+    lines.push("Finalists:");
     for (const candidate of finalists) {
-      process.stdout.write(`- ${candidate.id}: ${candidate.strategyLabel}\n`);
+      lines.push(`- ${candidate.id}: ${candidate.strategyLabel}`);
     }
-    process.stdout.write("All candidates:\n");
+    lines.push("All candidates:");
   }
 
   for (const candidate of manifest.candidates) {
-    process.stdout.write(`- ${candidate.id}: ${candidate.status} (${candidate.strategyLabel})\n`);
+    lines.push(`- ${candidate.id}: ${candidate.status} (${candidate.strategyLabel})`);
   }
+
+  return `${lines.join("\n")}\n`;
 }

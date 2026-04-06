@@ -1,23 +1,23 @@
 import { type Command, InvalidArgumentError } from "commander";
 
-import { adapterSchema } from "../domain/config.js";
+import { type Adapter, adapterSchema } from "../domain/config.js";
 import { executeRun } from "../services/execution.js";
 import { ensureProjectInitialized } from "../services/project.js";
 import { planRun } from "../services/runs.js";
 
 interface ConsultOptions {
-  agent?: string;
+  agent?: Adapter;
   candidates?: number;
   timeoutMs?: number;
 }
 
 interface DraftOptions {
-  agent?: string;
+  agent?: Adapter;
   candidates?: number;
 }
 
 export function registerConsultCommand(program: Command): void {
-  const consult = program
+  program
     .command("consult")
     .description("Consult Oraculum on one task and run the full tournament.")
     .argument("[task]", "task note path, task packet path, or inline task text")
@@ -26,7 +26,7 @@ export function registerConsultCommand(program: Command): void {
       "number of candidate patches to plan",
       parsePositiveInteger("candidate count"),
     )
-    .option("-a, --agent <agent>", "agent runtime to target")
+    .option("-a, --agent <agent>", "agent runtime to target", parseAdapter)
     .option("--timeout-ms <ms>", "adapter timeout in milliseconds", parsePositiveInteger("timeout"))
     .action(async (task: string | undefined, options: ConsultOptions) => {
       if (!task) {
@@ -41,8 +41,10 @@ export function registerConsultCommand(program: Command): void {
         draftOnly: false,
       });
     });
+}
 
-  consult
+export function registerDraftCommand(program: Command): void {
+  program
     .command("draft")
     .description("Stage a consultation without executing candidates.")
     .argument("<task>", "task note path, task packet path, or inline task text")
@@ -51,7 +53,7 @@ export function registerConsultCommand(program: Command): void {
       "number of candidate patches to plan",
       parsePositiveInteger("candidate count"),
     )
-    .option("-a, --agent <agent>", "agent runtime to target")
+    .option("-a, --agent <agent>", "agent runtime to target", parseAdapter)
     .action(async (task: string, options: DraftOptions) => {
       await runConsultAction({
         taskInput: task,
@@ -64,7 +66,7 @@ export function registerConsultCommand(program: Command): void {
 
 async function runConsultAction(options: {
   taskInput: string;
-  agentInput?: string;
+  agentInput?: Adapter;
   candidates?: number;
   draftOnly: boolean;
   timeoutMs?: number;
@@ -74,11 +76,10 @@ async function runConsultAction(options: {
     process.stdout.write(`Initialized Oraculum in ${initialized.projectRoot}\n`);
   }
 
-  const agent = options.agentInput ? adapterSchema.parse(options.agentInput) : undefined;
   const manifest = await planRun({
     cwd: process.cwd(),
     taskInput: options.taskInput,
-    ...(agent ? { agent } : {}),
+    ...(options.agentInput ? { agent: options.agentInput } : {}),
     ...(options.candidates !== undefined ? { candidates: options.candidates } : {}),
   });
 
@@ -88,7 +89,7 @@ async function runConsultAction(options: {
   process.stdout.write(`Candidates: ${manifest.candidateCount}\n`);
   if (options.draftOnly) {
     process.stdout.write(
-      "Drafted only. Execution was skipped because consult draft was requested.\n",
+      "Drafted only. Execution was skipped because the draft command was requested.\n",
     );
     process.stdout.write(`Artifacts: .oraculum/runs/${manifest.id}\n`);
     return;
@@ -145,4 +146,13 @@ function parsePositiveInteger(label: string): (value: string) => number {
 
     return parsed;
   };
+}
+
+function parseAdapter(value: string): Adapter {
+  const parsed = adapterSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new InvalidArgumentError(`agent must be one of: ${adapterSchema.options.join(", ")}.`);
+  }
+
+  return parsed.data;
 }

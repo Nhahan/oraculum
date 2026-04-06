@@ -49,6 +49,7 @@ Default loop:
 Optimize for falsification and selection of patches, not maximum agent freedom.
 `oraculum consult` is the default end-to-end tournament command: one user command should cover candidate generation, execution, judging, elimination/promotion, and artifactization. Planning-only flows belong under structured advanced subcommands and must not become the default UX.
 Protect the quick-start path as a product contract: first success should stay one-command and near-zero-config. Keep advanced controls available, but move operator complexity into optional flags, profiles, or advanced config rather than the default path.
+Use `/.oraculum/config.json` for quick-start defaults only. Put operator controls such as custom rounds, strategies, or repo-local oracles in `/.oraculum/advanced.json`.
 
 ## Working Bias
 

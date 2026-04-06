@@ -34,13 +34,11 @@ describe("CLI argument parsing", () => {
     });
   });
 
-  it("rejects partially numeric candidate counts for consult draft", async () => {
+  it("rejects partially numeric candidate counts for draft", async () => {
     const program = createProgram();
 
     await expect(
-      program.parseAsync(["consult", "draft", "tasks/task.md", "--candidates", "3abc"], {
-        from: "user",
-      }),
+      program.parseAsync(["draft", "tasks/task.md", "--candidates", "3abc"], { from: "user" }),
     ).rejects.toMatchObject({
       code: "commander.invalidArgument",
     });
@@ -55,6 +53,24 @@ describe("CLI argument parsing", () => {
       }),
     ).rejects.toMatchObject({
       code: "commander.invalidArgument",
+    });
+  });
+
+  it("rejects unsupported agents before executing the command", async () => {
+    const program = createProgram();
+
+    await expect(
+      program.parseAsync(["consult", "tasks/task.md", "--agent", "aider"], { from: "user" }),
+    ).rejects.toMatchObject({
+      code: "commander.invalidArgument",
+    });
+  });
+
+  it("rejects promote without a branch name at the CLI boundary", async () => {
+    const program = createProgram();
+
+    await expect(program.parseAsync(["promote"], { from: "user" })).rejects.toMatchObject({
+      code: "commander.missingMandatoryOptionValue",
     });
   });
 });

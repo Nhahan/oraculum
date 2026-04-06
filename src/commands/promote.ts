@@ -16,7 +16,7 @@ export function registerPromoteCommand(program: Command): void {
       "[candidate-id]",
       "promoted candidate to materialize; defaults to the recommended promotion",
     )
-    .option("-b, --branch <branchName>", "branch name to create")
+    .requiredOption("-b, --branch <branchName>", "branch name to create")
     .option(
       "--consultation <runId>",
       "consultation identifier; defaults to the latest exportable consultation",
@@ -31,10 +31,6 @@ async function materializePromotion(
   winner: string | undefined,
   options: PromoteOptions,
 ): Promise<void> {
-  if (!options.branch) {
-    throw new Error("branch name is required. Use --branch <name>.");
-  }
-
   const result = await materializeExport({
     cwd: process.cwd(),
     ...(options.consultation ? { runId: options.consultation } : {}),

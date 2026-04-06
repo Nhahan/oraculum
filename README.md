@@ -106,4 +106,4 @@ Results are saved under `.oraculum/`. The source of truth is the saved run state
 
 ## Advanced Usage
 
-If you want more control over runtimes, candidate counts, specific consultation IDs, report packaging, repo-local oracle configuration, or manually overriding the recommended promotion, see [Advanced Usage](docs/advanced-usage.md).
+If you want more control over runtimes, candidate counts, specific consultation IDs, report packaging, repo-local oracle configuration, or manually overriding the recommended promotion, see [Advanced Usage](docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; operator controls belong in `.oraculum/advanced.json`.
