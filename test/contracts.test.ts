@@ -15,7 +15,11 @@ import {
   getCandidateVerdictsDir,
   getCandidateWitnessesDir,
 } from "../src/core/paths.js";
-import { projectConfigSchema } from "../src/domain/config.js";
+import {
+  projectAdvancedConfigSchema,
+  projectConfigSchema,
+  projectQuickConfigSchema,
+} from "../src/domain/config.js";
 import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
 import { materializedTaskPacketSchema, taskPacketSchema } from "../src/domain/task.js";
 import { initializeProject } from "../src/services/project.js";
@@ -78,6 +82,35 @@ describe("task packet contracts", () => {
 });
 
 describe("oracle and adapter contracts", () => {
+  it("keeps quick-start config minimal", () => {
+    const quick = projectQuickConfigSchema.parse({
+      version: 1,
+      defaultAgent: "codex",
+      defaultCandidates: 2,
+    });
+
+    expect(quick.defaultAgent).toBe("codex");
+    expect(Object.keys(quick)).toEqual(["version", "defaultAgent", "defaultCandidates"]);
+  });
+
+  it("accepts advanced operator settings separately from quick-start defaults", () => {
+    const advanced = projectAdvancedConfigSchema.parse({
+      version: 1,
+      oracles: [
+        {
+          id: "lint-fast",
+          roundId: "fast",
+          command: "npm",
+          args: ["run", "lint"],
+          invariant: "The candidate must satisfy lint checks.",
+          enforcement: "hard",
+        },
+      ],
+    });
+
+    expect(advanced.oracles?.[0]?.args).toEqual(["run", "lint"]);
+  });
+
   it("supports repo-local command oracle configuration", () => {
     const config = projectConfigSchema.parse({
       version: 1,

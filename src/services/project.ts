@@ -1,7 +1,8 @@
-import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 
 import { OraculumError } from "../core/errors.js";
 import {
+  getAdvancedConfigPath,
   getConfigPath,
   getGeneratedTasksDir,
   getOraculumDir,
@@ -9,7 +10,14 @@ import {
   getTasksDir,
   resolveProjectRoot,
 } from "../core/paths.js";
-import { defaultProjectConfig, type ProjectConfig, projectConfigSchema } from "../domain/config.js";
+import {
+  defaultProjectConfig,
+  defaultQuickProjectConfig,
+  type ProjectConfig,
+  projectAdvancedConfigSchema,
+  projectConfigSchema,
+  projectQuickConfigSchema,
+} from "../domain/config.js";
 
 interface InitializeProjectOptions {
   cwd: string;
@@ -31,6 +39,7 @@ export async function initializeProject(
   const runsDir = getRunsDir(projectRoot);
   const tasksDir = getTasksDir(projectRoot);
   const configPath = getConfigPath(projectRoot);
+  const advancedConfigPath = getAdvancedConfigPath(projectRoot);
 
   if (!options.force && (await pathExists(configPath))) {
     throw new OraculumError(
@@ -42,7 +51,10 @@ export async function initializeProject(
   await mkdir(generatedTasksDir, { recursive: true });
   await mkdir(runsDir, { recursive: true });
   await mkdir(tasksDir, { recursive: true });
-  await writeJsonFile(configPath, defaultProjectConfig);
+  if (options.force) {
+    await rm(advancedConfigPath, { force: true });
+  }
+  await writeJsonFile(configPath, defaultQuickProjectConfig);
 
   return {
     projectRoot,
@@ -55,8 +67,15 @@ export async function ensureProjectInitialized(
   cwd: string,
 ): Promise<InitializeProjectResult | undefined> {
   const projectRoot = resolveProjectRoot(cwd);
-  if (await pathExists(getConfigPath(projectRoot))) {
+  const configPath = getConfigPath(projectRoot);
+  const advancedConfigPath = getAdvancedConfigPath(projectRoot);
+
+  if (await pathExists(configPath)) {
     return undefined;
+  }
+
+  if (await pathExists(advancedConfigPath)) {
+    await rm(advancedConfigPath, { force: true });
   }
 
   return initializeProject({
@@ -68,6 +87,7 @@ export async function ensureProjectInitialized(
 export async function loadProjectConfig(cwd: string): Promise<ProjectConfig> {
   const projectRoot = resolveProjectRoot(cwd);
   const configPath = getConfigPath(projectRoot);
+  const advancedConfigPath = getAdvancedConfigPath(projectRoot);
 
   if (!(await pathExists(configPath))) {
     throw new OraculumError(
@@ -77,8 +97,36 @@ export async function loadProjectConfig(cwd: string): Promise<ProjectConfig> {
 
   const raw = await readFile(configPath, "utf8");
   const parsed = JSON.parse(raw) as unknown;
+  const advanced = (await pathExists(advancedConfigPath))
+    ? projectAdvancedConfigSchema.parse(
+        JSON.parse(await readFile(advancedConfigPath, "utf8")) as unknown,
+      )
+    : undefined;
 
-  return projectConfigSchema.parse(parsed);
+  const legacyParse = projectConfigSchema.safeParse(parsed);
+  if (legacyParse.success) {
+    return projectConfigSchema.parse({
+      ...legacyParse.data,
+      ...(advanced?.adapters ? { adapters: advanced.adapters } : {}),
+      ...(advanced?.strategies ? { strategies: advanced.strategies } : {}),
+      ...(advanced?.rounds ? { rounds: advanced.rounds } : {}),
+      ...(advanced?.oracles ? { oracles: advanced.oracles } : {}),
+    });
+  }
+
+  const quick = projectQuickConfigSchema.parse(parsed);
+
+  return projectConfigSchema.parse({
+    ...defaultProjectConfig,
+    ...(quick.defaultAgent ? { defaultAgent: quick.defaultAgent } : {}),
+    ...(quick.defaultCandidates !== undefined
+      ? { defaultCandidates: quick.defaultCandidates }
+      : {}),
+    ...(advanced?.adapters ? { adapters: advanced.adapters } : {}),
+    ...(advanced?.strategies ? { strategies: advanced.strategies } : {}),
+    ...(advanced?.rounds ? { rounds: advanced.rounds } : {}),
+    ...(advanced?.oracles ? { oracles: advanced.oracles } : {}),
+  });
 }
 
 export async function pathExists(path: string): Promise<boolean> {

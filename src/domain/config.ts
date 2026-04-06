@@ -48,7 +48,7 @@ const reservedOracleIdsByRound: Record<RoundId, Set<string>> = {
   deep: new Set(),
 };
 
-export const projectConfigSchema = z
+const runtimeProjectConfigBaseSchema = z
   .object({
     version: z.literal(CONFIG_VERSION),
     defaultAgent: adapterSchema,
@@ -58,29 +58,57 @@ export const projectConfigSchema = z
     rounds: z.array(roundSchema).min(1),
     oracles: z.array(repoOracleSchema).default([]),
   })
-  .superRefine((config, context) => {
-    const seen = new Set<string>();
+  .strict();
 
-    for (const [index, oracle] of config.oracles.entries()) {
-      const key = `${oracle.roundId}:${oracle.id}`;
-      if (seen.has(key)) {
-        context.addIssue({
-          code: "custom",
-          message: `Duplicate repo-local oracle id "${oracle.id}" in round "${oracle.roundId}".`,
-          path: ["oracles", index, "id"],
-        });
-      }
-      seen.add(key);
+export const projectConfigSchema = runtimeProjectConfigBaseSchema.superRefine((config, context) => {
+  if (!config.adapters.includes(config.defaultAgent)) {
+    context.addIssue({
+      code: "custom",
+      message: `Default agent "${config.defaultAgent}" must be enabled in adapters.`,
+      path: ["defaultAgent"],
+    });
+  }
 
-      if (reservedOracleIdsByRound[oracle.roundId].has(oracle.id)) {
-        context.addIssue({
-          code: "custom",
-          message: `Oracle id "${oracle.id}" in round "${oracle.roundId}" is reserved by a built-in oracle.`,
-          path: ["oracles", index, "id"],
-        });
-      }
+  const seen = new Set<string>();
+
+  for (const [index, oracle] of config.oracles.entries()) {
+    const key = `${oracle.roundId}:${oracle.id}`;
+    if (seen.has(key)) {
+      context.addIssue({
+        code: "custom",
+        message: `Duplicate repo-local oracle id "${oracle.id}" in round "${oracle.roundId}".`,
+        path: ["oracles", index, "id"],
+      });
     }
-  });
+    seen.add(key);
+
+    if (reservedOracleIdsByRound[oracle.roundId].has(oracle.id)) {
+      context.addIssue({
+        code: "custom",
+        message: `Oracle id "${oracle.id}" in round "${oracle.roundId}" is reserved by a built-in oracle.`,
+        path: ["oracles", index, "id"],
+      });
+    }
+  }
+});
+
+export const projectQuickConfigSchema = z
+  .object({
+    version: z.literal(CONFIG_VERSION).optional(),
+    defaultAgent: adapterSchema.optional(),
+    defaultCandidates: z.number().int().min(1).max(16).optional(),
+  })
+  .strict();
+
+export const projectAdvancedConfigSchema = z
+  .object({
+    version: z.literal(CONFIG_VERSION).optional(),
+    adapters: z.array(adapterSchema).min(1).optional(),
+    strategies: z.array(strategySchema).min(1).optional(),
+    rounds: z.array(roundSchema).min(1).optional(),
+    oracles: z.array(repoOracleSchema).optional(),
+  })
+  .strict();
 
 export type Adapter = z.infer<typeof adapterSchema>;
 export type RoundId = z.infer<typeof roundIdSchema>;
@@ -91,6 +119,8 @@ export type Strategy = z.infer<typeof strategySchema>;
 export type Round = z.infer<typeof roundSchema>;
 export type RepoOracle = z.infer<typeof repoOracleSchema>;
 export type ProjectConfig = z.infer<typeof projectConfigSchema>;
+export type ProjectQuickConfig = z.infer<typeof projectQuickConfigSchema>;
+export type ProjectAdvancedConfig = z.infer<typeof projectAdvancedConfigSchema>;
 
 export const defaultProjectConfig: ProjectConfig = {
   version: CONFIG_VERSION,
@@ -137,4 +167,10 @@ export const defaultProjectConfig: ProjectConfig = {
     },
   ],
   oracles: [],
+};
+
+export const defaultQuickProjectConfig: ProjectQuickConfig = {
+  version: CONFIG_VERSION,
+  defaultAgent: defaultProjectConfig.defaultAgent,
+  defaultCandidates: defaultProjectConfig.defaultCandidates,
 };

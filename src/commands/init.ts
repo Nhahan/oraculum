@@ -5,8 +5,8 @@ import { initializeProject } from "../services/project.js";
 export function registerInitCommand(program: Command): void {
   program
     .command("init")
-    .description("Initialize .oraculum config and working directories.")
-    .option("-f, --force", "overwrite an existing config file")
+    .description("Initialize quick-start config and working directories.")
+    .option("-f, --force", "reset quick-start config and remove advanced overrides")
     .action(async (options: { force?: boolean }) => {
       const result = await initializeProject({
         cwd: process.cwd(),

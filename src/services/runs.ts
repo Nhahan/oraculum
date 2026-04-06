@@ -10,7 +10,6 @@ import {
   getCandidateTaskPacketPath,
   getCandidateVerdictsDir,
   getCandidateWitnessesDir,
-  getConfigPath,
   getExportPatchPath,
   getExportPlanPath,
   getFinalistComparisonJsonPath,
@@ -58,10 +57,6 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
   const projectRoot = resolveProjectRoot(options.cwd);
   const config = await loadProjectConfig(projectRoot);
   const resolvedTaskPath = await materializeTaskInput(projectRoot, options.taskInput);
-
-  if (!(await pathExists(getConfigPath(projectRoot)))) {
-    throw new OraculumError(`Missing project config in ${projectRoot}. Run "oraculum init" first.`);
-  }
 
   if (!(await pathExists(resolvedTaskPath))) {
     throw new OraculumError(`Task file not found: ${resolvedTaskPath}`);
@@ -156,7 +151,7 @@ export async function readRunManifest(cwd: string, runId: string): Promise<RunMa
   const manifestPath = getRunManifestPath(projectRoot, runId);
 
   if (!(await pathExists(manifestPath))) {
-    throw new OraculumError(`Run manifest not found: ${manifestPath}`);
+    throw new OraculumError(`Consultation record not found: ${manifestPath}`);
   }
 
   const raw = await readFile(manifestPath, "utf8");
@@ -180,18 +175,18 @@ export async function buildExportPlan(
 
   if (!winner) {
     throw new OraculumError(
-      `Candidate "${resolvedWinnerId}" does not exist in run "${resolvedRunId}".`,
+      `Candidate "${resolvedWinnerId}" does not exist in consultation "${resolvedRunId}".`,
     );
   }
   if (winner.status !== "promoted" && winner.status !== "exported") {
     throw new OraculumError(
-      `Candidate "${winner.id}" is not exportable because its status is "${winner.status}".`,
+      `Candidate "${winner.id}" is not eligible for promotion because its status is "${winner.status}".`,
     );
   }
 
   if (!winner.workspaceMode) {
     throw new OraculumError(
-      `Candidate "${winner.id}" does not have a materialized workspace mode. Run the candidate before exporting it.`,
+      `Candidate "${winner.id}" does not have a materialized workspace mode. Execute the consultation before promoting it.`,
     );
   }
 
@@ -199,13 +194,13 @@ export async function buildExportPlan(
   const mode = winner.workspaceMode === "git-worktree" ? "git-branch" : "workspace-sync";
   if (mode === "git-branch" && !winner.baseRevision) {
     throw new OraculumError(
-      `Candidate "${winner.id}" was produced by an older run artifact that does not record its git base revision. Re-run the task before exporting it.`,
+      `Candidate "${winner.id}" was produced by an older consultation artifact that does not record its git base revision. Re-run the task before promoting it.`,
     );
   }
 
   if (mode === "workspace-sync" && !winner.baseSnapshotPath) {
     throw new OraculumError(
-      `Candidate "${winner.id}" was produced by an older run artifact that does not record its base snapshot. Re-run the task before exporting it.`,
+      `Candidate "${winner.id}" was produced by an older consultation artifact that does not record its base snapshot. Re-run the task before promoting it.`,
     );
   }
 
@@ -261,7 +256,7 @@ export async function readLatestExportableRunId(cwd: string): Promise<string> {
 
   if (!(await pathExists(latestRunStatePath))) {
     throw new OraculumError(
-      "No exportable consultation found yet. Complete a consultation with a recommended promotion first.",
+      "No promotable consultation found yet. Complete a consultation with a recommended promotion first.",
     );
   }
 

@@ -5,12 +5,12 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { agentRunResultSchema } from "../src/adapters/types.js";
 import {
+  getAdvancedConfigPath,
   getCandidateAgentResultPath,
   getCandidateOracleStderrLogPath,
   getCandidateOracleStdoutLogPath,
   getCandidateVerdictPath,
   getCandidateWitnessPath,
-  getConfigPath,
   getFinalistComparisonJsonPath,
   getFinalistComparisonMarkdownPath,
 } from "../src/core/paths.js";
@@ -483,11 +483,19 @@ async function createTempRoot(): Promise<string> {
 }
 
 async function configureProjectOracles(cwd: string, oracles: unknown[]): Promise<void> {
-  const configPath = getConfigPath(cwd);
-  const parsed = JSON.parse(await readFile(configPath, "utf8")) as {
+  const configPath = getAdvancedConfigPath(cwd);
+  const parsed = (await readAdvancedConfig(configPath)) as {
     oracles?: unknown[];
     [key: string]: unknown;
   };
   parsed.oracles = oracles;
   await writeFile(configPath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+}
+
+async function readAdvancedConfig(path: string): Promise<Record<string, unknown>> {
+  try {
+    return JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+  } catch {
+    return { version: 1 };
+  }
 }
