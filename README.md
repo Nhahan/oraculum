@@ -27,6 +27,8 @@ Oraculum is a local installable workflow tool that sits between your codebase an
 
 Instead of trusting the first patch an AI gives you, Oraculum tries multiple candidate fixes, checks them, and helps you keep only the survivors.
 
+For each consultation, Oraculum also reads repo signals, asks the runtime for a structured recommendation, and applies a consultation-scoped profile draft before candidate execution starts.
+
 ## Status
 
 Oraculum is early, but it already runs end to end.
@@ -35,6 +37,7 @@ It can already:
 
 - run multiple candidates in isolated workspaces
 - call `Claude Code` or `Codex`
+- auto-select a consultation profile from repo signals and structured runtime judgment
 - run repo-local command checks
 - retry repairable candidates within bounded repair loops
 - compare finalists with richer change/risk summaries
@@ -64,6 +67,8 @@ oraculum consult "fix session loss on refresh"
 ```
 
 This runs the full tournament and prints the result summary, including the recommended promotion, why it won, and the main entry paths for reopening or promoting the consultation later.
+
+Before candidates run, Oraculum detects repo signals, asks the selected runtime to recommend a profile, and applies that recommendation to the current consultation only. The chosen profile and its rationale are saved alongside the consultation artifacts.
 
 Promote the recommended result:
 
@@ -100,9 +105,10 @@ What happens in the default flow:
 
 1. You give Oraculum one task.
 2. Oraculum creates multiple candidate fixes.
-3. Each candidate runs in its own workspace.
-4. Checks remove weak candidates in stages.
-5. Oraculum recommends a survivor, explains the comparison, and lets you promote it.
+3. Oraculum derives a consultation-scoped profile from repo signals and structured runtime output.
+4. Each candidate runs in its own workspace.
+5. Checks remove weak candidates in stages.
+6. Oraculum recommends a survivor, explains the comparison, and lets you promote it.
 
 Current judging stages:
 

@@ -13,6 +13,8 @@ oraculum promote --branch fix/session-loss
 
 Oraculum is designed first as a local installable workflow tool. Advanced flags and config make that local workflow deeper; they are not primarily CI-facing knobs.
 
+Every `consult` also runs an automatic profile-selection step. Oraculum scans repo signals, asks the chosen runtime for a structured recommendation, and applies the resulting profile draft to that consultation only. Explicit quick-start and advanced settings still win over inferred defaults.
+
 ## Consult On A Task File
 
 ```bash
@@ -35,6 +37,37 @@ Available runtimes today:
 
 - `codex`
 - `claude-code`
+
+Both runtimes support structured profile selection:
+
+- `codex` via `exec --output-schema`
+- `claude-code` via `-p --output-format json --json-schema`
+
+That structured step is what lets Oraculum treat profile choice as a bounded selection problem instead of an unstructured free-form guess.
+
+## Automatic Profile Selection
+
+Each consultation now writes a profile-selection artifact under:
+
+```text
+.oraculum/runs/<consultation-id>/reports/profile-selection.json
+```
+
+That artifact records:
+
+- detected repo signals
+- the chosen profile id
+- confidence and rationale
+- missing capabilities
+- the consultation-scoped strategy and oracle defaults that were applied
+
+Today the built-in profile families are:
+
+- `library`
+- `frontend`
+- `migration`
+
+The selected profile is consultation-scoped. It does not rewrite your saved quick-start config, and it does not overwrite explicit advanced operator settings.
 
 ## Inspect A Specific Consultation
 
