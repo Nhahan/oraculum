@@ -1,6 +1,6 @@
 # Advanced Usage
 
-This page is for users who want more control than the default one-command flow.
+This page is for users who want more control than the default local one-command flow.
 
 The normal path is still:
 
@@ -10,6 +10,8 @@ oraculum promote --branch fix/session-loss
 ```
 
 `consult` already prints the latest summary. Use `verdict` only when you want to see the result again later. Use the options below only when you need them.
+
+Oraculum is designed first as a local installable workflow tool. Advanced flags and config make that local workflow deeper; they are not primarily CI-facing knobs.
 
 ## Consult On A Task File
 
@@ -41,6 +43,15 @@ oraculum verdict consultation run_20260404_xxxx
 ```
 
 Without a consultation id, `verdict` uses the latest consultation automatically.
+
+## Browse Recent Consultations
+
+```bash
+oraculum verdict archive
+oraculum verdict archive 20
+```
+
+Use this when you want to reopen an older consultation without remembering the exact id first.
 
 ## Promote From A Specific Consultation
 

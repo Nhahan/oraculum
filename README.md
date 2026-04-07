@@ -23,7 +23,7 @@
 
 ## Overview
 
-Oraculum sits between your codebase and an AI coding runtime.
+Oraculum is a local installable workflow tool that sits between your codebase and an AI coding runtime.
 
 Instead of trusting the first patch an AI gives you, Oraculum tries multiple candidate fixes, checks them, and helps you keep only the survivors.
 
@@ -40,8 +40,6 @@ It can already:
 - compare finalists with richer change/risk summaries
 - save machine-readable run artifacts under `.oraculum/`
 - materialize the recommended promotion back into your project
-
-Packaging and public release flow are still being finalized.
 
 ## Requirements
 
@@ -65,7 +63,7 @@ Consult Oraculum on a task:
 oraculum consult "fix session loss on refresh"
 ```
 
-This runs the full tournament and prints the result summary, including the recommended promotion, why it won, and the comparison report path.
+This runs the full tournament and prints the result summary, including the recommended promotion, why it won, and the main entry paths for reopening or promoting the consultation later.
 
 Promote the recommended result:
 
@@ -81,6 +79,12 @@ If you want to look at the latest result again later:
 oraculum verdict
 ```
 
+If you want to browse earlier consultations:
+
+```bash
+oraculum verdict archive
+```
+
 What happens in the default flow:
 
 - `consult` starts the full flow in one command
@@ -89,6 +93,8 @@ What happens in the default flow:
 - `consult` prints the latest result summary immediately
 - `promote` uses the latest exportable consultation and its recommended promotion by default
 - `verdict` lets you reopen the latest result later
+- `verdict archive` lets you browse earlier consultations
+- the default path is local and interactive; CI or PR automation is not required
 
 ## How It Works
 
