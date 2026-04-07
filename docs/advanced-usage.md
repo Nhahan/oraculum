@@ -73,6 +73,7 @@ When available, the report bundle points at artifacts such as:
 - finalist-to-finalist comparison summaries
 - Markdown comparison reports
 - recommended promotion records
+- change summaries, witness rollups, and why-this-won rationale
 
 This keeps the default path short while leaving richer review material in the advanced path.
 
@@ -120,8 +121,20 @@ Use `command` with `args` when you want an exact executable invocation. Use a sh
 Supported enforcement levels:
 
 - `hard`: fail the candidate immediately
-- `repairable`: record a failure that can later be used for bounded repair flows
+- `repairable`: record a failure that can trigger a bounded repair attempt in the same round; unresolved repairable findings still block promotion
 - `signal`: keep the candidate alive, but record the warning
+
+You can also tune bounded repair behavior in `.oraculum/advanced.json`:
+
+```json
+{
+  "version": 1,
+  "repair": {
+    "enabled": true,
+    "maxAttemptsPerRound": 1
+  }
+}
+```
 
 ## Where Advanced Settings Belong
 
@@ -135,6 +148,7 @@ Use `.oraculum/config.json` for quick-start defaults such as:
 Use `.oraculum/advanced.json` for operator controls such as:
 
 - repo-local oracles
+- repair policy
 - custom rounds and strategy portfolios
 - future profile- or policy-level overrides
 

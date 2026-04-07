@@ -36,6 +36,8 @@ It can already:
 - run multiple candidates in isolated workspaces
 - call `Claude Code` or `Codex`
 - run repo-local command checks
+- retry repairable candidates within bounded repair loops
+- compare finalists with richer change/risk summaries
 - save machine-readable run artifacts under `.oraculum/`
 - materialize the recommended promotion back into your project
 
@@ -63,7 +65,7 @@ Consult Oraculum on a task:
 oraculum consult "fix session loss on refresh"
 ```
 
-This runs the full tournament and prints the result summary, including the recommended promotion and the comparison report path.
+This runs the full tournament and prints the result summary, including the recommended promotion, why it won, and the comparison report path.
 
 Promote the recommended result:
 
@@ -94,12 +96,12 @@ What happens in the default flow:
 2. Oraculum creates multiple candidate fixes.
 3. Each candidate runs in its own workspace.
 4. Checks remove weak candidates in stages.
-5. Oraculum recommends a survivor, and you can inspect or promote it.
+5. Oraculum recommends a survivor, explains the comparison, and lets you promote it.
 
 Current judging stages:
 
 - `fast`: basic execution and artifact checks
-- `impact`: reviewable-output checks
+- `impact`: reviewable-output and materialized-patch checks
 - `deep`: stage exists, but real deep checks are still to be added
 
 Results are saved under `.oraculum/`. The source of truth is the saved run state and artifacts, not chat transcript.
