@@ -1,6 +1,6 @@
 {
   "name": "oraculum",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.0",
   "description": "Patch search and judgment harness for Claude Code and Codex.",
   "license": "MIT",
   "type": "module",
