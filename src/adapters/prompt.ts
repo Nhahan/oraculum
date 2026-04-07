@@ -1,4 +1,4 @@
-import type { AgentJudgeRequest, AgentRunRequest } from "./types.js";
+import type { AgentJudgeRequest, AgentProfileRequest, AgentRunRequest } from "./types.js";
 
 export function buildCandidatePrompt(request: AgentRunRequest): string {
   const sections: string[] = [
@@ -160,6 +160,68 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
     "- Choose only one of the listed candidate IDs.",
     "- Do not invent a candidate ID.",
     "- Keep the summary concise and concrete.",
+    "- Return JSON only.",
+  );
+
+  return `${sections.join("\n")}\n`;
+}
+
+export function buildProfileSelectionPrompt(request: AgentProfileRequest): string {
+  const sections: string[] = [
+    "You are selecting the best Oraculum consultation profile for the current repository.",
+    "Choose exactly one profile option and synthesize the strongest default tournament settings for this consultation.",
+    "Only choose command ids from the provided command catalog. Do not invent commands or command ids.",
+    'Return JSON only in this shape: {"profileId":"library","confidence":"high","summary":"short rationale","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast"],"missingCapabilities":["none or short notes"]}',
+    "",
+    `Task ID: ${request.taskPacket.id}`,
+    `Task Title: ${request.taskPacket.title}`,
+    "",
+    "Intent:",
+    request.taskPacket.intent,
+  ];
+
+  if (request.taskPacket.acceptanceCriteria.length > 0) {
+    sections.push(
+      "",
+      "Acceptance criteria:",
+      ...request.taskPacket.acceptanceCriteria.map((item) => `- ${item}`),
+    );
+  }
+
+  sections.push(
+    "",
+    "Profile options:",
+    ...request.profileOptions.map((option) => `- ${option.id}: ${option.description}`),
+    "",
+    `Detected package manager: ${request.signals.packageManager}`,
+    `Detected scripts: ${request.signals.scripts.join(", ") || "none"}`,
+    `Detected tags: ${request.signals.tags.join(", ") || "none"}`,
+    `Detected notable files: ${request.signals.files.join(", ") || "none"}`,
+    `Detected dependencies: ${request.signals.dependencies.slice(0, 20).join(", ") || "none"}`,
+  );
+
+  if (request.signals.notes.length > 0) {
+    sections.push("", "Repository notes:", ...request.signals.notes.map((note) => `- ${note}`));
+  }
+
+  sections.push("", "Command catalog:");
+  for (const candidate of request.signals.commandCatalog) {
+    sections.push(
+      `- ${candidate.id}`,
+      `  Round: ${candidate.roundId}`,
+      `  Label: ${candidate.label}`,
+      `  Command: ${[candidate.command, ...candidate.args].join(" ")}`,
+      `  Invariant: ${candidate.invariant}`,
+    );
+  }
+
+  sections.push(
+    "",
+    "Rules:",
+    "- Candidate count should usually be 3 or 4 unless the repository signals strongly suggest otherwise.",
+    "- Strategy ids must be chosen from this set: minimal-change, safety-first, test-amplified, structural-refactor.",
+    "- Selected command ids must come only from the catalog above.",
+    "- If an expected check is missing, explain that in missingCapabilities instead of inventing a command.",
     "- Return JSON only.",
   );
 

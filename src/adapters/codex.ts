@@ -2,16 +2,27 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { runSubprocess } from "../core/subprocess.js";
+import {
+  type AgentProfileRecommendation,
+  agentProfileRecommendationSchema,
+} from "../domain/profile.js";
 
 import { shouldUseWindowsShell } from "./platform.js";
-import { buildCandidatePrompt, buildWinnerSelectionPrompt } from "./prompt.js";
+import {
+  buildCandidatePrompt,
+  buildProfileSelectionPrompt,
+  buildWinnerSelectionPrompt,
+} from "./prompt.js";
 import {
   type AgentAdapter,
   type AgentJudgeRequest,
   type AgentJudgeResult,
+  type AgentProfileRequest,
+  type AgentProfileResult,
   type AgentRunRequest,
   type AgentRunResult,
   agentJudgeResultSchema,
+  agentProfileResultSchema,
   agentRunResultSchema,
 } from "./types.js";
 
@@ -147,6 +158,67 @@ export class CodexAdapter implements AgentAdapter {
       ],
     });
   }
+
+  async recommendProfile(request: AgentProfileRequest): Promise<AgentProfileResult> {
+    await mkdir(request.logDir, { recursive: true });
+
+    const prompt = buildProfileSelectionPrompt(request);
+    const promptPath = join(request.logDir, "profile-judge.prompt.txt");
+    const schemaPath = join(request.logDir, "profile-judge.schema.json");
+    const stdoutPath = join(request.logDir, "profile-judge.stdout.jsonl");
+    const stderrPath = join(request.logDir, "profile-judge.stderr.txt");
+    const finalMessagePath = join(request.logDir, "profile-judge.final-message.txt");
+    const startedAt = new Date().toISOString();
+
+    await writeFile(promptPath, prompt, "utf8");
+    await writeFile(schemaPath, `${JSON.stringify(buildProfileRecommendationSchema(), null, 2)}\n`);
+
+    const result = await runSubprocess({
+      command: this.binaryPath,
+      args: [
+        "-a",
+        "never",
+        "exec",
+        "-s",
+        "read-only",
+        "--skip-git-repo-check",
+        "--json",
+        "--output-schema",
+        schemaPath,
+        "-o",
+        finalMessagePath,
+      ],
+      cwd: request.projectRoot,
+      ...(this.env ? { env: this.env } : {}),
+      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
+      stdin: prompt,
+      timeoutMs: this.timeoutMs,
+    });
+
+    await writeFile(stdoutPath, result.stdout, "utf8");
+    await writeFile(stderrPath, result.stderr, "utf8");
+
+    const finalMessage = await readOptionalFile(finalMessagePath);
+    const judgeOutput = finalMessage ?? result.stdout;
+
+    return agentProfileResultSchema.parse({
+      runId: request.runId,
+      adapter: this.name,
+      status: result.timedOut ? "timed-out" : result.exitCode === 0 ? "completed" : "failed",
+      startedAt,
+      completedAt: new Date().toISOString(),
+      exitCode: result.exitCode,
+      summary: summarizeAgentOutput(judgeOutput, "Codex profile selection finished."),
+      recommendation: extractProfileRecommendation(judgeOutput),
+      artifacts: [
+        { kind: "prompt", path: promptPath },
+        { kind: "report", path: schemaPath },
+        { kind: "transcript", path: stdoutPath },
+        { kind: "stderr", path: stderrPath },
+        ...(finalMessage ? [{ kind: "report" as const, path: finalMessagePath }] : []),
+      ],
+    });
+  }
 }
 
 async function readOptionalFile(path: string): Promise<string | undefined> {
@@ -193,4 +265,62 @@ function extractRecommendation(
   } catch {
     return undefined;
   }
+}
+
+function extractProfileRecommendation(output: string): AgentProfileRecommendation | undefined {
+  const trimmed = output.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    return agentProfileRecommendationSchema.parse(JSON.parse(trimmed) as unknown);
+  } catch {
+    return undefined;
+  }
+}
+
+function buildProfileRecommendationSchema(): Record<string, unknown> {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      profileId: {
+        type: "string",
+        enum: ["library", "frontend", "migration"],
+      },
+      confidence: {
+        type: "string",
+        enum: ["low", "medium", "high"],
+      },
+      summary: { type: "string", minLength: 1 },
+      candidateCount: { type: "integer", minimum: 1, maximum: 8 },
+      strategyIds: {
+        type: "array",
+        minItems: 1,
+        maxItems: 4,
+        items: {
+          type: "string",
+          enum: ["minimal-change", "safety-first", "test-amplified", "structural-refactor"],
+        },
+      },
+      selectedCommandIds: {
+        type: "array",
+        items: { type: "string" },
+      },
+      missingCapabilities: {
+        type: "array",
+        items: { type: "string" },
+      },
+    },
+    required: [
+      "profileId",
+      "confidence",
+      "summary",
+      "candidateCount",
+      "strategyIds",
+      "selectedCommandIds",
+      "missingCapabilities",
+    ],
+  };
 }

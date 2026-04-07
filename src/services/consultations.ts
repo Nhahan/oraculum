@@ -4,6 +4,7 @@ import { relative } from "node:path";
 import {
   getExportPlanPath,
   getFinalistComparisonMarkdownPath,
+  getProfileSelectionPath,
   getRunDir,
   getRunManifestPath,
   getRunsDir,
@@ -79,10 +80,21 @@ export async function renderConsultationSummary(
       manifest.recommendedWinner.summary,
     );
   }
+  if (manifest.profileSelection) {
+    lines.push(
+      `Auto profile: ${manifest.profileSelection.profileId} (${manifest.profileSelection.confidence}, ${manifest.profileSelection.source})`,
+      manifest.profileSelection.summary,
+    );
+  }
 
   lines.push("Entry paths:");
   lines.push(
     `- consultation root: ${toDisplayPath(projectRoot, getRunDir(projectRoot, manifest.id))}`,
+  );
+  lines.push(
+    manifest.profileSelection
+      ? `- profile selection: ${toDisplayPath(projectRoot, getProfileSelectionPath(projectRoot, manifest.id))}`
+      : "- profile selection: not available",
   );
   lines.push(
     manifest.status === "completed"
@@ -142,8 +154,11 @@ export function renderConsultationArchive(manifests: RunManifest[]): string {
     const recommendation = manifest.recommendedWinner
       ? `recommended ${manifest.recommendedWinner.candidateId}`
       : "no recommendation yet";
+    const profile = manifest.profileSelection
+      ? `profile ${manifest.profileSelection.profileId}`
+      : "no auto profile";
     lines.push(
-      `- ${manifest.id} | ${manifest.status} | ${manifest.taskPacket.title} | ${recommendation}`,
+      `- ${manifest.id} | ${manifest.status} | ${manifest.taskPacket.title} | ${profile} | ${recommendation}`,
       `  opened: ${manifest.createdAt}`,
       `  reopen: oraculum verdict consultation ${manifest.id}`,
     );

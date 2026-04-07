@@ -78,7 +78,10 @@ describe("consult command", () => {
 
     expect(mockedPlanRun).toHaveBeenCalledTimes(1);
     expect(mockedPlanRun).toHaveBeenCalledWith(
-      expect.objectContaining({ taskInput: "tasks/task.md" }),
+      expect.objectContaining({
+        taskInput: "tasks/task.md",
+        autoProfile: { allowRuntime: true },
+      }),
     );
     expect(mockedExecuteRun).toHaveBeenCalledTimes(1);
   });
@@ -89,6 +92,12 @@ describe("consult command", () => {
     await program.parseAsync(["draft", "tasks/task.md"], { from: "user" });
 
     expect(mockedPlanRun).toHaveBeenCalledTimes(1);
+    expect(mockedPlanRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskInput: "tasks/task.md",
+        autoProfile: { allowRuntime: false },
+      }),
+    );
     expect(mockedExecuteRun).not.toHaveBeenCalled();
   });
 
@@ -104,7 +113,10 @@ describe("consult command", () => {
 
     expect(mockedEnsureProjectInitialized).toHaveBeenCalledTimes(1);
     expect(mockedPlanRun).toHaveBeenCalledWith(
-      expect.objectContaining({ taskInput: "fix session loss on refresh" }),
+      expect.objectContaining({
+        taskInput: "fix session loss on refresh",
+        autoProfile: { allowRuntime: true },
+      }),
     );
   });
 
@@ -114,7 +126,10 @@ describe("consult command", () => {
     await program.parseAsync(["consult", "draft fix session loss on refresh"], { from: "user" });
 
     expect(mockedPlanRun).toHaveBeenCalledWith(
-      expect.objectContaining({ taskInput: "draft fix session loss on refresh" }),
+      expect.objectContaining({
+        taskInput: "draft fix session loss on refresh",
+        autoProfile: { allowRuntime: true },
+      }),
     );
     expect(mockedExecuteRun).toHaveBeenCalledTimes(1);
   });
@@ -132,6 +147,7 @@ describe("consult command", () => {
     expect(mockedPlanRun).toHaveBeenCalledWith(
       expect.objectContaining({
         taskInput: "Update src/greet.js so greet() returns Hello instead of Bye.",
+        autoProfile: { allowRuntime: true },
       }),
     );
     expect(mockedExecuteRun).toHaveBeenCalledTimes(1);

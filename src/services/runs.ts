@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { createAgentAdapter } from "../adapters/index.js";
 import { OraculumError } from "../core/errors.js";
 import {
   getCandidateDir,
@@ -17,6 +18,7 @@ import {
   getGeneratedTasksDir,
   getLatestExportableRunStatePath,
   getLatestRunStatePath,
+  getProfileSelectionPath,
   getReportsDir,
   getRunDir,
   getRunManifestPath,
@@ -35,7 +37,8 @@ import {
   type RunRound,
   runManifestSchema,
 } from "../domain/run.js";
-import { loadProjectConfig, pathExists, writeJsonFile } from "./project.js";
+import { recommendConsultationProfile } from "./consultation-profile.js";
+import { loadProjectConfigLayers, pathExists, writeJsonFile } from "./project.js";
 import { loadTaskPacket } from "./task-packets.js";
 
 interface PlanRunOptions {
@@ -43,6 +46,13 @@ interface PlanRunOptions {
   taskInput: string;
   agent?: Adapter;
   candidates?: number;
+  autoProfile?: {
+    allowRuntime?: boolean;
+    claudeBinaryPath?: string;
+    codexBinaryPath?: string;
+    env?: NodeJS.ProcessEnv;
+    timeoutMs?: number;
+  };
 }
 
 interface BuildExportPlanOptions {
@@ -55,7 +65,7 @@ interface BuildExportPlanOptions {
 
 export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
   const projectRoot = resolveProjectRoot(options.cwd);
-  const config = await loadProjectConfig(projectRoot);
+  const configLayers = await loadProjectConfigLayers(projectRoot);
   const resolvedTaskPath = await materializeTaskInput(projectRoot, options.taskInput);
 
   if (!(await pathExists(resolvedTaskPath))) {
@@ -63,14 +73,10 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
   }
 
   const taskPacket = await loadTaskPacket(resolvedTaskPath);
+  let config = configLayers.config;
   const agent = options.agent ?? config.defaultAgent;
   if (!config.adapters.includes(agent)) {
     throw new OraculumError(`Agent "${agent}" is not enabled in the project config.`);
-  }
-
-  const candidateCount = options.candidates ?? config.defaultCandidates;
-  if (candidateCount < 1) {
-    throw new OraculumError("Candidate count must be at least 1.");
   }
 
   const runId = createRunId();
@@ -79,7 +85,49 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
   await mkdir(runDir, { recursive: true });
   await mkdir(reportsDir, { recursive: true });
 
+  const autoProfile = options.autoProfile
+    ? await recommendConsultationProfile({
+        adapter: createAgentAdapter(agent, {
+          ...(options.autoProfile.claudeBinaryPath
+            ? { claudeBinaryPath: options.autoProfile.claudeBinaryPath }
+            : {}),
+          ...(options.autoProfile.codexBinaryPath
+            ? { codexBinaryPath: options.autoProfile.codexBinaryPath }
+            : {}),
+          ...(options.autoProfile.env ? { env: options.autoProfile.env } : {}),
+          ...(options.autoProfile.timeoutMs !== undefined
+            ? { timeoutMs: options.autoProfile.timeoutMs }
+            : {}),
+        }),
+        ...(options.autoProfile.allowRuntime !== undefined
+          ? { allowRuntime: options.autoProfile.allowRuntime }
+          : {}),
+        baseConfig: config,
+        configLayers,
+        projectRoot,
+        reportsDir,
+        runId,
+        taskPacket,
+      })
+    : undefined;
+  if (autoProfile) {
+    config = autoProfile.config;
+  }
+
+  const candidateCount = options.candidates ?? config.defaultCandidates;
+  if (candidateCount < 1) {
+    throw new OraculumError("Candidate count must be at least 1.");
+  }
+
   const strategies = selectStrategies(config, candidateCount);
+  const profileSelection = autoProfile
+    ? {
+        ...autoProfile.selection,
+        candidateCount,
+        strategyIds: strategies.map((strategy) => strategy.id),
+        oracleIds: config.oracles.map((oracle) => oracle.id),
+      }
+    : undefined;
   const createdAt = new Date().toISOString();
 
   const candidates = await Promise.all(
@@ -140,6 +188,7 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
       eliminatedCount: 0,
     })),
     candidates,
+    ...(profileSelection ? { profileSelection } : {}),
   };
 
   runManifestSchema.parse(manifest);
@@ -320,6 +369,7 @@ async function materializeTaskInput(projectRoot: string, taskInput: string): Pro
 
 async function collectReportFiles(projectRoot: string, runId: string): Promise<string[]> {
   const candidates = [
+    getProfileSelectionPath(projectRoot, runId),
     getFinalistComparisonJsonPath(projectRoot, runId),
     getFinalistComparisonMarkdownPath(projectRoot, runId),
     getWinnerSelectionPath(projectRoot, runId),

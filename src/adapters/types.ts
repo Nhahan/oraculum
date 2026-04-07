@@ -1,6 +1,13 @@
 import { z } from "zod";
 
 import { type Adapter, adapterSchema } from "../domain/config.js";
+import {
+  type AgentProfileRecommendation,
+  agentProfileRecommendationSchema,
+  type ConsultationProfileId,
+  decisionConfidenceSchema,
+  type ProfileRepoSignals,
+} from "../domain/profile.js";
 import type { MaterializedTaskPacket } from "../domain/task.js";
 
 export const agentArtifactKindSchema = z.enum([
@@ -31,7 +38,6 @@ export const agentRunResultSchema = z.object({
   artifacts: z.array(agentArtifactSchema).default([]),
 });
 
-export const judgeConfidenceSchema = z.enum(["low", "medium", "high"]);
 export const finalistVerdictSchema = z.object({
   roundId: z.string().min(1),
   oracleId: z.string().min(1),
@@ -82,7 +88,7 @@ export const finalistSummarySchema = z.object({
 
 export const agentJudgeRecommendationSchema = z.object({
   candidateId: z.string().min(1),
-  confidence: judgeConfidenceSchema,
+  confidence: decisionConfidenceSchema,
   summary: z.string().min(1),
 });
 
@@ -95,6 +101,18 @@ export const agentJudgeResultSchema = z.object({
   exitCode: z.number().int(),
   summary: z.string().min(1),
   recommendation: agentJudgeRecommendationSchema.optional(),
+  artifacts: z.array(agentArtifactSchema).default([]),
+});
+
+export const agentProfileResultSchema = z.object({
+  runId: z.string().min(1),
+  adapter: adapterSchema,
+  status: agentRunStatusSchema,
+  startedAt: z.string().min(1),
+  completedAt: z.string().min(1),
+  exitCode: z.number().int(),
+  summary: z.string().min(1),
+  recommendation: agentProfileRecommendationSchema.optional(),
   artifacts: z.array(agentArtifactSchema).default([]),
 });
 
@@ -114,6 +132,7 @@ export interface AgentAdapter {
 
   runCandidate(request: AgentRunRequest): Promise<AgentRunResult>;
   recommendWinner(request: AgentJudgeRequest): Promise<AgentJudgeResult>;
+  recommendProfile(request: AgentProfileRequest): Promise<AgentProfileResult>;
 }
 
 export interface AgentJudgeRequest {
@@ -122,6 +141,18 @@ export interface AgentJudgeRequest {
   logDir: string;
   taskPacket: MaterializedTaskPacket;
   finalists: FinalistSummary[];
+}
+
+export interface AgentProfileRequest {
+  runId: string;
+  projectRoot: string;
+  logDir: string;
+  taskPacket: MaterializedTaskPacket;
+  signals: ProfileRepoSignals;
+  profileOptions: Array<{
+    id: ConsultationProfileId;
+    description: string;
+  }>;
 }
 
 export interface AgentRepairContext {
@@ -146,3 +177,5 @@ export type AgentRunResult = z.infer<typeof agentRunResultSchema>;
 export type FinalistSummary = z.infer<typeof finalistSummarySchema>;
 export type AgentJudgeRecommendation = z.infer<typeof agentJudgeRecommendationSchema>;
 export type AgentJudgeResult = z.infer<typeof agentJudgeResultSchema>;
+export type AgentProfileResult = z.infer<typeof agentProfileResultSchema>;
+export type { AgentProfileRecommendation };

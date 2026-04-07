@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   type AgentAdapter,
   agentJudgeResultSchema,
+  agentProfileResultSchema,
   agentRunResultSchema,
 } from "../src/adapters/types.js";
 import {
@@ -249,6 +250,27 @@ describe("oracle and adapter contracts", () => {
             candidateId: request.finalists[0]?.candidateId ?? "cand-01",
             confidence: "medium",
             summary: "Stub judge recommendation.",
+          },
+          artifacts: [],
+        });
+      },
+      async recommendProfile(request) {
+        return agentProfileResultSchema.parse({
+          runId: request.runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-03T00:00:00.000Z",
+          completedAt: "2026-04-03T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Stub profile recommendation completed.",
+          recommendation: {
+            profileId: "library",
+            confidence: "medium",
+            summary: "Stub profile recommendation.",
+            candidateCount: 4,
+            strategyIds: ["minimal-change", "test-amplified"],
+            selectedCommandIds: [],
+            missingCapabilities: [],
           },
           artifacts: [],
         });

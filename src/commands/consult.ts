@@ -20,7 +20,9 @@ interface DraftOptions {
 export function registerConsultCommand(program: Command): void {
   program
     .command("consult")
-    .description("Consult Oraculum on one task and run the full tournament.")
+    .description(
+      "Consult Oraculum on one task, auto-select a consultation profile, and run the full tournament.",
+    )
     .argument("[task]", "task note path, task packet path, or inline task text")
     .option(
       "-c, --candidates <count>",
@@ -47,7 +49,7 @@ export function registerConsultCommand(program: Command): void {
 export function registerDraftCommand(program: Command): void {
   program
     .command("draft")
-    .description("Stage a consultation without executing candidates.")
+    .description("Stage a consultation with auto-selected defaults without executing candidates.")
     .argument("<task>", "task note path, task packet path, or inline task text")
     .option(
       "-c, --candidates <count>",
@@ -82,6 +84,10 @@ async function runConsultAction(options: {
     taskInput: options.taskInput,
     ...(options.agentInput ? { agent: options.agentInput } : {}),
     ...(options.candidates !== undefined ? { candidates: options.candidates } : {}),
+    autoProfile: {
+      allowRuntime: !options.draftOnly,
+      ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+    },
   });
 
   process.stdout.write(

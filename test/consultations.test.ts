@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   getExportPlanPath,
+  getProfileSelectionPath,
   getRunManifestPath,
   getWinnerSelectionPath,
 } from "../src/core/paths.js";
@@ -31,6 +32,17 @@ describe("consultation workflow summaries", () => {
   it("renders a richer consultation summary with entry paths and next steps", async () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {
+      profileSelection: {
+        profileId: "library",
+        confidence: "high",
+        source: "llm-recommendation",
+        summary: "Library scripts and package export signals are strongest.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change", "test-amplified"],
+        oracleIds: ["lint-fast", "typecheck-fast"],
+        missingCapabilities: [],
+        signals: ["package-export", "lint-script"],
+      },
       recommendedWinner: {
         candidateId: "cand-01",
         confidence: "high",
@@ -39,6 +51,7 @@ describe("consultation workflow summaries", () => {
       },
     });
     await writeManifest(cwd, manifest);
+    await writeFile(getProfileSelectionPath(cwd, manifest.id), "{}\n", "utf8");
     await writeFile(getWinnerSelectionPath(cwd, manifest.id), "{}\n", "utf8");
     await writeFile(getExportPlanPath(cwd, manifest.id), "{}\n", "utf8");
 
@@ -47,11 +60,15 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain("Opened: 2026-04-04T00:00:00.000Z");
     expect(summary).toContain("Entry paths:");
     expect(summary).toContain("- consultation root: .oraculum/runs/run_1");
+    expect(summary).toContain(
+      "- profile selection: .oraculum/runs/run_1/reports/profile-selection.json",
+    );
     expect(summary).toContain("- comparison report: .oraculum/runs/run_1/reports/comparison.md");
     expect(summary).toContain(
       "- winner selection: .oraculum/runs/run_1/reports/winner-selection.json",
     );
     expect(summary).toContain("- promotion record: .oraculum/runs/run_1/reports/export-plan.json");
+    expect(summary).toContain("Auto profile: library (high, llm-recommendation)");
     expect(summary).toContain("Recommended promotion: cand-01 (high, llm-judge)");
     expect(summary).toContain("Next:");
     expect(summary).toContain("oraculum promote --branch <branch-name>");
@@ -89,8 +106,12 @@ describe("consultation workflow summaries", () => {
 
     expect(manifests.map((manifest) => manifest.id)).toEqual(["run_newer", "run_older"]);
     expect(archive).toContain("Recent consultations:");
-    expect(archive).toContain("- run_newer | planned | Task | no recommendation yet");
-    expect(archive).toContain("- run_older | completed | Task | no recommendation yet");
+    expect(archive).toContain(
+      "- run_newer | planned | Task | no auto profile | no recommendation yet",
+    );
+    expect(archive).toContain(
+      "- run_older | completed | Task | no auto profile | no recommendation yet",
+    );
     expect(archive).toContain("oraculum verdict consultation run_newer");
   });
 });

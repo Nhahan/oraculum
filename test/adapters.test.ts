@@ -279,6 +279,157 @@ if (out) {
       "Repair summary: attempts=1, rounds=impact",
     );
   });
+
+  it("asks Codex to recommend a consultation profile with an output schema", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "profile-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+let schema = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+  if (process.argv[index] === "--output-schema") {
+    schema = process.argv[index + 1] ?? "";
+  }
+}
+process.stdout.write(JSON.stringify({ argv: process.argv.slice(2), schema }) + "\\n");
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"profileId":"library","confidence":"high","summary":"Library signals are strongest.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast"],"missingCapabilities":[]}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const adapter = new CodexAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendProfile({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      signals: {
+        packageManager: "npm",
+        scripts: ["lint", "typecheck", "test"],
+        dependencies: ["typescript"],
+        files: ["package.json", "tsconfig.json"],
+        tags: ["package-export", "lint-script", "typecheck-script"],
+        notes: [],
+        commandCatalog: [
+          {
+            id: "lint-fast",
+            roundId: "fast",
+            label: "Lint",
+            command: "npm",
+            args: ["run", "lint"],
+            invariant: "The codebase should satisfy lint checks.",
+          },
+          {
+            id: "typecheck-fast",
+            roundId: "fast",
+            label: "Typecheck",
+            command: "npm",
+            args: ["run", "typecheck"],
+            invariant: "The codebase should satisfy type checking.",
+          },
+        ],
+      },
+      profileOptions: [
+        { id: "library", description: "Library work." },
+        { id: "frontend", description: "Frontend work." },
+        { id: "migration", description: "Migration work." },
+      ],
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation?.profileId).toBe("library");
+    expect(result.recommendation?.selectedCommandIds).toEqual(["lint-fast", "typecheck-fast"]);
+    await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "Profile options:",
+    );
+    await expect(readFile(join(logDir, "profile-judge.stdout.jsonl"), "utf8")).resolves.toContain(
+      '"--output-schema"',
+    );
+  });
+
+  it("asks Claude to recommend a consultation profile with json-schema output", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "profile-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-claude",
+      `process.stdout.write(JSON.stringify({
+  profileId: "frontend",
+  confidence: "medium",
+  summary: "Frontend build and e2e signals are present.",
+  candidateCount: 4,
+  strategyIds: ["minimal-change", "safety-first"],
+  selectedCommandIds: ["build-impact", "e2e-deep"],
+  missingCapabilities: [],
+}));`,
+    );
+
+    const adapter = new ClaudeAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendProfile({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      signals: {
+        packageManager: "pnpm",
+        scripts: ["build", "e2e"],
+        dependencies: ["react", "vite"],
+        files: ["package.json", "vite.config.ts", "playwright.config.ts"],
+        tags: ["frontend-framework", "frontend-build", "e2e-config"],
+        notes: [],
+        commandCatalog: [
+          {
+            id: "build-impact",
+            roundId: "impact",
+            label: "Build",
+            command: "pnpm",
+            args: ["run", "build"],
+            invariant: "The project should build successfully after the patch.",
+          },
+          {
+            id: "e2e-deep",
+            roundId: "deep",
+            label: "End-to-end checks",
+            command: "pnpm",
+            args: ["run", "e2e"],
+            invariant: "Deep end-to-end validation should pass.",
+          },
+        ],
+      },
+      profileOptions: [
+        { id: "library", description: "Library work." },
+        { id: "frontend", description: "Frontend work." },
+        { id: "migration", description: "Migration work." },
+      ],
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation?.profileId).toBe("frontend");
+    await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "Command catalog:",
+    );
+  });
 });
 
 function createTaskPacket() {

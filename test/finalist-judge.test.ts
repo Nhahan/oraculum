@@ -31,6 +31,9 @@ describe("finalist judge", () => {
         runCandidate: async () => {
           throw new Error("not used");
         },
+        recommendProfile: async () => {
+          throw new Error("not used");
+        },
         recommendWinner: async () => {
           throw new Error("judge binary missing");
         },
@@ -91,6 +94,9 @@ describe("finalist judge", () => {
       adapter: {
         name: "codex",
         runCandidate: async () => {
+          throw new Error("not used");
+        },
+        recommendProfile: async () => {
           throw new Error("not used");
         },
         recommendWinner: async () => ({

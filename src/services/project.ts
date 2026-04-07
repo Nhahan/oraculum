@@ -13,7 +13,9 @@ import {
 import {
   defaultProjectConfig,
   defaultQuickProjectConfig,
+  type ProjectAdvancedConfig,
   type ProjectConfig,
+  type ProjectQuickConfig,
   projectAdvancedConfigSchema,
   projectConfigSchema,
   projectQuickConfigSchema,
@@ -28,6 +30,14 @@ export interface InitializeProjectResult {
   projectRoot: string;
   configPath: string;
   createdPaths: string[];
+}
+
+export interface ProjectConfigLayers {
+  projectRoot: string;
+  config: ProjectConfig;
+  quick: ProjectQuickConfig;
+  advanced?: ProjectAdvancedConfig;
+  usesLegacyConfig: boolean;
 }
 
 export async function initializeProject(
@@ -85,6 +95,10 @@ export async function ensureProjectInitialized(
 }
 
 export async function loadProjectConfig(cwd: string): Promise<ProjectConfig> {
+  return (await loadProjectConfigLayers(cwd)).config;
+}
+
+export async function loadProjectConfigLayers(cwd: string): Promise<ProjectConfigLayers> {
   const projectRoot = resolveProjectRoot(cwd);
   const configPath = getConfigPath(projectRoot);
   const advancedConfigPath = getAdvancedConfigPath(projectRoot);
@@ -111,30 +125,42 @@ export async function loadProjectConfig(cwd: string): Promise<ProjectConfig> {
         : defaultProjectConfig.repair,
   });
   if (legacyParse.success) {
-    return projectConfigSchema.parse({
-      ...legacyParse.data,
+    return {
+      projectRoot,
+      quick: {},
+      usesLegacyConfig: true,
+      ...(advanced ? { advanced } : {}),
+      config: projectConfigSchema.parse({
+        ...legacyParse.data,
+        ...(advanced?.adapters ? { adapters: advanced.adapters } : {}),
+        ...(advanced?.strategies ? { strategies: advanced.strategies } : {}),
+        ...(advanced?.rounds ? { rounds: advanced.rounds } : {}),
+        ...(advanced?.oracles ? { oracles: advanced.oracles } : {}),
+        ...(advanced?.repair ? { repair: advanced.repair } : {}),
+      }),
+    };
+  }
+
+  const quick = projectQuickConfigSchema.parse(parsed);
+
+  return {
+    projectRoot,
+    quick,
+    usesLegacyConfig: false,
+    ...(advanced ? { advanced } : {}),
+    config: projectConfigSchema.parse({
+      ...defaultProjectConfig,
+      ...(quick.defaultAgent ? { defaultAgent: quick.defaultAgent } : {}),
+      ...(quick.defaultCandidates !== undefined
+        ? { defaultCandidates: quick.defaultCandidates }
+        : {}),
       ...(advanced?.adapters ? { adapters: advanced.adapters } : {}),
       ...(advanced?.strategies ? { strategies: advanced.strategies } : {}),
       ...(advanced?.rounds ? { rounds: advanced.rounds } : {}),
       ...(advanced?.oracles ? { oracles: advanced.oracles } : {}),
       ...(advanced?.repair ? { repair: advanced.repair } : {}),
-    });
-  }
-
-  const quick = projectQuickConfigSchema.parse(parsed);
-
-  return projectConfigSchema.parse({
-    ...defaultProjectConfig,
-    ...(quick.defaultAgent ? { defaultAgent: quick.defaultAgent } : {}),
-    ...(quick.defaultCandidates !== undefined
-      ? { defaultCandidates: quick.defaultCandidates }
-      : {}),
-    ...(advanced?.adapters ? { adapters: advanced.adapters } : {}),
-    ...(advanced?.strategies ? { strategies: advanced.strategies } : {}),
-    ...(advanced?.rounds ? { rounds: advanced.rounds } : {}),
-    ...(advanced?.oracles ? { oracles: advanced.oracles } : {}),
-    ...(advanced?.repair ? { repair: advanced.repair } : {}),
-  });
+    }),
+  };
 }
 
 export async function pathExists(path: string): Promise<boolean> {

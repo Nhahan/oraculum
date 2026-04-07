@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { adapterSchema, roundIdSchema } from "./config.js";
+import { consultationProfileSelectionSchema, decisionConfidenceSchema } from "./profile.js";
 import { taskPacketSummarySchema } from "./task.js";
 
 export const candidateStatusSchema = z.enum([
@@ -48,7 +49,7 @@ export const roundManifestSchema = z.object({
 export const runRecommendationSchema = z.object({
   candidateId: z.string().min(1),
   summary: z.string().min(1),
-  confidence: z.enum(["low", "medium", "high"]),
+  confidence: decisionConfidenceSchema,
   source: z.enum(["llm-judge", "fallback-policy"]),
 });
 
@@ -69,6 +70,7 @@ export const runManifestSchema = z.object({
   createdAt: z.string().min(1),
   rounds: z.array(roundManifestSchema).min(1),
   candidates: z.array(candidateManifestSchema).min(1),
+  profileSelection: consultationProfileSelectionSchema.optional(),
   recommendedWinner: runRecommendationSchema.optional(),
 });
 
