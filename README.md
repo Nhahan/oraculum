@@ -1,7 +1,20 @@
+<p align="right">
+  <strong>English</strong> | <a href="./README.ko.md">한국어</a>
+</p>
+
 # Oraculum
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Nhahan/oraculum/main/docs/images/logo.png" alt="Oraculum logo" width="320">
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/oraculum">
+    <img src="https://img.shields.io/npm/v/oraculum?color=blue" alt="npm">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  </a>
 </p>
 
 <p align="center">
@@ -12,7 +25,6 @@
 
 <p align="center">
   <a href="#overview">Overview</a> ·
-  <a href="#requirements">Requirements</a> ·
   <a href="#installation">Installation</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#how-it-works">How It Works</a> ·
@@ -27,27 +39,6 @@ Oraculum is a local installable workflow tool that sits between your codebase an
 
 Instead of trusting the first patch an AI gives you, Oraculum tries multiple candidate fixes, checks them, and helps you keep only the survivors.
 
-For each consultation, Oraculum also reads repo signals, asks the runtime for a structured recommendation, and applies a consultation-scoped profile draft before candidate execution starts.
-
-## Status
-
-Oraculum is early, but it already runs end to end.
-
-It can already:
-
-- run multiple candidates in isolated workspaces
-- call `Claude Code` or `Codex`
-- auto-select a consultation profile from repo signals and structured runtime judgment
-- run repo-local command checks
-- retry repairable candidates within bounded repair loops
-- compare finalists with richer change/risk summaries
-- save machine-readable run artifacts under `.oraculum/`
-- materialize the recommended promotion back into your project
-
-## Requirements
-
-- `Node.js 18+`
-
 ## Installation
 
 Install the current beta:
@@ -58,66 +49,29 @@ npm install -g oraculum@beta
 
 ## Quick Start
 
-In the folder containing the code you want Oraculum to work on:
-
-Consult Oraculum on a task:
+From the project folder:
 
 ```bash
 oraculum consult "fix session loss on refresh"
-```
-
-This runs the full tournament and prints the result summary, including the recommended promotion, why it won, and the main entry paths for reopening or promoting the consultation later.
-
-Before candidates run, Oraculum detects repo signals, asks the selected runtime to recommend a profile, and applies that recommendation to the current consultation only. The chosen profile and its rationale are saved alongside the consultation artifacts.
-
-Promote the recommended result:
-
-```bash
 oraculum promote --branch fix/session-loss
 ```
 
-In a Git-backed project, this creates the branch and applies the winner there. In a non-Git project, it syncs the winner back into the project folder.
+That is the default flow. `consult` initializes Oraculum on first use, runs the tournament, and prints the result summary immediately. `promote` uses the latest promotable consultation and its recommended promotion by default.
 
-If you want to look at the latest result again later:
+In a Git-backed project, `promote` creates the branch and applies the winner there. In a non-Git project, it syncs the winner back into the project folder.
 
-```bash
-oraculum verdict
-```
-
-If you want to browse earlier consultations:
-
-```bash
-oraculum verdict archive
-```
-
-What happens in the default flow:
-
-- `consult` starts the full flow in one command
-- Oraculum initializes itself on first use
-- the latest completed consultation is remembered automatically
-- `consult` prints the latest result summary immediately
-- `promote` uses the latest exportable consultation and its recommended promotion by default
-- `verdict` lets you reopen the latest result later
-- `verdict archive` lets you browse earlier consultations
-- the default path is local and interactive; CI or PR automation is not required
+If you want to reopen the latest consultation later, inspect an older one, or browse consultation history, see [Advanced Usage](docs/advanced-usage.md).
 
 ## How It Works
 
 1. You give Oraculum one task.
 2. Oraculum creates multiple candidate fixes.
-3. Oraculum derives a consultation-scoped profile from repo signals and structured runtime output.
-4. Each candidate runs in its own workspace.
-5. Checks remove weak candidates in stages.
-6. Oraculum recommends a survivor, explains the comparison, and lets you promote it.
-
-Current judging stages:
-
-- `fast`: basic execution and artifact checks
-- `impact`: reviewable-output and materialized-patch checks
-- `deep`: stage exists, but real deep checks are still to be added
+3. Each candidate runs in its own workspace.
+4. Checks remove weak candidates in stages.
+5. Oraculum recommends a survivor, explains the comparison, and lets you promote it.
 
 Results are saved under `.oraculum/`. The source of truth is the saved run state and artifacts, not chat transcript.
 
 ## Advanced Usage
 
-If you want more control over runtimes, candidate counts, specific consultation IDs, report packaging, repo-local oracle configuration, or manually overriding the recommended promotion, see [Advanced Usage](docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; operator controls belong in `.oraculum/advanced.json`.
+If you want more control over consultation-scoped profile selection, runtimes, candidate counts, specific consultation IDs, report packaging, repo-local oracle configuration, or manually overriding the recommended promotion, see [Advanced Usage](docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; operator controls belong in `.oraculum/advanced.json`.

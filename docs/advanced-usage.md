@@ -9,7 +9,7 @@ oraculum consult "fix session loss on refresh"
 oraculum promote --branch fix/session-loss
 ```
 
-`consult` already prints the latest summary. Use `verdict` only when you want to see the result again later. Use the options below only when you need them.
+`consult` already prints the latest summary. Everything below is for reopening a consultation later, overriding the default recommendation, or shaping the tournament more explicitly.
 
 Oraculum is designed first as a local installable workflow tool. Advanced flags and config make that local workflow deeper; they are not primarily CI-facing knobs.
 
