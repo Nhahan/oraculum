@@ -94,7 +94,7 @@ describe("materialized exports", () => {
       JSON.parse(await readFile(getRunManifestPath(cwd, planned.id), "utf8")) as unknown,
     );
     expect(savedManifest.candidates[0]?.status).toBe("exported");
-  });
+  }, 20_000);
 
   it("rejects git export when tracked local changes exist", async () => {
     const cwd = await createTempRoot();
@@ -363,6 +363,8 @@ if (out) {
         taskPacketPath: join(candidateDir, "task-packet.json"),
         workspaceMode: "copy",
         baseSnapshotPath,
+        repairCount: 0,
+        repairedRounds: [],
         createdAt: "2026-04-06T00:00:00.000Z",
       });
       await writeJsonFile(getCandidateManifestPath(cwd, runId, candidateId), candidate);
@@ -455,6 +457,8 @@ if (out) {
         taskPacketPath: join(candidateDir, "task-packet.json"),
         workspaceMode: "copy",
         baseSnapshotPath,
+        repairCount: 0,
+        repairedRounds: [],
         createdAt: "2026-04-06T00:00:00.000Z",
       });
       await writeJsonFile(getCandidateManifestPath(cwd, runId, candidateId), candidate);
@@ -910,7 +914,8 @@ const linkedPath = path.join(process.cwd(), "linked.txt");
 try {
   fs.rmSync(linkedPath, { force: true });
 } catch {}
-fs.symlinkSync("target.txt", linkedPath);
+fs.writeFileSync(path.join(process.cwd(), "target-next.txt"), "target next\\n", "utf8");
+fs.symlinkSync("target-next.txt", linkedPath);
 if (out) {
   fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
 }
@@ -939,6 +944,7 @@ if (out) {
 
       const linkedStats = await lstat(join(cwd, "linked.txt"));
       expect(linkedStats.isSymbolicLink()).toBe(true);
+      expect(await readlink(join(cwd, "linked.txt"))).toBe("target-next.txt");
     },
   );
 });

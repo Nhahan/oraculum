@@ -111,6 +111,24 @@ describe("consult command", () => {
     expect(mockedExecuteRun).toHaveBeenCalledTimes(1);
   });
 
+  it("treats inline task text with file-like path fragments as normal consultations", async () => {
+    const program = createProgram();
+
+    await program.parseAsync(
+      ["consult", "Update src/greet.js so greet() returns Hello instead of Bye."],
+      {
+        from: "user",
+      },
+    );
+
+    expect(mockedPlanRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskInput: "Update src/greet.js so greet() returns Hello instead of Bye.",
+      }),
+    );
+    expect(mockedExecuteRun).toHaveBeenCalledTimes(1);
+  });
+
   it("prints manual guidance when no recommended promotion is selected", async () => {
     const program = createProgram();
     const manifest = createPlannedManifest();
@@ -214,6 +232,8 @@ function createPlannedManifest() {
         status: "planned" as const,
         workspaceDir: "/tmp/workspace",
         taskPacketPath: "/tmp/task-packet.json",
+        repairCount: 0,
+        repairedRounds: [],
         createdAt: "2026-04-04T00:00:00.000Z",
       },
     ],

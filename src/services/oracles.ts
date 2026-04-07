@@ -17,6 +17,7 @@ import {
   witnessSchema,
 } from "../domain/oracle.js";
 import type { CandidateManifest } from "../domain/run.js";
+import { collectCandidateChangeInsight } from "./change-insights.js";
 
 interface EvaluateCandidateRoundOptions {
   candidate: CandidateManifest;
@@ -153,6 +154,46 @@ const builtInOracles: OracleDefinition[] = [
       };
     },
   },
+  {
+    oracleId: "materialized-patch",
+    roundId: "impact",
+    async evaluate(options) {
+      const changeInsight = await collectCandidateChangeInsight(options.candidate);
+      const hasMaterializedPatch = changeInsight.changeSummary.changedPathCount > 0;
+      const changeWitness = witnessSchema.parse({
+        id: `${options.candidate.id}-materialized-patch`,
+        kind: "file",
+        title: "Materialized workspace changes",
+        detail: hasMaterializedPatch
+          ? `Captured ${changeInsight.changeSummary.changedPathCount} changed path(s) in the candidate workspace.`
+          : "The candidate left no materialized file changes in the workspace.",
+        scope: [options.candidate.id],
+        ...(changeInsight.changedPaths.length > 0
+          ? { excerpt: changeInsight.changedPaths.slice(0, 8).join(", ") }
+          : {}),
+      });
+
+      return {
+        verdict: oracleVerdictSchema.parse({
+          oracleId: "materialized-patch",
+          roundId: "impact",
+          status: hasMaterializedPatch ? "pass" : "repairable",
+          severity: hasMaterializedPatch ? "info" : "warning",
+          summary: hasMaterializedPatch
+            ? "Candidate left materialized file changes in the workspace."
+            : "Candidate described a patch but did not leave materialized file changes.",
+          invariant: "Each surviving candidate must leave a materialized patch in its workspace.",
+          confidence: "high",
+          affectedScope: [options.candidate.id],
+          repairHint: hasMaterializedPatch
+            ? undefined
+            : "Edit the necessary files in the workspace and leave the real patch on disk. Do not only describe the change.",
+          witnesses: [changeWitness],
+        }),
+        witnesses: [changeWitness],
+      };
+    },
+  },
 ];
 
 export async function evaluateCandidateRound(
@@ -178,10 +219,7 @@ export async function evaluateCandidateRound(
   }
 
   return {
-    survives: verdicts.every(
-      (verdict) =>
-        verdict.status === "pass" || verdict.status === "skip" || verdict.status === "repairable",
-    ),
+    survives: verdicts.every((verdict) => verdict.status === "pass" || verdict.status === "skip"),
     verdicts,
     witnesses,
   };

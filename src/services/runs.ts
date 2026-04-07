@@ -106,6 +106,8 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
         status: "planned",
         workspaceDir,
         taskPacketPath,
+        repairCount: 0,
+        repairedRounds: [],
         createdAt,
       };
 
@@ -358,9 +360,17 @@ function createInlineTaskId(taskInput: string): string {
 }
 
 function looksLikeTaskPath(taskInput: string): boolean {
+  if (/[\r\n]/u.test(taskInput)) {
+    return false;
+  }
+
+  const hasWhitespace = /\s/u.test(taskInput);
+  if (/^(?:\.{1,2}[\\/]|[A-Za-z]:[\\/]|\/)/u.test(taskInput)) {
+    return true;
+  }
+
   return (
-    taskInput.includes("/") ||
-    taskInput.includes("\\") ||
+    (!hasWhitespace && (taskInput.includes("/") || taskInput.includes("\\"))) ||
     taskInput.startsWith(".") ||
     taskInput.endsWith(".md") ||
     taskInput.endsWith(".json") ||

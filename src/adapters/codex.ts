@@ -51,9 +51,9 @@ export class CodexAdapter implements AgentAdapter {
       args: [
         "-a",
         "never",
+        "exec",
         "-s",
         "workspace-write",
-        "exec",
         "--skip-git-repo-check",
         "--json",
         "-o",
@@ -109,9 +109,9 @@ export class CodexAdapter implements AgentAdapter {
       args: [
         "-a",
         "never",
+        "exec",
         "-s",
         "workspace-write",
-        "exec",
         "--skip-git-repo-check",
         "--json",
         "-o",

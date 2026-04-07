@@ -356,6 +356,7 @@ describe("project scaffold", () => {
       cwd,
       "fake-codex",
       `const fs = require("node:fs");
+const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
 for (let index = 0; index < process.argv.length; index += 1) {
@@ -367,6 +368,9 @@ if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
     ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}'
     : "Codex finished candidate patch";
+  if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
+    fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
+  }
   fs.writeFileSync(out, body, "utf8");
 }
 `,
@@ -435,13 +439,13 @@ if (out) {
 
     const manifest = await planRun({
       cwd,
-      taskInput: "fix session loss on refresh",
+      taskInput: "Update src/greet.js so greet() returns Hello instead of Bye.",
       candidates: 1,
     });
 
     expect(normalizePathForAssertion(manifest.taskPath)).toContain(".oraculum/tasks/");
     const taskNote = await readFile(manifest.taskPath, "utf8");
-    expect(taskNote).toContain("# fix session loss on refresh");
+    expect(taskNote).toContain("# Update src/greet.js so greet() returns Hello instead of Bye");
     await expect(readLatestRunId(cwd)).rejects.toThrow("No previous consultation found");
     await expect(readLatestExportableRunId(cwd)).rejects.toThrow(
       "No promotable consultation found yet",
@@ -467,6 +471,7 @@ if (out) {
       cwd,
       "fake-codex",
       `const fs = require("node:fs");
+const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
 for (let index = 0; index < process.argv.length; index += 1) {
@@ -478,6 +483,9 @@ if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
     ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}'
     : "Codex finished candidate patch";
+  if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
+    fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
+  }
   fs.writeFileSync(out, body, "utf8");
 }
 `,
@@ -549,6 +557,7 @@ if (out) {
       cwd,
       "fake-codex",
       `const fs = require("node:fs");
+const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
 for (let index = 0; index < process.argv.length; index += 1) {
@@ -560,6 +569,9 @@ if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
     ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}'
     : "Codex finished candidate patch";
+  if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
+    fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
+  }
   fs.writeFileSync(out, body, "utf8");
 }
 `,
@@ -671,6 +683,8 @@ if (out) {
                 "task-packet.json",
               ),
               workspaceMode: "git-worktree",
+              repairCount: 0,
+              repairedRounds: [],
               createdAt,
             },
           ],
