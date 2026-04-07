@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
+import packageJson from "../package.json" with { type: "json" };
 import { buildProgram } from "../src/program.js";
 
 describe("CLI argument parsing", () => {
@@ -72,6 +73,12 @@ describe("CLI argument parsing", () => {
     await expect(program.parseAsync(["promote"], { from: "user" })).rejects.toMatchObject({
       code: "commander.missingMandatoryOptionValue",
     });
+  });
+
+  it("uses the package version for CLI version output", () => {
+    const program = buildProgram();
+
+    expect(program.version()).toBe(packageJson.version);
   });
 });
 
