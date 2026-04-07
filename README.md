@@ -1,7 +1,7 @@
 # Oraculum
 
 <p align="center">
-  <img src="docs/images/logo.png" alt="Oraculum logo" width="320">
+  <img src="https://raw.githubusercontent.com/Nhahan/oraculum/main/docs/images/logo.png" alt="Oraculum logo" width="320">
 </p>
 
 <p align="center">
@@ -49,10 +49,10 @@ Packaging and public release flow are still being finalized.
 
 ## Installation
 
-Planned public install:
+Install the current beta:
 
 ```bash
-npm install -g oraculum
+npm install -g oraculum@beta
 ```
 
 ## Quick Start
