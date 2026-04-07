@@ -13,7 +13,12 @@ vi.mock("../src/services/project.js", () => ({
   ensureProjectInitialized: vi.fn(),
 }));
 
+vi.mock("../src/services/consultations.js", () => ({
+  renderConsultationSummary: vi.fn(),
+}));
+
 import { buildProgram } from "../src/program.js";
+import { renderConsultationSummary } from "../src/services/consultations.js";
 import { executeRun } from "../src/services/execution.js";
 import { ensureProjectInitialized } from "../src/services/project.js";
 import { planRun } from "../src/services/runs.js";
@@ -22,13 +27,16 @@ import { captureStdout } from "./helpers/stdout.js";
 const mockedPlanRun = vi.mocked(planRun);
 const mockedExecuteRun = vi.mocked(executeRun);
 const mockedEnsureProjectInitialized = vi.mocked(ensureProjectInitialized);
+const mockedRenderConsultationSummary = vi.mocked(renderConsultationSummary);
 
 describe("consult command", () => {
   beforeEach(() => {
     mockedPlanRun.mockReset();
     mockedExecuteRun.mockReset();
     mockedEnsureProjectInitialized.mockReset();
+    mockedRenderConsultationSummary.mockReset();
     mockedEnsureProjectInitialized.mockResolvedValue(undefined);
+    mockedRenderConsultationSummary.mockResolvedValue("Consultation summary.\n");
 
     const manifest = createPlannedManifest();
     mockedPlanRun.mockResolvedValue(manifest);
@@ -160,9 +168,8 @@ describe("consult command", () => {
       await program.parseAsync(["consult", "tasks/task.md"], { from: "user" });
     });
 
-    expect(output).toContain("Finalists: 0");
-    expect(output).toContain("No recommended promotion was selected automatically.");
-    expect(output).toContain("oraculum promote <candidate-id> --branch <branch-name>");
+    expect(output).toContain("Consultation complete.");
+    expect(output).toContain("Consultation summary.");
   });
 });
 

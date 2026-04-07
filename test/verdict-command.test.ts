@@ -5,20 +5,39 @@ vi.mock("../src/services/runs.js", () => ({
   readRunManifest: vi.fn(),
 }));
 
+vi.mock("../src/services/consultations.js", () => ({
+  listRecentConsultations: vi.fn(),
+  renderConsultationArchive: vi.fn(),
+  renderConsultationSummary: vi.fn(),
+}));
+
 import { buildProgram } from "../src/program.js";
+import {
+  listRecentConsultations,
+  renderConsultationArchive,
+  renderConsultationSummary,
+} from "../src/services/consultations.js";
 import { readLatestRunManifest, readRunManifest } from "../src/services/runs.js";
 import { captureStdout } from "./helpers/stdout.js";
 
+const mockedListRecentConsultations = vi.mocked(listRecentConsultations);
 const mockedReadLatestRunManifest = vi.mocked(readLatestRunManifest);
 const mockedReadRunManifest = vi.mocked(readRunManifest);
+const mockedRenderConsultationArchive = vi.mocked(renderConsultationArchive);
+const mockedRenderConsultationSummary = vi.mocked(renderConsultationSummary);
 
 describe("verdict command", () => {
   beforeEach(() => {
     mockedReadLatestRunManifest.mockReset();
     mockedReadRunManifest.mockReset();
+    mockedListRecentConsultations.mockReset();
+    mockedRenderConsultationArchive.mockReset();
+    mockedRenderConsultationSummary.mockReset();
+    mockedRenderConsultationSummary.mockResolvedValue("Consultation summary.\n");
+    mockedRenderConsultationArchive.mockReturnValue("Recent consultations.\n");
   });
 
-  it("shows that the comparison report is not available for planned consultations", async () => {
+  it("shows the rendered summary for planned consultations", async () => {
     const program = createProgram();
     mockedReadRunManifest.mockResolvedValue(createManifest("planned"));
 
@@ -26,10 +45,10 @@ describe("verdict command", () => {
       await program.parseAsync(["verdict", "run_1"], { from: "user" });
     });
 
-    expect(output).toContain("Comparison report: not available yet");
+    expect(output).toContain("Consultation summary.");
   });
 
-  it("prints the saved comparison report path for completed consultations", async () => {
+  it("prints the rendered summary for completed consultations", async () => {
     const program = createProgram();
     mockedReadLatestRunManifest.mockResolvedValue(createManifest("completed"));
 
@@ -37,10 +56,19 @@ describe("verdict command", () => {
       await program.parseAsync(["verdict"], { from: "user" });
     });
 
-    expect(output).toContain(".oraculum/runs/run_1/reports/comparison.md");
-    expect(output).toContain("Recommended promotion: cand-01 (high, llm-judge)");
-    expect(output).toContain("Finalists:");
-    expect(output).toContain("- cand-01: Minimal Change");
+    expect(output).toContain("Consultation summary.");
+  });
+
+  it("prints a rendered archive of recent consultations", async () => {
+    const program = createProgram();
+    mockedListRecentConsultations.mockResolvedValue([createManifest("completed")]);
+
+    const output = await captureStdout(async () => {
+      await program.parseAsync(["verdict", "archive", "5"], { from: "user" });
+    });
+
+    expect(mockedListRecentConsultations).toHaveBeenCalledWith(process.cwd(), 5);
+    expect(output).toContain("Recent consultations.");
   });
 });
 

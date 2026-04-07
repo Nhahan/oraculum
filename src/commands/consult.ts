@@ -1,6 +1,7 @@
 import { type Command, InvalidArgumentError } from "commander";
 
 import { type Adapter, adapterSchema } from "../domain/config.js";
+import { renderConsultationSummary } from "../services/consultations.js";
 import { executeRun } from "../services/execution.js";
 import { ensureProjectInitialized } from "../services/project.js";
 import { planRun } from "../services/runs.js";
@@ -83,15 +84,14 @@ async function runConsultAction(options: {
     ...(options.candidates !== undefined ? { candidates: options.candidates } : {}),
   });
 
-  process.stdout.write(`Consultation: ${manifest.id}\n`);
-  process.stdout.write(`Task: ${manifest.taskPacket.title}\n`);
-  process.stdout.write(`Agent: ${manifest.agent}\n`);
-  process.stdout.write(`Candidates: ${manifest.candidateCount}\n`);
+  process.stdout.write(
+    `Starting consultation ${manifest.id} with ${manifest.candidateCount} candidate${manifest.candidateCount === 1 ? "" : "s"} on ${manifest.agent}.\n`,
+  );
   if (options.draftOnly) {
     process.stdout.write(
       "Drafted only. Execution was skipped because the draft command was requested.\n",
     );
-    process.stdout.write(`Artifacts: .oraculum/runs/${manifest.id}\n`);
+    process.stdout.write(await renderConsultationSummary(manifest, process.cwd()));
     return;
   }
 
@@ -101,35 +101,8 @@ async function runConsultAction(options: {
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
   });
 
-  process.stdout.write("Execution results:\n");
-  for (const result of execution.candidateResults) {
-    process.stdout.write(`- ${result.candidateId}: ${result.status} (exit ${result.exitCode})\n`);
-  }
-
-  const finalists = execution.manifest.candidates.filter(
-    (candidate) => candidate.status === "promoted",
-  );
-  process.stdout.write(`Finalists: ${finalists.length}\n`);
-  if (finalists.length > 0) {
-    for (const finalist of finalists) {
-      process.stdout.write(`  - ${finalist.id}: ${finalist.strategyLabel}\n`);
-    }
-  }
-  if (execution.manifest.recommendedWinner) {
-    process.stdout.write(
-      `Recommended promotion: ${execution.manifest.recommendedWinner.candidateId} (${execution.manifest.recommendedWinner.confidence}, ${execution.manifest.recommendedWinner.source})\n`,
-    );
-    process.stdout.write(`${execution.manifest.recommendedWinner.summary}\n`);
-    process.stdout.write(
-      `Comparison report: .oraculum/runs/${manifest.id}/reports/comparison.md\n`,
-    );
-    process.stdout.write("Promote next: oraculum promote --branch <branch-name>\n");
-  } else {
-    process.stdout.write(
-      "No recommended promotion was selected automatically. Inspect the consultation with `oraculum verdict` and choose a candidate with `oraculum promote <candidate-id> --branch <branch-name>` if needed.\n",
-    );
-  }
-  process.stdout.write(`Artifacts: .oraculum/runs/${manifest.id}\n`);
+  process.stdout.write("Consultation complete.\n");
+  process.stdout.write(await renderConsultationSummary(execution.manifest, process.cwd()));
 }
 
 function parsePositiveInteger(label: string): (value: string) => number {
