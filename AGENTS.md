@@ -10,6 +10,7 @@ Build `Oraculum`: a `CLI-first`, `TypeScript + Node.js` system for `Claude Code`
 - `/docs/`: public detail docs, if present
 - `internal/proposal.md`: local/internal proposal, if present
 - `internal/HARNESS_RESEARCH.md`: local/internal harness reference synthesis, if present
+- `internal/RELEASING.md`: local/internal npm release runbook, if package publishing or dist-tags are involved
 
 This file is a pointer, not a spec. Keep durable detail in repo docs, not here. If docs and the current working tree diverge, trust the current code, tests, and artifacts first.
 
@@ -44,12 +45,14 @@ Default loop:
 - judge with oracles
 - repair or eliminate
 - compare finalists
-- export winner
+- promote the recommended survivor
 
 Optimize for falsification and selection of patches, not maximum agent freedom.
 `oraculum consult` is the default end-to-end tournament command: one user command should cover candidate generation, execution, judging, elimination/promotion, and artifactization. Planning-only flows belong under structured advanced subcommands and must not become the default UX.
 Protect the quick-start path as a product contract: first success should stay one-command and near-zero-config. Keep advanced controls available, but move operator complexity into optional flags, profiles, or advanced config rather than the default path.
+`oraculum consult` must print the latest result summary immediately. `oraculum verdict` is for reopening an earlier or latest consultation later, not for completing the default path.
 Use `/.oraculum/config.json` for quick-start defaults only. Put operator controls such as custom rounds, strategies, or repo-local oracles in `/.oraculum/advanced.json`.
+Auto-init and `oraculum init --force` must keep the quick-start path clean: stale or orphaned `advanced.json` must not leak operator settings into the default UX.
 
 ## Working Bias
 
@@ -87,5 +90,5 @@ Target modules:
 - candidate workspace manager
 - adapters
 - oracle runner
-- tournament / scoring / promotion
+- tournament / finalist judge / promotion
 - reports / export / replay
