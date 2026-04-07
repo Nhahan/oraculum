@@ -55,11 +55,34 @@ process.stderr.write("claude stderr");
       workspaceDir,
       logDir,
       taskPacket: createTaskPacket(),
+      repairContext: {
+        roundId: "impact",
+        attempt: 1,
+        verdicts: [
+          {
+            oracleId: "reviewable-output",
+            status: "repairable",
+            severity: "warning",
+            summary: "Need stronger reviewable output.",
+            repairHint: "Persist a patch or transcript.",
+          },
+        ],
+        keyWitnesses: [
+          {
+            title: "Missing patch artifact",
+            detail: "The previous attempt only left stderr output.",
+            kind: "file",
+          },
+        ],
+      },
     });
 
     expect(result.status).toBe("completed");
     expect(result.summary).toContain("Minimal Change");
     await expect(readFile(join(logDir, "prompt.txt"), "utf8")).resolves.toContain("Minimal Change");
+    await expect(readFile(join(logDir, "prompt.txt"), "utf8")).resolves.toContain(
+      "Repair context:",
+    );
     await expect(readFile(join(logDir, "claude.stdout.txt"), "utf8")).resolves.toContain(
       '"summary":"You are generating one Oraculum patch candidate.',
     );
@@ -90,6 +113,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
   }
 }
 process.stdout.write('{"event":"started"}\\n');
+process.stdout.write(JSON.stringify({ argv: process.argv.slice(2) }) + "\\n");
 process.stderr.write("codex stderr");
 if (out) {
   fs.writeFileSync(out, \`Codex finished candidate patch: \${prompt}\`, "utf8");
@@ -119,6 +143,9 @@ if (out) {
     );
     await expect(readFile(join(logDir, "codex.stdout.jsonl"), "utf8")).resolves.toContain(
       '"event":"started"',
+    );
+    await expect(readFile(join(logDir, "codex.stdout.jsonl"), "utf8")).resolves.toContain(
+      '"argv":["-a","never","exec","-s","workspace-write"',
     );
     await expect(readFile(join(logDir, "codex.stderr.txt"), "utf8")).resolves.toContain(
       "codex stderr",
@@ -167,6 +194,36 @@ if (out) {
           strategyLabel: "Minimal Change",
           summary: "Small diff.",
           artifactKinds: ["report"],
+          changedPaths: ["src/auth/session.ts"],
+          changeSummary: {
+            mode: "git-diff",
+            changedPathCount: 1,
+            createdPathCount: 0,
+            removedPathCount: 0,
+            modifiedPathCount: 1,
+            addedLineCount: 8,
+            deletedLineCount: 2,
+          },
+          witnessRollup: {
+            witnessCount: 1,
+            warningOrHigherCount: 1,
+            repairableCount: 0,
+            repairHints: [],
+            riskSummaries: ["Touches auth session restoration."],
+            keyWitnesses: [
+              {
+                roundId: "impact",
+                oracleId: "api-impact",
+                kind: "command-output",
+                title: "Auth flow touched",
+                detail: "Session restore path changed.",
+              },
+            ],
+          },
+          repairSummary: {
+            attemptCount: 0,
+            repairedRounds: [],
+          },
           verdicts: [],
         },
         {
@@ -174,6 +231,36 @@ if (out) {
           strategyLabel: "Safety First",
           summary: "More evidence.",
           artifactKinds: ["report", "transcript"],
+          changedPaths: ["src/auth/session.ts", "test/auth/session.test.ts"],
+          changeSummary: {
+            mode: "git-diff",
+            changedPathCount: 2,
+            createdPathCount: 1,
+            removedPathCount: 0,
+            modifiedPathCount: 1,
+            addedLineCount: 14,
+            deletedLineCount: 3,
+          },
+          witnessRollup: {
+            witnessCount: 2,
+            warningOrHigherCount: 1,
+            repairableCount: 1,
+            repairHints: ["Persist a clearer patch summary."],
+            riskSummaries: ["Public API drift needs review."],
+            keyWitnesses: [
+              {
+                roundId: "impact",
+                oracleId: "reviewable-output",
+                kind: "file",
+                title: "Reviewable output",
+                detail: "Transcript and patch were captured.",
+              },
+            ],
+          },
+          repairSummary: {
+            attemptCount: 1,
+            repairedRounds: ["impact"],
+          },
           verdicts: [],
         },
       ],
@@ -185,6 +272,12 @@ if (out) {
     await expect(
       readFile(join(logDir, "winner-judge.final-message.txt"), "utf8"),
     ).resolves.toContain('"candidateId":"cand-02"');
+    await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "Change summary: mode=git-diff, changed=2, created=1, removed=0, modified=1, +14, -3",
+    );
+    await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "Repair summary: attempts=1, rounds=impact",
+    );
   });
 });
 

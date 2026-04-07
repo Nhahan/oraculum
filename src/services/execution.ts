@@ -2,12 +2,18 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { createAgentAdapter } from "../adapters/index.js";
-import { type AgentRunResult, agentRunResultSchema } from "../adapters/types.js";
+import {
+  type AgentRepairContext,
+  type AgentRunResult,
+  agentRunResultSchema,
+} from "../adapters/types.js";
 import {
   getCandidateAgentResultPath,
   getCandidateBaseSnapshotPath,
   getCandidateLogsDir,
   getCandidateManifestPath,
+  getCandidateRepairAttemptLogsDir,
+  getCandidateRepairAttemptResultPath,
   getCandidateVerdictPath,
   getCandidateWitnessPath,
   getRunManifestPath,
@@ -166,7 +172,6 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
       candidate: updatedCandidate,
       result: parsedResult,
     });
-    candidateResults.push(parsedResult);
     selectionMetrics.set(updatedCandidate.id, {
       candidateId: updatedCandidate.id,
       passCount: 0,
@@ -207,15 +212,98 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
         continue;
       }
 
-      const currentCandidate = candidateMap.get(record.candidate.id) ?? record.candidate;
-      const evaluation = await evaluateCandidateRound({
+      let currentCandidate = candidateMap.get(record.candidate.id) ?? record.candidate;
+      let currentResult = record.result;
+      let evaluation = await evaluateCandidateRound({
         candidate: currentCandidate,
         projectConfig,
         projectRoot,
-        result: record.result,
+        result: currentResult,
         roundId: round.id,
         runId: manifest.id,
       });
+      let repairAttempt = 0;
+
+      while (
+        currentResult.status === "completed" &&
+        projectConfig.repair.enabled &&
+        repairAttempt < projectConfig.repair.maxAttemptsPerRound &&
+        hasRepairableVerdicts(evaluation.verdicts)
+      ) {
+        repairAttempt += 1;
+
+        const repairLogDir = getCandidateRepairAttemptLogsDir(
+          projectRoot,
+          manifest.id,
+          currentCandidate.id,
+          round.id,
+          repairAttempt,
+        );
+        let repairedResult: AgentRunResult;
+
+        try {
+          const taskPacket = materializedTaskPacketSchema.parse(
+            JSON.parse(await readFile(currentCandidate.taskPacketPath, "utf8")) as unknown,
+          );
+          repairedResult = agentRunResultSchema.parse(
+            await adapter.runCandidate({
+              runId: manifest.id,
+              candidateId: currentCandidate.id,
+              strategyId: currentCandidate.strategyId,
+              strategyLabel: currentCandidate.strategyLabel,
+              workspaceDir: currentCandidate.workspaceDir,
+              logDir: repairLogDir,
+              taskPacket,
+              repairContext: buildRepairContext(round.id, repairAttempt, evaluation.verdicts),
+            }),
+          );
+        } catch (error) {
+          repairedResult = await materializeExecutionFailure({
+            adapter: manifest.agent,
+            candidateId: currentCandidate.id,
+            error,
+            logDir: repairLogDir,
+            runId: manifest.id,
+          });
+        }
+
+        const repairResultPath = getCandidateRepairAttemptResultPath(
+          projectRoot,
+          manifest.id,
+          currentCandidate.id,
+          round.id,
+          repairAttempt,
+        );
+        await writeJsonFile(repairResultPath, repairedResult);
+
+        currentResult = repairedResult;
+        record.result = repairedResult;
+        const repairedRounds = new Set(currentCandidate.repairedRounds ?? []);
+        repairedRounds.add(round.id);
+        currentCandidate = candidateManifestSchema.parse({
+          ...currentCandidate,
+          status: repairedResult.status === "completed" ? "executed" : "failed",
+          lastRunResultPath: repairResultPath,
+          repairCount: (currentCandidate.repairCount ?? 0) + 1,
+          repairedRounds: [...repairedRounds],
+        });
+        candidateMap.set(currentCandidate.id, currentCandidate);
+        await writeCandidateManifest(projectRoot, manifest.id, currentCandidate);
+
+        const metrics = selectionMetrics.get(currentCandidate.id);
+        if (metrics) {
+          metrics.artifactCount = repairedResult.artifacts.length;
+        }
+
+        evaluation = await evaluateCandidateRound({
+          candidate: currentCandidate,
+          projectConfig,
+          projectRoot,
+          result: currentResult,
+          roundId: round.id,
+          runId: manifest.id,
+        });
+      }
 
       verdictCount += evaluation.verdicts.length;
       const existingVerdicts = verdictsByCandidate.get(currentCandidate.id) ?? [];
@@ -277,6 +365,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
   }
 
   const taskPacketPath = manifest.candidates[0]?.taskPacketPath;
+  candidateResults.push(...executionRecords.map((record) => record.result));
   const taskPacket = taskPacketPath
     ? materializedTaskPacketSchema.parse(
         JSON.parse(await readFile(taskPacketPath, "utf8")) as unknown,
@@ -322,6 +411,39 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
   return {
     candidateResults,
     manifest: completedManifest,
+  };
+}
+
+function hasRepairableVerdicts(verdicts: OracleVerdict[]): boolean {
+  return verdicts.some((verdict) => verdict.status === "repairable");
+}
+
+function buildRepairContext(
+  roundId: string,
+  attempt: number,
+  verdicts: OracleVerdict[],
+): AgentRepairContext {
+  const repairableVerdicts = verdicts.filter((verdict) => verdict.status === "repairable");
+
+  return {
+    roundId,
+    attempt,
+    verdicts: repairableVerdicts.map((verdict) => ({
+      oracleId: verdict.oracleId,
+      status: verdict.status,
+      severity: verdict.severity,
+      summary: verdict.summary,
+      ...(verdict.repairHint ? { repairHint: verdict.repairHint } : {}),
+    })),
+    keyWitnesses: repairableVerdicts
+      .flatMap((verdict) =>
+        verdict.witnesses.map((witness) => ({
+          title: witness.title,
+          detail: witness.detail,
+          kind: witness.kind,
+        })),
+      )
+      .slice(0, 5),
   };
 }
 

@@ -17,7 +17,7 @@ import {
 } from "../domain/run.js";
 import { taskPacketSummarySchema } from "../domain/task.js";
 
-import { buildFinalistSummaries } from "./finalists.js";
+import { buildEnrichedFinalistSummaries } from "./finalist-insights.js";
 import { writeJsonFile } from "./project.js";
 
 interface WriteFinalistComparisonReportOptions {
@@ -43,6 +43,7 @@ const comparisonReportSchema = z.object({
   task: taskPacketSummarySchema,
   finalistCount: z.number().int().min(0),
   recommendedWinner: runRecommendationSchema.optional(),
+  whyThisWon: z.string().min(1).optional(),
   finalists: z.array(
     finalistSummarySchema.extend({
       status: candidateStatusSchema,
@@ -66,11 +67,11 @@ export async function writeFinalistComparisonReport(
   options: WriteFinalistComparisonReportOptions,
 ): Promise<{ jsonPath: string; markdownPath: string }> {
   const projectRoot = resolveProjectRoot(options.projectRoot);
-  const finalists = buildFinalistSummaries(
-    options.candidates,
-    options.candidateResults,
-    options.verdictsByCandidate,
-  );
+  const finalists = await buildEnrichedFinalistSummaries({
+    candidates: options.candidates,
+    candidateResults: options.candidateResults,
+    verdictsByCandidate: options.verdictsByCandidate,
+  });
   const candidateById = new Map(options.candidates.map((candidate) => [candidate.id, candidate]));
   const report = comparisonReportSchema.parse({
     runId: options.runId,
@@ -79,6 +80,7 @@ export async function writeFinalistComparisonReport(
     task: options.taskPacket,
     finalistCount: finalists.length,
     ...(options.recommendedWinner ? { recommendedWinner: options.recommendedWinner } : {}),
+    ...(options.recommendedWinner ? { whyThisWon: options.recommendedWinner.summary } : {}),
     finalists: finalists.map((finalist) => ({
       ...finalist,
       status: candidateById.get(finalist.candidateId)?.status ?? "planned",
@@ -148,8 +150,12 @@ function buildComparisonMarkdown(report: ComparisonReport): string {
 
   if (report.recommendedWinner) {
     lines.push(
-      `- Recommended winner: ${report.recommendedWinner.candidateId} (${report.recommendedWinner.confidence}, ${report.recommendedWinner.source})`,
-      `- Recommendation summary: ${report.recommendedWinner.summary}`,
+      "",
+      "## Recommended Promotion",
+      `- Candidate: ${report.recommendedWinner.candidateId}`,
+      `- Confidence: ${report.recommendedWinner.confidence}`,
+      `- Source: ${report.recommendedWinner.source}`,
+      `- Why this won: ${report.whyThisWon ?? report.recommendedWinner.summary}`,
     );
   }
 
@@ -167,8 +173,42 @@ function buildComparisonMarkdown(report: ComparisonReport): string {
       `- Status: ${finalist.status}`,
       `- Agent summary: ${finalist.summary}`,
       `- Artifacts: ${finalist.artifactKinds.join(", ") || "none"}`,
+      `- Changed paths: ${renderChangedPathSummary(finalist)}`,
+      `- Change detail: ${renderChangeDetail(finalist)}`,
+      `- Repair attempts: ${finalist.repairSummary.attemptCount} (${finalist.repairSummary.repairedRounds.join(", ") || "none"})`,
       `- Verdict counts: pass=${finalist.verdictCounts.pass}, repairable=${finalist.verdictCounts.repairable}, fail=${finalist.verdictCounts.fail}, warning=${finalist.verdictCounts.warning}, error=${finalist.verdictCounts.error}, critical=${finalist.verdictCounts.critical}`,
     );
+
+    if (finalist.witnessRollup.riskSummaries.length > 0) {
+      lines.push(
+        "- Risk snapshot:",
+        ...finalist.witnessRollup.riskSummaries.slice(0, 5).map((risk) => `  - ${risk}`),
+      );
+    }
+
+    if (finalist.witnessRollup.repairHints.length > 0) {
+      lines.push(
+        "- Repair hints:",
+        ...finalist.witnessRollup.repairHints.map((hint) => `  - ${hint}`),
+      );
+    }
+
+    if (finalist.changedPaths.length > 0) {
+      lines.push(
+        "- Changed paths:",
+        ...finalist.changedPaths.slice(0, 12).map((path) => `  - ${path}`),
+      );
+    }
+
+    if (finalist.witnessRollup.keyWitnesses.length > 0) {
+      lines.push(
+        "- Key witnesses:",
+        ...finalist.witnessRollup.keyWitnesses.map(
+          (witness) =>
+            `  - [${witness.roundId}] ${witness.oracleId}: ${witness.title} — ${witness.detail}`,
+        ),
+      );
+    }
 
     if (finalist.verdicts.length > 0) {
       lines.push("", "Verdicts:");
@@ -181,4 +221,33 @@ function buildComparisonMarkdown(report: ComparisonReport): string {
   }
 
   return `${lines.join("\n")}\n`;
+}
+
+function renderChangedPathSummary(finalist: ComparisonReport["finalists"][number]): string {
+  if (finalist.changeSummary.changedPathCount === 0) {
+    return "no captured changes";
+  }
+
+  const preview = finalist.changedPaths.slice(0, 3).join(", ");
+  const suffix =
+    finalist.changedPaths.length > 3 ? `, +${finalist.changedPaths.length - 3} more` : "";
+  return `${finalist.changeSummary.changedPathCount} (${preview}${suffix})`;
+}
+
+function renderChangeDetail(finalist: ComparisonReport["finalists"][number]): string {
+  const detail = [
+    `mode=${finalist.changeSummary.mode}`,
+    `created=${finalist.changeSummary.createdPathCount}`,
+    `removed=${finalist.changeSummary.removedPathCount}`,
+    `modified=${finalist.changeSummary.modifiedPathCount}`,
+  ];
+
+  if (finalist.changeSummary.addedLineCount !== undefined) {
+    detail.push(`+${finalist.changeSummary.addedLineCount}`);
+  }
+  if (finalist.changeSummary.deletedLineCount !== undefined) {
+    detail.push(`-${finalist.changeSummary.deletedLineCount}`);
+  }
+
+  return detail.join(", ");
 }

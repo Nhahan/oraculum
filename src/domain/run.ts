@@ -28,6 +28,8 @@ export const candidateManifestSchema = z.object({
   workspaceMode: workspaceModeSchema.optional(),
   baseRevision: z.string().min(1).optional(),
   baseSnapshotPath: z.string().min(1).optional(),
+  repairCount: z.number().int().min(0).default(0),
+  repairedRounds: z.array(roundIdSchema).default([]),
   createdAt: z.string().min(1),
 });
 

@@ -15,7 +15,7 @@ import {
 } from "../domain/run.js";
 import { materializedTaskPacketSchema } from "../domain/task.js";
 
-import { buildFinalistSummaries } from "./finalists.js";
+import { buildEnrichedFinalistSummaries } from "./finalist-insights.js";
 import { writeJsonFile } from "./project.js";
 
 interface RecommendWinnerOptions {
@@ -31,11 +31,11 @@ interface RecommendWinnerOptions {
 export async function recommendWinnerWithJudge(
   options: RecommendWinnerOptions,
 ): Promise<RunRecommendation | undefined> {
-  const finalists = buildFinalistSummaries(
-    options.candidates,
-    options.candidateResults,
-    options.verdictsByCandidate,
-  );
+  const finalists = await buildEnrichedFinalistSummaries({
+    candidates: options.candidates,
+    candidateResults: options.candidateResults,
+    verdictsByCandidate: options.verdictsByCandidate,
+  });
   if (finalists.length === 0) {
     return undefined;
   }

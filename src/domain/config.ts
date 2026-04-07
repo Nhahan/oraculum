@@ -7,6 +7,12 @@ export const roundIdSchema = z.enum(["fast", "impact", "deep"]);
 export const oracleScopeSchema = z.enum(["workspace", "project"]);
 export const oracleEnforcementSchema = z.enum(["hard", "repairable", "signal"]);
 export const oracleConfidenceSchema = z.enum(["low", "medium", "high"]);
+export const repairPolicySchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    maxAttemptsPerRound: z.number().int().min(0).max(3).default(1),
+  })
+  .strict();
 
 export const strategySchema = z.object({
   id: z.string().min(1),
@@ -57,6 +63,7 @@ const runtimeProjectConfigBaseSchema = z
     strategies: z.array(strategySchema).min(1),
     rounds: z.array(roundSchema).min(1),
     oracles: z.array(repoOracleSchema).default([]),
+    repair: repairPolicySchema,
   })
   .strict();
 
@@ -107,6 +114,7 @@ export const projectAdvancedConfigSchema = z
     strategies: z.array(strategySchema).min(1).optional(),
     rounds: z.array(roundSchema).min(1).optional(),
     oracles: z.array(repoOracleSchema).optional(),
+    repair: repairPolicySchema.optional(),
   })
   .strict();
 
@@ -115,6 +123,7 @@ export type RoundId = z.infer<typeof roundIdSchema>;
 export type OracleScope = z.infer<typeof oracleScopeSchema>;
 export type OracleEnforcement = z.infer<typeof oracleEnforcementSchema>;
 export type OracleConfidence = z.infer<typeof oracleConfidenceSchema>;
+export type RepairPolicy = z.infer<typeof repairPolicySchema>;
 export type Strategy = z.infer<typeof strategySchema>;
 export type Round = z.infer<typeof roundSchema>;
 export type RepoOracle = z.infer<typeof repoOracleSchema>;
@@ -167,6 +176,10 @@ export const defaultProjectConfig: ProjectConfig = {
     },
   ],
   oracles: [],
+  repair: {
+    enabled: true,
+    maxAttemptsPerRound: 1,
+  },
 };
 
 export const defaultQuickProjectConfig: ProjectQuickConfig = {

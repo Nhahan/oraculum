@@ -32,21 +32,52 @@ export const agentRunResultSchema = z.object({
 });
 
 export const judgeConfidenceSchema = z.enum(["low", "medium", "high"]);
+export const finalistVerdictSchema = z.object({
+  roundId: z.string().min(1),
+  oracleId: z.string().min(1),
+  status: z.string().min(1),
+  severity: z.string().min(1),
+  summary: z.string().min(1),
+});
+export const finalistChangeSummarySchema = z.object({
+  mode: z.enum(["git-diff", "snapshot-diff", "none"]),
+  changedPathCount: z.number().int().min(0),
+  createdPathCount: z.number().int().min(0),
+  removedPathCount: z.number().int().min(0),
+  modifiedPathCount: z.number().int().min(0),
+  addedLineCount: z.number().int().min(0).optional(),
+  deletedLineCount: z.number().int().min(0).optional(),
+});
+export const finalistWitnessHighlightSchema = z.object({
+  roundId: z.string().min(1),
+  oracleId: z.string().min(1),
+  kind: z.string().min(1),
+  title: z.string().min(1),
+  detail: z.string().min(1),
+});
+export const finalistWitnessRollupSchema = z.object({
+  witnessCount: z.number().int().min(0),
+  warningOrHigherCount: z.number().int().min(0),
+  repairableCount: z.number().int().min(0),
+  repairHints: z.array(z.string().min(1)).default([]),
+  riskSummaries: z.array(z.string().min(1)).default([]),
+  keyWitnesses: z.array(finalistWitnessHighlightSchema).default([]),
+});
+export const finalistRepairSummarySchema = z.object({
+  attemptCount: z.number().int().min(0),
+  repairedRounds: z.array(z.string().min(1)).default([]),
+});
 
 export const finalistSummarySchema = z.object({
   candidateId: z.string().min(1),
   strategyLabel: z.string().min(1),
   summary: z.string().min(1),
   artifactKinds: z.array(agentArtifactKindSchema).default([]),
-  verdicts: z.array(
-    z.object({
-      roundId: z.string().min(1),
-      oracleId: z.string().min(1),
-      status: z.string().min(1),
-      severity: z.string().min(1),
-      summary: z.string().min(1),
-    }),
-  ),
+  verdicts: z.array(finalistVerdictSchema),
+  changedPaths: z.array(z.string().min(1)).default([]),
+  changeSummary: finalistChangeSummarySchema,
+  witnessRollup: finalistWitnessRollupSchema,
+  repairSummary: finalistRepairSummarySchema,
 });
 
 export const agentJudgeRecommendationSchema = z.object({
@@ -75,6 +106,7 @@ export interface AgentRunRequest {
   workspaceDir: string;
   logDir: string;
   taskPacket: MaterializedTaskPacket;
+  repairContext?: AgentRepairContext;
 }
 
 export interface AgentAdapter {
@@ -90,6 +122,23 @@ export interface AgentJudgeRequest {
   logDir: string;
   taskPacket: MaterializedTaskPacket;
   finalists: FinalistSummary[];
+}
+
+export interface AgentRepairContext {
+  roundId: string;
+  attempt: number;
+  verdicts: Array<{
+    oracleId: string;
+    status: string;
+    severity: string;
+    summary: string;
+    repairHint?: string;
+  }>;
+  keyWitnesses: Array<{
+    title: string;
+    detail: string;
+    kind: string;
+  }>;
 }
 
 export type AgentArtifact = z.infer<typeof agentArtifactSchema>;

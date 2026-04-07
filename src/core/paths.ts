@@ -137,6 +137,33 @@ export function getCandidateLogsDir(
   return join(getCandidateDir(projectRoot, runId, candidateId), "logs");
 }
 
+export function getCandidateRepairAttemptLogsDir(
+  projectRoot: string,
+  runId: string,
+  candidateId: string,
+  roundId: string,
+  attempt: number,
+): string {
+  return join(
+    getCandidateLogsDir(projectRoot, runId, candidateId),
+    "repairs",
+    `${roundId}-attempt-${attempt}`,
+  );
+}
+
+export function getCandidateRepairAttemptResultPath(
+  projectRoot: string,
+  runId: string,
+  candidateId: string,
+  roundId: string,
+  attempt: number,
+): string {
+  return join(
+    getCandidateDir(projectRoot, runId, candidateId),
+    `agent-run.${roundId}.repair-${attempt}.json`,
+  );
+}
+
 export function getCandidateOracleStdoutLogPath(
   projectRoot: string,
   runId: string,

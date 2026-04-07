@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -26,6 +26,11 @@ describe("finalist comparison reports", () => {
   it("writes comparison artifacts with recommendation and verdict counts", async () => {
     const projectRoot = await createTempRoot();
     await mkdir(getReportsDir(projectRoot, "run_1"), { recursive: true });
+    await mkdir(join(projectRoot, "workspace", "cand-01"), { recursive: true });
+    await writeFile(
+      join(projectRoot, "workspace", "cand-01", "src.ts"),
+      "export const value = 1;\n",
+    );
 
     const result = await writeFinalistComparisonReport({
       agent: "codex",
@@ -50,6 +55,8 @@ describe("finalist comparison reports", () => {
           status: "promoted",
           workspaceDir: join(projectRoot, "workspace", "cand-01"),
           taskPacketPath: join(projectRoot, "task-packet.json"),
+          repairCount: 1,
+          repairedRounds: ["impact"],
           createdAt: "2026-04-06T00:00:00.000Z",
         },
         {
@@ -59,6 +66,8 @@ describe("finalist comparison reports", () => {
           status: "eliminated",
           workspaceDir: join(projectRoot, "workspace", "cand-02"),
           taskPacketPath: join(projectRoot, "task-packet.json"),
+          repairCount: 0,
+          repairedRounds: [],
           createdAt: "2026-04-06T00:00:00.000Z",
         },
       ],
@@ -108,7 +117,16 @@ describe("finalist comparison reports", () => {
               invariant: "Public API should remain stable.",
               confidence: "medium",
               affectedScope: ["src/api.ts"],
-              witnesses: [],
+              repairHint: "Review the session restore API surface.",
+              witnesses: [
+                {
+                  id: "witness-1",
+                  kind: "command-output",
+                  title: "API drift",
+                  detail: "Public API drift needs review.",
+                  scope: ["src/api.ts"],
+                },
+              ],
             },
           ],
         ],
@@ -122,14 +140,18 @@ describe("finalist comparison reports", () => {
     await expect(readFile(result.jsonPath, "utf8")).resolves.toContain('"finalistCount": 1');
     await expect(readFile(result.jsonPath, "utf8")).resolves.toContain('"warning": 1');
     await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "Recommended winner: cand-01 (high, llm-judge)",
+      "## Recommended Promotion",
     );
     await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "Verdict counts: pass=1, repairable=1, fail=0, warning=1, error=0, critical=0",
+      "- Why this won: cand-01 best matches the task intent.",
     );
     await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "- [impact] api-impact: repairable/warning — Public API drift needs review.",
+      "Repair attempts: 1 (impact)",
     );
+    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
+      "Review the session restore API surface.",
+    );
+    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain("API drift");
   });
 
   it("renders an explicit no-finalists report when nobody survives", async () => {
@@ -153,6 +175,8 @@ describe("finalist comparison reports", () => {
           status: "eliminated",
           workspaceDir: join(projectRoot, "workspace", "cand-01"),
           taskPacketPath: join(projectRoot, "task-packet.json"),
+          repairCount: 0,
+          repairedRounds: [],
           createdAt: "2026-04-06T00:00:00.000Z",
         },
       ],

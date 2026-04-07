@@ -82,6 +82,8 @@ function createManifest(status: "planned" | "completed") {
         status: status === "completed" ? ("promoted" as const) : ("planned" as const),
         workspaceDir: "/tmp/workspace",
         taskPacketPath: "/tmp/task-packet.json",
+        repairCount: 0,
+        repairedRounds: [],
         createdAt: "2026-04-04T00:00:00.000Z",
       },
     ],

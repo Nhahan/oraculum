@@ -9,6 +9,7 @@ import {
   getCandidateAgentResultPath,
   getCandidateOracleStderrLogPath,
   getCandidateOracleStdoutLogPath,
+  getCandidateRepairAttemptResultPath,
   getCandidateVerdictPath,
   getCandidateWitnessPath,
   getFinalistComparisonJsonPath,
@@ -40,6 +41,7 @@ describe("run execution", () => {
       cwd,
       "fake-codex",
       `const fs = require("node:fs");
+const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
 for (let index = 0; index < process.argv.length; index += 1) {
@@ -48,6 +50,9 @@ for (let index = 0; index < process.argv.length; index += 1) {
   }
 }
 process.stdout.write('{"event":"started"}\\n');
+if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
+  fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
+}
 if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
     ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the only surviving finalist."}'
@@ -201,6 +206,62 @@ process.exit(3);
     expect(savedManifest.rounds[0]?.eliminatedCount).toBe(1);
   });
 
+  it("eliminates candidates that never materialize a patch in the workspace", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "no-materialized-patch.md"), "# No patch\nExplain only.\n");
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  const body = prompt.includes("You are selecting the best Oraculum finalist.")
+    ? '{"candidateId":"cand-01","confidence":"high","summary":"this should never be used"}'
+    : "I would update src/greet.js, but I am only describing the patch.";
+  fs.writeFileSync(out, body, "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/no-materialized-patch.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.candidates[0]?.status).toBe("eliminated");
+    expect(executed.manifest.recommendedWinner).toBeUndefined();
+
+    const verdictPath = getCandidateVerdictPath(
+      cwd,
+      planned.id,
+      "cand-01",
+      "impact",
+      "materialized-patch",
+    );
+    const verdict = oracleVerdictSchema.parse(
+      JSON.parse(await readFile(verdictPath, "utf8")) as unknown,
+    );
+    expect(verdict.status).toBe("repairable");
+    expect(verdict.summary).toContain("did not leave materialized file changes");
+  });
+
   it("runs repo-local hard-gate oracles and eliminates failing candidates", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
@@ -220,12 +281,16 @@ process.exit(3);
       cwd,
       "fake-codex",
       `const fs = require("node:fs");
+const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
 for (let index = 0; index < process.argv.length; index += 1) {
   if (process.argv[index] === "-o") {
     out = process.argv[index + 1] ?? "";
   }
+}
+if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
+  fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
 }
 if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
@@ -295,12 +360,14 @@ if (out) {
       cwd,
       "fake-codex",
       `const fs = require("node:fs");
+const path = require("node:path");
 let out = "";
 for (let index = 0; index < process.argv.length; index += 1) {
   if (process.argv[index] === "-o") {
     out = process.argv[index + 1] ?? "";
   }
 }
+fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
 if (out) {
   fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
 }
@@ -387,12 +454,14 @@ process.stdout.write("oracle ok");
       cwd,
       "fake-codex",
       `const fs = require("node:fs");
+const path = require("node:path");
 let out = "";
 for (let index = 0; index < process.argv.length; index += 1) {
   if (process.argv[index] === "-o") {
     out = process.argv[index + 1] ?? "";
   }
 }
+fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
 if (out) {
   fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
 }
@@ -431,6 +500,7 @@ if (out) {
       cwd,
       "fake-codex",
       `const fs = require("node:fs");
+const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
 for (let index = 0; index < process.argv.length; index += 1) {
@@ -448,6 +518,7 @@ if (out) {
     process.exit(7);
   }
 
+  fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
   fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
 }
 `,
@@ -474,6 +545,103 @@ if (out) {
       readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
     ).resolves.toContain("fallback-policy");
   });
+
+  it("runs a bounded repair loop for repairable verdicts before promoting a finalist", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await configureAdvancedConfig(cwd, {
+      repair: {
+        enabled: true,
+        maxAttemptsPerRound: 1,
+      },
+      oracles: [
+        {
+          id: "needs-patch-report",
+          roundId: "impact",
+          command: process.execPath,
+          args: [
+            "-e",
+            [
+              "const fs = require('node:fs');",
+              "const path = require('node:path');",
+              "const marker = path.join(process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR, 'repair-fixed.txt');",
+              "if (fs.existsSync(marker)) { process.stdout.write('repair fixed'); process.exit(0); }",
+              "process.stderr.write('missing repair marker'); process.exit(1);",
+            ].join(" "),
+          ],
+          invariant: "The candidate should leave a stronger reviewable artifact after repair.",
+          enforcement: "repairable",
+          repairHint: "Produce the missing review marker.",
+        },
+      ],
+    });
+    await writeFile(join(cwd, "tasks", "repair-loop.md"), "# Repair loop\nRepair when needed.\n");
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (prompt.includes("Repair context:")) {
+  fs.writeFileSync(path.join(process.cwd(), "repair-fixed.txt"), "ok", "utf8");
+}
+if (out) {
+  const body = prompt.includes("You are selecting the best Oraculum finalist.")
+    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 repaired its reviewable evidence."}'
+    : "Codex finished candidate patch";
+  fs.writeFileSync(out, body, "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/repair-loop.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+    expect(executed.manifest.candidates[0]?.repairCount).toBe(1);
+    expect(executed.manifest.candidates[0]?.repairedRounds).toEqual(["impact"]);
+    const repairResultPath = getCandidateRepairAttemptResultPath(
+      cwd,
+      planned.id,
+      "cand-01",
+      "impact",
+      1,
+    );
+    const repairResult = agentRunResultSchema.parse(
+      JSON.parse(await readFile(repairResultPath, "utf8")) as unknown,
+    );
+    expect(repairResult.status).toBe("completed");
+
+    const verdictPath = getCandidateVerdictPath(
+      cwd,
+      planned.id,
+      "cand-01",
+      "impact",
+      "needs-patch-report",
+    );
+    const verdict = oracleVerdictSchema.parse(
+      JSON.parse(await readFile(verdictPath, "utf8")) as unknown,
+    );
+    expect(verdict.status).toBe("pass");
+  });
 });
 
 async function createTempRoot(): Promise<string> {
@@ -483,13 +651,16 @@ async function createTempRoot(): Promise<string> {
 }
 
 async function configureProjectOracles(cwd: string, oracles: unknown[]): Promise<void> {
+  await configureAdvancedConfig(cwd, { oracles });
+}
+
+async function configureAdvancedConfig(
+  cwd: string,
+  update: Record<string, unknown>,
+): Promise<void> {
   const configPath = getAdvancedConfigPath(cwd);
-  const parsed = (await readAdvancedConfig(configPath)) as {
-    oracles?: unknown[];
-    [key: string]: unknown;
-  };
-  parsed.oracles = oracles;
-  await writeFile(configPath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+  const parsed = await readAdvancedConfig(configPath);
+  await writeFile(configPath, `${JSON.stringify({ ...parsed, ...update }, null, 2)}\n`, "utf8");
 }
 
 async function readAdvancedConfig(path: string): Promise<Record<string, unknown>> {

@@ -103,7 +103,13 @@ export async function loadProjectConfig(cwd: string): Promise<ProjectConfig> {
       )
     : undefined;
 
-  const legacyParse = projectConfigSchema.safeParse(parsed);
+  const legacyParse = projectConfigSchema.safeParse({
+    ...(parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}),
+    repair:
+      parsed && typeof parsed === "object" && !Array.isArray(parsed) && "repair" in parsed
+        ? (parsed as Record<string, unknown>).repair
+        : defaultProjectConfig.repair,
+  });
   if (legacyParse.success) {
     return projectConfigSchema.parse({
       ...legacyParse.data,
@@ -111,6 +117,7 @@ export async function loadProjectConfig(cwd: string): Promise<ProjectConfig> {
       ...(advanced?.strategies ? { strategies: advanced.strategies } : {}),
       ...(advanced?.rounds ? { rounds: advanced.rounds } : {}),
       ...(advanced?.oracles ? { oracles: advanced.oracles } : {}),
+      ...(advanced?.repair ? { repair: advanced.repair } : {}),
     });
   }
 
@@ -126,6 +133,7 @@ export async function loadProjectConfig(cwd: string): Promise<ProjectConfig> {
     ...(advanced?.strategies ? { strategies: advanced.strategies } : {}),
     ...(advanced?.rounds ? { rounds: advanced.rounds } : {}),
     ...(advanced?.oracles ? { oracles: advanced.oracles } : {}),
+    ...(advanced?.repair ? { repair: advanced.repair } : {}),
   });
 }
 

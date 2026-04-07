@@ -124,6 +124,8 @@ describe("workspace backup cleanup", () => {
             "cand-01",
             "base-snapshot.json",
           ),
+          repairCount: 0,
+          repairedRounds: [],
           createdAt: "2026-04-06T00:00:00.000Z",
         },
       ],

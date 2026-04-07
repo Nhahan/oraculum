@@ -15,6 +15,8 @@ describe("finalist summaries", () => {
         status: "promoted",
         workspaceDir: "/tmp/cand-01",
         taskPacketPath: "/tmp/cand-01/task-packet.json",
+        repairCount: 0,
+        repairedRounds: [],
         createdAt: "2026-04-06T00:00:00.000Z",
       },
       {
@@ -24,6 +26,8 @@ describe("finalist summaries", () => {
         status: "eliminated",
         workspaceDir: "/tmp/cand-02",
         taskPacketPath: "/tmp/cand-02/task-packet.json",
+        repairCount: 0,
+        repairedRounds: [],
         createdAt: "2026-04-06T00:00:00.000Z",
       },
     ];
@@ -76,6 +80,26 @@ describe("finalist summaries", () => {
         strategyLabel: "Minimal Change",
         summary: "Candidate completed successfully.",
         artifactKinds: ["patch", "stdout"],
+        changedPaths: [],
+        changeSummary: {
+          mode: "none",
+          changedPathCount: 0,
+          createdPathCount: 0,
+          removedPathCount: 0,
+          modifiedPathCount: 0,
+        },
+        witnessRollup: {
+          witnessCount: 0,
+          warningOrHigherCount: 0,
+          repairableCount: 0,
+          repairHints: [],
+          riskSummaries: [],
+          keyWitnesses: [],
+        },
+        repairSummary: {
+          attemptCount: 0,
+          repairedRounds: [],
+        },
         verdicts: [
           {
             roundId: "fast",
@@ -98,6 +122,8 @@ describe("finalist summaries", () => {
         status: "promoted",
         workspaceDir: "/tmp/cand-01",
         taskPacketPath: "/tmp/cand-01/task-packet.json",
+        repairCount: 0,
+        repairedRounds: [],
         createdAt: "2026-04-06T00:00:00.000Z",
       },
     ];
@@ -110,6 +136,26 @@ describe("finalist summaries", () => {
         strategyLabel: "Minimal Change",
         summary: "No agent summary captured.",
         artifactKinds: [],
+        changedPaths: [],
+        changeSummary: {
+          mode: "none",
+          changedPathCount: 0,
+          createdPathCount: 0,
+          removedPathCount: 0,
+          modifiedPathCount: 0,
+        },
+        witnessRollup: {
+          witnessCount: 0,
+          warningOrHigherCount: 0,
+          repairableCount: 0,
+          repairHints: [],
+          riskSummaries: [],
+          keyWitnesses: [],
+        },
+        repairSummary: {
+          attemptCount: 0,
+          repairedRounds: [],
+        },
         verdicts: [],
       },
     ]);

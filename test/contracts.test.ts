@@ -96,6 +96,10 @@ describe("oracle and adapter contracts", () => {
   it("accepts advanced operator settings separately from quick-start defaults", () => {
     const advanced = projectAdvancedConfigSchema.parse({
       version: 1,
+      repair: {
+        enabled: true,
+        maxAttemptsPerRound: 1,
+      },
       oracles: [
         {
           id: "lint-fast",
@@ -109,6 +113,7 @@ describe("oracle and adapter contracts", () => {
     });
 
     expect(advanced.oracles?.[0]?.args).toEqual(["run", "lint"]);
+    expect(advanced.repair?.maxAttemptsPerRound).toBe(1);
   });
 
   it("supports repo-local command oracle configuration", () => {
@@ -140,10 +145,15 @@ describe("oracle and adapter contracts", () => {
           enforcement: "hard",
         },
       ],
+      repair: {
+        enabled: true,
+        maxAttemptsPerRound: 1,
+      },
     });
 
     expect(config.oracles[0]?.cwd).toBe("workspace");
     expect(config.oracles[0]?.confidence).toBe("medium");
+    expect(config.repair.maxAttemptsPerRound).toBe(1);
   });
 
   it("rejects repo-local oracle ids that collide within a round or with built-ins", () => {
