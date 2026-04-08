@@ -9,6 +9,7 @@ import {
 } from "../core/paths.js";
 import type { Adapter } from "../domain/config.js";
 import type { OracleVerdict } from "../domain/oracle.js";
+import { consultationProfileSelectionSchema } from "../domain/profile.js";
 import {
   type CandidateManifest,
   candidateStatusSchema,
@@ -34,6 +35,7 @@ interface WriteFinalistComparisonReportOptions {
   };
   verdictsByCandidate: Map<string, OracleVerdict[]>;
   agent: Adapter;
+  consultationProfile?: z.infer<typeof consultationProfileSelectionSchema>;
 }
 
 const comparisonReportSchema = z.object({
@@ -44,6 +46,7 @@ const comparisonReportSchema = z.object({
   finalistCount: z.number().int().min(0),
   recommendedWinner: runRecommendationSchema.optional(),
   whyThisWon: z.string().min(1).optional(),
+  consultationProfile: consultationProfileSelectionSchema.optional(),
   finalists: z.array(
     finalistSummarySchema.extend({
       status: candidateStatusSchema,
@@ -81,6 +84,7 @@ export async function writeFinalistComparisonReport(
     finalistCount: finalists.length,
     ...(options.recommendedWinner ? { recommendedWinner: options.recommendedWinner } : {}),
     ...(options.recommendedWinner ? { whyThisWon: options.recommendedWinner.summary } : {}),
+    ...(options.consultationProfile ? { consultationProfile: options.consultationProfile } : {}),
     finalists: finalists.map((finalist) => ({
       ...finalist,
       status: candidateById.get(finalist.candidateId)?.status ?? "planned",
@@ -157,6 +161,23 @@ function buildComparisonMarkdown(report: ComparisonReport): string {
       `- Source: ${report.recommendedWinner.source}`,
       `- Why this won: ${report.whyThisWon ?? report.recommendedWinner.summary}`,
     );
+  }
+
+  if (report.consultationProfile) {
+    lines.push(
+      "",
+      "## Consultation Profile",
+      `- Profile: ${report.consultationProfile.profileId}`,
+      `- Confidence: ${report.consultationProfile.confidence}`,
+      `- Source: ${report.consultationProfile.source}`,
+      `- Summary: ${report.consultationProfile.summary}`,
+    );
+    if (report.consultationProfile.missingCapabilities.length > 0) {
+      lines.push(
+        "- Validation gaps:",
+        ...report.consultationProfile.missingCapabilities.map((item) => `  - ${item}`),
+      );
+    }
   }
 
   if (report.finalists.length === 0) {

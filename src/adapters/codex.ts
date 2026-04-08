@@ -15,12 +15,14 @@ import {
 } from "./prompt.js";
 import {
   type AgentAdapter,
+  type AgentJudgeRecommendation,
   type AgentJudgeRequest,
   type AgentJudgeResult,
   type AgentProfileRequest,
   type AgentProfileResult,
   type AgentRunRequest,
   type AgentRunResult,
+  agentJudgeRecommendationSchema,
   agentJudgeResultSchema,
   agentProfileResultSchema,
   agentRunResultSchema,
@@ -234,34 +236,14 @@ function summarizeAgentOutput(output: string, fallback: string): string {
   return trimmed ? trimmed.slice(0, 500) : fallback;
 }
 
-function extractRecommendation(
-  output: string,
-): { candidateId: string; confidence: "low" | "medium" | "high"; summary: string } | undefined {
+function extractRecommendation(output: string): AgentJudgeRecommendation | undefined {
   const trimmed = output.trim();
   if (!trimmed) {
     return undefined;
   }
 
   try {
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-    const candidateId =
-      typeof parsed.candidateId === "string" && parsed.candidateId.trim()
-        ? parsed.candidateId.trim()
-        : undefined;
-    const confidence =
-      parsed.confidence === "low" || parsed.confidence === "medium" || parsed.confidence === "high"
-        ? parsed.confidence
-        : undefined;
-    const summary =
-      typeof parsed.summary === "string" && parsed.summary.trim()
-        ? parsed.summary.trim()
-        : undefined;
-
-    if (!candidateId || !confidence || !summary) {
-      return undefined;
-    }
-
-    return { candidateId, confidence, summary };
+    return agentJudgeRecommendationSchema.parse(JSON.parse(trimmed) as unknown);
   } catch {
     return undefined;
   }

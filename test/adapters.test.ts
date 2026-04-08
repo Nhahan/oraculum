@@ -278,6 +278,132 @@ if (out) {
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Repair summary: attempts=1, rounds=impact",
     );
+  }, 20_000);
+
+  it("includes consultation profile gaps in winner-selection prompts", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "judge-profile-gap-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"decision":"abstain","confidence":"low","summary":"Deep validation is incomplete."}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const adapter = new CodexAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    await adapter.recommendWinner({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      consultationProfile: {
+        profileId: "frontend",
+        confidence: "medium",
+        summary: "Frontend signals are strongest.",
+        missingCapabilities: ["No e2e or visual deep check was detected."],
+      },
+      finalists: [
+        {
+          candidateId: "cand-01",
+          strategyLabel: "Minimal Change",
+          summary: "Small diff.",
+          artifactKinds: ["report"],
+          changedPaths: ["src/page.tsx"],
+          changeSummary: {
+            mode: "git-diff",
+            changedPathCount: 1,
+            createdPathCount: 0,
+            removedPathCount: 0,
+            modifiedPathCount: 1,
+            addedLineCount: 4,
+            deletedLineCount: 1,
+          },
+          witnessRollup: {
+            witnessCount: 0,
+            warningOrHigherCount: 0,
+            repairableCount: 0,
+            repairHints: [],
+            riskSummaries: [],
+            keyWitnesses: [],
+          },
+          repairSummary: {
+            attemptCount: 0,
+            repairedRounds: [],
+          },
+          verdicts: [],
+        },
+      ],
+    });
+
+    await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "Consultation profile: frontend (medium)",
+    );
+    await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "No e2e or visual deep check was detected.",
+    );
+  });
+
+  it("parses a structured abstention from Codex winner selection", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "judge-abstain-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"decision":"abstain","confidence":"low","summary":"The finalists are too weak to recommend safely."}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const adapter = new CodexAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendWinner({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      finalists: [],
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation).toEqual({
+      decision: "abstain",
+      confidence: "low",
+      summary: "The finalists are too weak to recommend safely.",
+    });
   });
 
   it("asks Codex to recommend a consultation profile with an output schema", async () => {
@@ -429,7 +555,7 @@ if (out) {
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Command catalog:",
     );
-  });
+  }, 20_000);
 });
 
 function createTaskPacket() {

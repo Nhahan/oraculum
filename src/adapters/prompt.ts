@@ -87,7 +87,7 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
     "You are selecting the best Oraculum finalist.",
     "Choose exactly one candidate from the provided finalists.",
     "Prefer the candidate that best satisfies the task while preserving repo rules and leaving the strongest reviewable evidence.",
-    'Return JSON only in this shape: {"candidateId":"cand-01","confidence":"high","summary":"short rationale"}',
+    'Return JSON only in one of these shapes: {"decision":"select","candidateId":"cand-01","confidence":"high","summary":"short rationale"} or {"decision":"abstain","confidence":"low","summary":"why no finalist is safe to promote"}',
     "",
     `Task ID: ${request.taskPacket.id}`,
     `Task Title: ${request.taskPacket.title}`,
@@ -106,6 +106,20 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
 
   if (request.taskPacket.risks.length > 0) {
     sections.push("", "Known risks:", ...request.taskPacket.risks.map((item) => `- ${item}`));
+  }
+
+  if (request.consultationProfile) {
+    sections.push(
+      "",
+      `Consultation profile: ${request.consultationProfile.profileId} (${request.consultationProfile.confidence})`,
+      request.consultationProfile.summary,
+    );
+    if (request.consultationProfile.missingCapabilities.length > 0) {
+      sections.push(
+        "Profile gaps:",
+        ...request.consultationProfile.missingCapabilities.map((item) => `- ${item}`),
+      );
+    }
   }
 
   sections.push("", "Finalists:");
@@ -157,7 +171,9 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
   sections.push(
     "",
     "Rules:",
-    "- Choose only one of the listed candidate IDs.",
+    "- If one finalist is safe and clearly best, return decision=select with one listed candidate ID.",
+    "- If finalists are too weak, too close, or missing critical evidence, return decision=abstain.",
+    "- Missing deep validation or profile gaps are valid reasons to abstain when the remaining evidence is not strong enough.",
     "- Do not invent a candidate ID.",
     "- Keep the summary concise and concrete.",
     "- Return JSON only.",

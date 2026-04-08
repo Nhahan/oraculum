@@ -15,12 +15,14 @@ import {
 } from "./prompt.js";
 import {
   type AgentAdapter,
+  type AgentJudgeRecommendation,
   type AgentJudgeRequest,
   type AgentJudgeResult,
   type AgentProfileRequest,
   type AgentProfileResult,
   type AgentRunRequest,
   type AgentRunResult,
+  agentJudgeRecommendationSchema,
   agentJudgeResultSchema,
   agentProfileResultSchema,
   agentRunResultSchema,
@@ -205,9 +207,7 @@ function firstString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function extractRecommendation(
-  stdout: string,
-): { candidateId: string; confidence: "low" | "medium" | "high"; summary: string } | undefined {
+function extractRecommendation(stdout: string): AgentJudgeRecommendation | undefined {
   const trimmed = stdout.trim();
   if (!trimmed) {
     return undefined;
@@ -220,14 +220,7 @@ function extractRecommendation(
       return undefined;
     }
 
-    const candidateId = firstString(payload.candidateId);
-    const confidence = firstConfidence(payload.confidence);
-    const summary = firstString(payload.summary);
-    if (!candidateId || !confidence || !summary) {
-      return undefined;
-    }
-
-    return { candidateId, confidence, summary };
+    return agentJudgeRecommendationSchema.parse(payload);
   } catch {
     return undefined;
   }
@@ -315,7 +308,11 @@ function buildProfileRecommendationSchema(): Record<string, unknown> {
   };
 }
 function pickObject(parsed: Record<string, unknown>): Record<string, unknown> | undefined {
-  if ("candidateId" in parsed && "summary" in parsed && "confidence" in parsed) {
+  if (
+    ("candidateId" in parsed || parsed.decision === "abstain") &&
+    "summary" in parsed &&
+    "confidence" in parsed
+  ) {
     return parsed;
   }
 
@@ -323,15 +320,15 @@ function pickObject(parsed: Record<string, unknown>): Record<string, unknown> | 
   for (const value of nested) {
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const objectValue = value as Record<string, unknown>;
-      if ("candidateId" in objectValue && "summary" in objectValue && "confidence" in objectValue) {
+      if (
+        ("candidateId" in objectValue || objectValue.decision === "abstain") &&
+        "summary" in objectValue &&
+        "confidence" in objectValue
+      ) {
         return objectValue;
       }
     }
   }
 
   return undefined;
-}
-
-function firstConfidence(value: unknown): "low" | "medium" | "high" | undefined {
-  return value === "low" || value === "medium" || value === "high" ? value : undefined;
 }

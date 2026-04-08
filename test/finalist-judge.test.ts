@@ -25,7 +25,7 @@ describe("finalist judge", () => {
     const reportsDir = join(projectRoot, ".oraculum", "runs", runId, "reports");
     await mkdir(reportsDir, { recursive: true });
 
-    const recommendation = await recommendWinnerWithJudge({
+    const outcome = await recommendWinnerWithJudge({
       adapter: {
         name: "codex",
         runCandidate: async () => {
@@ -78,7 +78,7 @@ describe("finalist judge", () => {
       verdictsByCandidate: new Map(),
     });
 
-    expect(recommendation).toBeUndefined();
+    expect(outcome).toEqual({ fallbackAllowed: true });
     await expect(
       readFile(`${getWinnerSelectionPath(projectRoot, runId)}.warning.txt`, "utf8"),
     ).resolves.toContain("judge binary missing");
@@ -90,7 +90,7 @@ describe("finalist judge", () => {
     const reportsDir = join(projectRoot, ".oraculum", "runs", runId, "reports");
     await mkdir(reportsDir, { recursive: true });
 
-    const recommendation = await recommendWinnerWithJudge({
+    const outcome = await recommendWinnerWithJudge({
       adapter: {
         name: "codex",
         runCandidate: async () => {
@@ -108,6 +108,7 @@ describe("finalist judge", () => {
           exitCode: 7,
           summary: "judge failed",
           recommendation: {
+            decision: "select",
             candidateId: "cand-01",
             confidence: "high",
             summary: "ignore this recommendation",
@@ -155,13 +156,90 @@ describe("finalist judge", () => {
       verdictsByCandidate: new Map(),
     });
 
-    expect(recommendation).toBeUndefined();
+    expect(outcome).toEqual({ fallbackAllowed: true });
     await expect(readFile(getWinnerSelectionPath(projectRoot, runId), "utf8")).resolves.toContain(
       '"status": "failed"',
     );
     await expect(
       readFile(`${getWinnerSelectionPath(projectRoot, runId)}.warning.txt`, "utf8"),
     ).resolves.toContain('status was "failed"');
+  });
+
+  it("lets the judge abstain without forcing a fallback winner", async () => {
+    const projectRoot = await createTempRoot();
+    const runId = "run_3";
+    const reportsDir = join(projectRoot, ".oraculum", "runs", runId, "reports");
+    await mkdir(reportsDir, { recursive: true });
+
+    const outcome = await recommendWinnerWithJudge({
+      adapter: {
+        name: "codex",
+        runCandidate: async () => {
+          throw new Error("not used");
+        },
+        recommendProfile: async () => {
+          throw new Error("not used");
+        },
+        recommendWinner: async () => ({
+          runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-05T00:00:00.000Z",
+          completedAt: "2026-04-05T00:00:01.000Z",
+          exitCode: 0,
+          summary: "judge abstained",
+          recommendation: {
+            decision: "abstain",
+            confidence: "low",
+            summary: "The finalists are too weak to recommend a safe promotion.",
+          },
+          artifacts: [],
+        }),
+      } satisfies AgentAdapter,
+      candidateResults: [
+        {
+          runId,
+          candidateId: "cand-01",
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-05T00:00:00.000Z",
+          completedAt: "2026-04-05T00:00:01.000Z",
+          exitCode: 0,
+          summary: "ok",
+          artifacts: [],
+        },
+      ],
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: join(projectRoot, "workspace"),
+          taskPacketPath: join(projectRoot, "task-packet.json"),
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-05T00:00:00.000Z",
+        },
+      ],
+      projectRoot,
+      runId,
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        intent: "Fix the bug.",
+        source: {
+          kind: "task-note",
+          path: join(projectRoot, "task.md"),
+        },
+      },
+      verdictsByCandidate: new Map(),
+    });
+
+    expect(outcome).toEqual({ fallbackAllowed: false });
+    await expect(readFile(getWinnerSelectionPath(projectRoot, runId), "utf8")).resolves.toContain(
+      '"decision": "abstain"',
+    );
   });
 });
 

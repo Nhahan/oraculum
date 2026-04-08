@@ -8,6 +8,7 @@ import {
   resolveProjectRoot,
 } from "../core/paths.js";
 import type { OracleVerdict } from "../domain/oracle.js";
+import type { ConsultationProfileSelection } from "../domain/profile.js";
 import {
   type CandidateManifest,
   type RunRecommendation,
@@ -26,18 +27,24 @@ interface RecommendWinnerOptions {
   runId: string;
   taskPacket: unknown;
   verdictsByCandidate: Map<string, OracleVerdict[]>;
+  consultationProfile?: ConsultationProfileSelection;
+}
+
+export interface WinnerJudgeOutcome {
+  fallbackAllowed: boolean;
+  recommendation?: RunRecommendation;
 }
 
 export async function recommendWinnerWithJudge(
   options: RecommendWinnerOptions,
-): Promise<RunRecommendation | undefined> {
+): Promise<WinnerJudgeOutcome> {
   const finalists = await buildEnrichedFinalistSummaries({
     candidates: options.candidates,
     candidateResults: options.candidateResults,
     verdictsByCandidate: options.verdictsByCandidate,
   });
   if (finalists.length === 0) {
-    return undefined;
+    return { fallbackAllowed: false };
   }
 
   const taskPacket = materializedTaskPacketSchema.parse(options.taskPacket);
@@ -55,6 +62,16 @@ export async function recommendWinnerWithJudge(
         logDir,
         taskPacket,
         finalists,
+        ...(options.consultationProfile
+          ? {
+              consultationProfile: {
+                profileId: options.consultationProfile.profileId,
+                confidence: options.consultationProfile.confidence,
+                summary: options.consultationProfile.summary,
+                missingCapabilities: options.consultationProfile.missingCapabilities,
+              },
+            }
+          : {}),
       }),
     );
   } catch (error) {
@@ -63,7 +80,7 @@ export async function recommendWinnerWithJudge(
       persistedResultPath,
       `Winner selection judge failed to start or complete: ${message}`,
     );
-    return undefined;
+    return { fallbackAllowed: true };
   }
 
   await writeJsonFile(persistedResultPath, judgeResult);
@@ -73,7 +90,7 @@ export async function recommendWinnerWithJudge(
       persistedResultPath,
       `Winner selection judge status was "${judgeResult.status}", so the deterministic fallback policy was used instead.`,
     );
-    return undefined;
+    return { fallbackAllowed: true };
   }
 
   const recommendation = judgeResult.recommendation;
@@ -82,7 +99,11 @@ export async function recommendWinnerWithJudge(
       persistedResultPath,
       "Winner selection judge did not return a structured recommendation, so the deterministic fallback policy was used instead.",
     );
-    return undefined;
+    return { fallbackAllowed: true };
+  }
+
+  if (recommendation.decision === "abstain") {
+    return { fallbackAllowed: false };
   }
 
   const matchingFinalist = finalists.find(
@@ -93,15 +114,18 @@ export async function recommendWinnerWithJudge(
       persistedResultPath,
       `Judge returned unknown candidate "${recommendation.candidateId}".`,
     );
-    return undefined;
+    return { fallbackAllowed: true };
   }
 
-  return runRecommendationSchema.parse({
-    candidateId: recommendation.candidateId,
-    confidence: recommendation.confidence,
-    summary: recommendation.summary,
-    source: "llm-judge",
-  });
+  return {
+    fallbackAllowed: false,
+    recommendation: runRecommendationSchema.parse({
+      candidateId: recommendation.candidateId,
+      confidence: recommendation.confidence,
+      summary: recommendation.summary,
+      source: "llm-judge",
+    }),
+  };
 }
 
 async function writeJudgeWarning(resultPath: string, message: string): Promise<void> {
