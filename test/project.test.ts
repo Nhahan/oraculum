@@ -479,6 +479,21 @@ if (out) {
     ).rejects.toThrow("Task file not found:");
   });
 
+  it("treats file-like inline task text without an extension as inline text", async () => {
+    const cwd = await createInitializedProject();
+
+    const manifest = await planRun({
+      cwd,
+      taskInput: "fix/session-loss-on-refresh",
+      candidates: 1,
+    });
+
+    expect(normalizePathForAssertion(manifest.taskPath)).toContain(".oraculum/tasks/");
+    const taskNote = await readFile(manifest.taskPath, "utf8");
+    expect(taskNote).toContain("# fix/session-loss-on-refresh");
+    expect(taskNote).toContain("fix/session-loss-on-refresh");
+  });
+
   it("uses the latest run by default when building an export plan", async () => {
     const cwd = await createInitializedProject();
     await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");

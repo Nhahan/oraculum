@@ -439,7 +439,6 @@ function looksLikeTaskPath(taskInput: string): boolean {
   }
 
   return (
-    (!hasWhitespace && (taskInput.includes("/") || taskInput.includes("\\"))) ||
     taskInput.startsWith(".") ||
     (!hasWhitespace &&
       (taskInput.endsWith(".md") || taskInput.endsWith(".json") || taskInput.endsWith(".txt")))

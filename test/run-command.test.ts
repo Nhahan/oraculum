@@ -134,6 +134,20 @@ describe("consult command", () => {
     expect(mockedExecuteRun).toHaveBeenCalledTimes(1);
   });
 
+  it("treats draft input with file-like slashes as inline task text", async () => {
+    const program = createProgram();
+
+    await program.parseAsync(["draft", "fix/session-loss-on-refresh"], { from: "user" });
+
+    expect(mockedPlanRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskInput: "fix/session-loss-on-refresh",
+        autoProfile: { allowRuntime: false },
+      }),
+    );
+    expect(mockedExecuteRun).not.toHaveBeenCalled();
+  });
+
   it("treats inline task text with file-like path fragments as normal consultations", async () => {
     const program = createProgram();
 
