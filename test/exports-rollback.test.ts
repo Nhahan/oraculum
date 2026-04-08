@@ -22,6 +22,7 @@ import {
 import { runSubprocess } from "../src/core/subprocess.js";
 import { runManifestSchema } from "../src/domain/run.js";
 import { materializeExport } from "../src/services/exports.js";
+import * as projectService from "../src/services/project.js";
 import { buildExportPlan, readRunManifest } from "../src/services/runs.js";
 
 const mockedRunSubprocess = vi.mocked(runSubprocess);
@@ -125,6 +126,8 @@ describe("git export rollback", () => {
       .mockResolvedValueOnce(result({ exitCode: 0, stdout: "base-revision\n" }))
       .mockResolvedValueOnce(result({ exitCode: 0, stdout: ".oraculum/existing.log\n" }))
       .mockResolvedValueOnce(result({ exitCode: 0 }))
+      .mockResolvedValueOnce(result({ exitCode: 0, stdout: "app.txt\n" }))
+      .mockResolvedValueOnce(result({ exitCode: 0 }))
       .mockResolvedValueOnce(result({ exitCode: 0, stdout: "diff --git a/app.txt b/app.txt\n" }))
       .mockResolvedValueOnce(result({ exitCode: 0 }))
       .mockImplementationOnce(async () => {
@@ -185,8 +188,10 @@ describe("git export rollback", () => {
     const candidateManifestPath = getCandidateManifestPath(cwd, runId, candidateId);
     const reportsDir = getReportsDir(cwd, runId);
     const workspaceDir = join(cwd, "workspace");
+    const candidateDir = getCandidateDir(cwd, runId, candidateId);
     await mkdir(reportsDir, { recursive: true });
     await mkdir(workspaceDir, { recursive: true });
+    await mkdir(candidateDir, { recursive: true });
 
     mockedBuildExportPlan.mockResolvedValue({
       path: join(reportsDir, "export-plan.json"),
@@ -315,59 +320,147 @@ describe("git export rollback", () => {
       )}\n`,
       "utf8",
     );
-
-    mockedRunSubprocess
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(result({ exitCode: 1 }))
-      .mockResolvedValueOnce(result({ exitCode: 0, stdout: "main\n" }))
-      .mockResolvedValueOnce(result({ exitCode: 0, stdout: "base-revision\n" }))
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(result({ exitCode: 0, stdout: "diff --git a/app.txt b/app.txt\n" }))
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(
-        result({ exitCode: 0, stdout: ".oraculum/runs/run_2/reports/export.patch\n" }),
-      )
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(result({ exitCode: 0 }));
-
-    await expect(
-      materializeExport({
-        cwd,
-        branchName: "fix/session-loss",
-        withReport: false,
-      }),
-    ).rejects.toThrow(
-      "Promotion bookkeeping failed after applying changes and the promotion was rolled back",
+    await writeFile(
+      candidateManifestPath,
+      `${JSON.stringify(
+        {
+          id: candidateId,
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir,
+          taskPacketPath: join(
+            cwd,
+            ".oraculum",
+            "runs",
+            runId,
+            "candidates",
+            candidateId,
+            "task-packet.json",
+          ),
+          workspaceMode: "git-worktree",
+          baseRevision: "base-revision",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-06T00:00:00.000Z",
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
     );
 
-    expect(
-      mockedRunSubprocess.mock.calls.some(
-        ([options]) => options.command === "git" && options.args.join(" ") === "reset --hard HEAD",
-      ),
-    ).toBe(true);
-    expect(
-      mockedRunSubprocess.mock.calls.some(
-        ([options]) =>
-          options.command === "git" &&
-          options.args.join(" ") === "ls-files --others --exclude-standard",
-      ),
-    ).toBe(true);
-    expect(
-      mockedRunSubprocess.mock.calls.some(
-        ([options]) =>
-          options.command === "git" && options.args.join(" ") === "branch -D fix/session-loss",
-      ),
-    ).toBe(true);
+    const originalWriteJsonFile = projectService.writeJsonFile;
+    const writeJsonFileSpy = vi
+      .spyOn(projectService, "writeJsonFile")
+      .mockImplementation(async (path, value) => {
+        if (path === candidateManifestPath) {
+          throw new Error("disk full");
+        }
+        return originalWriteJsonFile(path, value);
+      });
 
-    const restoredManifest = runManifestSchema.parse(
-      JSON.parse(await readFile(manifestPath, "utf8")) as unknown,
-    );
-    expect(restoredManifest.candidates[0]?.status).toBe("promoted");
-    await expect(readFile(candidateManifestPath, "utf8")).rejects.toThrow();
+    let projectUntrackedCalls = 0;
+    mockedRunSubprocess.mockImplementation(async (options) => {
+      if (options.command !== "git") {
+        throw new Error(`unexpected command: ${options.command}`);
+      }
+
+      const joinedArgs = options.args.join(" ");
+      if (joinedArgs === "diff --no-ext-diff --quiet --exit-code") {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === "diff --cached --no-ext-diff --quiet --exit-code") {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === "rev-parse --verify --quiet refs/heads/fix/session-loss") {
+        return result({ exitCode: 1 });
+      }
+      if (joinedArgs === "branch --show-current") {
+        return result({ exitCode: 0, stdout: "main\n" });
+      }
+      if (joinedArgs === "rev-parse HEAD") {
+        return result({ exitCode: 0, stdout: "base-revision\n" });
+      }
+      if (joinedArgs === "ls-files --others --exclude-standard") {
+        projectUntrackedCalls += 1;
+        return result({
+          exitCode: 0,
+          stdout: projectUntrackedCalls === 1 ? "" : ".oraculum/runs/run_2/reports/export.patch\n",
+        });
+      }
+      if (joinedArgs === `-C ${workspaceDir} add -A`) {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === `-C ${workspaceDir} diff --cached --name-only base-revision --`) {
+        return result({ exitCode: 0, stdout: "app.txt\n" });
+      }
+      if (joinedArgs === `-C ${workspaceDir} ls-files --others --exclude-standard`) {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === `-C ${workspaceDir} diff --cached --binary base-revision -- app.txt`) {
+        return result({ exitCode: 0, stdout: "diff --git a/app.txt b/app.txt\n" });
+      }
+      if (joinedArgs === "checkout -b fix/session-loss") {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === `apply --binary ${join(reportsDir, "export.patch")}`) {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === "reset --hard HEAD") {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === "checkout main") {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === "branch -D fix/session-loss") {
+        return result({ exitCode: 0 });
+      }
+
+      throw new Error(`unexpected git invocation: ${joinedArgs}`);
+    });
+
+    try {
+      await expect(
+        materializeExport({
+          cwd,
+          branchName: "fix/session-loss",
+          withReport: false,
+        }),
+      ).rejects.toThrow(
+        "Promotion bookkeeping failed after applying changes and the promotion was rolled back",
+      );
+
+      expect(
+        mockedRunSubprocess.mock.calls.some(
+          ([options]) =>
+            options.command === "git" && options.args.join(" ") === "reset --hard HEAD",
+        ),
+      ).toBe(true);
+      expect(
+        mockedRunSubprocess.mock.calls.some(
+          ([options]) =>
+            options.command === "git" &&
+            options.args.join(" ") === "ls-files --others --exclude-standard",
+        ),
+      ).toBe(true);
+      expect(
+        mockedRunSubprocess.mock.calls.some(
+          ([options]) =>
+            options.command === "git" && options.args.join(" ") === "branch -D fix/session-loss",
+        ),
+      ).toBe(true);
+
+      const restoredManifest = runManifestSchema.parse(
+        JSON.parse(await readFile(manifestPath, "utf8")) as unknown,
+      );
+      expect(restoredManifest.candidates[0]?.status).toBe("promoted");
+      await expect(readFile(candidateManifestPath, "utf8")).resolves.toContain(
+        '"status": "promoted"',
+      );
+    } finally {
+      writeJsonFileSpy.mockRestore();
+    }
   });
 });
 

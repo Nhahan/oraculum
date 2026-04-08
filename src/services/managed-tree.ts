@@ -8,28 +8,29 @@ export interface ManagedPathEntry {
   path: string;
 }
 
+const UNMANAGED_ENTRY_NAMES = new Set([
+  ".git",
+  ".omc",
+  ".oraculum",
+  "dist",
+  "node_modules",
+  ".aws",
+  ".env",
+  ".env.local",
+  ".env.development",
+  ".env.production",
+  ".env.test",
+  ".gnupg",
+  ".kube",
+  ".netrc",
+  ".npmrc",
+  ".pypirc",
+  ".ssh",
+]);
+
 export function shouldManageProjectEntry(name: string): boolean {
   const base = basename(name);
-  if ([".git", ".oraculum", "dist", "node_modules"].includes(base)) {
-    return false;
-  }
-
-  if (
-    [
-      ".aws",
-      ".env",
-      ".env.local",
-      ".env.development",
-      ".env.production",
-      ".env.test",
-      ".gnupg",
-      ".kube",
-      ".netrc",
-      ".npmrc",
-      ".pypirc",
-      ".ssh",
-    ].includes(base)
-  ) {
+  if (UNMANAGED_ENTRY_NAMES.has(base)) {
     return false;
   }
 
@@ -38,6 +39,13 @@ export function shouldManageProjectEntry(name: string): boolean {
   }
 
   return true;
+}
+
+export function shouldManageProjectPath(relativePath: string): boolean {
+  return relativePath
+    .split(/[\\/]+/u)
+    .filter((segment) => segment.length > 0)
+    .every((segment) => shouldManageProjectEntry(segment));
 }
 
 export async function listManagedProjectEntries(

@@ -39,6 +39,7 @@ import {
   type ManagedPathEntry,
   normalizeManagedSymlinkTarget,
   readSymlinkTargetType as readManagedSymlinkTargetType,
+  shouldManageProjectPath,
 } from "./managed-tree.js";
 import { pathExists, writeJsonFile } from "./project.js";
 import { buildExportPlan, readRunManifest } from "./runs.js";
@@ -345,9 +346,52 @@ async function generateWorkspacePatch(
     throw new OraculumError(`Failed to stage candidate workspace at ${workspaceDir}.`);
   }
 
+  const changedPathsResult = await runSubprocess({
+    command: "git",
+    args: ["-C", workspaceDir, "diff", "--cached", "--name-only", baseRevision, "--"],
+    cwd: projectRoot,
+    timeoutMs: 30_000,
+  });
+  const untrackedResult = await runSubprocess({
+    command: "git",
+    args: ["-C", workspaceDir, "ls-files", "--others", "--exclude-standard"],
+    cwd: projectRoot,
+    timeoutMs: 30_000,
+  });
+  if (changedPathsResult.exitCode !== 0 || untrackedResult.exitCode !== 0) {
+    throw new OraculumError(`Failed to inspect promotion patch paths from ${workspaceDir}.`);
+  }
+
+  const changedPaths = new Set<string>();
+  for (const line of changedPathsResult.stdout.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (trimmed && shouldManageProjectPath(trimmed)) {
+      changedPaths.add(trimmed);
+    }
+  }
+  for (const line of untrackedResult.stdout.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (trimmed && shouldManageProjectPath(trimmed)) {
+      changedPaths.add(trimmed);
+    }
+  }
+
+  if (changedPaths.size === 0) {
+    return "";
+  }
+
   const diff = await runSubprocess({
     command: "git",
-    args: ["-C", workspaceDir, "diff", "--cached", "--binary", baseRevision],
+    args: [
+      "-C",
+      workspaceDir,
+      "diff",
+      "--cached",
+      "--binary",
+      baseRevision,
+      "--",
+      ...[...changedPaths].sort((left, right) => left.localeCompare(right)),
+    ],
     cwd: projectRoot,
     timeoutMs: 30_000,
   });

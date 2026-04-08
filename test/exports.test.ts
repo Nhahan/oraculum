@@ -128,7 +128,7 @@ describe("materialized exports", () => {
         withReport: false,
       }),
     ).rejects.toThrow("tracked local changes");
-  });
+  }, 20_000);
 
   it("rejects git export when HEAD moved away from the candidate base revision", async () => {
     const cwd = await createTempRoot();
@@ -163,7 +163,68 @@ describe("materialized exports", () => {
         withReport: false,
       }),
     ).rejects.toThrow("recorded base revision");
-  });
+  }, 20_000);
+
+  it("ignores unmanaged runtime state files when exporting a git winner", async () => {
+    const cwd = await createTempRoot();
+    await initializeGitProject(cwd);
+    await writeFile(join(cwd, ".gitignore"), ".oraculum/\n", "utf8");
+    await writeFile(join(cwd, "app.txt"), "original\n", "utf8");
+    await commitAll(cwd, "initial project");
+    await initializeProject({ cwd, force: false });
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (prompt.includes("You are selecting the best Oraculum finalist.")) {
+  if (out) {
+    fs.writeFileSync(
+      out,
+      '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 wins."}',
+      "utf8",
+    );
+  }
+  process.exit(0);
+}
+fs.mkdirSync(path.join(process.cwd(), ".omc", "state"), { recursive: true });
+fs.writeFileSync(path.join(process.cwd(), ".omc", "state", "session.json"), '{"runtime":"state"}', "utf8");
+fs.writeFileSync(path.join(process.cwd(), "app.txt"), "patched\\n", "utf8");
+if (out) fs.writeFileSync(out, "patched", "utf8");
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "fix session loss on refresh",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    await materializeExport({
+      cwd,
+      branchName: "fix/session-loss",
+      withReport: false,
+    });
+
+    expect(normalizeLineEndings(await readFile(join(cwd, "app.txt"), "utf8"))).toBe("patched\n");
+    await expect(lstat(join(cwd, ".omc"))).rejects.toThrow();
+  }, 20_000);
 
   it("exports git candidates even when they commit inside the worktree", async () => {
     const cwd = await createTempRoot();

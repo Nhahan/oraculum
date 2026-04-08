@@ -6,6 +6,7 @@ import {
   type ManagedProjectSnapshot,
   readManagedProjectSnapshot,
 } from "./base-snapshots.js";
+import { shouldManageProjectPath } from "./managed-tree.js";
 
 export interface CandidateChangeInsight {
   changedPaths: string[];
@@ -32,6 +33,14 @@ export async function collectCandidateChangeInsight(
   }
 
   return emptyChangeInsight();
+}
+
+export async function listManagedGitChangedPaths(
+  workspaceDir: string,
+  baseRevision: string,
+): Promise<string[]> {
+  const insight = await collectGitChangeInsight(workspaceDir, baseRevision);
+  return insight.changedPaths;
 }
 
 export function emptyChangeInsight(): CandidateChangeInsight {
@@ -92,6 +101,11 @@ async function collectGitChangeInsight(
       continue;
     }
 
+    const resolvedPath = parts.at(-1)?.trim();
+    if (!resolvedPath || !shouldManageProjectPath(resolvedPath)) {
+      continue;
+    }
+
     if (status.startsWith("A")) {
       createdPathCount += 1;
     } else if (status.startsWith("D")) {
@@ -100,15 +114,12 @@ async function collectGitChangeInsight(
       modifiedPathCount += 1;
     }
 
-    const resolvedPath = parts.at(-1)?.trim();
-    if (resolvedPath) {
-      changedPaths.add(resolvedPath);
-    }
+    changedPaths.add(resolvedPath);
   }
 
   for (const line of untracked.stdout.split(/\r?\n/u)) {
     const trimmed = line.trim();
-    if (!trimmed) {
+    if (!trimmed || !shouldManageProjectPath(trimmed)) {
       continue;
     }
 
@@ -125,7 +136,10 @@ async function collectGitChangeInsight(
       continue;
     }
 
-    const [added, deleted] = line.split("\t");
+    const [added, deleted, path] = line.split("\t");
+    if (!path || !shouldManageProjectPath(path.trim())) {
+      continue;
+    }
     if (added && /^\d+$/u.test(added)) {
       addedLineCount += Number.parseInt(added, 10);
     }
