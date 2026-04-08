@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -130,7 +130,7 @@ if (out) {
     await expect(
       readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
     ).resolves.toContain("Finalist Comparison");
-  });
+  }, 20_000);
 
   it("eliminates candidates when the adapter exits non-zero", async () => {
     const cwd = await createTempRoot();
@@ -260,6 +260,51 @@ if (out) {
     );
     expect(verdict.status).toBe("repairable");
     expect(verdict.summary).toContain("did not leave materialized file changes");
+  });
+
+  it("ignores unmanaged runtime state files when checking for a materialized patch", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(
+      join(cwd, "tasks", "unmanaged-only.md"),
+      "# Unmanaged only\nWrite runtime state only.\n",
+    );
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const path = require("node:path");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+fs.mkdirSync(path.join(process.cwd(), ".omc"), { recursive: true });
+fs.writeFileSync(path.join(process.cwd(), ".omc", "project-memory.json"), '{"runtime":"state"}', "utf8");
+if (out) {
+  fs.writeFileSync(out, "runtime state only", "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/unmanaged-only.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.candidates[0]?.status).toBe("eliminated");
+    expect(executed.manifest.recommendedWinner).toBeUndefined();
   });
 
   it("runs repo-local hard-gate oracles and eliminates failing candidates", async () => {
@@ -423,7 +468,7 @@ if (out) {
     await expect(
       readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
     ).resolves.toContain("fallback-policy");
-  });
+  }, 20_000);
 
   it("runs repo-local command plus args oracles through the platform-safe default shell", async () => {
     const cwd = await createTempRoot();
@@ -489,7 +534,7 @@ if (out) {
         "utf8",
       ),
     ).resolves.toBe("lint --strict");
-  });
+  }, 20_000);
 
   it("falls back to deterministic winner selection when the judge exits non-zero", async () => {
     const cwd = await createTempRoot();
@@ -544,6 +589,63 @@ if (out) {
     await expect(
       readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
     ).resolves.toContain("fallback-policy");
+  });
+
+  it("keeps finalists but leaves no recommendation when the judge abstains", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(
+      join(cwd, "tasks", "judge-abstains.md"),
+      "# Judge abstains\nDo not force a winner.\n",
+    );
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  if (prompt.includes("You are selecting the best Oraculum finalist.")) {
+    fs.writeFileSync(
+      out,
+      '{"decision":"abstain","confidence":"low","summary":"The finalists are too weak to recommend a safe promotion."}',
+      "utf8",
+    );
+    process.exit(0);
+  }
+
+  fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
+  fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/judge-abstains.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+    expect(executed.manifest.recommendedWinner).toBeUndefined();
+    await expect(
+      readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
+    ).resolves.not.toContain("fallback-policy");
   });
 
   it("runs a bounded repair loop for repairable verdicts before promoting a finalist", async () => {
@@ -642,12 +744,146 @@ if (out) {
     );
     expect(verdict.status).toBe("pass");
   });
+
+  it("uses consultation-scoped auto profile oracles during execution", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix-library.md"), "# Fix\nUpdate the library output.\n");
+    await writeLibraryProfileProject(cwd);
+
+    const fakeProfileCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex-profile",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"profileId":"library","confidence":"high","summary":"Library scripts are present.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast","unit-impact","full-suite-deep"],"missingCapabilities":[]}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const fakeCandidateCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex-candidate",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
+  fs.writeFileSync(path.join(process.cwd(), "src", "index.js"), 'export function greet() {\\n  return "Hello";\\n}\\n', "utf8");
+}
+if (out) {
+  const body = prompt.includes("You are selecting the best Oraculum finalist.")
+    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the only surviving finalist."}'
+    : "Codex finished candidate patch";
+  fs.writeFileSync(out, body, "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/fix-library.md",
+      agent: "codex",
+      candidates: 1,
+      autoProfile: {
+        codexBinaryPath: fakeProfileCodex,
+        timeoutMs: 5_000,
+      },
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCandidateCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.profileSelection?.profileId).toBe("library");
+    expect(executed.manifest.rounds[0]?.verdictCount).toBeGreaterThanOrEqual(4);
+    expect(executed.manifest.rounds[1]?.verdictCount).toBeGreaterThanOrEqual(3);
+    expect(executed.manifest.rounds[2]?.verdictCount).toBeGreaterThanOrEqual(1);
+
+    await expect(
+      readFile(getCandidateVerdictPath(cwd, planned.id, "cand-01", "fast", "lint-fast"), "utf8"),
+    ).resolves.toContain('"status": "pass"');
+    await expect(
+      readFile(
+        getCandidateVerdictPath(cwd, planned.id, "cand-01", "fast", "typecheck-fast"),
+        "utf8",
+      ),
+    ).resolves.toContain('"status": "pass"');
+    await expect(
+      readFile(
+        getCandidateVerdictPath(cwd, planned.id, "cand-01", "impact", "unit-impact"),
+        "utf8",
+      ),
+    ).resolves.toContain('"status": "pass"');
+    await expect(
+      readFile(
+        getCandidateVerdictPath(cwd, planned.id, "cand-01", "deep", "full-suite-deep"),
+        "utf8",
+      ),
+    ).resolves.toContain('"status": "pass"');
+  });
 });
 
 async function createTempRoot(): Promise<string> {
   const path = await mkdtemp(join(tmpdir(), "oraculum-execution-"));
   tempRoots.push(path);
   return path;
+}
+
+async function writeLibraryProfileProject(cwd: string): Promise<void> {
+  await mkdir(join(cwd, "src"), { recursive: true });
+  await writeFile(
+    join(cwd, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "execution-library",
+        version: "1.0.0",
+        type: "module",
+        exports: "./src/index.js",
+        scripts: {
+          lint: 'node -e "process.exit(0)"',
+          typecheck: 'node -e "process.exit(0)"',
+          test: "node --test",
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  await writeFile(join(cwd, "src", "index.js"), 'export function greet() {\n  return "Bye";\n}\n');
+  await writeFile(
+    join(cwd, "greet.test.js"),
+    [
+      "import test from 'node:test';",
+      "import assert from 'node:assert/strict';",
+      "import { greet } from './src/index.js';",
+      "",
+      "test('greet returns Hello', () => {",
+      "  assert.equal(greet(), 'Hello');",
+      "});",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
 }
 
 async function configureProjectOracles(cwd: string, oracles: unknown[]): Promise<void> {

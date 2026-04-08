@@ -66,6 +66,7 @@ export const runManifestSchema = z.object({
   taskPath: z.string().min(1),
   taskPacket: taskPacketSummarySchema,
   agent: adapterSchema,
+  configPath: z.string().min(1).optional(),
   candidateCount: z.number().int().min(1),
   createdAt: z.string().min(1),
   rounds: z.array(roundManifestSchema).min(1),

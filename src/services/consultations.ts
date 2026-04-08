@@ -85,6 +85,12 @@ export async function renderConsultationSummary(
       `Auto profile: ${manifest.profileSelection.profileId} (${manifest.profileSelection.confidence}, ${manifest.profileSelection.source})`,
       manifest.profileSelection.summary,
     );
+    if (manifest.profileSelection.missingCapabilities.length > 0) {
+      lines.push(
+        "Profile gaps:",
+        ...manifest.profileSelection.missingCapabilities.map((item) => `- ${item}`),
+      );
+    }
   }
 
   lines.push("Entry paths:");
@@ -108,8 +114,9 @@ export async function renderConsultationSummary(
   );
 
   const exportPlanPath = getExportPlanPath(projectRoot, manifest.id);
+  const hasPromotionRecord = await pathExists(exportPlanPath);
   lines.push(
-    (await pathExists(exportPlanPath))
+    hasPromotionRecord
       ? `- promotion record: ${toDisplayPath(projectRoot, exportPlanPath)}`
       : "- promotion record: not created yet",
   );
@@ -129,12 +136,16 @@ export async function renderConsultationSummary(
   }
 
   lines.push("Next:");
-  if (manifest.recommendedWinner) {
+  if (hasPromotionRecord) {
+    lines.push(`- reopen the promotion record: ${toDisplayPath(projectRoot, exportPlanPath)}`);
+  } else if (manifest.recommendedWinner) {
     lines.push("- promote the recommended result: oraculum promote --branch <branch-name>");
-  } else if (manifest.status === "completed") {
+  } else if (manifest.status === "completed" && finalists.length > 0) {
     lines.push(
       "- inspect the comparison and choose a candidate manually: oraculum promote <candidate-id> --branch <branch-name>",
     );
+  } else if (manifest.status === "completed") {
+    lines.push("- review why no candidate survived: open the comparison report above.");
   } else {
     lines.push(`- reopen this consultation later: oraculum verdict consultation ${manifest.id}`);
   }

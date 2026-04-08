@@ -55,6 +55,8 @@ const PROFILE_STRATEGIES: Record<ConsultationProfileId, string[]> = {
   migration: ["safety-first", "structural-refactor", "minimal-change"],
 };
 
+const PROFILE_FALLBACK_PRIORITY: ConsultationProfileId[] = ["library", "frontend", "migration"];
+
 const FRONTEND_DEPENDENCIES = new Set([
   "react",
   "react-dom",
@@ -76,6 +78,9 @@ const MIGRATION_DEPENDENCIES = new Set([
   "typeorm",
   "alembic",
 ]);
+const PLAYWRIGHT_DEPENDENCIES = new Set(["playwright", "@playwright/test"]);
+const CYPRESS_DEPENDENCIES = new Set(["cypress"]);
+const PRISMA_DEPENDENCIES = new Set(["prisma", "@prisma/client"]);
 
 export async function recommendConsultationProfile(
   options: RecommendConsultationProfileOptions,
@@ -221,6 +226,8 @@ async function collectProfileRepoSignals(
     packageJson,
   });
   const commandCatalog = buildCommandCatalog({
+    dependencies,
+    files: knownFiles,
     packageJson,
     packageManager,
     scripts,
@@ -433,10 +440,12 @@ function buildSignalNotes(
   const notes: string[] = [];
   if (
     tags.includes("package-export") &&
-    commandCatalog.every((command) => command.id !== "pack-impact")
+    commandCatalog.every(
+      (command) => command.id !== "pack-impact" && command.id !== "package-smoke-deep",
+    )
   ) {
     notes.push(
-      "Package export signals were detected, but no safe package export check was auto-generated.",
+      "Package export signals were detected, but no packaging verification command was auto-generated.",
     );
   }
   if (packageManager === "unknown") {
@@ -454,6 +463,8 @@ function buildSignalNotes(
 }
 
 function buildCommandCatalog(options: {
+  dependencies: string[];
+  files: string[];
   packageJson:
     | {
         scripts?: Record<string, string>;
@@ -467,6 +478,8 @@ function buildCommandCatalog(options: {
   scripts: string[];
 }): ProfileCommandCandidate[] {
   const scripts = new Set(options.scripts);
+  const dependencies = new Set(options.dependencies);
+  const files = new Set(options.files);
   const catalog: ProfileCommandCandidate[] = [];
 
   const addScriptCommand = (
@@ -480,6 +493,31 @@ function buildCommandCatalog(options: {
       return;
     }
     const command = buildScriptCommand(options.packageManager, script);
+    if (!command) {
+      return;
+    }
+    catalog.push({
+      id,
+      roundId,
+      label,
+      command: command.command,
+      args: command.args,
+      invariant,
+    });
+  };
+
+  const addDirectToolCommand = (
+    id: string,
+    roundId: ProfileCommandCandidate["roundId"],
+    label: string,
+    invariant: string,
+    tool: string,
+    toolArgs: string[],
+  ) => {
+    if (catalog.some((command) => command.id === id)) {
+      return;
+    }
+    const command = buildToolExecCommand(options.packageManager, tool, toolArgs);
     if (!command) {
       return;
     }
@@ -517,6 +555,34 @@ function buildCommandCatalog(options: {
     if (catalog.some((command) => command.id === "schema-fast")) {
       break;
     }
+  }
+  if (
+    !catalog.some((command) => command.id === "schema-fast") &&
+    files.has("prisma/schema.prisma") &&
+    dependenciesIntersection(dependencies, PRISMA_DEPENDENCIES)
+  ) {
+    addDirectToolCommand(
+      "schema-fast",
+      "fast",
+      "Prisma schema validation",
+      "Prisma schema definitions should validate cleanly.",
+      "prisma",
+      ["validate", "--schema", "prisma/schema.prisma"],
+    );
+  }
+  if (
+    !catalog.some((command) => command.id === "schema-fast") &&
+    files.has("schema.prisma") &&
+    dependenciesIntersection(dependencies, PRISMA_DEPENDENCIES)
+  ) {
+    addDirectToolCommand(
+      "schema-fast",
+      "fast",
+      "Prisma schema validation",
+      "Prisma schema definitions should validate cleanly.",
+      "prisma",
+      ["validate", "--schema", "schema.prisma"],
+    );
   }
   for (const script of ["test:unit", "unit", "test"]) {
     addScriptCommand(
@@ -568,7 +634,31 @@ function buildCommandCatalog(options: {
       break;
     }
   }
-  for (const script of ["e2e", "test:e2e", "playwright", "cypress", "visual", "test:visual"]) {
+  if (
+    !catalog.some((command) => command.id === "migration-impact") &&
+    files.has("prisma/migrations") &&
+    dependenciesIntersection(dependencies, PRISMA_DEPENDENCIES)
+  ) {
+    const schemaPath = files.has("prisma/schema.prisma") ? "prisma/schema.prisma" : "schema.prisma";
+    addDirectToolCommand(
+      "migration-impact",
+      "impact",
+      "Prisma migration status",
+      "Migration planning or dry-run should succeed.",
+      "prisma",
+      ["migrate", "status", "--schema", schemaPath],
+    );
+  }
+  for (const script of [
+    "e2e",
+    "test:e2e",
+    "playwright",
+    "cypress",
+    "visual",
+    "test:visual",
+    "test:smoke",
+    "smoke",
+  ]) {
     addScriptCommand(
       "e2e-deep",
       "deep",
@@ -580,18 +670,77 @@ function buildCommandCatalog(options: {
       break;
     }
   }
-  if (scripts.has("test") && !catalog.some((command) => command.id === "full-suite-deep")) {
-    const command = buildScriptCommand(options.packageManager, "test");
-    if (command) {
-      catalog.push({
-        id: "full-suite-deep",
-        roundId: "deep",
-        label: "Full test suite",
-        command: command.command,
-        args: command.args,
-        invariant: "The full test suite should pass before promotion.",
-      });
+  if (
+    !catalog.some((command) => command.id === "e2e-deep") &&
+    filesIntersection(files, ["playwright.config.ts", "playwright.config.js"]) &&
+    dependenciesIntersection(dependencies, PLAYWRIGHT_DEPENDENCIES)
+  ) {
+    addDirectToolCommand(
+      "e2e-deep",
+      "deep",
+      "Playwright end-to-end checks",
+      "Deep end-to-end or visual validation should pass.",
+      "playwright",
+      ["test"],
+    );
+  }
+  if (
+    !catalog.some((command) => command.id === "e2e-deep") &&
+    filesIntersection(files, ["cypress.config.ts", "cypress.config.js"]) &&
+    dependenciesIntersection(dependencies, CYPRESS_DEPENDENCIES)
+  ) {
+    addDirectToolCommand(
+      "e2e-deep",
+      "deep",
+      "Cypress end-to-end checks",
+      "Deep end-to-end or visual validation should pass.",
+      "cypress",
+      ["run"],
+    );
+  }
+  for (const script of ["test", "test:full", "test:ci", "ci:test", "verify", "check"]) {
+    addScriptCommand(
+      "full-suite-deep",
+      "deep",
+      "Full test suite",
+      script,
+      "The full test suite should pass before promotion.",
+    );
+    if (catalog.some((command) => command.id === "full-suite-deep")) {
+      break;
     }
+  }
+  if (
+    !catalog.some((command) => command.id === "package-smoke-deep") &&
+    (options.packageJson?.exports !== undefined ||
+      options.packageJson?.main ||
+      options.packageJson?.module ||
+      options.packageJson?.types)
+  ) {
+    catalog.push({
+      id: "package-smoke-deep",
+      roundId: "deep",
+      label: "Package tarball smoke",
+      command: "node",
+      args: [
+        "-e",
+        [
+          "const { mkdtempSync, readdirSync, rmSync } = require('node:fs');",
+          "const { spawnSync } = require('node:child_process');",
+          "const { join } = require('node:path');",
+          "const { tmpdir } = require('node:os');",
+          "const tempDir = mkdtempSync(join(tmpdir(), 'oraculum-pack-smoke-'));",
+          "const result = spawnSync('npm', ['pack', '--pack-destination', tempDir], { encoding: 'utf8', stdio: 'pipe' });",
+          "process.stdout.write(result.stdout || '');",
+          "process.stderr.write(result.stderr || '');",
+          "if ((result.status ?? 1) !== 0) process.exit(result.status ?? 1);",
+          "const tarballs = readdirSync(tempDir).filter((name) => name.endsWith('.tgz'));",
+          "if (tarballs.length === 0) { console.error('npm pack did not produce a tarball.'); process.exit(1); }",
+          "rmSync(tempDir, { recursive: true, force: true });",
+        ].join(" "),
+      ],
+      invariant: "The package should produce a real tarball before promotion.",
+    });
   }
   for (const script of [
     "migration:rollback",
@@ -611,11 +760,33 @@ function buildCommandCatalog(options: {
     }
   }
   if (
-    options.packageManager === "npm" &&
-    (options.packageJson?.exports !== undefined ||
-      options.packageJson?.main ||
-      options.packageJson?.module ||
-      options.packageJson?.types)
+    !catalog.some((command) => command.id === "migration-drift-deep") &&
+    files.has("prisma/migrations") &&
+    dependenciesIntersection(dependencies, PRISMA_DEPENDENCIES)
+  ) {
+    const schemaPath = files.has("prisma/schema.prisma") ? "prisma/schema.prisma" : "schema.prisma";
+    addDirectToolCommand(
+      "migration-drift-deep",
+      "deep",
+      "Prisma migration drift diff",
+      "Migration history and the schema should stay aligned before promotion.",
+      "prisma",
+      [
+        "migrate",
+        "diff",
+        "--from-migrations",
+        "prisma/migrations",
+        "--to-schema-datamodel",
+        schemaPath,
+        "--exit-code",
+      ],
+    );
+  }
+  if (
+    options.packageJson?.exports !== undefined ||
+    options.packageJson?.main ||
+    options.packageJson?.module ||
+    options.packageJson?.types
   ) {
     catalog.push({
       id: "pack-impact",
@@ -645,6 +816,26 @@ function buildScriptCommand(
   }
   if (packageManager === "npm" || packageManager === "unknown") {
     return { command: "npm", args: ["run", script] };
+  }
+  return undefined;
+}
+
+function buildToolExecCommand(
+  packageManager: ProfileRepoSignals["packageManager"],
+  tool: string,
+  args: string[],
+): { command: string; args: string[] } | undefined {
+  if (packageManager === "pnpm") {
+    return { command: "pnpm", args: ["exec", tool, ...args] };
+  }
+  if (packageManager === "yarn") {
+    return { command: "yarn", args: ["exec", tool, ...args] };
+  }
+  if (packageManager === "bun") {
+    return { command: "bun", args: ["x", tool, ...args] };
+  }
+  if (packageManager === "npm" || packageManager === "unknown") {
+    return { command: "npx", args: ["--no-install", tool, ...args] };
   }
   return undefined;
 }
@@ -707,7 +898,9 @@ function buildFallbackRecommendation(
       if (left[1] !== right[1]) {
         return right[1] - left[1];
       }
-      return left[0].localeCompare(right[0]);
+      return (
+        PROFILE_FALLBACK_PRIORITY.indexOf(left[0]) - PROFILE_FALLBACK_PRIORITY.indexOf(right[0])
+      );
     },
   );
   const chosenProfile = ranked[0]?.[0] ?? "library";
@@ -742,7 +935,12 @@ function buildFallbackSummary(
   taskPacket: MaterializedTaskPacket,
 ): string {
   const topSignals = signals.tags.slice(0, 4).join(", ") || "no strong repo signals";
-  return `Detected ${profileId} consultation profile from repo/task signals (${topSignals}); fallback confidence=${confidence}, scores=${JSON.stringify(scores)} for task "${basename(taskPacket.source.path)}".`;
+  const defaultedToLibrary =
+    profileId === "library" && Object.values(scores).every((score) => score === 0);
+  const rationale = defaultedToLibrary
+    ? "defaulted to the safest library profile because no repo-specific signals were detected"
+    : `detected ${profileId} consultation profile from repo/task signals (${topSignals})`;
+  return `Fallback detection ${rationale}; confidence=${confidence}, scores=${JSON.stringify(scores)} for task "${basename(taskPacket.source.path)}".`;
 }
 
 function chooseFallbackCommandIds(
@@ -751,9 +949,23 @@ function chooseFallbackCommandIds(
 ): string[] {
   const availableIds = new Set(catalog.map((candidate) => candidate.id));
   const desiredByProfile: Record<ConsultationProfileId, string[]> = {
-    library: ["lint-fast", "typecheck-fast", "unit-impact", "pack-impact", "full-suite-deep"],
+    library: [
+      "lint-fast",
+      "typecheck-fast",
+      "unit-impact",
+      "pack-impact",
+      "full-suite-deep",
+      "package-smoke-deep",
+    ],
     frontend: ["lint-fast", "typecheck-fast", "changed-tests-impact", "build-impact", "e2e-deep"],
-    migration: ["schema-fast", "lint-fast", "typecheck-fast", "migration-impact", "rollback-deep"],
+    migration: [
+      "schema-fast",
+      "lint-fast",
+      "typecheck-fast",
+      "migration-impact",
+      "rollback-deep",
+      "migration-drift-deep",
+    ],
   };
 
   return desiredByProfile[profileId].filter((id) => availableIds.has(id));
@@ -769,14 +981,42 @@ function inferMissingCapabilities(
   if (profileId === "library" && !selected.has("full-suite-deep")) {
     missing.push("No full-suite deep test command was detected.");
   }
+  if (
+    profileId === "library" &&
+    !selected.has("package-smoke-deep") &&
+    !selected.has("pack-impact")
+  ) {
+    missing.push("No package packaging smoke check was detected.");
+  }
+  if (profileId === "frontend" && !selected.has("build-impact")) {
+    missing.push("No build validation command was detected.");
+  }
   if (profileId === "frontend" && !selected.has("e2e-deep")) {
     missing.push("No e2e or visual deep check was detected.");
   }
-  if (profileId === "migration" && !selected.has("rollback-deep")) {
-    missing.push("No rollback simulation was detected.");
+  if (profileId === "migration" && !selected.has("schema-fast")) {
+    missing.push("No schema validation command was detected.");
+  }
+  if (profileId === "migration" && !selected.has("migration-impact")) {
+    missing.push("No migration planning or dry-run command was detected.");
+  }
+  if (
+    profileId === "migration" &&
+    !selected.has("rollback-deep") &&
+    !selected.has("migration-drift-deep")
+  ) {
+    missing.push("No rollback simulation or migration drift deep check was detected.");
   }
 
   return missing;
+}
+
+function dependenciesIntersection(dependencies: Set<string>, expected: Set<string>): boolean {
+  return [...expected].some((dependency) => dependencies.has(dependency));
+}
+
+function filesIntersection(files: Set<string>, expected: string[]): boolean {
+  return expected.some((file) => files.has(file));
 }
 
 function sanitizeRecommendation(
@@ -788,6 +1028,11 @@ function sanitizeRecommendation(
   const filteredCommandIds = recommendation.selectedCommandIds.filter((id) =>
     validCommandIds.has(id),
   );
+  const baselineCommandIds = chooseFallbackCommandIds(
+    recommendation.profileId,
+    signals.commandCatalog,
+  );
+  const selectedCommandIds = [...new Set([...baselineCommandIds, ...filteredCommandIds])];
   const validStrategyIds = new Set([
     "minimal-change",
     "safety-first",
@@ -800,8 +1045,8 @@ function sanitizeRecommendation(
     ...recommendation,
     candidateCount: clampCandidateCount(recommendation.candidateCount),
     strategyIds: filteredStrategyIds.length > 0 ? filteredStrategyIds : fallback.strategyIds,
-    selectedCommandIds: filteredCommandIds,
-    missingCapabilities: recommendation.missingCapabilities,
+    selectedCommandIds,
+    missingCapabilities: inferMissingCapabilities(recommendation.profileId, selectedCommandIds),
   });
 }
 

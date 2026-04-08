@@ -81,7 +81,9 @@ if (out) {
       "lint-fast",
       "typecheck-fast",
       "unit-impact",
+      "pack-impact",
       "full-suite-deep",
+      "package-smoke-deep",
     ]);
     await expect(readFile(getProfileSelectionPath(cwd, manifest.id), "utf8")).resolves.toContain(
       '"profileId": "library"',
@@ -181,7 +183,7 @@ if (out) {
       taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
     });
 
-    expect(recommendation.config.oracles).toHaveLength(4);
+    expect(recommendation.config.oracles).toHaveLength(6);
     expect(recommendation.config.oracles.every((oracle) => oracle.cwd === "workspace")).toBe(true);
   });
 
@@ -212,6 +214,98 @@ if (out) {
       '"llmSkipped": true',
     );
   });
+
+  it("defaults zero-signal fallback detection to the library profile", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep it small.\n", "utf8");
+    await mkdir(getReportsDir(cwd, "run_zero_signals"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_zero_signals"),
+      runId: "run_zero_signals",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.summary).toContain("defaulted to the safest library profile");
+  });
+
+  it("adds a package tarball deep check for exportable libraries during fallback detection", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep package exports healthy.\n", "utf8");
+    await writeLibraryPackage(cwd);
+    await mkdir(getReportsDir(cwd, "run_library_pack"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_library_pack"),
+      runId: "run_library_pack",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.oracleIds).toContain("package-smoke-deep");
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
+  });
+
+  it("auto-generates deep frontend checks from Playwright signals even without scripts", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nUpdate the page title.\n", "utf8");
+    await writeFrontendPackage(cwd);
+    await mkdir(getReportsDir(cwd, "run_frontend"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_frontend"),
+      runId: "run_frontend",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("frontend");
+    expect(recommendation.selection.oracleIds).toContain("e2e-deep");
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
+  });
+
+  it("auto-generates prisma migration deep checks without custom scripts", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nAdjust the migration.\n", "utf8");
+    await writePrismaMigrationPackage(cwd);
+    await mkdir(getReportsDir(cwd, "run_migration"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_migration"),
+      runId: "run_migration",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("migration");
+    expect(recommendation.selection.oracleIds).toEqual(
+      expect.arrayContaining(["schema-fast", "migration-impact", "migration-drift-deep"]),
+    );
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
+  });
 });
 
 async function createTempRoot(): Promise<string> {
@@ -238,6 +332,65 @@ async function writeLibraryPackage(cwd: string): Promise<void> {
       null,
       2,
     )}\n`,
+    "utf8",
+  );
+}
+
+async function writeFrontendPackage(cwd: string): Promise<void> {
+  await writeFile(
+    join(cwd, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "demo-frontend",
+        type: "module",
+        dependencies: {
+          react: "^19.0.0",
+          "@playwright/test": "^1.55.0",
+        },
+        scripts: {
+          lint: 'node -e "process.exit(0)"',
+          typecheck: 'node -e "process.exit(0)"',
+          build: 'node -e "process.exit(0)"',
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  await writeFile(join(cwd, "playwright.config.ts"), "export default {};\n", "utf8");
+}
+
+async function writePrismaMigrationPackage(cwd: string): Promise<void> {
+  await mkdir(join(cwd, "prisma", "migrations"), { recursive: true });
+  await writeFile(
+    join(cwd, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "demo-migration",
+        type: "module",
+        dependencies: {
+          prisma: "^6.0.0",
+          "@prisma/client": "^6.0.0",
+        },
+        scripts: {
+          lint: 'node -e "process.exit(0)"',
+          typecheck: 'node -e "process.exit(0)"',
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  await writeFile(
+    join(cwd, "prisma", "schema.prisma"),
+    'generator client { provider = "prisma-client-js" }\ndatasource db { provider = "sqlite" url = "file:dev.db" }\nmodel User { id Int @id }\n',
+    "utf8",
+  );
+  await writeFile(
+    join(cwd, "prisma", "migrations", "README.md"),
+    "placeholder migration history\n",
     "utf8",
   );
 }

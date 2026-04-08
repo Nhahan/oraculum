@@ -71,7 +71,10 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain("Auto profile: library (high, llm-recommendation)");
     expect(summary).toContain("Recommended promotion: cand-01 (high, llm-judge)");
     expect(summary).toContain("Next:");
-    expect(summary).toContain("oraculum promote --branch <branch-name>");
+    expect(summary).toContain(
+      "- reopen the promotion record: .oraculum/runs/run_1/reports/export-plan.json",
+    );
+    expect(summary).not.toContain("oraculum promote --branch <branch-name>");
     expect(summary).toContain("oraculum verdict archive");
   });
 
@@ -86,6 +89,58 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain("- winner selection: not available yet");
     expect(summary).toContain("- promotion record: not created yet");
     expect(summary).toContain(`oraculum verdict consultation ${manifest.id}`);
+  });
+
+  it("shows profile gaps in the consultation summary when deep validation is incomplete", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      profileSelection: {
+        profileId: "frontend",
+        confidence: "medium",
+        source: "fallback-detection",
+        summary: "Frontend signals are strongest.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change", "safety-first"],
+        oracleIds: ["lint-fast", "typecheck-fast", "build-impact"],
+        missingCapabilities: ["No e2e or visual deep check was detected."],
+        signals: ["frontend-framework", "build-script"],
+      },
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(getProfileSelectionPath(cwd, manifest.id), "{}\n", "utf8");
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+
+    expect(summary).toContain("Profile gaps:");
+    expect(summary).toContain("- No e2e or visual deep check was detected.");
+  });
+
+  it("does not suggest manual promotion when no finalists survived", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "eliminated",
+          workspaceDir: "/tmp/workspace",
+          taskPacketPath: "/tmp/task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+    await writeManifest(cwd, manifest);
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+
+    expect(summary).toContain("No finalists yet. Candidate states:");
+    expect(summary).toContain(
+      "- review why no candidate survived: open the comparison report above.",
+    );
+    expect(summary).not.toContain("oraculum promote <candidate-id> --branch <branch-name>");
   });
 
   it("lists recent consultations in descending order", async () => {

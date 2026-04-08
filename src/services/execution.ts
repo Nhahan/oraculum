@@ -20,6 +20,7 @@ import {
   resolveProjectRoot,
 } from "../core/paths.js";
 import { runSubprocess } from "../core/subprocess.js";
+import { projectConfigSchema } from "../domain/config.js";
 import type { OracleVerdict } from "../domain/oracle.js";
 import {
   type CandidateManifest,
@@ -70,8 +71,10 @@ interface CandidateSelectionMetrics {
 
 export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRunResult> {
   const projectRoot = resolveProjectRoot(options.cwd);
-  const projectConfig = await loadProjectConfig(projectRoot);
   const manifest = await readRunManifest(projectRoot, options.runId);
+  const projectConfig = manifest.configPath
+    ? projectConfigSchema.parse(JSON.parse(await readFile(manifest.configPath, "utf8")) as unknown)
+    : await loadProjectConfig(projectRoot);
   const adapter = createAgentAdapter(manifest.agent, {
     ...(options.claudeBinaryPath ? { claudeBinaryPath: options.claudeBinaryPath } : {}),
     ...(options.codexBinaryPath ? { codexBinaryPath: options.codexBinaryPath } : {}),
@@ -371,19 +374,27 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
         JSON.parse(await readFile(taskPacketPath, "utf8")) as unknown,
       )
     : undefined;
-  const llmRecommendation = taskPacket
+  const judgeOutcome = taskPacket
     ? await recommendWinnerWithJudge({
         adapter,
         candidateResults,
         candidates: Array.from(candidateMap.values()),
+        ...(manifest.profileSelection ? { consultationProfile: manifest.profileSelection } : {}),
         projectRoot,
         runId: manifest.id,
         taskPacket,
         verdictsByCandidate,
       })
-    : undefined;
+    : { fallbackAllowed: true };
   const recommendedWinner =
-    llmRecommendation ?? chooseFallbackWinner(Array.from(candidateMap.values()), selectionMetrics);
+    judgeOutcome.recommendation ??
+    (judgeOutcome.fallbackAllowed
+      ? chooseFallbackWinner(
+          Array.from(candidateMap.values()),
+          selectionMetrics,
+          manifest.profileSelection,
+        )
+      : undefined);
 
   const completedManifest = runManifestSchema.parse({
     ...manifest,
@@ -406,6 +417,9 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     runId: completedManifest.id,
     taskPacket: completedManifest.taskPacket,
     verdictsByCandidate,
+    ...(completedManifest.profileSelection
+      ? { consultationProfile: completedManifest.profileSelection }
+      : {}),
   });
 
   return {
@@ -477,6 +491,7 @@ function recordVerdictMetrics(
 function chooseFallbackWinner(
   candidates: CandidateManifest[],
   metricsByCandidate: Map<string, CandidateSelectionMetrics>,
+  consultationProfile?: RunManifest["profileSelection"],
 ): RunRecommendation | undefined {
   const finalists = candidates.filter((candidate) => candidate.status === "promoted");
   if (finalists.length === 0) {
@@ -514,11 +529,15 @@ function chooseFallbackWinner(
   }
 
   const winnerMetrics = metricsByCandidate.get(winner.id);
+  const hasProfileGaps = Boolean(consultationProfile?.missingCapabilities.length);
   if (finalists.length === 1) {
+    const confidence = hasProfileGaps ? "medium" : "high";
     return {
       candidateId: winner.id,
-      confidence: "high",
-      summary: `Selected by fallback policy because ${winner.id} is the only surviving finalist.`,
+      confidence,
+      summary: hasProfileGaps
+        ? `Selected by fallback policy because ${winner.id} is the only surviving finalist, but the consultation profile still has validation gaps: ${consultationProfile?.missingCapabilities.join("; ")}.`
+        : `Selected by fallback policy because ${winner.id} is the only surviving finalist.`,
       source: "fallback-policy",
     };
   }
@@ -529,8 +548,11 @@ function chooseFallbackWinner(
   const runnerUpPenalty = buildPenalty(runnerUpMetrics);
   const winnerPassCount = winnerMetrics?.passCount ?? 0;
   const runnerUpPassCount = runnerUpMetrics?.passCount ?? 0;
-  const confidence =
+  let confidence: RunRecommendation["confidence"] =
     winnerPenalty < runnerUpPenalty || winnerPassCount > runnerUpPassCount ? "medium" : "low";
+  if (hasProfileGaps) {
+    confidence = "low";
+  }
 
   return {
     candidateId: winner.id,
@@ -538,7 +560,9 @@ function chooseFallbackWinner(
     summary:
       confidence === "medium"
         ? `Selected by fallback policy from ${finalists.length} finalists using current deterministic signals: fewer warnings/errors, stronger pass coverage, and better artifact coverage.`
-        : `Selected by fallback policy from ${finalists.length} finalists; finalists were close, so confidence is limited.`,
+        : hasProfileGaps
+          ? `Selected by fallback policy from ${finalists.length} finalists, but deep validation coverage is incomplete: ${consultationProfile?.missingCapabilities.join("; ")}.`
+          : `Selected by fallback policy from ${finalists.length} finalists; finalists were close, so confidence is limited.`,
     source: "fallback-policy",
   };
 }

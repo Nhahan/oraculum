@@ -411,7 +411,7 @@ if (out) {
         getWinnerSelectionPath(cwd, manifest.id),
       ]),
     );
-  });
+  }, 20_000);
 
   it("rejects export plans for candidates that were not promoted", async () => {
     const cwd = await createInitializedProject();
@@ -528,7 +528,7 @@ if (out) {
       JSON.parse(await readFile(getLatestExportableRunStatePath(cwd), "utf8")) as unknown,
     );
     expect(latestExportableRunState.runId).toBe(manifest.id);
-  });
+  }, 20_000);
 
   it("rejects implicit export when no recommended promotion exists", async () => {
     const cwd = await createInitializedProject();

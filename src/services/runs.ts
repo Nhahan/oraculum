@@ -20,6 +20,7 @@ import {
   getLatestRunStatePath,
   getProfileSelectionPath,
   getReportsDir,
+  getRunConfigPath,
   getRunDir,
   getRunManifestPath,
   getWinnerSelectionPath,
@@ -128,6 +129,8 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
         oracleIds: config.oracles.map((oracle) => oracle.id),
       }
     : undefined;
+  const configPath = getRunConfigPath(projectRoot, runId);
+  await writeJsonFile(configPath, config);
   const createdAt = new Date().toISOString();
 
   const candidates = await Promise.all(
@@ -177,6 +180,7 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
       sourcePath: taskPacket.source.path,
     },
     agent,
+    configPath,
     candidateCount,
     createdAt,
     rounds: config.rounds.map<RunRound>((round) => ({
