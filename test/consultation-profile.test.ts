@@ -11,7 +11,10 @@ import {
   getProfileSelectionPath,
   getReportsDir,
 } from "../src/core/paths.js";
-import { recommendConsultationProfile } from "../src/services/consultation-profile.js";
+import {
+  recommendConsultationProfile,
+  setToolPathFinderForTests,
+} from "../src/services/consultation-profile.js";
 import {
   initializeProject,
   loadProjectConfig,
@@ -24,6 +27,7 @@ import { writeNodeBinary } from "./helpers/fake-binary.js";
 const tempRoots: string[] = [];
 
 afterEach(async () => {
+  setToolPathFinderForTests(undefined);
   await Promise.all(
     tempRoots.splice(0).map(async (path) => {
       await rm(path, { recursive: true, force: true });
@@ -85,6 +89,20 @@ if (out) {
       "full-suite-deep",
       "package-smoke-deep",
     ]);
+    const configPath = savedManifest.configPath;
+    expect(configPath).toBeDefined();
+    if (!configPath) {
+      throw new Error("expected consultation config path to be recorded");
+    }
+    const savedConfig = JSON.parse(await readFile(configPath, "utf8")) as {
+      oracles?: Array<{ id: string; args?: string[] }>;
+    };
+    const packageSmokeDeep = savedConfig.oracles?.find(
+      (oracle) => oracle.id === "package-smoke-deep",
+    );
+    expect(packageSmokeDeep?.args?.join(" ")).toContain(
+      "process.platform === 'win32' ? 'npm.cmd' : 'npm'",
+    );
     await expect(readFile(getProfileSelectionPath(cwd, manifest.id), "utf8")).resolves.toContain(
       '"profileId": "library"',
     );
@@ -155,6 +173,7 @@ if (out) {
     expect(manifest.candidateCount).toBe(2);
     expect(manifest.profileSelection?.profileId).toBe("library");
     expect(manifest.profileSelection?.oracleIds).toEqual(["custom-impact"]);
+    expect(manifest.profileSelection?.missingCapabilities).toEqual([]);
     expect(manifest.profileSelection?.strategyIds).toEqual(["minimal-change", "test-amplified"]);
   });
 
@@ -265,6 +284,9 @@ if (out) {
     await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nUpdate the page title.\n", "utf8");
     await writeFrontendPackage(cwd);
     await mkdir(getReportsDir(cwd, "run_frontend"), { recursive: true });
+    setToolPathFinderForTests((tool) =>
+      tool === "playwright" ? "/usr/local/bin/playwright" : undefined,
+    );
 
     const recommendation = await recommendConsultationProfile({
       adapter: createNoopProfileAdapter(undefined),
@@ -288,6 +310,7 @@ if (out) {
     await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nAdjust the migration.\n", "utf8");
     await writePrismaMigrationPackage(cwd);
     await mkdir(getReportsDir(cwd, "run_migration"), { recursive: true });
+    setToolPathFinderForTests((tool) => (tool === "prisma" ? "/usr/local/bin/prisma" : undefined));
 
     const recommendation = await recommendConsultationProfile({
       adapter: createNoopProfileAdapter(undefined),
@@ -305,6 +328,40 @@ if (out) {
       expect.arrayContaining(["schema-fast", "migration-impact", "migration-drift-deep"]),
     );
     expect(recommendation.selection.missingCapabilities).toEqual([]);
+  });
+
+  it("treats missing Prisma binaries as a deep-check gap instead of generating a failing command", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nAdjust the migration.\n", "utf8");
+    await writePrismaMigrationPackage(cwd);
+    await mkdir(getReportsDir(cwd, "run_migration_missing_tool"), { recursive: true });
+    setToolPathFinderForTests(() => undefined);
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_migration_missing_tool"),
+      runId: "run_migration_missing_tool",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("migration");
+    expect(recommendation.selection.oracleIds).not.toContain("schema-fast");
+    expect(recommendation.selection.oracleIds).not.toContain("migration-impact");
+    expect(recommendation.selection.oracleIds).not.toContain("migration-drift-deep");
+    expect(recommendation.selection.missingCapabilities).toContain(
+      "No schema validation command was detected.",
+    );
+    expect(recommendation.selection.missingCapabilities).toContain(
+      "No migration planning or dry-run command was detected.",
+    );
+    expect(recommendation.selection.missingCapabilities).toContain(
+      "No rollback simulation or migration drift deep check was detected.",
+    );
   });
 });
 

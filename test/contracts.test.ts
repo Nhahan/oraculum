@@ -196,6 +196,43 @@ describe("oracle and adapter contracts", () => {
     ).toThrow();
   });
 
+  it("rejects repo-local oracle ids that shadow newer built-in impact checks", () => {
+    expect(() =>
+      projectConfigSchema.parse({
+        version: 1,
+        defaultAgent: "claude-code",
+        defaultCandidates: 4,
+        adapters: ["claude-code", "codex"],
+        strategies: [
+          {
+            id: "minimal-change",
+            label: "Minimal Change",
+            description: "Keep the diff small.",
+          },
+        ],
+        rounds: [
+          {
+            id: "impact",
+            label: "Impact",
+            description: "Impact checks.",
+          },
+        ],
+        oracles: [
+          {
+            id: "materialized-patch",
+            roundId: "impact",
+            command: "true",
+            invariant: "Must not shadow built-in materialized patch checks.",
+          },
+        ],
+        repair: {
+          enabled: true,
+          maxAttemptsPerRound: 1,
+        },
+      }),
+    ).toThrow();
+  });
+
   it("validates oracle verdicts with witnesses", () => {
     const witness = witnessSchema.parse({
       id: "w-1",

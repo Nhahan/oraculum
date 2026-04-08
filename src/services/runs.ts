@@ -79,6 +79,9 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
   if (!config.adapters.includes(agent)) {
     throw new OraculumError(`Agent "${agent}" is not enabled in the project config.`);
   }
+  if (options.candidates !== undefined && options.candidates > 16) {
+    throw new OraculumError("Candidate count must be 16 or less.");
+  }
 
   const runId = createRunId();
   const runDir = getRunDir(projectRoot, runId);
@@ -118,6 +121,9 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
   const candidateCount = options.candidates ?? config.defaultCandidates;
   if (candidateCount < 1) {
     throw new OraculumError("Candidate count must be at least 1.");
+  }
+  if (candidateCount > 16) {
+    throw new OraculumError("Candidate count must be 16 or less.");
   }
 
   const strategies = selectStrategies(config, candidateCount);
@@ -216,6 +222,18 @@ export async function readRunManifest(cwd: string, runId: string): Promise<RunMa
 export async function buildExportPlan(
   options: BuildExportPlanOptions,
 ): Promise<{ plan: ExportPlan; path: string }> {
+  const prepared = await prepareExportPlan(options);
+  await mkdir(getReportsDir(resolveProjectRoot(options.cwd), prepared.plan.runId), {
+    recursive: true,
+  });
+  await writeFile(prepared.path, `${JSON.stringify(prepared.plan, null, 2)}\n`, "utf8");
+
+  return prepared;
+}
+
+export async function prepareExportPlan(
+  options: BuildExportPlanOptions,
+): Promise<{ plan: ExportPlan; path: string }> {
   const projectRoot = resolveProjectRoot(options.cwd);
   const resolvedRunId = options.runId ?? (await readLatestExportableRunId(projectRoot));
   const manifest = await readRunManifest(projectRoot, resolvedRunId);
@@ -281,9 +299,6 @@ export async function buildExportPlan(
   exportPlanSchema.parse(plan);
 
   const planPath = getExportPlanPath(projectRoot, manifest.id);
-  await mkdir(getReportsDir(projectRoot, manifest.id), { recursive: true });
-  await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
-
   return { plan, path: planPath };
 }
 
@@ -426,9 +441,8 @@ function looksLikeTaskPath(taskInput: string): boolean {
   return (
     (!hasWhitespace && (taskInput.includes("/") || taskInput.includes("\\"))) ||
     taskInput.startsWith(".") ||
-    taskInput.endsWith(".md") ||
-    taskInput.endsWith(".json") ||
-    taskInput.endsWith(".txt")
+    (!hasWhitespace &&
+      (taskInput.endsWith(".md") || taskInput.endsWith(".json") || taskInput.endsWith(".txt")))
   );
 }
 

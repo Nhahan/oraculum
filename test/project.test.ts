@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -13,6 +13,7 @@ import {
   getLatestExportableRunStatePath,
   getLatestRunStatePath,
   getRunManifestPath,
+  getRunsDir,
   getWinnerSelectionPath,
 } from "../src/core/paths.js";
 import {
@@ -349,6 +350,20 @@ describe("project scaffold", () => {
     expect(saved.candidates[0]?.id).toBe("cand-01");
   });
 
+  it("rejects candidate counts above the supported maximum before creating a consultation", async () => {
+    const cwd = await createInitializedProject();
+    await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
+
+    await expect(
+      planRun({
+        cwd,
+        taskInput: "tasks/fix-session-loss.md",
+        candidates: 17,
+      }),
+    ).rejects.toThrow("Candidate count must be 16 or less.");
+    await expect(readdir(getRunsDir(cwd))).resolves.toEqual([]);
+  });
+
   it("creates an export plan for a selected candidate", async () => {
     const cwd = await createInitializedProject();
     await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
@@ -366,7 +381,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 }
 if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
-    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}'
+    ? '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}'
     : "Codex finished candidate patch";
   if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
     fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
@@ -481,7 +496,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 }
 if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
-    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}'
+    ? '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}'
     : "Codex finished candidate patch";
   if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
     fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
@@ -567,7 +582,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 }
 if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
-    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}'
+    ? '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}'
     : "Codex finished candidate patch";
   if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
     fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");

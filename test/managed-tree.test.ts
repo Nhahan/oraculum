@@ -1,4 +1,4 @@
-import { lstat, mkdir, mkdtemp, readlink, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -53,6 +53,44 @@ describe("managed tree symlink semantics", () => {
       restorePlatform();
     }
   });
+
+  const nonWindowsFileSymlink = process.platform === "win32" ? it.skip : it;
+
+  nonWindowsFileSymlink(
+    "retargets absolute file symlinks that point inside the copied tree",
+    async () => {
+      const sourceRoot = await createTempRoot();
+      const destinationRoot = await createTempRoot();
+      await writeFile(join(sourceRoot, "target.txt"), "target\n", "utf8");
+      await symlink(join(sourceRoot, "target.txt"), join(sourceRoot, "linked.txt"));
+
+      await copyManagedProjectTree(sourceRoot, destinationRoot);
+
+      expect(await readlink(join(destinationRoot, "linked.txt"))).toBe(
+        join(destinationRoot, "target.txt"),
+      );
+    },
+  );
+
+  nonWindowsFileSymlink(
+    "preserves absolute file symlinks that point into unmanaged subtrees",
+    async () => {
+      const sourceRoot = await createTempRoot();
+      const destinationRoot = await createTempRoot();
+      await mkdir(join(sourceRoot, "node_modules", "pkg"), { recursive: true });
+      await writeFile(join(sourceRoot, "node_modules", "pkg", "index.js"), "module\n", "utf8");
+      await symlink(
+        join(sourceRoot, "node_modules", "pkg", "index.js"),
+        join(sourceRoot, "linked.txt"),
+      );
+
+      await copyManagedProjectTree(sourceRoot, destinationRoot);
+
+      expect(await readlink(join(destinationRoot, "linked.txt"))).toBe(
+        join(sourceRoot, "node_modules", "pkg", "index.js"),
+      );
+    },
+  );
 });
 
 const nativeWindowsDescribe = process.platform === "win32" ? describe : describe.skip;

@@ -110,12 +110,14 @@ export class CodexAdapter implements AgentAdapter {
 
     const prompt = buildWinnerSelectionPrompt(request);
     const promptPath = join(request.logDir, "winner-judge.prompt.txt");
+    const schemaPath = join(request.logDir, "winner-judge.schema.json");
     const stdoutPath = join(request.logDir, "winner-judge.stdout.jsonl");
     const stderrPath = join(request.logDir, "winner-judge.stderr.txt");
     const finalMessagePath = join(request.logDir, "winner-judge.final-message.txt");
     const startedAt = new Date().toISOString();
 
     await writeFile(promptPath, prompt, "utf8");
+    await writeFile(schemaPath, `${JSON.stringify(buildWinnerRecommendationSchema(), null, 2)}\n`);
 
     const result = await runSubprocess({
       command: this.binaryPath,
@@ -124,9 +126,11 @@ export class CodexAdapter implements AgentAdapter {
         "never",
         "exec",
         "-s",
-        "workspace-write",
+        "read-only",
         "--skip-git-repo-check",
         "--json",
+        "--output-schema",
+        schemaPath,
         "-o",
         finalMessagePath,
       ],
@@ -154,6 +158,7 @@ export class CodexAdapter implements AgentAdapter {
       recommendation: extractRecommendation(judgeOutput),
       artifacts: [
         { kind: "prompt", path: promptPath },
+        { kind: "report", path: schemaPath },
         { kind: "transcript", path: stdoutPath },
         { kind: "stderr", path: stderrPath },
         ...(finalMessage ? [{ kind: "report" as const, path: finalMessagePath }] : []),
@@ -237,29 +242,98 @@ function summarizeAgentOutput(output: string, fallback: string): string {
 }
 
 function extractRecommendation(output: string): AgentJudgeRecommendation | undefined {
-  const trimmed = output.trim();
-  if (!trimmed) {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
     return undefined;
   }
 
   try {
-    return agentJudgeRecommendationSchema.parse(JSON.parse(trimmed) as unknown);
+    return agentJudgeRecommendationSchema.parse(parsed);
   } catch {
     return undefined;
   }
 }
 
 function extractProfileRecommendation(output: string): AgentProfileRecommendation | undefined {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return agentProfileRecommendationSchema.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+function extractJsonObject(output: string): Record<string, unknown> | undefined {
   const trimmed = output.trim();
   if (!trimmed) {
     return undefined;
   }
 
   try {
-    return agentProfileRecommendationSchema.parse(JSON.parse(trimmed) as unknown);
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
   } catch {
-    return undefined;
+    // Fall through to JSONL parsing.
   }
+
+  const lines = trimmed.split(/\r?\n/u).reverse();
+  for (const line of lines) {
+    const candidate = line.trim();
+    if (!candidate) {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Ignore malformed JSONL events and keep scanning upward.
+    }
+  }
+
+  return undefined;
+}
+
+function buildWinnerRecommendationSchema(): Record<string, unknown> {
+  return {
+    oneOf: [
+      {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          decision: { type: "string", const: "select" },
+          candidateId: { type: "string", minLength: 1 },
+          confidence: {
+            type: "string",
+            enum: ["low", "medium", "high"],
+          },
+          summary: { type: "string", minLength: 1 },
+        },
+        required: ["decision", "candidateId", "confidence", "summary"],
+      },
+      {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          decision: { type: "string", const: "abstain" },
+          confidence: {
+            type: "string",
+            enum: ["low", "medium", "high"],
+          },
+          summary: { type: "string", minLength: 1 },
+        },
+        required: ["decision", "confidence", "summary"],
+      },
+    ],
+  };
 }
 
 function buildProfileRecommendationSchema(): Record<string, unknown> {
@@ -276,7 +350,7 @@ function buildProfileRecommendationSchema(): Record<string, unknown> {
         enum: ["low", "medium", "high"],
       },
       summary: { type: "string", minLength: 1 },
-      candidateCount: { type: "integer", minimum: 1, maximum: 8 },
+      candidateCount: { type: "integer", minimum: 1, maximum: 16 },
       strategyIds: {
         type: "array",
         minItems: 1,

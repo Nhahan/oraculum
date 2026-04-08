@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, delimiter, join } from "node:path";
 
 import type { AgentRunResult } from "../adapters/types.js";
 import {
@@ -199,6 +199,14 @@ const builtInOracles: OracleDefinition[] = [
 export async function evaluateCandidateRound(
   options: EvaluateCandidateRoundOptions,
 ): Promise<EvaluateCandidateRoundResult> {
+  if (options.roundId !== "fast" && options.result.status !== "completed") {
+    return {
+      survives: false,
+      verdicts: [],
+      witnesses: [],
+    };
+  }
+
   const verdicts: OracleVerdict[] = [];
   const witnesses: Witness[] = [];
 
@@ -212,10 +220,12 @@ export async function evaluateCandidateRound(
   const selectedRepoOracles = options.projectConfig.oracles.filter(
     (oracle) => oracle.roundId === options.roundId,
   );
-  for (const oracle of selectedRepoOracles) {
-    const evaluation = await evaluateRepoOracle(options, oracle);
-    verdicts.push(evaluation.verdict);
-    witnesses.push(...evaluation.witnesses);
+  if (options.result.status === "completed") {
+    for (const oracle of selectedRepoOracles) {
+      const evaluation = await evaluateRepoOracle(options, oracle);
+      verdicts.push(evaluation.verdict);
+      witnesses.push(...evaluation.witnesses);
+    }
   }
 
   return {
@@ -341,6 +351,14 @@ function buildOracleEnvironment(
   options: EvaluateCandidateRoundOptions,
   oracle: RepoOracle,
 ): NodeJS.ProcessEnv {
+  const inheritedEnv = {
+    ...process.env,
+    ...oracle.env,
+  };
+  const pathKey = Object.keys(inheritedEnv).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
+  const inheritedPath = inheritedEnv[pathKey];
+  const projectNodeBin = join(options.projectRoot, "node_modules", ".bin");
+
   return {
     ...oracle.env,
     ORACULUM_ORACLE_ARGS_JSON: JSON.stringify(oracle.args),
@@ -364,6 +382,7 @@ function buildOracleEnvironment(
       options.runId,
       options.candidate.id,
     ),
+    [pathKey]: inheritedPath ? `${projectNodeBin}${delimiter}${inheritedPath}` : projectNodeBin,
   };
 }
 

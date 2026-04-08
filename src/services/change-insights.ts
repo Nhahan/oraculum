@@ -101,7 +101,29 @@ async function collectGitChangeInsight(
       continue;
     }
 
-    const resolvedPath = parts.at(-1)?.trim();
+    if (status.startsWith("R") || status.startsWith("C")) {
+      const sourcePath = parts[1]?.trim();
+      const destinationPath = parts[2]?.trim();
+      const managedSource =
+        sourcePath && shouldManageProjectPath(sourcePath) ? sourcePath : undefined;
+      const managedDestination =
+        destinationPath && shouldManageProjectPath(destinationPath) ? destinationPath : undefined;
+      if (!managedSource && !managedDestination) {
+        continue;
+      }
+
+      if (status.startsWith("R") && managedSource) {
+        removedPathCount += 1;
+        changedPaths.add(managedSource);
+      }
+      if (managedDestination) {
+        createdPathCount += 1;
+        changedPaths.add(managedDestination);
+      }
+      continue;
+    }
+
+    const resolvedPath = parts[1]?.trim();
     if (!resolvedPath || !shouldManageProjectPath(resolvedPath)) {
       continue;
     }

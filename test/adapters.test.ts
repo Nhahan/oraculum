@@ -167,11 +167,11 @@ for (let index = 0; index < process.argv.length; index += 1) {
     out = process.argv[index + 1] ?? "";
   }
 }
-process.stdout.write('{"event":"started"}\\n');
+process.stdout.write(JSON.stringify({ event: "started", argv: process.argv.slice(2) }) + "\\n");
 if (out) {
   fs.writeFileSync(
     out,
-    '{"candidateId":"cand-02","confidence":"medium","summary":"cand-02 preserved the strongest evidence."}',
+    '{"decision":"select","candidateId":"cand-02","confidence":"medium","summary":"cand-02 preserved the strongest evidence."}',
     "utf8",
   );
 }
@@ -271,7 +271,13 @@ if (out) {
     expect(result.recommendation?.confidence).toBe("medium");
     await expect(
       readFile(join(logDir, "winner-judge.final-message.txt"), "utf8"),
-    ).resolves.toContain('"candidateId":"cand-02"');
+    ).resolves.toContain('"decision":"select"');
+    await expect(readFile(join(logDir, "winner-judge.stdout.jsonl"), "utf8")).resolves.toContain(
+      '"--output-schema"',
+    );
+    await expect(readFile(join(logDir, "winner-judge.stdout.jsonl"), "utf8")).resolves.toContain(
+      '"read-only"',
+    );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Change summary: mode=git-diff, changed=2, created=1, removed=0, modified=1, +14, -3",
     );
@@ -406,6 +412,125 @@ if (out) {
     });
   });
 
+  it("accepts legacy winner output that omits an explicit decision", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "judge-legacy-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"candidateId":"cand-01","confidence":"high","summary":"missing the explicit decision field"}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const adapter = new CodexAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendWinner({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      finalists: [],
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation).toEqual({
+      decision: "select",
+      candidateId: "cand-01",
+      confidence: "high",
+      summary: "missing the explicit decision field",
+    });
+  });
+
+  it("asks Claude to recommend a winner with plan-mode json-schema output", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "claude-winner-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-claude",
+      `process.stderr.write(JSON.stringify({ argv: process.argv.slice(2) }));
+process.stdout.write(JSON.stringify({
+  candidateId: "cand-01",
+  confidence: "medium",
+  summary: "cand-01 is the safest finalist.",
+}));`,
+    );
+
+    const adapter = new ClaudeAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendWinner({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      finalists: [
+        {
+          candidateId: "cand-01",
+          strategyLabel: "Minimal Change",
+          summary: "Fixes the bug cleanly.",
+          artifactKinds: ["prompt"],
+          verdicts: [],
+          changedPaths: ["src/app.ts"],
+          changeSummary: {
+            mode: "git-diff",
+            changedPathCount: 1,
+            createdPathCount: 0,
+            removedPathCount: 0,
+            modifiedPathCount: 1,
+            addedLineCount: 2,
+            deletedLineCount: 1,
+          },
+          witnessRollup: {
+            witnessCount: 0,
+            warningOrHigherCount: 0,
+            repairableCount: 0,
+            repairHints: [],
+            riskSummaries: [],
+            keyWitnesses: [],
+          },
+          repairSummary: {
+            attemptCount: 0,
+            repairedRounds: [],
+          },
+        },
+      ],
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation).toEqual({
+      decision: "select",
+      candidateId: "cand-01",
+      confidence: "medium",
+      summary: "cand-01 is the safest finalist.",
+    });
+    await expect(readFile(join(logDir, "winner-judge.stderr.txt"), "utf8")).resolves.toContain(
+      '"--permission-mode","plan"',
+    );
+    await expect(readFile(join(logDir, "winner-judge.stderr.txt"), "utf8")).resolves.toContain(
+      '"--json-schema"',
+    );
+  });
+
   it("asks Codex to recommend a consultation profile with an output schema", async () => {
     const root = await createTempRoot();
     const logDir = join(root, "profile-logs");
@@ -428,7 +553,7 @@ process.stdout.write(JSON.stringify({ argv: process.argv.slice(2), schema }) + "
 if (out) {
   fs.writeFileSync(
     out,
-    '{"profileId":"library","confidence":"high","summary":"Library signals are strongest.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast"],"missingCapabilities":[]}',
+    '{"profileId":"library","confidence":"high","summary":"Library signals are strongest.","candidateCount":12,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast"],"missingCapabilities":[]}',
     "utf8",
   );
 }
@@ -480,6 +605,7 @@ if (out) {
 
     expect(result.status).toBe("completed");
     expect(result.recommendation?.profileId).toBe("library");
+    expect(result.recommendation?.candidateCount).toBe(12);
     expect(result.recommendation?.selectedCommandIds).toEqual(["lint-fast", "typecheck-fast"]);
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Profile options:",
@@ -496,7 +622,8 @@ if (out) {
     const binaryPath = await writeNodeBinary(
       root,
       "fake-claude",
-      `process.stdout.write(JSON.stringify({
+      `process.stderr.write(JSON.stringify({ argv: process.argv.slice(2) }));
+process.stdout.write(JSON.stringify({
   profileId: "frontend",
   confidence: "medium",
   summary: "Frontend build and e2e signals are present.",
@@ -554,6 +681,9 @@ if (out) {
     expect(result.recommendation?.profileId).toBe("frontend");
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Command catalog:",
+    );
+    await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toContain(
+      '"--permission-mode","plan"',
     );
   }, 20_000);
 });

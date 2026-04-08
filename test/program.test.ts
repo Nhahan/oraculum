@@ -45,6 +45,16 @@ describe("CLI argument parsing", () => {
     });
   });
 
+  it("rejects candidate counts above the supported maximum", async () => {
+    const program = createProgram();
+
+    await expect(
+      program.parseAsync(["consult", "tasks/task.md", "--candidates", "17"], { from: "user" }),
+    ).rejects.toMatchObject({
+      code: "commander.invalidArgument",
+    });
+  });
+
   it("rejects partially numeric timeouts", async () => {
     const program = createProgram();
 

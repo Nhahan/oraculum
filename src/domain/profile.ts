@@ -29,7 +29,7 @@ export const agentProfileRecommendationSchema = z.object({
   profileId: consultationProfileIdSchema,
   confidence: decisionConfidenceSchema,
   summary: z.string().min(1),
-  candidateCount: z.number().int().min(1).max(8),
+  candidateCount: z.number().int().min(1).max(16),
   strategyIds: z.array(z.string().min(1)).min(1).max(4),
   selectedCommandIds: z.array(z.string().min(1)).default([]),
   missingCapabilities: z.array(z.string().min(1)).default([]),

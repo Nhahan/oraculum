@@ -9,7 +9,7 @@ vi.mock("../src/core/subprocess.js", () => ({
 }));
 
 vi.mock("../src/services/runs.js", () => ({
-  buildExportPlan: vi.fn(),
+  prepareExportPlan: vi.fn(),
   readRunManifest: vi.fn(),
 }));
 
@@ -23,10 +23,10 @@ import { runSubprocess } from "../src/core/subprocess.js";
 import { runManifestSchema } from "../src/domain/run.js";
 import { materializeExport } from "../src/services/exports.js";
 import * as projectService from "../src/services/project.js";
-import { buildExportPlan, readRunManifest } from "../src/services/runs.js";
+import { prepareExportPlan, readRunManifest } from "../src/services/runs.js";
 
 const mockedRunSubprocess = vi.mocked(runSubprocess);
-const mockedBuildExportPlan = vi.mocked(buildExportPlan);
+const mockedPrepareExportPlan = vi.mocked(prepareExportPlan);
 const mockedReadRunManifest = vi.mocked(readRunManifest);
 
 const tempRoots: string[] = [];
@@ -42,7 +42,7 @@ afterEach(async () => {
 describe("git export rollback", () => {
   beforeEach(() => {
     mockedRunSubprocess.mockReset();
-    mockedBuildExportPlan.mockReset();
+    mockedPrepareExportPlan.mockReset();
     mockedReadRunManifest.mockReset();
   });
 
@@ -59,7 +59,7 @@ describe("git export rollback", () => {
     await mkdir(reportsDir, { recursive: true });
     await mkdir(workspaceDir, { recursive: true });
 
-    mockedBuildExportPlan.mockResolvedValue({
+    mockedPrepareExportPlan.mockResolvedValue({
       path: join(reportsDir, "export-plan.json"),
       plan: {
         runId,
@@ -118,32 +118,70 @@ describe("git export rollback", () => {
       ],
     });
 
-    mockedRunSubprocess
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(result({ exitCode: 1 }))
-      .mockResolvedValueOnce(result({ exitCode: 0, stdout: "main\n" }))
-      .mockResolvedValueOnce(result({ exitCode: 0, stdout: "base-revision\n" }))
-      .mockResolvedValueOnce(result({ exitCode: 0, stdout: ".oraculum/existing.log\n" }))
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(result({ exitCode: 0, stdout: "app.txt\n" }))
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(result({ exitCode: 0, stdout: "diff --git a/app.txt b/app.txt\n" }))
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockImplementationOnce(async () => {
+    let projectUntrackedCalls = 0;
+    mockedRunSubprocess.mockImplementation(async (options) => {
+      if (options.command !== "git") {
+        throw new Error(`unexpected command: ${options.command}`);
+      }
+
+      const joinedArgs = options.args.join(" ");
+      if (joinedArgs === "diff --no-ext-diff --quiet --exit-code") {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === "diff --cached --no-ext-diff --quiet --exit-code") {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === "rev-parse --verify --quiet refs/heads/fix/session-loss") {
+        return result({ exitCode: 1 });
+      }
+      if (joinedArgs === "branch --show-current") {
+        return result({ exitCode: 0, stdout: "main\n" });
+      }
+      if (joinedArgs === "rev-parse HEAD") {
+        return result({ exitCode: 0, stdout: "base-revision\n" });
+      }
+      if (joinedArgs === "ls-files --others --exclude-standard") {
+        projectUntrackedCalls += 1;
+        return result({
+          exitCode: 0,
+          stdout:
+            projectUntrackedCalls === 1
+              ? ".oraculum/existing.log\n"
+              : [".oraculum/existing.log", "newdir/file.txt"].join("\n"),
+        });
+      }
+      if (joinedArgs === `-C ${workspaceDir} add -A`) {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === `-C ${workspaceDir} diff --cached --name-status base-revision --`) {
+        return result({ exitCode: 0, stdout: "M\tapp.txt\n" });
+      }
+      if (joinedArgs === `-C ${workspaceDir} ls-files --others --exclude-standard`) {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === `-C ${workspaceDir} diff --cached --binary base-revision -- app.txt`) {
+        return result({ exitCode: 0, stdout: "diff --git a/app.txt b/app.txt\n" });
+      }
+      if (joinedArgs === "checkout -b fix/session-loss") {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === `apply --binary ${join(reportsDir, "export.patch")}`) {
         await mkdir(transientDirectory, { recursive: true });
         await writeFile(transientFile, "temp\n", "utf8");
         return result({ exitCode: 1, stderr: "apply failed\n" });
-      })
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(
-        result({
-          exitCode: 0,
-          stdout: [".oraculum/existing.log", "newdir/file.txt"].join("\n"),
-        }),
-      )
-      .mockResolvedValueOnce(result({ exitCode: 0 }))
-      .mockResolvedValueOnce(result({ exitCode: 0 }));
+      }
+      if (joinedArgs === "reset --hard HEAD") {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === "checkout main") {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === "branch -D fix/session-loss") {
+        return result({ exitCode: 0 });
+      }
+
+      throw new Error(`unexpected git invocation: ${joinedArgs}`);
+    });
 
     await expect(
       materializeExport({
@@ -192,8 +230,18 @@ describe("git export rollback", () => {
     await mkdir(reportsDir, { recursive: true });
     await mkdir(workspaceDir, { recursive: true });
     await mkdir(candidateDir, { recursive: true });
+    await writeFile(
+      join(reportsDir, "export-plan.json"),
+      `${JSON.stringify({ preserved: true }, null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(reportsDir, "export-sync.json"),
+      `${JSON.stringify({ appliedFiles: ["old.txt"], removedFiles: [] }, null, 2)}\n`,
+      "utf8",
+    );
 
-    mockedBuildExportPlan.mockResolvedValue({
+    mockedPrepareExportPlan.mockResolvedValue({
       path: join(reportsDir, "export-plan.json"),
       plan: {
         runId,
@@ -392,8 +440,8 @@ describe("git export rollback", () => {
       if (joinedArgs === `-C ${workspaceDir} add -A`) {
         return result({ exitCode: 0 });
       }
-      if (joinedArgs === `-C ${workspaceDir} diff --cached --name-only base-revision --`) {
-        return result({ exitCode: 0, stdout: "app.txt\n" });
+      if (joinedArgs === `-C ${workspaceDir} diff --cached --name-status base-revision --`) {
+        return result({ exitCode: 0, stdout: "M\tapp.txt\n" });
       }
       if (joinedArgs === `-C ${workspaceDir} ls-files --others --exclude-standard`) {
         return result({ exitCode: 0 });
@@ -458,9 +506,109 @@ describe("git export rollback", () => {
       await expect(readFile(candidateManifestPath, "utf8")).resolves.toContain(
         '"status": "promoted"',
       );
+      await expect(readFile(join(reportsDir, "export-plan.json"), "utf8")).resolves.toContain(
+        '"preserved": true',
+      );
+      await expect(readFile(join(reportsDir, "export-sync.json"), "utf8")).resolves.toContain(
+        '"old.txt"',
+      );
     } finally {
       writeJsonFileSpy.mockRestore();
     }
+  });
+
+  it("fails early when the branch existence probe itself errors", async () => {
+    const cwd = await createTempRoot();
+    const runId = "run_3";
+    const candidateId = "cand-01";
+    const reportsDir = getReportsDir(cwd, runId);
+    const workspaceDir = join(cwd, "workspace");
+    await mkdir(workspaceDir, { recursive: true });
+
+    mockedPrepareExportPlan.mockResolvedValue({
+      path: join(reportsDir, "export-plan.json"),
+      plan: {
+        runId,
+        winnerId: candidateId,
+        branchName: "fix/session-loss",
+        mode: "git-branch",
+        workspaceDir,
+        patchPath: join(reportsDir, "export.patch"),
+        withReport: false,
+        createdAt: "2026-04-06T00:00:00.000Z",
+      },
+    });
+    mockedReadRunManifest.mockResolvedValue({
+      id: runId,
+      status: "completed",
+      taskPath: join(cwd, "tasks", "task.md"),
+      taskPacket: {
+        id: "task_1",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: join(cwd, "tasks", "task.md"),
+      },
+      agent: "codex",
+      candidateCount: 1,
+      createdAt: "2026-04-06T00:00:00.000Z",
+      rounds: [],
+      recommendedWinner: {
+        candidateId,
+        confidence: "high",
+        summary: "cand-01 is the recommended winner.",
+        source: "llm-judge",
+      },
+      candidates: [
+        {
+          id: candidateId,
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir,
+          taskPacketPath: join(
+            cwd,
+            ".oraculum",
+            "runs",
+            runId,
+            "candidates",
+            candidateId,
+            "task-packet.json",
+          ),
+          workspaceMode: "git-worktree",
+          baseRevision: "base-revision",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-06T00:00:00.000Z",
+        },
+      ],
+    });
+
+    mockedRunSubprocess.mockImplementation(async (options) => {
+      if (options.command !== "git") {
+        throw new Error(`unexpected command: ${options.command}`);
+      }
+
+      const joinedArgs = options.args.join(" ");
+      if (joinedArgs === "diff --no-ext-diff --quiet --exit-code") {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === "diff --cached --no-ext-diff --quiet --exit-code") {
+        return result({ exitCode: 0 });
+      }
+      if (joinedArgs === "rev-parse --verify --quiet refs/heads/fix/session-loss") {
+        return result({ exitCode: 128, stderr: "fatal: not a git repository\n" });
+      }
+
+      throw new Error(`unexpected git invocation: ${joinedArgs}`);
+    });
+
+    await expect(
+      materializeExport({
+        cwd,
+        branchName: "fix/session-loss",
+        withReport: false,
+      }),
+    ).rejects.toThrow('Failed to inspect whether branch "fix/session-loss" already exists.');
   });
 });
 

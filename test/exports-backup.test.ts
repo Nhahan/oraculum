@@ -23,14 +23,14 @@ vi.mock("../src/services/managed-tree.js", async () => {
 });
 
 vi.mock("../src/services/runs.js", () => ({
-  buildExportPlan: vi.fn(),
+  prepareExportPlan: vi.fn(),
   readRunManifest: vi.fn(),
 }));
 
 import { materializeExport } from "../src/services/exports.js";
-import { buildExportPlan, readRunManifest } from "../src/services/runs.js";
+import { prepareExportPlan, readRunManifest } from "../src/services/runs.js";
 
-const mockedBuildExportPlan = vi.mocked(buildExportPlan);
+const mockedPrepareExportPlan = vi.mocked(prepareExportPlan);
 const mockedReadRunManifest = vi.mocked(readRunManifest);
 const tempRoots: string[] = [];
 
@@ -44,7 +44,7 @@ afterEach(async () => {
 
 describe("workspace backup cleanup", () => {
   beforeEach(() => {
-    mockedBuildExportPlan.mockReset();
+    mockedPrepareExportPlan.mockReset();
     mockedReadRunManifest.mockReset();
   });
 
@@ -56,7 +56,7 @@ describe("workspace backup cleanup", () => {
     await mkdir(reportsDir, { recursive: true });
     await mkdir(workspaceDir, { recursive: true });
 
-    mockedBuildExportPlan.mockResolvedValue({
+    mockedPrepareExportPlan.mockResolvedValue({
       path: join(reportsDir, "export-plan.json"),
       plan: {
         runId,

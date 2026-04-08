@@ -87,22 +87,44 @@ export const finalistSummarySchema = z.object({
   repairSummary: finalistRepairSummarySchema,
 });
 
-export const agentJudgeRecommendationSchema = z
-  .object({
-    decision: z.enum(["select", "abstain"]).default("select"),
-    candidateId: z.string().min(1).optional(),
-    confidence: decisionConfidenceSchema,
-    summary: z.string().min(1),
-  })
-  .superRefine((value, context) => {
-    if (value.decision === "select" && !value.candidateId) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["candidateId"],
-        message: "candidateId is required when decision is select.",
-      });
+export const agentJudgeRecommendationSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
     }
-  });
+
+    const payload = value as Record<string, unknown>;
+    if (
+      payload.decision === undefined &&
+      typeof payload.candidateId === "string" &&
+      typeof payload.confidence === "string" &&
+      typeof payload.summary === "string"
+    ) {
+      return {
+        ...payload,
+        decision: "select",
+      };
+    }
+
+    return payload;
+  },
+  z
+    .object({
+      decision: z.enum(["select", "abstain"]),
+      candidateId: z.string().min(1).optional(),
+      confidence: decisionConfidenceSchema,
+      summary: z.string().min(1),
+    })
+    .superRefine((value, context) => {
+      if (value.decision === "select" && !value.candidateId) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["candidateId"],
+          message: "candidateId is required when decision is select.",
+        });
+      }
+    }),
+);
 
 export const agentJudgeResultSchema = z.object({
   runId: z.string().min(1),

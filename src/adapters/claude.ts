@@ -101,7 +101,15 @@ export class ClaudeAdapter implements AgentAdapter {
 
     const result = await runSubprocess({
       command: this.binaryPath,
-      args: ["-p", "--output-format", "json", "--permission-mode", "bypassPermissions"],
+      args: [
+        "-p",
+        "--output-format",
+        "json",
+        "--permission-mode",
+        "plan",
+        "--json-schema",
+        JSON.stringify(buildWinnerRecommendationSchema()),
+      ],
       cwd: request.projectRoot,
       ...(this.env ? { env: this.env } : {}),
       ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
@@ -147,7 +155,7 @@ export class ClaudeAdapter implements AgentAdapter {
         "--output-format",
         "json",
         "--permission-mode",
-        "bypassPermissions",
+        "plan",
         "--json-schema",
         JSON.stringify(buildProfileRecommendationSchema()),
       ],
@@ -277,7 +285,7 @@ function buildProfileRecommendationSchema(): Record<string, unknown> {
         enum: ["low", "medium", "high"],
       },
       summary: { type: "string", minLength: 1 },
-      candidateCount: { type: "integer", minimum: 1, maximum: 8 },
+      candidateCount: { type: "integer", minimum: 1, maximum: 16 },
       strategyIds: {
         type: "array",
         minItems: 1,
@@ -307,9 +315,43 @@ function buildProfileRecommendationSchema(): Record<string, unknown> {
     ],
   };
 }
+
+function buildWinnerRecommendationSchema(): Record<string, unknown> {
+  return {
+    oneOf: [
+      {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          decision: { type: "string", const: "select" },
+          candidateId: { type: "string", minLength: 1 },
+          confidence: {
+            type: "string",
+            enum: ["low", "medium", "high"],
+          },
+          summary: { type: "string", minLength: 1 },
+        },
+        required: ["decision", "candidateId", "confidence", "summary"],
+      },
+      {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          decision: { type: "string", const: "abstain" },
+          confidence: {
+            type: "string",
+            enum: ["low", "medium", "high"],
+          },
+          summary: { type: "string", minLength: 1 },
+        },
+        required: ["decision", "confidence", "summary"],
+      },
+    ],
+  };
+}
 function pickObject(parsed: Record<string, unknown>): Record<string, unknown> | undefined {
   if (
-    ("candidateId" in parsed || parsed.decision === "abstain") &&
+    ("decision" in parsed || "candidateId" in parsed) &&
     "summary" in parsed &&
     "confidence" in parsed
   ) {
@@ -321,7 +363,7 @@ function pickObject(parsed: Record<string, unknown>): Record<string, unknown> | 
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const objectValue = value as Record<string, unknown>;
       if (
-        ("candidateId" in objectValue || objectValue.decision === "abstain") &&
+        ("decision" in objectValue || "candidateId" in objectValue) &&
         "summary" in objectValue &&
         "confidence" in objectValue
       ) {

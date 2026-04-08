@@ -50,7 +50,7 @@ export const repoOracleSchema = z.object({
 
 const reservedOracleIdsByRound: Record<RoundId, Set<string>> = {
   fast: new Set(["agent-exit", "artifact-capture"]),
-  impact: new Set(["reviewable-output"]),
+  impact: new Set(["reviewable-output", "materialized-patch"]),
   deep: new Set(),
 };
 

@@ -42,7 +42,7 @@ import {
   shouldManageProjectPath,
 } from "./managed-tree.js";
 import { pathExists, writeJsonFile } from "./project.js";
-import { buildExportPlan, readRunManifest } from "./runs.js";
+import { prepareExportPlan, readRunManifest } from "./runs.js";
 
 interface MaterializeExportOptions {
   cwd: string;
@@ -68,9 +68,16 @@ export async function materializeExport(
   options: MaterializeExportOptions,
 ): Promise<{ plan: ExportPlan; path: string }> {
   const projectRoot = resolveProjectRoot(options.cwd);
-  const { path, plan: planned } = await buildExportPlan(options);
+  const { path, plan: planned } = await prepareExportPlan(options);
+  const syncSummaryPath = getExportSyncSummaryPath(projectRoot, planned.runId);
   const manifest = await readRunManifest(projectRoot, planned.runId);
   const winner = findExportCandidate(manifest, planned.winnerId);
+  const [previousPlanContents, previousSyncSummaryContents] = await Promise.all([
+    readOptionalTextFile(path),
+    readOptionalTextFile(syncSummaryPath),
+  ]);
+  await mkdir(dirname(path), { recursive: true });
+  await mkdir(dirname(syncSummaryPath), { recursive: true });
 
   const outcome =
     planned.mode === "git-branch"
@@ -84,23 +91,44 @@ export async function materializeExport(
 
   try {
     if (outcome.syncSummary) {
-      await writeJsonFile(
-        getExportSyncSummaryPath(projectRoot, planned.runId),
-        outcome.syncSummary,
-      );
+      await writeJsonFile(syncSummaryPath, outcome.syncSummary);
     }
 
     await writeJsonFile(path, updatedPlan);
     await markCandidateExported(projectRoot, manifest, winner.id);
   } catch (error) {
+    const cleanupFailures: string[] = [];
+
     try {
       await outcome.rollback();
     } catch (rollbackError) {
       throw new OraculumError(
         `Promotion bookkeeping failed after applying changes and rollback did not complete cleanly: ${formatUnknownError(error)}; rollback error: ${formatUnknownError(rollbackError)}`,
       );
-    } finally {
+    }
+
+    try {
+      await restoreOptionalTextFile(path, previousPlanContents);
+    } catch (restoreError) {
+      cleanupFailures.push(`promotion record (${formatUnknownError(restoreError)})`);
+    }
+
+    try {
+      await restoreOptionalTextFile(syncSummaryPath, previousSyncSummaryContents);
+    } catch (restoreError) {
+      cleanupFailures.push(`workspace-sync summary (${formatUnknownError(restoreError)})`);
+    }
+
+    try {
       await outcome.cleanup();
+    } catch (cleanupError) {
+      cleanupFailures.push(`temporary cleanup (${formatUnknownError(cleanupError)})`);
+    }
+
+    if (cleanupFailures.length > 0) {
+      throw new OraculumError(
+        `Promotion bookkeeping failed after applying changes and the promotion was rolled back, but cleanup did not complete cleanly: ${cleanupFailures.join(", ")}.`,
+      );
     }
 
     throw new OraculumError(
@@ -305,6 +333,9 @@ async function ensureBranchDoesNotExist(projectRoot: string, branchName: string)
   if (existing.exitCode === 0) {
     throw new OraculumError(`Branch "${branchName}" already exists.`);
   }
+  if (existing.exitCode > 1) {
+    throw new OraculumError(`Failed to inspect whether branch "${branchName}" already exists.`);
+  }
 }
 
 async function getCurrentGitBranch(projectRoot: string): Promise<string | undefined> {
@@ -348,7 +379,7 @@ async function generateWorkspacePatch(
 
   const changedPathsResult = await runSubprocess({
     command: "git",
-    args: ["-C", workspaceDir, "diff", "--cached", "--name-only", baseRevision, "--"],
+    args: ["-C", workspaceDir, "diff", "--cached", "--name-status", baseRevision, "--"],
     cwd: projectRoot,
     timeoutMs: 30_000,
   });
@@ -364,9 +395,31 @@ async function generateWorkspacePatch(
 
   const changedPaths = new Set<string>();
   for (const line of changedPathsResult.stdout.split(/\r?\n/u)) {
-    const trimmed = line.trim();
-    if (trimmed && shouldManageProjectPath(trimmed)) {
-      changedPaths.add(trimmed);
+    if (!line.trim()) {
+      continue;
+    }
+
+    const parts = line.split("\t");
+    const status = parts[0]?.trim() ?? "";
+    if (!status) {
+      continue;
+    }
+
+    if (status.startsWith("R") || status.startsWith("C")) {
+      const renameOrCopyPaths = status.startsWith("R")
+        ? [parts[1]?.trim(), parts[2]?.trim()]
+        : [parts[2]?.trim()];
+      for (const candidatePath of renameOrCopyPaths) {
+        if (candidatePath && shouldManageProjectPath(candidatePath)) {
+          changedPaths.add(candidatePath);
+        }
+      }
+      continue;
+    }
+
+    const candidatePath = parts[1]?.trim();
+    if (candidatePath && shouldManageProjectPath(candidatePath)) {
+      changedPaths.add(candidatePath);
     }
   }
   for (const line of untrackedResult.stdout.split(/\r?\n/u)) {
@@ -761,6 +814,29 @@ async function restoreManagedProjectBackup(
 
 function formatUnknownError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function readOptionalTextFile(path: string): Promise<string | undefined> {
+  try {
+    const stats = await lstat(path);
+    if (!stats.isFile()) {
+      return undefined;
+    }
+
+    return await readFile(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+async function restoreOptionalTextFile(path: string, contents: string | undefined): Promise<void> {
+  if (contents === undefined) {
+    await rm(path, { force: true });
+    return;
+  }
+
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, contents, "utf8");
 }
 
 function compareManagedEntriesForRemoval(left: ManagedPathEntry, right: ManagedPathEntry): number {

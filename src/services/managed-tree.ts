@@ -1,5 +1,5 @@
 import { chmod, cp, lstat, mkdir, readdir, readlink, stat, symlink } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 
 export type ManagedPathKind = "dir" | "file" | "symlink";
 
@@ -160,18 +160,13 @@ interface ManagedSymlinkTargetOptions {
 }
 
 export function normalizeManagedSymlinkTarget(options: ManagedSymlinkTargetOptions): string {
-  if (options.targetType !== "junction" || !isAbsolute(options.target)) {
+  if (!isAbsolute(options.target)) {
     return options.target;
   }
 
   const relativeToSourceRoot = relative(options.sourceRoot, options.target);
-  if (isPathWithinRoot(relativeToSourceRoot)) {
+  if (isPathWithinRoot(relativeToSourceRoot) && shouldManageProjectPath(relativeToSourceRoot)) {
     return join(options.destinationRoot, relativeToSourceRoot);
-  }
-
-  const relativeToSourceLink = relative(dirname(options.sourcePath), options.target);
-  if (isPathWithinRoot(relativeToSourceLink)) {
-    return resolve(dirname(options.destinationPath), relativeToSourceLink);
   }
 
   return options.target;

@@ -94,6 +94,10 @@ export async function renderConsultationSummary(
   }
 
   lines.push("Entry paths:");
+  const comparisonReportPath = getFinalistComparisonMarkdownPath(projectRoot, manifest.id);
+  const winnerSelectionPath = getWinnerSelectionPath(projectRoot, manifest.id);
+  const comparisonReportExists = await pathExists(comparisonReportPath);
+  const winnerSelectionExists = await pathExists(winnerSelectionPath);
   lines.push(
     `- consultation root: ${toDisplayPath(projectRoot, getRunDir(projectRoot, manifest.id))}`,
   );
@@ -103,18 +107,21 @@ export async function renderConsultationSummary(
       : "- profile selection: not available",
   );
   lines.push(
-    manifest.status === "completed"
-      ? `- comparison report: ${toDisplayPath(projectRoot, getFinalistComparisonMarkdownPath(projectRoot, manifest.id))}`
+    comparisonReportExists
+      ? `- comparison report: ${toDisplayPath(projectRoot, comparisonReportPath)}`
       : "- comparison report: not available yet",
   );
   lines.push(
-    manifest.status === "completed"
-      ? `- winner selection: ${toDisplayPath(projectRoot, getWinnerSelectionPath(projectRoot, manifest.id))}`
+    winnerSelectionExists
+      ? `- winner selection: ${toDisplayPath(projectRoot, winnerSelectionPath)}`
       : "- winner selection: not available yet",
   );
 
   const exportPlanPath = getExportPlanPath(projectRoot, manifest.id);
-  const hasPromotionRecord = await pathExists(exportPlanPath);
+  const hasExportedCandidate = manifest.candidates.some(
+    (candidate) => candidate.status === "exported",
+  );
+  const hasPromotionRecord = hasExportedCandidate && (await pathExists(exportPlanPath));
   lines.push(
     hasPromotionRecord
       ? `- promotion record: ${toDisplayPath(projectRoot, exportPlanPath)}`

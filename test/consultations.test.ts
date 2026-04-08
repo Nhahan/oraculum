@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   getExportPlanPath,
+  getFinalistComparisonMarkdownPath,
   getProfileSelectionPath,
   getRunManifestPath,
   getWinnerSelectionPath,
@@ -52,6 +53,7 @@ describe("consultation workflow summaries", () => {
     });
     await writeManifest(cwd, manifest);
     await writeFile(getProfileSelectionPath(cwd, manifest.id), "{}\n", "utf8");
+    await writeFile(getFinalistComparisonMarkdownPath(cwd, manifest.id), "# comparison\n", "utf8");
     await writeFile(getWinnerSelectionPath(cwd, manifest.id), "{}\n", "utf8");
     await writeFile(getExportPlanPath(cwd, manifest.id), "{}\n", "utf8");
 
@@ -89,6 +91,32 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain("- winner selection: not available yet");
     expect(summary).toContain("- promotion record: not created yet");
     expect(summary).toContain(`oraculum verdict consultation ${manifest.id}`);
+  });
+
+  it("does not report a promotion record when only a stale export plan file exists", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/workspace",
+          taskPacketPath: "/tmp/task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(getExportPlanPath(cwd, manifest.id), "{}\n", "utf8");
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+
+    expect(summary).toContain("- promotion record: not created yet");
+    expect(summary).not.toContain("- reopen the promotion record:");
   });
 
   it("shows profile gaps in the consultation summary when deep validation is incomplete", async () => {
@@ -220,7 +248,7 @@ function createManifest(
         id: "cand-01",
         strategyId: "minimal-change",
         strategyLabel: "Minimal Change",
-        status: status === "completed" ? "promoted" : "planned",
+        status: status === "completed" ? "exported" : "planned",
         workspaceDir: "/tmp/workspace",
         taskPacketPath: "/tmp/task-packet.json",
         repairCount: 0,

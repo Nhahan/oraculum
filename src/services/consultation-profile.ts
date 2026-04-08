@@ -1,3 +1,5 @@
+import * as childProcess from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
@@ -34,6 +36,8 @@ export interface RecommendedConsultationProfile {
   selection: ConsultationProfileSelection;
 }
 
+type ToolPathFinder = (tool: string) => string | undefined;
+
 const PROFILE_DESCRIPTIONS: Record<ConsultationProfileId, string> = {
   library:
     "Package or shared library work. Favor lint/typecheck, unit tests, and package/export evidence.",
@@ -42,6 +46,12 @@ const PROFILE_DESCRIPTIONS: Record<ConsultationProfileId, string> = {
   migration:
     "Schema or migration work. Favor schema validation, migration dry-runs, rollback simulation, and conservative strategies.",
 };
+
+let toolPathFinder: ToolPathFinder = findToolOnPath;
+
+export function setToolPathFinderForTests(next: ToolPathFinder | undefined): void {
+  toolPathFinder = next ?? findToolOnPath;
+}
 
 const PROFILE_DEFAULT_CANDIDATES: Record<ConsultationProfileId, number> = {
   library: 4,
@@ -185,7 +195,7 @@ function applyProfileSelection(options: {
       candidateCount: effectiveCandidateCount,
       strategyIds: effectiveStrategies.map((strategy) => strategy.id),
       oracleIds: effectiveOracles.map((oracle) => oracle.id),
-      missingCapabilities: options.recommendation.missingCapabilities,
+      missingCapabilities: explicitOracles ? [] : options.recommendation.missingCapabilities,
       signals: options.signals.tags,
     }),
   };
@@ -230,6 +240,7 @@ async function collectProfileRepoSignals(
     files: knownFiles,
     packageJson,
     packageManager,
+    projectRoot,
     scripts,
   });
   const notes = buildSignalNotes(tags, commandCatalog, packageManager, packageJson);
@@ -475,6 +486,7 @@ function buildCommandCatalog(options: {
       }
     | undefined;
   packageManager: ProfileRepoSignals["packageManager"];
+  projectRoot: string;
   scripts: string[];
 }): ProfileCommandCandidate[] {
   const scripts = new Set(options.scripts);
@@ -517,7 +529,12 @@ function buildCommandCatalog(options: {
     if (catalog.some((command) => command.id === id)) {
       return;
     }
-    const command = buildToolExecCommand(options.packageManager, tool, toolArgs);
+    const command = buildToolExecCommand(
+      options.projectRoot,
+      options.packageManager,
+      tool,
+      toolArgs,
+    );
     if (!command) {
       return;
     }
@@ -729,14 +746,23 @@ function buildCommandCatalog(options: {
           "const { spawnSync } = require('node:child_process');",
           "const { join } = require('node:path');",
           "const { tmpdir } = require('node:os');",
+          "const npmBinary = process.platform === 'win32' ? 'npm.cmd' : 'npm';",
           "const tempDir = mkdtempSync(join(tmpdir(), 'oraculum-pack-smoke-'));",
-          "const result = spawnSync('npm', ['pack', '--pack-destination', tempDir], { encoding: 'utf8', stdio: 'pipe' });",
-          "process.stdout.write(result.stdout || '');",
-          "process.stderr.write(result.stderr || '');",
-          "if ((result.status ?? 1) !== 0) process.exit(result.status ?? 1);",
-          "const tarballs = readdirSync(tempDir).filter((name) => name.endsWith('.tgz'));",
-          "if (tarballs.length === 0) { console.error('npm pack did not produce a tarball.'); process.exit(1); }",
-          "rmSync(tempDir, { recursive: true, force: true });",
+          "let exitCode = 0;",
+          "try {",
+          "  const result = spawnSync(npmBinary, ['pack', '--pack-destination', tempDir], { encoding: 'utf8', stdio: 'pipe' });",
+          "  process.stdout.write(result.stdout || '');",
+          "  process.stderr.write(result.stderr || '');",
+          "  if ((result.status ?? 1) !== 0) {",
+          "    exitCode = result.status ?? 1;",
+          "  } else {",
+          "    const tarballs = readdirSync(tempDir).filter((name) => name.endsWith('.tgz'));",
+          "    if (tarballs.length === 0) { console.error('npm pack did not produce a tarball.'); exitCode = 1; }",
+          "  }",
+          "} finally {",
+          "  rmSync(tempDir, { recursive: true, force: true });",
+          "}",
+          "if (exitCode !== 0) process.exit(exitCode);",
         ].join(" "),
       ],
       invariant: "The package should produce a real tarball before promotion.",
@@ -821,23 +847,69 @@ function buildScriptCommand(
 }
 
 function buildToolExecCommand(
+  projectRoot: string,
   packageManager: ProfileRepoSignals["packageManager"],
   tool: string,
   args: string[],
 ): { command: string; args: string[] } | undefined {
+  const pathTool = toolPathFinder(tool);
+  if (pathTool) {
+    return { command: pathTool, args };
+  }
+  const hasLocalTool = hasProjectLocalTool(projectRoot, tool);
   if (packageManager === "pnpm") {
+    if (!hasLocalTool) {
+      return undefined;
+    }
     return { command: "pnpm", args: ["exec", tool, ...args] };
   }
   if (packageManager === "yarn") {
+    if (!hasLocalTool) {
+      return undefined;
+    }
     return { command: "yarn", args: ["exec", tool, ...args] };
   }
   if (packageManager === "bun") {
+    if (!hasLocalTool) {
+      return undefined;
+    }
     return { command: "bun", args: ["x", tool, ...args] };
   }
   if (packageManager === "npm" || packageManager === "unknown") {
+    if (!hasLocalTool) {
+      return undefined;
+    }
     return { command: "npx", args: ["--no-install", tool, ...args] };
   }
   return undefined;
+}
+
+function hasProjectLocalTool(projectRoot: string, tool: string): boolean {
+  const localBinDir = join(projectRoot, "node_modules", ".bin");
+  const candidates =
+    process.platform === "win32"
+      ? [
+          join(localBinDir, `${tool}.cmd`),
+          join(localBinDir, `${tool}.ps1`),
+          join(localBinDir, tool),
+        ]
+      : [join(localBinDir, tool)];
+  return candidates.some((candidate) => existsSync(candidate));
+}
+
+function findToolOnPath(tool: string): string | undefined {
+  const locator = process.platform === "win32" ? "where" : "which";
+  const result = childProcess.spawnSync(locator, [tool], {
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+  if ((result.status ?? 1) !== 0) {
+    return undefined;
+  }
+  return result.stdout
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
 }
 
 function taskText(taskPacket: MaterializedTaskPacket): string {

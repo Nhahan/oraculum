@@ -225,6 +225,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
         roundId: round.id,
         runId: manifest.id,
       });
+      const repairHistoryVerdicts: OracleVerdict[] = [];
       let repairAttempt = 0;
 
       while (
@@ -233,6 +234,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
         repairAttempt < projectConfig.repair.maxAttemptsPerRound &&
         hasRepairableVerdicts(evaluation.verdicts)
       ) {
+        repairHistoryVerdicts.push(...evaluation.verdicts);
         repairAttempt += 1;
 
         const repairLogDir = getCandidateRepairAttemptLogsDir(
@@ -308,10 +310,11 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
         });
       }
 
-      verdictCount += evaluation.verdicts.length;
+      const combinedVerdicts = [...repairHistoryVerdicts, ...evaluation.verdicts];
+      verdictCount += combinedVerdicts.length;
       const existingVerdicts = verdictsByCandidate.get(currentCandidate.id) ?? [];
-      verdictsByCandidate.set(currentCandidate.id, [...existingVerdicts, ...evaluation.verdicts]);
-      recordVerdictMetrics(selectionMetrics, currentCandidate.id, evaluation.verdicts);
+      verdictsByCandidate.set(currentCandidate.id, [...existingVerdicts, ...combinedVerdicts]);
+      recordVerdictMetrics(selectionMetrics, currentCandidate.id, combinedVerdicts);
       await Promise.all([
         ...evaluation.verdicts.map(async (verdict) =>
           writeJsonFile(
@@ -404,10 +407,6 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     ...(recommendedWinner ? { recommendedWinner } : {}),
   });
   await writeRunManifest(projectRoot, completedManifest);
-  await writeLatestRunState(projectRoot, completedManifest.id);
-  if (completedManifest.recommendedWinner) {
-    await writeLatestExportableRunState(projectRoot, completedManifest.id);
-  }
   await writeFinalistComparisonReport({
     agent: completedManifest.agent,
     candidateResults,
@@ -421,6 +420,10 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
       ? { consultationProfile: completedManifest.profileSelection }
       : {}),
   });
+  await writeLatestRunState(projectRoot, completedManifest.id);
+  if (completedManifest.recommendedWinner) {
+    await writeLatestExportableRunState(projectRoot, completedManifest.id);
+  }
 
   return {
     candidateResults,

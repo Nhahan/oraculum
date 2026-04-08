@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { agentRunResultSchema } from "../src/adapters/types.js";
 import {
   getAdvancedConfigPath,
@@ -14,9 +14,12 @@ import {
   getCandidateWitnessPath,
   getFinalistComparisonJsonPath,
   getFinalistComparisonMarkdownPath,
+  getLatestExportableRunStatePath,
+  getLatestRunStatePath,
 } from "../src/core/paths.js";
 import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
 import { executeRun } from "../src/services/execution.js";
+import * as finalistReportService from "../src/services/finalist-report.js";
 import { initializeProject } from "../src/services/project.js";
 import { planRun, readRunManifest } from "../src/services/runs.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
@@ -55,7 +58,7 @@ if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
 }
 if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
-    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the only surviving finalist."}'
+    ? '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 is the only surviving finalist."}'
     : "Codex finished candidate patch";
   fs.writeFileSync(out, body, "utf8");
 }
@@ -206,6 +209,49 @@ process.exit(3);
     expect(savedManifest.rounds[0]?.eliminatedCount).toBe(1);
   });
 
+  it("skips repo-local oracles when the candidate agent run already failed", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "missing-host.md"), "# Missing host\nFail to spawn.\n");
+    await configureProjectOracles(cwd, [
+      {
+        id: "workspace-sanity",
+        roundId: "impact",
+        command: process.execPath,
+        args: ["-e", "process.exit(0);"],
+        invariant: "Impact checks should only run for completed candidates.",
+        enforcement: "hard",
+      },
+    ]);
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/missing-host.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: join(cwd, "missing-codex"),
+      timeoutMs: 5_000,
+    });
+
+    await expect(
+      readFile(
+        getCandidateOracleStdoutLogPath(cwd, planned.id, "cand-01", "impact", "workspace-sanity"),
+        "utf8",
+      ),
+    ).rejects.toThrow();
+    await expect(
+      readFile(
+        getCandidateOracleStderrLogPath(cwd, planned.id, "cand-01", "impact", "workspace-sanity"),
+        "utf8",
+      ),
+    ).rejects.toThrow();
+  });
+
   it("eliminates candidates that never materialize a patch in the workspace", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
@@ -224,7 +270,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 }
 if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
-    ? '{"candidateId":"cand-01","confidence":"high","summary":"this should never be used"}'
+    ? '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"this should never be used"}'
     : "I would update src/greet.js, but I am only describing the patch.";
   fs.writeFileSync(out, body, "utf8");
 }
@@ -557,7 +603,7 @@ if (out) {
   if (prompt.includes("You are selecting the best Oraculum finalist.")) {
     fs.writeFileSync(
       out,
-      '{"candidateId":"cand-01","confidence":"high","summary":"this should be ignored"}',
+      '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"this should be ignored"}',
       "utf8",
     );
     process.exit(7);
@@ -696,7 +742,7 @@ if (prompt.includes("Repair context:")) {
 }
 if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
-    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 repaired its reviewable evidence."}'
+    ? '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 repaired its reviewable evidence."}'
     : "Codex finished candidate patch";
   fs.writeFileSync(out, body, "utf8");
 }
@@ -743,6 +789,16 @@ if (out) {
       JSON.parse(await readFile(verdictPath, "utf8")) as unknown,
     );
     expect(verdict.status).toBe("pass");
+    const comparison = JSON.parse(
+      await readFile(getFinalistComparisonJsonPath(cwd, planned.id), "utf8"),
+    ) as {
+      finalists: Array<{
+        candidateId: string;
+        verdictCounts: { repairable: number };
+      }>;
+    };
+    expect(comparison.finalists[0]?.candidateId).toBe("cand-01");
+    expect(comparison.finalists[0]?.verdictCounts.repairable).toBeGreaterThanOrEqual(1);
   });
 
   it("uses consultation-scoped auto profile oracles during execution", async () => {
@@ -788,7 +844,7 @@ if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
 }
 if (out) {
   const body = prompt.includes("You are selecting the best Oraculum finalist.")
-    ? '{"candidateId":"cand-01","confidence":"high","summary":"cand-01 is the only surviving finalist."}'
+    ? '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 is the only surviving finalist."}'
     : "Codex finished candidate patch";
   fs.writeFileSync(out, body, "utf8");
 }
@@ -840,6 +896,63 @@ if (out) {
       ),
     ).resolves.toContain('"status": "pass"');
   });
+
+  it("does not advance latest consultation pointers when comparison reporting fails", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# Fix session loss\nKeep auth.\n");
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
+  fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
+}
+if (out) {
+  const body = prompt.includes("You are selecting the best Oraculum finalist.")
+    ? '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 is the only surviving finalist."}'
+    : "Codex finished candidate patch";
+  fs.writeFileSync(out, body, "utf8");
+}
+`,
+    );
+
+    const reportSpy = vi
+      .spyOn(finalistReportService, "writeFinalistComparisonReport")
+      .mockRejectedValueOnce(new Error("report write failed"));
+
+    try {
+      const planned = await planRun({
+        cwd,
+        taskInput: "tasks/fix-session-loss.md",
+        agent: "codex",
+        candidates: 1,
+      });
+
+      await expect(
+        executeRun({
+          cwd,
+          runId: planned.id,
+          codexBinaryPath: fakeCodex,
+          timeoutMs: 5_000,
+        }),
+      ).rejects.toThrow("report write failed");
+
+      await expect(readFile(getLatestRunStatePath(cwd), "utf8")).rejects.toThrow();
+      await expect(readFile(getLatestExportableRunStatePath(cwd), "utf8")).rejects.toThrow();
+    } finally {
+      reportSpy.mockRestore();
+    }
+  }, 20_000);
 });
 
 async function createTempRoot(): Promise<string> {

@@ -27,7 +27,7 @@ export function registerConsultCommand(program: Command): void {
     .option(
       "-c, --candidates <count>",
       "number of candidate patches to plan",
-      parsePositiveInteger("candidate count"),
+      parsePositiveInteger("candidate count", { max: 16 }),
     )
     .option("-a, --agent <agent>", "agent runtime to target", parseAdapter)
     .option("--timeout-ms <ms>", "adapter timeout in milliseconds", parsePositiveInteger("timeout"))
@@ -54,7 +54,7 @@ export function registerDraftCommand(program: Command): void {
     .option(
       "-c, --candidates <count>",
       "number of candidate patches to plan",
-      parsePositiveInteger("candidate count"),
+      parsePositiveInteger("candidate count", { max: 16 }),
     )
     .option("-a, --agent <agent>", "agent runtime to target", parseAdapter)
     .action(async (task: string, options: DraftOptions) => {
@@ -111,7 +111,10 @@ async function runConsultAction(options: {
   process.stdout.write(await renderConsultationSummary(execution.manifest, process.cwd()));
 }
 
-function parsePositiveInteger(label: string): (value: string) => number {
+function parsePositiveInteger(
+  label: string,
+  options: { max?: number } = {},
+): (value: string) => number {
   return (value: string) => {
     const normalized = value.trim();
     if (!/^[1-9]\d*$/u.test(normalized)) {
@@ -121,6 +124,9 @@ function parsePositiveInteger(label: string): (value: string) => number {
     const parsed = Number(normalized);
     if (!Number.isSafeInteger(parsed) || parsed < 1) {
       throw new InvalidArgumentError(`${label} must be a positive integer.`);
+    }
+    if (options.max !== undefined && parsed > options.max) {
+      throw new InvalidArgumentError(`${label} must be ${options.max} or less.`);
     }
 
     return parsed;

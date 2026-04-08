@@ -96,6 +96,68 @@ describe("materialized exports", () => {
     expect(savedManifest.candidates[0]?.status).toBe("exported");
   }, 20_000);
 
+  it("preserves file renames when generating a git branch export patch", async () => {
+    const cwd = await createTempRoot();
+    await initializeGitProject(cwd);
+    await writeFile(join(cwd, ".gitignore"), ".oraculum/\n", "utf8");
+    await writeFile(join(cwd, "old-name.txt"), "renamed\n", "utf8");
+    await commitAll(cwd, "initial project");
+    await initializeProject({ cwd, force: false });
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (prompt.includes("You are selecting the best Oraculum finalist.")) {
+  if (out) {
+    fs.writeFileSync(
+      out,
+      '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 performs the rename cleanly."}',
+      "utf8",
+    );
+  }
+  process.exit(0);
+}
+fs.renameSync(path.join(process.cwd(), "old-name.txt"), path.join(process.cwd(), "new-name.txt"));
+if (out) {
+  fs.writeFileSync(out, "renamed file", "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "rename old-name.txt to new-name.txt",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    await materializeExport({
+      cwd,
+      branchName: "fix/rename-file",
+      withReport: false,
+    });
+
+    await expect(readFile(join(cwd, "old-name.txt"), "utf8")).rejects.toThrow();
+    await expect(readFile(join(cwd, "new-name.txt"), "utf8")).resolves.toBe("renamed\n");
+    expect(await currentBranch(cwd)).toBe("fix/rename-file");
+  }, 20_000);
+
   it("rejects git export when tracked local changes exist", async () => {
     const cwd = await createTempRoot();
     await initializeGitProject(cwd);
@@ -252,6 +314,7 @@ if (prompt.includes("You are selecting the best Oraculum finalist.")) {
     fs.writeFileSync(
       out,
       JSON.stringify({
+        decision: "select",
         candidateId: "cand-01",
         confidence: "high",
         summary: "cand-01 is the recommended winner."
@@ -294,7 +357,7 @@ if (out) {
       "patched from commit\n",
     );
     expect(await currentBranch(cwd)).toBe("fix/session-loss");
-  });
+  }, 20_000);
 
   it("rolls back a real git export when bookkeeping fails on disk", async () => {
     const cwd = await createTempRoot();
@@ -694,6 +757,7 @@ if (prompt.includes("You are selecting the best Oraculum finalist.")) {
     fs.writeFileSync(
       out,
       JSON.stringify({
+        decision: "select",
         candidateId: "cand-01",
         confidence: "high",
         summary: "cand-01 is the recommended winner."
@@ -761,6 +825,7 @@ if (prompt.includes("You are selecting the best Oraculum finalist.")) {
     fs.writeFileSync(
       out,
       JSON.stringify({
+        decision: "select",
         candidateId: "cand-01",
         confidence: "high",
         summary: "cand-01 is the recommended winner."
@@ -828,6 +893,7 @@ if (prompt.includes("You are selecting the best Oraculum finalist.")) {
     fs.writeFileSync(
       out,
       JSON.stringify({
+        decision: "select",
         candidateId: "cand-01",
         confidence: "high",
         summary: "cand-01 is the recommended winner."
@@ -897,6 +963,7 @@ if (prompt.includes("You are selecting the best Oraculum finalist.")) {
     fs.writeFileSync(
       out,
       JSON.stringify({
+        decision: "select",
         candidateId: "cand-01",
         confidence: "high",
         summary: "cand-01 is the recommended winner."
@@ -962,6 +1029,7 @@ if (prompt.includes("You are selecting the best Oraculum finalist.")) {
     fs.writeFileSync(
       out,
       JSON.stringify({
+        decision: "select",
         candidateId: "cand-01",
         confidence: "high",
         summary: "cand-01 is the recommended winner."
@@ -1034,6 +1102,7 @@ if (prompt.includes("You are selecting the best Oraculum finalist.")) {
     fs.writeFileSync(
       out,
       JSON.stringify({
+        decision: "select",
         candidateId: "cand-01",
         confidence: "high",
         summary: "cand-01 is the recommended winner."

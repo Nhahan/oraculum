@@ -85,7 +85,7 @@ export function buildCandidatePrompt(request: AgentRunRequest): string {
 export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
   const sections: string[] = [
     "You are selecting the best Oraculum finalist.",
-    "Choose exactly one candidate from the provided finalists.",
+    "Either select the single safest finalist to promote or abstain if no finalist is safe enough.",
     "Prefer the candidate that best satisfies the task while preserving repo rules and leaving the strongest reviewable evidence.",
     'Return JSON only in one of these shapes: {"decision":"select","candidateId":"cand-01","confidence":"high","summary":"short rationale"} or {"decision":"abstain","confidence":"low","summary":"why no finalist is safe to promote"}',
     "",
