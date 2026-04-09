@@ -96,7 +96,8 @@ describe("chat-native MCP surface", () => {
     expect(
       diagnostics.hosts
         .find((host) => host.host === "codex")
-        ?.notes.some((note) => note.includes("planned")),
+        ?.notes.some((note) => note.includes("oraculum setup --runtime codex")),
     ).toBe(true);
+    expect(diagnostics.summary).toContain("`oraculum setup --runtime <host>`");
   });
 });

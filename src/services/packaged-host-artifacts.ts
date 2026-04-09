@@ -82,12 +82,32 @@ export const packagedHostArtifactLayout: PackagedHostArtifactLayout =
             purpose: "Documents the packaged Codex host-artifact root.",
           },
           {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/README.md`,
-            purpose: "Placeholder root for generated Codex skill artifacts.",
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/rules/oraculum.md`,
+            purpose: "Generated Codex exact-prefix routing rules.",
           },
           {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/rules/README.md`,
-            purpose: "Placeholder root for generated Codex rule artifacts.",
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-consult/SKILL.md`,
+            purpose: "Generated Codex exact-prefix consult skill.",
+          },
+          {
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-verdict/SKILL.md`,
+            purpose: "Generated Codex exact-prefix verdict skill.",
+          },
+          {
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-verdict-archive/SKILL.md`,
+            purpose: "Generated Codex exact-prefix verdict archive skill.",
+          },
+          {
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-crown/SKILL.md`,
+            purpose: "Generated Codex exact-prefix crown skill.",
+          },
+          {
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-draft/SKILL.md`,
+            purpose: "Generated Codex exact-prefix draft skill.",
+          },
+          {
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-init/SKILL.md`,
+            purpose: "Generated Codex exact-prefix init skill.",
           },
         ],
       },

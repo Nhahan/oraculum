@@ -78,6 +78,7 @@ describe("consultation workflow summaries", () => {
     );
     expect(summary).not.toContain("oraculum crown --branch <branch-name>");
     expect(summary).toContain("oraculum verdict archive");
+    expect(summary).not.toContain("oraculum verdict consultation");
   });
 
   it("renders pending consultations without completed artifacts", async () => {
@@ -90,7 +91,7 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain("- comparison report: not available yet");
     expect(summary).toContain("- winner selection: not available yet");
     expect(summary).toContain("- crowning record: not created yet");
-    expect(summary).toContain(`oraculum verdict consultation ${manifest.id}`);
+    expect(summary).toContain(`oraculum verdict ${manifest.id}`);
   });
 
   it("does not report a promotion record when only a stale export plan file exists", async () => {
@@ -191,7 +192,34 @@ describe("consultation workflow summaries", () => {
     expect(archive).toContain("Recent consultations:");
     expect(archive).toContain("- run_newer | planned | Task | no auto profile | no survivor yet");
     expect(archive).toContain("- run_older | completed | Task | no auto profile | no survivor yet");
-    expect(archive).toContain("oraculum verdict consultation run_newer");
+    expect(archive).toContain("oraculum verdict run_newer");
+  });
+
+  it("renders chat-native next steps with the orc prefix", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      recommendedWinner: {
+        candidateId: "cand-01",
+        confidence: "high",
+        source: "llm-judge",
+        summary: "cand-01 is the recommended promotion.",
+      },
+    });
+    await writeManifest(cwd, manifest);
+
+    const summary = await renderConsultationSummary(manifest, cwd, {
+      surface: "chat-native",
+    });
+    const archive = renderConsultationArchive([manifest], {
+      surface: "chat-native",
+    });
+
+    expect(summary).toContain("orc crown <branch-name>");
+    expect(summary).toContain("orc verdict");
+    expect(summary).toContain("orc verdict archive");
+    expect(summary).not.toContain("oraculum crown");
+    expect(archive).toContain(`orc verdict ${manifest.id}`);
+    expect(archive).not.toContain("oraculum verdict");
   });
 });
 

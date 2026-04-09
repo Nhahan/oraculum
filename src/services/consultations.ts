@@ -15,6 +15,8 @@ import { type RunManifest, runManifestSchema } from "../domain/run.js";
 
 import { pathExists } from "./project.js";
 
+type ConsultationSurface = "shell" | "chat-native";
+
 export async function listRecentConsultations(cwd: string, limit = 10): Promise<RunManifest[]> {
   const projectRoot = resolveProjectRoot(cwd);
   const runsDir = getRunsDir(projectRoot);
@@ -59,8 +61,14 @@ export async function listRecentConsultations(cwd: string, limit = 10): Promise<
 export async function renderConsultationSummary(
   manifest: RunManifest,
   cwd: string,
+  options?: {
+    surface?: ConsultationSurface;
+  },
 ): Promise<string> {
   const projectRoot = resolveProjectRoot(cwd);
+  const surface = options?.surface ?? "shell";
+  const verdictCommand = getSurfaceCommand(surface, "verdict");
+  const crownCommand = getSurfaceCommand(surface, "crown");
   const finalists = manifest.candidates.filter(
     (candidate) => candidate.status === "promoted" || candidate.status === "exported",
   );
@@ -146,27 +154,46 @@ export async function renderConsultationSummary(
   if (hasCrowningRecord) {
     lines.push(`- reopen the crowning record: ${toDisplayPath(projectRoot, exportPlanPath)}`);
   } else if (manifest.recommendedWinner) {
-    lines.push("- crown the recommended survivor: oraculum crown --branch <branch-name>");
+    if (surface === "chat-native") {
+      lines.push(`- crown the recommended survivor: ${crownCommand} <branch-name>`);
+    } else {
+      lines.push(`- crown the recommended survivor: ${crownCommand} --branch <branch-name>`);
+    }
   } else if (manifest.status === "completed" && finalists.length > 0) {
-    lines.push(
-      "- inspect the comparison and choose a candidate manually: oraculum crown <candidate-id> --branch <branch-name>",
-    );
+    if (surface === "chat-native") {
+      lines.push(
+        "- inspect the comparison first. If you need to crown a specific candidate manually, use the shell fallback.",
+      );
+    } else {
+      lines.push(
+        `- inspect the comparison and choose a candidate manually: ${crownCommand} <candidate-id> --branch <branch-name>`,
+      );
+    }
   } else if (manifest.status === "completed") {
     lines.push(
       "- review why no candidate survived the oracle rounds: open the comparison report above.",
     );
   } else {
-    lines.push(`- reopen this consultation later: oraculum verdict consultation ${manifest.id}`);
+    lines.push(`- reopen this consultation later: ${verdictCommand} ${manifest.id}`);
   }
-  lines.push("- reopen the latest consultation later: oraculum verdict");
-  lines.push("- browse recent consultations: oraculum verdict archive");
+  lines.push(`- reopen the latest consultation later: ${verdictCommand}`);
+  lines.push(`- browse recent consultations: ${verdictCommand} archive`);
 
   return `${lines.join("\n")}\n`;
 }
 
-export function renderConsultationArchive(manifests: RunManifest[]): string {
+export function renderConsultationArchive(
+  manifests: RunManifest[],
+  options?: {
+    surface?: ConsultationSurface;
+  },
+): string {
+  const surface = options?.surface ?? "shell";
+  const consultCommand = getSurfaceCommand(surface, "consult");
+  const verdictCommand = getSurfaceCommand(surface, "verdict");
+
   if (manifests.length === 0) {
-    return "No consultations yet. Start with `oraculum consult ...`.\n";
+    return `No consultations yet. Start with \`${consultCommand} ...\`.\n`;
   }
 
   const lines = ["Recent consultations:"];
@@ -180,7 +207,7 @@ export function renderConsultationArchive(manifests: RunManifest[]): string {
     lines.push(
       `- ${manifest.id} | ${manifest.status} | ${manifest.taskPacket.title} | ${profile} | ${recommendation}`,
       `  opened: ${manifest.createdAt}`,
-      `  reopen: oraculum verdict consultation ${manifest.id}`,
+      `  reopen: ${verdictCommand} ${manifest.id}`,
     );
   }
 
@@ -190,4 +217,12 @@ export function renderConsultationArchive(manifests: RunManifest[]): string {
 function toDisplayPath(projectRoot: string, targetPath: string): string {
   const display = relative(projectRoot, targetPath).replaceAll("\\", "/");
   return display.length > 0 ? display : ".";
+}
+
+function getSurfaceCommand(
+  surface: ConsultationSurface,
+  command: "consult" | "verdict" | "crown",
+): string {
+  const prefix = surface === "chat-native" ? "orc" : "oraculum";
+  return `${prefix} ${command}`;
 }

@@ -9,7 +9,8 @@ import { OraculumError } from "../core/errors.js";
 import { runSubprocess } from "../core/subprocess.js";
 import type { CommandManifestEntry } from "../domain/chat-native.js";
 
-export type ClaudeSetupScope = "user" | "project" | "local";
+export type ChatNativeSetupScope = "user" | "project" | "local";
+export type ClaudeSetupScope = ChatNativeSetupScope;
 
 interface ClaudeSetupOptions {
   claudeArgs?: string[];
@@ -433,6 +434,7 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
     return [
       "- The chat-native crowning path expects the branch name as the first argument.",
       "- It crowns the recommended survivor. Use the shell fallback for manual candidate selection during the transition.",
+      "- The shared chat-native surface is `orc crown <branch-name>`.",
       "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
     ];
   }

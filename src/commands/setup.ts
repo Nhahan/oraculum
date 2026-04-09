@@ -3,11 +3,12 @@ import { type Command, InvalidArgumentError } from "commander";
 import { OraculumError } from "../core/errors.js";
 import type { Adapter } from "../domain/config.js";
 import { buildSetupDiagnosticsResponse } from "../services/chat-native.js";
-import { type ClaudeSetupScope, setupClaudeCodeHost } from "../services/claude-chat-native.js";
+import { type ChatNativeSetupScope, setupClaudeCodeHost } from "../services/claude-chat-native.js";
+import { setupCodexHost } from "../services/codex-chat-native.js";
 
 interface SetupOptions {
   runtime: Adapter;
-  scope: ClaudeSetupScope;
+  scope: ChatNativeSetupScope;
 }
 
 interface SetupStatusOptions {
@@ -21,22 +22,36 @@ export function registerSetupCommand(program: Command): void {
     .requiredOption("-r, --runtime <runtime>", "target host runtime", parseRuntime)
     .option("--scope <scope>", "installation scope: user, project, or local", parseScope, "user")
     .action(async (options: SetupOptions) => {
-      if (options.runtime !== "claude-code") {
-        throw new OraculumError(
-          `Chat-native setup for "${options.runtime}" is not implemented yet. Claude Code lands first; Codex follows next.`,
-        );
+      if (options.runtime === "claude-code") {
+        const result = await setupClaudeCodeHost({
+          scope: options.scope,
+        });
+
+        process.stdout.write("Configured Claude Code chat-native integration.\n");
+        process.stdout.write(`Scope: ${result.scope}\n`);
+        process.stdout.write(`Packaged root: ${result.packagedRoot}\n`);
+        process.stdout.write(`Plugin root: ${result.pluginRoot}\n`);
+        process.stdout.write(`Marketplace: ${result.marketplacePath}\n`);
+        process.stdout.write(`MCP config: ${result.mcpConfigPath}\n`);
+        return;
       }
 
-      const result = await setupClaudeCodeHost({
-        scope: options.scope,
-      });
+      if (options.runtime === "codex") {
+        const result = await setupCodexHost({
+          scope: options.scope,
+        });
 
-      process.stdout.write("Configured Claude Code chat-native integration.\n");
-      process.stdout.write(`Scope: ${result.scope}\n`);
-      process.stdout.write(`Packaged root: ${result.packagedRoot}\n`);
-      process.stdout.write(`Plugin root: ${result.pluginRoot}\n`);
-      process.stdout.write(`Marketplace: ${result.marketplacePath}\n`);
-      process.stdout.write(`MCP config: ${result.mcpConfigPath}\n`);
+        process.stdout.write("Configured Codex chat-native integration.\n");
+        process.stdout.write(`Scope: ${result.scope}\n`);
+        process.stdout.write(`Packaged root: ${result.packagedRoot}\n`);
+        process.stdout.write(`Install root: ${result.installRoot}\n`);
+        process.stdout.write(`Skills root: ${result.skillsRoot}\n`);
+        process.stdout.write(`Rules root: ${result.rulesRoot}\n`);
+        process.stdout.write(`Codex config: ${result.configPath}\n`);
+        return;
+      }
+
+      throw new OraculumError(`Chat-native setup for "${options.runtime}" is not implemented yet.`);
     });
 
   setup
@@ -69,7 +84,7 @@ function parseRuntime(value: string): Adapter {
   return value;
 }
 
-function parseScope(value: string): ClaudeSetupScope {
+function parseScope(value: string): ChatNativeSetupScope {
   if (value !== "user" && value !== "project" && value !== "local") {
     throw new InvalidArgumentError('scope must be one of: "user", "project", "local".');
   }

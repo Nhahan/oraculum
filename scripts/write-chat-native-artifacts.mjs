@@ -16,10 +16,12 @@ async function main() {
       buildClaudePluginMcpConfig,
       buildClaudeSkillFiles,
     },
+    { buildCodexRuleFiles, buildCodexSkillFiles },
   ] = await Promise.all([
     import("../dist/services/chat-native.js"),
     import("../dist/services/packaged-host-artifacts.js"),
     import("../dist/services/claude-chat-native.js"),
+    import("../dist/services/codex-chat-native.js"),
   ]);
 
   await writeJson(
@@ -95,17 +97,27 @@ async function main() {
     throw new Error("Missing packaged Codex host layout.");
   }
 
-  for (const file of codexHost.files) {
+  await writeText(
+    join(distRoot, packagedHostArtifactLayout.rootDir, "codex", "README.md"),
+    [
+      "# Codex packaged artifacts",
+      "",
+      "Generated rules and skills for Codex live under this directory.",
+      "",
+    ].join("\n"),
+  );
+
+  for (const file of buildCodexRuleFiles(oraculumCommandManifest)) {
     await writeText(
-      join(distRoot, file.path),
-      [
-        "# Codex packaged artifacts",
-        "",
-        file.purpose,
-        "",
-        "This file exists so the npm package ships a stable host-artifact directory layout before the generated Codex integration lands.",
-        "",
-      ].join("\n"),
+      join(distRoot, packagedHostArtifactLayout.rootDir, "codex", file.path),
+      file.content,
+    );
+  }
+
+  for (const file of buildCodexSkillFiles(oraculumCommandManifest)) {
+    await writeText(
+      join(distRoot, packagedHostArtifactLayout.rootDir, "codex", file.path),
+      file.content,
     );
   }
 }

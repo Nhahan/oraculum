@@ -65,7 +65,9 @@ export async function runConsultTool(input: ConsultToolRequest): Promise<Consult
   return consultToolResponseSchema.parse({
     mode: "consult",
     consultation: execution.manifest,
-    summary: await renderConsultationSummary(execution.manifest, request.cwd),
+    summary: await renderConsultationSummary(execution.manifest, request.cwd, {
+      surface: "chat-native",
+    }),
     artifacts: buildConsultationArtifacts(request.cwd, execution.manifest.id),
     ...(initialized ? { initializedProject: buildProjectInitializationResult(initialized) } : {}),
   });
@@ -87,7 +89,9 @@ export async function runDraftTool(input: DraftToolRequest): Promise<DraftToolRe
   return draftToolResponseSchema.parse({
     mode: "draft",
     consultation: manifest,
-    summary: await renderConsultationSummary(manifest, request.cwd),
+    summary: await renderConsultationSummary(manifest, request.cwd, {
+      surface: "chat-native",
+    }),
     artifacts: buildConsultationArtifacts(request.cwd, manifest.id),
     ...(initialized ? { initializedProject: buildProjectInitializationResult(initialized) } : {}),
   });
@@ -102,7 +106,9 @@ export async function runVerdictTool(input: VerdictToolRequest): Promise<Verdict
   return verdictToolResponseSchema.parse({
     mode: "verdict",
     consultation: manifest,
-    summary: await renderConsultationSummary(manifest, request.cwd),
+    summary: await renderConsultationSummary(manifest, request.cwd, {
+      surface: "chat-native",
+    }),
     artifacts: buildConsultationArtifacts(request.cwd, manifest.id),
   });
 }
@@ -116,7 +122,9 @@ export async function runVerdictArchiveTool(
   return verdictArchiveToolResponseSchema.parse({
     mode: "verdict-archive",
     consultations,
-    archive: renderConsultationArchive(consultations),
+    archive: renderConsultationArchive(consultations, {
+      surface: "chat-native",
+    }),
   });
 }
 

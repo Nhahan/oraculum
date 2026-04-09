@@ -38,6 +38,7 @@ import {
   verdictToolRequestSchema,
   verdictToolResponseSchema,
 } from "../domain/chat-native.js";
+import { getExpectedCodexRuleFileName, getExpectedCodexSkillDirs } from "./codex-chat-native.js";
 import type { InitializeProjectResult } from "./project.js";
 
 export const oraculumMcpSchemas = {
@@ -353,35 +354,14 @@ export const oraculumCommandManifest = [
     responseShape: "crownToolResponseSchema",
     arguments: [
       {
-        name: "candidateId",
-        kind: "string",
-        description: "Candidate to crown; defaults to the recommended survivor.",
-        positional: true,
-      },
-      {
         name: "branchName",
         kind: "string",
         description: "Target branch name to create.",
         required: true,
-        option: "--branch",
-      },
-      {
-        name: "consultationId",
-        kind: "string",
-        description: "Consultation identifier override.",
-        option: "--consultation",
-      },
-      {
-        name: "withReport",
-        kind: "boolean",
-        description: "Include report packaging metadata.",
-        option: "--with-report",
+        positional: true,
       },
     ],
-    examples: [
-      "orc crown --branch fix/session-loss",
-      "orc crown cand-01 --branch fix/session-loss",
-    ],
+    examples: ["orc crown fix/session-loss"],
     hostAdditions: {},
   },
   {
@@ -504,6 +484,8 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
   const codexSkillsDir = join(homedir(), ".codex", "skills");
   const codexRulesDir = join(homedir(), ".codex", "rules");
   const claudeRegistered = hasMcpServer(claudeMcpPath, "oraculum");
+  const codexRegistered = hasCodexMcpServer(codexConfigPath);
+  const codexArtifactsInstalled = hasCodexArtifactsInstalled(codexSkillsDir, codexRulesDir);
 
   return {
     mode: "setup-status",
@@ -526,18 +508,18 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
       },
       {
         host: "codex",
-        registered: existsSync(codexConfigPath),
-        artifactsInstalled: existsSync(codexSkillsDir) && existsSync(codexRulesDir),
+        registered: codexRegistered,
+        artifactsInstalled: codexArtifactsInstalled,
         notes: [
           `Expected MCP config path: ${codexConfigPath}`,
           `Expected skill install root: ${codexSkillsDir}`,
           `Expected rule install root: ${codexRulesDir}`,
-          "Host-native Codex integration is planned but not shipped yet.",
+          "Run `oraculum setup --runtime codex` to register the MCP server and install the Oraculum skills and rules.",
         ],
       },
     ],
     summary:
-      "Oraculum can now register Claude Code host-native routing through `oraculum setup --runtime claude-code`. Codex host-native setup still needs to land before `orc ...` works there.",
+      "Oraculum can register Claude Code and Codex host-native routing through `oraculum setup --runtime <host>`.",
   };
 }
 
@@ -570,4 +552,30 @@ function hasClaudePluginInstalled(): boolean {
   }
 
   return existsSync(join(pluginsDir, "oraculum")) || existsSync(join(pluginsDir, "@oraculum"));
+}
+
+function hasCodexMcpServer(path: string): boolean {
+  if (!existsSync(path)) {
+    return false;
+  }
+
+  try {
+    const raw = readFileSync(path, "utf8");
+    return /\[mcp_servers\.oraculum\]/u.test(raw);
+  } catch {
+    return false;
+  }
+}
+
+function hasCodexArtifactsInstalled(skillsDir: string, rulesDir: string): boolean {
+  if (!existsSync(skillsDir) || !existsSync(rulesDir)) {
+    return false;
+  }
+
+  const expectedRule = join(rulesDir, getExpectedCodexRuleFileName());
+  if (!existsSync(expectedRule)) {
+    return false;
+  }
+
+  return getExpectedCodexSkillDirs().every((dirName) => existsSync(join(skillsDir, dirName)));
 }
