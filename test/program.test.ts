@@ -85,6 +85,28 @@ describe("CLI argument parsing", () => {
     });
   });
 
+  it("rejects unsupported setup runtimes before executing the command", async () => {
+    const program = createProgram();
+
+    await expect(
+      program.parseAsync(["setup", "--runtime", "aider"], { from: "user" }),
+    ).rejects.toMatchObject({
+      code: "commander.invalidArgument",
+    });
+  });
+
+  it("rejects unsupported setup scopes before executing the command", async () => {
+    const program = createProgram();
+
+    await expect(
+      program.parseAsync(["setup", "--runtime", "claude-code", "--scope", "global"], {
+        from: "user",
+      }),
+    ).rejects.toMatchObject({
+      code: "commander.invalidArgument",
+    });
+  });
+
   it("uses the package version for CLI version output", () => {
     const program = buildProgram();
 

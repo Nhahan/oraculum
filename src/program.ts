@@ -2,7 +2,9 @@ import { Command } from "commander";
 
 import { registerConsultCommand, registerDraftCommand } from "./commands/consult.js";
 import { registerInitCommand } from "./commands/init.js";
+import { registerMcpCommand } from "./commands/mcp.js";
 import { registerCrownCommand } from "./commands/promote.js";
+import { registerSetupCommand } from "./commands/setup.js";
 import { registerVerdictCommand } from "./commands/verdict.js";
 import { APP_NAME, APP_VERSION } from "./core/constants.js";
 
@@ -19,6 +21,8 @@ export function buildProgram(): Command {
   registerVerdictCommand(program);
   registerCrownCommand(program);
   registerInitCommand(program);
+  registerSetupCommand(program);
+  registerMcpCommand(program);
 
   return program;
 }
