@@ -26,7 +26,10 @@ async function main() {
     const packageRootCandidates =
       process.platform === "win32"
         ? [join(prefix, "node_modules", "oraculum")]
-        : [join(prefix, "lib", "node_modules", "oraculum"), join(prefix, "node_modules", "oraculum")];
+        : [
+            join(prefix, "lib", "node_modules", "oraculum"),
+            join(prefix, "node_modules", "oraculum"),
+          ];
     const packageRoot = packageRootCandidates.find((candidate) => existsSync(candidate));
     if (!packageRoot) {
       throw new Error(`Installed Oraculum package directory was not found under ${prefix}.`);
