@@ -235,7 +235,11 @@ export async function prepareExportPlan(
   options: BuildExportPlanOptions,
 ): Promise<{ plan: ExportPlan; path: string }> {
   const projectRoot = resolveProjectRoot(options.cwd);
-  const resolvedRunId = options.runId ?? (await readLatestExportableRunId(projectRoot));
+  const resolvedRunId =
+    options.runId ??
+    (options.winnerId
+      ? await readLatestRunId(projectRoot)
+      : await readLatestExportableRunId(projectRoot));
   const manifest = await readRunManifest(projectRoot, resolvedRunId);
   const resolvedWinnerId = options.winnerId ?? manifest.recommendedWinner?.candidateId;
   if (!resolvedWinnerId) {

@@ -304,6 +304,34 @@ if (out) {
     expect(recommendation.selection.missingCapabilities).toEqual([]);
   });
 
+  it("prefers repo-local frontend tools over global PATH tools for deep checks", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nUpdate the page title.\n", "utf8");
+    await writeFrontendPackage(cwd);
+    await mkdir(getReportsDir(cwd, "run_frontend_local_tool"), { recursive: true });
+    await mkdir(join(cwd, "node_modules", ".bin"), { recursive: true });
+    await writeNodeBinary(join(cwd, "node_modules", ".bin"), "playwright", "process.exit(0);\n");
+    setToolPathFinderForTests((tool) =>
+      tool === "playwright" ? "/usr/local/bin/playwright" : undefined,
+    );
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_frontend_local_tool"),
+      runId: "run_frontend_local_tool",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    const e2eOracle = recommendation.config.oracles.find((oracle) => oracle.id === "e2e-deep");
+    expect(e2eOracle?.command).toBe("npx");
+    expect(e2eOracle?.args).toEqual(["--no-install", "playwright", "test"]);
+  });
+
   it("auto-generates prisma migration deep checks without custom scripts", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });

@@ -227,6 +227,66 @@ if (out) {
     ).rejects.toThrow("recorded base revision");
   }, 20_000);
 
+  it("uses the latest consultation when crowning an explicitly selected survivor without a recommendation", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "app.txt"), "original\n", "utf8");
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (prompt.includes("You are selecting the best Oraculum finalist.")) {
+  if (out) {
+    fs.writeFileSync(
+      out,
+      '{"decision":"abstain","confidence":"medium","summary":"Need a manual choice."}',
+      "utf8",
+    );
+  }
+  process.exit(0);
+}
+fs.writeFileSync(path.join(process.cwd(), "app.txt"), "patched manually\\n", "utf8");
+if (out) {
+  fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "fix session loss on refresh",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    const result = await materializeExport({
+      cwd,
+      winnerId: "cand-01",
+      branchName: "fix/manual-choice",
+      withReport: false,
+    });
+
+    expect(result.plan.winnerId).toBe("cand-01");
+    expect(result.plan.mode).toBe("workspace-sync");
+    expect(await readFile(join(cwd, "app.txt"), "utf8")).toBe("patched manually\n");
+  });
+
   it("ignores unmanaged runtime state files when exporting a git winner", async () => {
     const cwd = await createTempRoot();
     await initializeGitProject(cwd);

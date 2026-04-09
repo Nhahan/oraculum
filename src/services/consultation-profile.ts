@@ -852,34 +852,31 @@ function buildToolExecCommand(
   tool: string,
   args: string[],
 ): { command: string; args: string[] } | undefined {
+  const hasLocalTool = hasProjectLocalTool(projectRoot, tool);
+  if (packageManager === "pnpm") {
+    if (hasLocalTool) {
+      return { command: "pnpm", args: ["exec", tool, ...args] };
+    }
+  }
+  if (packageManager === "yarn") {
+    if (hasLocalTool) {
+      return { command: "yarn", args: ["exec", tool, ...args] };
+    }
+  }
+  if (packageManager === "bun") {
+    if (hasLocalTool) {
+      return { command: "bun", args: ["x", tool, ...args] };
+    }
+  }
+  if (packageManager === "npm" || packageManager === "unknown") {
+    if (hasLocalTool) {
+      return { command: "npx", args: ["--no-install", tool, ...args] };
+    }
+  }
+
   const pathTool = toolPathFinder(tool);
   if (pathTool) {
     return { command: pathTool, args };
-  }
-  const hasLocalTool = hasProjectLocalTool(projectRoot, tool);
-  if (packageManager === "pnpm") {
-    if (!hasLocalTool) {
-      return undefined;
-    }
-    return { command: "pnpm", args: ["exec", tool, ...args] };
-  }
-  if (packageManager === "yarn") {
-    if (!hasLocalTool) {
-      return undefined;
-    }
-    return { command: "yarn", args: ["exec", tool, ...args] };
-  }
-  if (packageManager === "bun") {
-    if (!hasLocalTool) {
-      return undefined;
-    }
-    return { command: "bun", args: ["x", tool, ...args] };
-  }
-  if (packageManager === "npm" || packageManager === "unknown") {
-    if (!hasLocalTool) {
-      return undefined;
-    }
-    return { command: "npx", args: ["--no-install", tool, ...args] };
   }
   return undefined;
 }

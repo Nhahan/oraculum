@@ -16,7 +16,7 @@ export function registerCrownCommand(program: Command): void {
     .requiredOption("-b, --branch <branchName>", "branch name to create")
     .option(
       "--consultation <runId>",
-      "consultation identifier; defaults to the latest consultation with a recommended survivor",
+      "consultation identifier; defaults to the latest consultation when a candidate id is given, otherwise the latest consultation with a recommended survivor",
     )
     .option("--with-report", "include report packaging metadata", false)
     .action(async (winner: string | undefined, options: CrownOptions) => {
