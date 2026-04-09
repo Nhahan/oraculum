@@ -723,13 +723,14 @@ async function executeScenario(workdir, scenario) {
       `${scenario.id}: draft should skip runtime profile selection.`,
     );
     if (scenario.kind === "filelike-inline-draft") {
+      const normalizedSourcePath = run.taskPacket.sourcePath.replaceAll("\\", "/");
       assertEqual(
         run.taskPacket.sourceKind,
         "task-note",
         `${scenario.id}: file-like draft input should materialize as a generated task note.`,
       );
       assertContains(
-        run.taskPacket.sourcePath,
+        normalizedSourcePath,
         ".oraculum/tasks/",
         `${scenario.id}: file-like draft input should land under generated tasks.`,
       );
