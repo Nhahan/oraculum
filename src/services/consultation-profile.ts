@@ -529,12 +529,7 @@ function buildCommandCatalog(options: {
     if (catalog.some((command) => command.id === id)) {
       return;
     }
-    const command = buildToolExecCommand(
-      options.projectRoot,
-      options.packageManager,
-      tool,
-      toolArgs,
-    );
+    const command = buildToolExecCommand(options.projectRoot, tool, toolArgs);
     if (!command) {
       return;
     }
@@ -750,7 +745,7 @@ function buildCommandCatalog(options: {
           "const tempDir = mkdtempSync(join(tmpdir(), 'oraculum-pack-smoke-'));",
           "let exitCode = 0;",
           "try {",
-          "  const result = spawnSync(npmBinary, ['pack', '--pack-destination', tempDir], { encoding: 'utf8', stdio: 'pipe' });",
+          "  const result = spawnSync(npmBinary, ['pack', '--pack-destination', tempDir], { encoding: 'utf8', stdio: 'pipe', shell: process.platform === 'win32' });",
           "  process.stdout.write(result.stdout || '');",
           "  process.stderr.write(result.stderr || '');",
           "  if ((result.status ?? 1) !== 0) {",
@@ -848,30 +843,12 @@ function buildScriptCommand(
 
 function buildToolExecCommand(
   projectRoot: string,
-  packageManager: ProfileRepoSignals["packageManager"],
   tool: string,
   args: string[],
 ): { command: string; args: string[] } | undefined {
-  const hasLocalTool = hasProjectLocalTool(projectRoot, tool);
-  if (packageManager === "pnpm") {
-    if (hasLocalTool) {
-      return { command: "pnpm", args: ["exec", tool, ...args] };
-    }
-  }
-  if (packageManager === "yarn") {
-    if (hasLocalTool) {
-      return { command: "yarn", args: ["exec", tool, ...args] };
-    }
-  }
-  if (packageManager === "bun") {
-    if (hasLocalTool) {
-      return { command: "bun", args: ["x", tool, ...args] };
-    }
-  }
-  if (packageManager === "npm" || packageManager === "unknown") {
-    if (hasLocalTool) {
-      return { command: "npx", args: ["--no-install", tool, ...args] };
-    }
+  const localTool = findProjectLocalTool(projectRoot, tool);
+  if (localTool) {
+    return { command: localTool, args };
   }
 
   const pathTool = toolPathFinder(tool);
@@ -881,7 +858,7 @@ function buildToolExecCommand(
   return undefined;
 }
 
-function hasProjectLocalTool(projectRoot: string, tool: string): boolean {
+function findProjectLocalTool(projectRoot: string, tool: string): string | undefined {
   const localBinDir = join(projectRoot, "node_modules", ".bin");
   const candidates =
     process.platform === "win32"
@@ -891,7 +868,7 @@ function hasProjectLocalTool(projectRoot: string, tool: string): boolean {
           join(localBinDir, tool),
         ]
       : [join(localBinDir, tool)];
-  return candidates.some((candidate) => existsSync(candidate));
+  return candidates.find((candidate) => existsSync(candidate));
 }
 
 function findToolOnPath(tool: string): string | undefined {

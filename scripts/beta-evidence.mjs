@@ -8,11 +8,20 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const distCliPath = join(repoRoot, "dist", "cli.js");
 const keepEvidence = process.env.ORACULUM_KEEP_EVIDENCE === "1";
+const evidenceMode = resolveEvidenceMode();
 
 const repoKinds = ["library", "frontend", "migration", "plain"];
 const agents = ["codex", "claude-code"];
 const workspaceModes = ["git", "copy"];
 const packageManagers = ["pnpm", "yarn", "bun"];
+
+function resolveEvidenceMode() {
+  const modeArgument = process.argv.find((argument) => argument.startsWith("--mode="));
+  if (modeArgument) {
+    return modeArgument.slice("--mode=".length);
+  }
+  return process.env.ORACULUM_EVIDENCE_MODE ?? "matrix";
+}
 
 async function main() {
   if (!existsSync(distCliPath)) {
@@ -20,11 +29,13 @@ async function main() {
   }
 
   const scenarioRoot = await mkdtemp(join(tmpdir(), "oraculum-beta-evidence-"));
-  const scenarios = buildScenarioMatrix();
+  const scenarios = buildScenarioSet(evidenceMode);
   const startedAt = Date.now();
   const results = [];
 
-  process.stdout.write(`Running ${scenarios.length} local dist evidence scenarios...\n`);
+  process.stdout.write(
+    `Running ${scenarios.length} local dist evidence scenarios (${evidenceMode})...\n`,
+  );
 
   for (const scenario of scenarios) {
     const workdir = join(scenarioRoot, scenario.id);
@@ -39,9 +50,13 @@ async function main() {
     } catch (error) {
       const durationMs = Date.now() - started;
       const message = error instanceof Error ? error.message : String(error);
+      const debug = await collectScenarioDebug(workdir);
       results.push({ id: scenario.id, status: "failed", durationMs, message, workdir });
       process.stdout.write(`FAIL ${scenario.id} (${durationMs}ms)\n`);
       process.stdout.write(`${indent(message)}\n`);
+      if (debug) {
+        process.stdout.write(`${indent(debug)}\n`);
+      }
     }
   }
 
@@ -68,6 +83,16 @@ async function main() {
   } else {
     process.stdout.write(`Evidence workspaces preserved at ${scenarioRoot}\n`);
   }
+}
+
+function buildScenarioSet(mode) {
+  if (mode === "corpus") {
+    return buildCorpusScenarios();
+  }
+  if (mode === "all") {
+    return [...buildScenarioMatrix(), ...buildCorpusScenarios()];
+  }
+  return buildScenarioMatrix();
 }
 
 function buildScenarioMatrix() {
@@ -226,7 +251,158 @@ function buildScenarioMatrix() {
     }),
   );
 
+  for (const agent of agents) {
+    for (const workspaceMode of workspaceModes) {
+      scenarios.push(
+        createScenario({
+          kind: "monorepo",
+          repoKind: "monorepo",
+          agent,
+          workspaceMode,
+          packageManager: "pnpm",
+          profileId: "library",
+        }),
+      );
+      scenarios.push(
+        createScenario({
+          kind: "hung-runtime",
+          repoKind: "library",
+          agent,
+          workspaceMode,
+          timeoutMs: 300,
+        }),
+      );
+      scenarios.push(
+        createScenario({
+          kind: "large-diff",
+          repoKind: "library",
+          agent,
+          workspaceMode,
+        }),
+      );
+    }
+  }
+
+  for (const workspaceMode of workspaceModes) {
+    scenarios.push(
+      createScenario({
+        kind: "manual-crown",
+        repoKind: "library",
+        agent: "codex",
+        workspaceMode,
+        manualCandidateId: "cand-01",
+      }),
+    );
+    scenarios.push(
+      createScenario({
+        kind: "manual-crown",
+        repoKind: "library",
+        agent: "codex",
+        workspaceMode,
+        manualCandidateId: "cand-02",
+      }),
+    );
+  }
+
   return scenarios;
+}
+
+function buildCorpusScenarios() {
+  return [
+    createScenario({
+      kind: "monorepo",
+      repoKind: "monorepo",
+      agent: "codex",
+      workspaceMode: "git",
+      packageManager: "pnpm",
+      profileId: "library",
+      corpusName: "monorepo-git-codex",
+    }),
+    createScenario({
+      kind: "monorepo",
+      repoKind: "monorepo",
+      agent: "claude-code",
+      workspaceMode: "copy",
+      packageManager: "pnpm",
+      profileId: "library",
+      corpusName: "monorepo-copy-claude",
+    }),
+    createScenario({
+      kind: "hung-runtime",
+      repoKind: "library",
+      agent: "codex",
+      workspaceMode: "git",
+      timeoutMs: 300,
+      corpusName: "hung-runtime-git-codex",
+    }),
+    createScenario({
+      kind: "hung-runtime",
+      repoKind: "library",
+      agent: "claude-code",
+      workspaceMode: "copy",
+      timeoutMs: 300,
+      corpusName: "hung-runtime-copy-claude",
+    }),
+    createScenario({
+      kind: "large-diff",
+      repoKind: "library",
+      agent: "codex",
+      workspaceMode: "git",
+      corpusName: "large-diff-git-codex",
+    }),
+    createScenario({
+      kind: "large-diff",
+      repoKind: "library",
+      agent: "claude-code",
+      workspaceMode: "copy",
+      corpusName: "large-diff-copy-claude",
+    }),
+    createScenario({
+      kind: "manual-crown",
+      repoKind: "library",
+      agent: "codex",
+      workspaceMode: "git",
+      manualCandidateId: "cand-01",
+      corpusName: "manual-crown-cand-01",
+    }),
+    createScenario({
+      kind: "manual-crown",
+      repoKind: "library",
+      agent: "codex",
+      workspaceMode: "copy",
+      manualCandidateId: "cand-02",
+      corpusName: "manual-crown-cand-02",
+    }),
+    createScenario({
+      kind: "repair",
+      repoKind: "library",
+      agent: "codex",
+      workspaceMode: "git",
+      corpusName: "repair-library",
+    }),
+    createScenario({
+      kind: "advanced-override",
+      repoKind: "frontend",
+      agent: "claude-code",
+      workspaceMode: "copy",
+      corpusName: "advanced-override-frontend",
+    }),
+    createScenario({
+      kind: "stale-base",
+      repoKind: "migration",
+      agent: "codex",
+      workspaceMode: "git",
+      corpusName: "migration-stale-base",
+    }),
+    createScenario({
+      kind: "filelike-inline-consult",
+      repoKind: "library",
+      agent: "codex",
+      workspaceMode: "git",
+      taskInputMode: "filelike-inline",
+      corpusName: "filelike-inline-consult",
+    }),
+  ];
 }
 
 function createScenario({
@@ -238,6 +414,10 @@ function createScenario({
   candidateCount,
   packageManager,
   taskInputMode,
+  profileId,
+  timeoutMs,
+  manualCandidateId,
+  corpusName,
 }) {
   const resolvedCandidateCount =
     candidateCount ??
@@ -249,10 +429,12 @@ function createScenario({
       : "file");
   return {
     id: [
+      ...(corpusName ? [corpusName] : []),
       repoKind,
       agent.replaceAll("claude-code", "claude"),
       workspaceMode,
       ...(packageManager ? [packageManager] : []),
+      ...(manualCandidateId ? [manualCandidateId] : []),
       ...(binaryMode === "missing" ? ["missing-bin"] : []),
       kind,
     ].join("-"),
@@ -260,11 +442,14 @@ function createScenario({
     repoKind,
     agent,
     workspaceMode,
-    profileId: repoKind === "plain" ? "library" : repoKind,
+    profileId:
+      profileId ?? (repoKind === "plain" || repoKind === "monorepo" ? "library" : repoKind),
     binaryMode,
     candidateCount: resolvedCandidateCount,
     packageManager,
     taskInputMode: resolvedTaskInputMode,
+    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+    ...(manualCandidateId ? { manualCandidateId } : {}),
   };
 }
 
@@ -438,7 +623,7 @@ async function executeScenario(workdir, scenario) {
       "--candidates",
       String(scenario.candidateCount),
       "--timeout-ms",
-      "20000",
+      String(scenario.timeoutMs ?? 20000),
     ],
     { cwd: workdir, env },
   );
@@ -552,6 +737,62 @@ async function executeScenario(workdir, scenario) {
     return;
   }
 
+  if (scenario.kind === "manual-crown") {
+    assertAbsent(
+      run.recommendedWinner,
+      `${scenario.id}: manual-crown setup should abstain automatically.`,
+    );
+    const firstRunId = run.id;
+    const runtimeToolRoot = join(workdir, ".oraculum", "runtime-tools");
+    await mkdir(runtimeToolRoot, { recursive: true });
+    const secondBinaryPath =
+      scenario.agent === "codex"
+        ? await writeNodeBinary(
+            runtimeToolRoot,
+            "manual-crown-followup-codex",
+            buildFakeRuntimeSource({ ...scenario, kind: "happy" }),
+          )
+        : await writeNodeBinary(
+            runtimeToolRoot,
+            "manual-crown-followup-claude",
+            buildFakeRuntimeSource({ ...scenario, kind: "happy" }),
+          );
+    const secondEnv = {
+      ...env,
+      ...(scenario.agent === "codex"
+        ? { ORACULUM_CODEX_BIN: secondBinaryPath }
+        : { ORACULUM_CLAUDE_BIN: secondBinaryPath }),
+    };
+    const followup = runCli(
+      [
+        "consult",
+        buildInlineTaskText(scenario.repoKind),
+        "--agent",
+        scenario.agent,
+        "--candidates",
+        "2",
+        "--timeout-ms",
+        "20000",
+      ],
+      { cwd: workdir, env: secondEnv },
+    );
+    assertContains(followup.stdout, "Consultation complete.");
+    const crown = runCli(
+      [
+        "crown",
+        scenario.manualCandidateId,
+        "--consultation",
+        firstRunId,
+        "--branch",
+        buildBranchName(scenario, scenario.manualCandidateId),
+      ],
+      { cwd: workdir, env },
+    );
+    assertContains(crown.stdout, `Crowned ${scenario.manualCandidateId}`);
+    await assertTargetFileContains(workdir, scenario, scenario.manualCandidateId);
+    return;
+  }
+
   if (scenario.kind === "repair") {
     assertEqual(
       run.recommendedWinner?.candidateId,
@@ -604,14 +845,51 @@ async function executeScenario(workdir, scenario) {
     return;
   }
 
+  if (scenario.kind === "hung-runtime") {
+    assertAbsent(
+      run.recommendedWinner,
+      `${scenario.id}: hung runtime should not recommend a survivor.`,
+    );
+    assertEqual(
+      run.candidates.every((candidate) => candidate.status === "eliminated"),
+      true,
+      `${scenario.id}: hung runtime should eliminate every candidate.`,
+    );
+    const verdict = runCli(["verdict"], { cwd: workdir, env });
+    assertContains(verdict.stdout, "review why no candidate survived the oracle rounds");
+    return;
+  }
+
+  if (scenario.kind === "monorepo") {
+    assertEqual(
+      run.recommendedWinner?.candidateId,
+      "cand-02",
+      `${scenario.id}: expected cand-02 to be recommended for the monorepo scenario.`,
+    );
+    await assertHappyCrown(workdir, scenario, env);
+    return;
+  }
+
+  if (scenario.kind === "large-diff") {
+    assertEqual(
+      run.recommendedWinner?.candidateId,
+      "cand-02",
+      `${scenario.id}: expected cand-02 to be recommended for the large diff scenario.`,
+    );
+    await assertHappyCrown(workdir, scenario, env);
+    await assertLargeDiffMaterialized(workdir, "cand-02");
+    return;
+  }
+
   if (scenario.kind === "filelike-inline-consult") {
+    const normalizedSourcePath = run.taskPacket.sourcePath.replaceAll("\\", "/");
     assertEqual(
       run.taskPacket.sourceKind,
       "task-note",
       `${scenario.id}: file-like text should be materialized as a generated task note.`,
     );
     assertContains(
-      run.taskPacket.sourcePath,
+      normalizedSourcePath,
       ".oraculum/tasks/",
       `${scenario.id}: file-like text should land under generated tasks.`,
     );
@@ -646,12 +924,77 @@ async function writeRepositoryTemplate(root, scenario) {
   const { packageManager, repoKind } = scenario;
   await mkdir(join(root, "src"), { recursive: true });
 
+  if (repoKind === "monorepo") {
+    await mkdir(join(root, "packages", "app", "src"), { recursive: true });
+    await writeFile(
+      join(root, "packages", "app", "src", "index.js"),
+      'export function greet() {\n  return "Bye";\n}\n',
+      "utf8",
+    );
+    await writeFile(join(root, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n", "utf8");
+    await writeFile(
+      join(root, "turbo.json"),
+      '{ "$schema": "https://turbo.build/schema.json" }\n',
+      "utf8",
+    );
+    await writePackageJson(root, {
+      name: "scenario-monorepo",
+      version: "0.0.0",
+      private: true,
+      type: "module",
+      packageManager: "pnpm@0.0.0",
+      workspaces: ["packages/*"],
+      scripts: {
+        lint: "turbo run lint --filter @acme/app",
+        typecheck: "turbo run typecheck --filter @acme/app",
+        test: "turbo run test --filter @acme/app",
+        build: "turbo run build --filter @acme/app",
+      },
+    });
+    await writePackageJson(join(root, "packages", "app"), {
+      name: "@acme/app",
+      version: "0.0.0",
+      type: "module",
+      main: "./src/index.js",
+      exports: {
+        ".": "./src/index.js",
+      },
+    });
+    await writeProjectLocalTool(
+      root,
+      "turbo",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const file = path.join(process.cwd(), "packages", "app", "src", "index.js");
+if (!fs.existsSync(file)) {
+  process.stderr.write("missing monorepo app entry");
+  process.exit(1);
+}
+process.stdout.write("turbo workspace ok");
+`,
+    );
+    return;
+  }
+
   if (repoKind === "library" || repoKind === "plain") {
     await writeFile(
       join(root, "src", "index.js"),
       'export function greet() {\n  return "Bye";\n}\n',
       "utf8",
     );
+    if (scenario.kind === "large-diff") {
+      await mkdir(join(root, "src", "tree", "nested"), { recursive: true });
+      await writeFile(join(root, "src", "tree", "rename-me.txt"), "rename me\n", "utf8");
+      await writeFile(join(root, "src", "tree", "delete-me.txt"), "delete me\n", "utf8");
+      await writeFile(join(root, "src", "tree", "nested", "keep.txt"), "keep\n", "utf8");
+      for (let index = 0; index < 20; index += 1) {
+        await writeFile(
+          join(root, "src", "tree", `bulk-${String(index).padStart(2, "0")}.txt`),
+          "base\n",
+          "utf8",
+        );
+      }
+    }
   }
 
   if (repoKind === "frontend") {
@@ -790,11 +1133,15 @@ async function writeTaskInputs(root, repoKind) {
     frontend: "# Frontend patch\nUpdate the page title.\n",
     migration: "# Migration patch\nAdjust the schema comment.\n",
     plain: "# Plain patch\nUpdate the greeting text.\n",
+    monorepo: "# Monorepo patch\nUpdate the workspace package greeting.\n",
   };
   await writeFile(join(root, "tasks", `${repoKind}.md`), taskBodies[repoKind], "utf8");
 }
 
 function buildInlineTaskText(repoKind) {
+  if (repoKind === "monorepo") {
+    return "Update packages/app/src/index.js so greet() returns a winner-specific hello string.";
+  }
   if (repoKind === "frontend") {
     return "Update src/page.js so TITLE reflects the winning candidate with a minimal patch.";
   }
@@ -827,6 +1174,7 @@ async function writePackageManagerShim(root, packageManager) {
     shimDir,
     packageManager,
     `const { existsSync } = require("node:fs");
+const { readFileSync } = require("node:fs");
 const { spawnSync } = require("node:child_process");
 const { join } = require("node:path");
 
@@ -847,27 +1195,65 @@ function localToolPath(tool) {
   return candidates.find((candidate) => existsSync(candidate));
 }
 
+function scriptEnvironment() {
+  const binDir = join(process.cwd(), "node_modules", ".bin");
+  return {
+    ...process.env,
+    PATH: process.platform === "win32"
+      ? binDir + ";" + (process.env.PATH || "")
+      : binDir + ":" + (process.env.PATH || ""),
+  };
+}
+
 function runLocalTool(tool, toolArgs) {
   const executable = localToolPath(tool);
   if (!executable) {
     process.stderr.write("missing local tool: " + tool);
     process.exit(1);
   }
-  passThrough(spawnSync(executable, toolArgs, { cwd: process.cwd(), env: process.env, encoding: "utf8", stdio: "pipe" }));
+  passThrough(spawnSync(executable, toolArgs, { cwd: process.cwd(), env: scriptEnvironment(), encoding: "utf8", stdio: "pipe" }));
+}
+
+function packageScripts() {
+  const packageJsonPath = join(process.cwd(), "package.json");
+  if (!existsSync(packageJsonPath)) {
+    process.stderr.write("missing package.json");
+    process.exit(1);
+  }
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+  return packageJson.scripts || {};
+}
+
+function runPackageScript(scriptName) {
+  const scripts = packageScripts();
+  const script = scripts[scriptName];
+  if (!script) {
+    process.stderr.write("missing package script: " + scriptName);
+    process.exit(1);
+  }
+  passThrough(
+    spawnSync(script, {
+      cwd: process.cwd(),
+      env: scriptEnvironment(),
+      encoding: "utf8",
+      stdio: "pipe",
+      shell: true,
+    }),
+  );
 }
 
 if (manager === "pnpm") {
-  if (args[0] === "run" && args[1]) process.exit(0);
+  if (args[0] === "run" && args[1]) runPackageScript(args[1]);
   if (args[0] === "exec" && args[1]) runLocalTool(args[1], args.slice(2));
 }
 
 if (manager === "yarn") {
   if (args[0] === "exec" && args[1]) runLocalTool(args[1], args.slice(2));
-  if (args[0] && args[0] !== "exec") process.exit(0);
+  if (args[0] && args[0] !== "exec") runPackageScript(args[0]);
 }
 
 if (manager === "bun") {
-  if (args[0] === "run" && args[1]) process.exit(0);
+  if (args[0] === "run" && args[1]) runPackageScript(args[1]);
   if (args[0] === "x" && args[1]) runLocalTool(args[1], args.slice(2));
 }
 
@@ -906,6 +1292,27 @@ const scenario = ${JSON.stringify({
   })};
 
 function mutateWorkspace() {
+  if (scenario.kind === "hung-runtime") {
+    setTimeout(() => {}, 60000);
+    return;
+  }
+  if (scenario.kind === "large-diff") {
+    const treeRoot = path.join(process.cwd(), "src", "tree");
+    fs.renameSync(path.join(treeRoot, "rename-me.txt"), path.join(treeRoot, "renamed-" + candidateId + ".txt"));
+    fs.rmSync(path.join(treeRoot, "delete-me.txt"), { force: true });
+    for (let index = 0; index < 20; index += 1) {
+      fs.writeFileSync(path.join(treeRoot, "bulk-" + String(index).padStart(2, "0") + ".txt"), "patched-" + candidateId + "\\n", "utf8");
+    }
+    fs.writeFileSync(path.join(treeRoot, "nested", "generated-" + candidateId + ".txt"), "generated " + candidateId + "\\n", "utf8");
+    fs.writeFileSync(path.join(process.cwd(), "src", "index.js"), 'export function greet() {\\n  return "Hello from ' + candidateId + '";\\n}\\n', "utf8");
+    return;
+  }
+  if (scenario.repoKind === "monorepo") {
+    const file = path.join(process.cwd(), "packages", "app", "src", "index.js");
+    const next = fs.readFileSync(file, "utf8").replace('"Bye"', '"Hello from ' + candidateId + '"');
+    fs.writeFileSync(file, next, "utf8");
+    return;
+  }
   if (scenario.repoKind === "frontend") {
     const file = path.join(process.cwd(), "src", "page.js");
     const next = fs.readFileSync(file, "utf8").replace("Old Title", "Title " + candidateId);
@@ -934,7 +1341,7 @@ function candidateSummary() {
 }
 
 function winnerPayload() {
-  if (scenario.kind === "abstain") {
+  if (scenario.kind === "abstain" || scenario.kind === "manual-crown") {
     return { decision: "abstain", confidence: "medium", summary: "Survivors are too close to recommend automatically." };
   }
   const recommendedId = scenario.candidateCount > 1 ? "cand-02" : "cand-01";
@@ -1071,15 +1478,75 @@ async function readNewestRunManifest(root) {
   return JSON.parse(await readFile(join(runsDir, runId, "run.json"), "utf8"));
 }
 
+async function collectScenarioDebug(root) {
+  try {
+    const run = await readLatestRunManifest(root);
+    const lines = [
+      `run=${run.id} status=${run.status} profile=${run.profileSelection?.profileId ?? "none"} recommendation=${run.recommendedWinner?.candidateId ?? "none"}`,
+    ];
+
+    for (const candidate of run.candidates) {
+      lines.push(
+        `candidate ${candidate.id}: status=${candidate.status} repairs=${candidate.repairCount} repairedRounds=${candidate.repairedRounds.join(",") || "-"}`,
+      );
+      const verdictDir = join(
+        root,
+        ".oraculum",
+        "runs",
+        run.id,
+        "candidates",
+        candidate.id,
+        "verdicts",
+      );
+      if (!existsSync(verdictDir)) {
+        continue;
+      }
+      const verdictFiles = (await readdir(verdictDir))
+        .filter((entry) => entry.endsWith(".json"))
+        .sort((left, right) => left.localeCompare(right));
+      for (const verdictFile of verdictFiles) {
+        const verdict = JSON.parse(await readFile(join(verdictDir, verdictFile), "utf8"));
+        lines.push(`  verdict ${verdictFile}: status=${verdict.status} oracle=${verdict.oracleId}`);
+      }
+    }
+
+    return lines.join("\n");
+  } catch {
+    return undefined;
+  }
+}
+
 async function assertTargetFileContains(root, scenario, candidateId) {
   const file =
-    scenario.repoKind === "frontend"
-      ? join(root, "src", "page.js")
-      : scenario.repoKind === "migration"
-        ? join(root, "prisma", "schema.prisma")
-        : join(root, "src", "index.js");
+    scenario.repoKind === "monorepo"
+      ? join(root, "packages", "app", "src", "index.js")
+      : scenario.repoKind === "frontend"
+        ? join(root, "src", "page.js")
+        : scenario.repoKind === "migration"
+          ? join(root, "prisma", "schema.prisma")
+          : join(root, "src", "index.js");
   const contents = await readFile(file, "utf8");
   assertContains(contents, candidateId);
+}
+
+async function assertPathPresence(path, shouldExist) {
+  const present = existsSync(path);
+  if (present !== shouldExist) {
+    throw new Error(
+      shouldExist ? `Expected path to exist: ${path}` : `Expected path to be absent: ${path}`,
+    );
+  }
+}
+
+async function assertLargeDiffMaterialized(root, candidateId) {
+  await assertPathPresence(join(root, "src", "tree", `renamed-${candidateId}.txt`), true);
+  await assertPathPresence(join(root, "src", "tree", "rename-me.txt"), false);
+  await assertPathPresence(join(root, "src", "tree", "delete-me.txt"), false);
+  const generated = await readFile(
+    join(root, "src", "tree", "nested", `generated-${candidateId}.txt`),
+    "utf8",
+  );
+  assertContains(generated, candidateId);
 }
 
 function buildBranchName(scenario, suffix) {
