@@ -103,6 +103,7 @@ if (out) {
     expect(packageSmokeDeep?.args?.join(" ")).toContain(
       "process.platform === 'win32' ? 'npm.cmd' : 'npm'",
     );
+    expect(packageSmokeDeep?.args?.join(" ")).toContain("shell: process.platform === 'win32'");
     await expect(readFile(getProfileSelectionPath(cwd, manifest.id), "utf8")).resolves.toContain(
       '"profileId": "library"',
     );
@@ -328,8 +329,8 @@ if (out) {
     });
 
     const e2eOracle = recommendation.config.oracles.find((oracle) => oracle.id === "e2e-deep");
-    expect(e2eOracle?.command).toBe("npx");
-    expect(e2eOracle?.args).toEqual(["--no-install", "playwright", "test"]);
+    expect(e2eOracle?.command).toContain(join("node_modules", ".bin", "playwright"));
+    expect(e2eOracle?.args).toEqual(["test"]);
   });
 
   it("auto-generates prisma migration deep checks without custom scripts", async () => {
