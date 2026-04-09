@@ -23,6 +23,18 @@ async function main() {
     if (!existsSync(oraculumBinary)) {
       throw new Error(`Installed Oraculum binary was not found at ${oraculumBinary}.`);
     }
+    const packageRootCandidates =
+      process.platform === "win32"
+        ? [join(prefix, "node_modules", "oraculum")]
+        : [join(prefix, "lib", "node_modules", "oraculum"), join(prefix, "node_modules", "oraculum")];
+    const packageRoot = packageRootCandidates.find((candidate) => existsSync(candidate));
+    if (!packageRoot) {
+      throw new Error(`Installed Oraculum package directory was not found under ${prefix}.`);
+    }
+    const oraculumCliPath = join(packageRoot, "dist", "cli.js");
+    if (!existsSync(oraculumCliPath)) {
+      throw new Error(`Installed Oraculum CLI entry was not found at ${oraculumCliPath}.`);
+    }
 
     await writeFile(
       join(projectRoot, "package.json"),
@@ -125,8 +137,9 @@ process.exit(0);
     };
 
     const consult = runOrThrow(
-      oraculumBinary,
+      process.execPath,
       [
+        oraculumCliPath,
         "consult",
         "Update src/index.js so greet() returns a winner-specific hello string.",
         "--agent",
@@ -140,10 +153,14 @@ process.exit(0);
     );
     assertContains(consult.stdout, "Consultation complete.");
 
-    const crown = runOrThrow(oraculumBinary, ["crown", "--branch", "fix/published-smoke"], {
-      cwd: projectRoot,
-      env,
-    });
+    const crown = runOrThrow(
+      process.execPath,
+      [oraculumCliPath, "crown", "--branch", "fix/published-smoke"],
+      {
+        cwd: projectRoot,
+        env,
+      },
+    );
     assertContains(crown.stdout, "Crowned cand-02");
 
     const branch = runOrThrow("git", ["branch", "--show-current"], {
