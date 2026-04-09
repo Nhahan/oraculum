@@ -1,8 +1,15 @@
 # Advanced Usage
 
-This page is for users who want more control than the default local one-command flow.
+This page is for users who want more control than the default one-command flow.
 
-The normal path is still:
+Target host-native path:
+
+```text
+orc consult "fix session loss on refresh"
+orc crown --branch fix/session-loss
+```
+
+Current temporary shell fallback:
 
 ```bash
 oraculum consult "fix session loss on refresh"
@@ -11,14 +18,14 @@ oraculum crown --branch fix/session-loss
 
 `consult` already prints the latest summary. Everything below is for reopening a consultation later, overriding the default recommendation, or shaping the tournament more explicitly.
 
-Oraculum is designed first as a local installable workflow tool. Advanced flags and config make that local workflow deeper; they are not primarily CI-facing knobs.
+The product target is a host-native chat surface with a shared `orc` command language across Claude Code and Codex. The current shell CLI remains a secondary compatibility/debug path while that host-native surface is being completed.
 
 Every `consult` also runs an automatic profile-selection step. Oraculum scans repo signals, asks the chosen runtime for a structured recommendation, and applies the resulting profile draft to that consultation only. Explicit quick-start and advanced settings still win over inferred defaults.
 
 ## Consult On A Task File
 
-```bash
-oraculum consult tasks/fix-session-loss.md
+```text
+orc consult tasks/fix-session-loss.md
 ```
 
 `consult` accepts:
@@ -29,8 +36,8 @@ oraculum consult tasks/fix-session-loss.md
 
 ## Choose Runtime And Candidate Count
 
-```bash
-oraculum consult tasks/fix-session-loss.md --agent codex --candidates 4
+```text
+orc consult tasks/fix-session-loss.md --agent codex --candidates 4
 ```
 
 Available runtimes today:
@@ -71,33 +78,33 @@ The selected profile is consultation-scoped. It does not rewrite your saved quic
 
 ## Inspect A Specific Consultation
 
-```bash
-oraculum verdict consultation run_20260404_xxxx
+```text
+orc verdict consultation run_20260404_xxxx
 ```
 
 Without a consultation id, `verdict` uses the latest consultation automatically.
 
 ## Browse Recent Consultations
 
-```bash
-oraculum verdict archive
-oraculum verdict archive 20
+```text
+orc verdict archive
+orc verdict archive 20
 ```
 
 Use this when you want to reopen an older consultation without remembering the exact id first.
 
-## Promote From A Specific Consultation
+## Crown From A Specific Consultation
 
-```bash
-oraculum crown --consultation run_20260404_xxxx --branch fix/session-loss --with-report
+```text
+orc crown --consultation run_20260404_xxxx --branch fix/session-loss --with-report
 ```
 
 Without `--consultation`, `crown` uses the latest consultation with a recommended survivor automatically. Without a candidate id, it uses the recommended survivor automatically.
 
 ## Manually Override The Recommended Winner
 
-```bash
-oraculum crown cand-01 --consultation run_20260404_xxxx --branch fix/session-loss
+```text
+orc crown cand-01 --consultation run_20260404_xxxx --branch fix/session-loss
 ```
 
 Choosing a candidate id yourself is the advanced path. The default path is to let Oraculum recommend a survivor and materialize that choice.
@@ -106,8 +113,8 @@ Choosing a candidate id yourself is the advanced path. The default path is to le
 
 Use `--with-report` when you want the crowning record to carry report metadata for later review.
 
-```bash
-oraculum crown --branch fix/session-loss --with-report
+```text
+orc crown --branch fix/session-loss --with-report
 ```
 
 In a Git-backed project, `crown` creates the target branch and applies the recommended survivor there. In a non-Git project, it syncs the crowned workspace back into the project folder.
@@ -123,16 +130,26 @@ This keeps the default path short while leaving richer review material in the ad
 
 ## Explicit Init
 
-```bash
-oraculum init
+```text
+orc init
 ```
 
 You usually do not need this because `consult` auto-initializes the project on first use.
-If you run `oraculum init --force`, Oraculum resets the quick-start config and removes any existing `.oraculum/advanced.json`.
+If you run `orc init --force`, Oraculum resets the quick-start config and removes any existing `.oraculum/advanced.json`.
 
 ## Plan Only
 
+```text
+orc draft tasks/fix-session-loss.md
+```
+
+Current temporary shell fallback:
+
 ```bash
+oraculum consult tasks/fix-session-loss.md
+oraculum verdict consultation run_20260404_xxxx
+oraculum crown --consultation run_20260404_xxxx --branch fix/session-loss
+oraculum init
 oraculum draft tasks/fix-session-loss.md
 ```
 
@@ -165,7 +182,7 @@ Use `command` with `args` when you want an exact executable invocation. Use a sh
 Supported enforcement levels:
 
 - `hard`: fail the candidate immediately
-- `repairable`: record a failure that can trigger a bounded repair attempt in the same round; unresolved repairable findings still block promotion
+- `repairable`: record a failure that can trigger a bounded repair attempt in the same round; unresolved repairable findings still block crowning
 - `signal`: keep the candidate alive, but record the warning
 
 You can also tune bounded repair behavior in `.oraculum/advanced.json`:

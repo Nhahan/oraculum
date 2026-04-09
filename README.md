@@ -20,7 +20,7 @@
 <p align="center">
   <strong>Consult competing patches. Read the verdict. Crown only the survivor.</strong>
   <br />
-  <sub>Oracle-guided patch consultation for Claude Code and Codex</sub>
+  <sub>Oracle-guided chat-native patch workflow for Claude Code and Codex</sub>
 </p>
 
 <p align="center">
@@ -37,7 +37,9 @@
 
 Oraculum is an oracle-guided patch workflow for Claude Code and Codex.
 
-It turns patching into a repeatable local workflow: run competing candidates in isolation, judge them with repo-local oracles, keep verdicts and witnesses, and crown only the survivor.
+The target product surface is a shared in-chat command language across both hosts: `orc consult`, `orc verdict`, and `orc crown`.
+
+Under that surface, Oraculum turns patching into a repeatable workflow: run competing candidates in isolation, judge them with repo-local oracles, keep verdicts and witnesses, and crown only the survivor.
 
 ## Installation
 
@@ -49,14 +51,23 @@ npm install -g oraculum
 
 ## Quick Start
 
-From the project folder:
+Target host-native flow inside Claude Code or Codex chat:
+
+```text
+orc consult "fix session loss on refresh"
+orc crown --branch fix/session-loss
+```
+
+Current implementation note:
+
+The repository is still finishing the host-native command surface. Until that lands, the development/debug shell fallback remains:
 
 ```bash
 oraculum consult "fix session loss on refresh"
 oraculum crown --branch fix/session-loss
 ```
 
-That is the default flow. `consult` initializes Oraculum on first use, runs the tournament, and prints the verdict summary immediately. `crown` uses the latest consultation with a recommended survivor by default.
+That flow initializes Oraculum on first use, runs the tournament, and prints the verdict summary immediately. `crown` uses the latest consultation with a recommended survivor by default.
 
 In a Git-backed project, `crown` creates the branch and applies the survivor there. In a non-Git project, it syncs the survivor back into the project folder.
 

@@ -2,7 +2,15 @@
 
 ## Purpose
 
-Build `Oraculum`: a `CLI-first`, `TypeScript + Node.js` system for `Claude Code` and `Codex` that explores multiple patch candidates, judges them with repo-local oracles/invariants, and promotes only survivors. Do not generalize adapters beyond those two yet.
+Build `Oraculum`: a `chat-native`, `TypeScript + Node.js` system for `Claude Code` and `Codex` that explores multiple patch candidates, judges them with repo-local oracles/invariants, and crowns only survivors. Do not generalize adapters beyond those two yet.
+
+Target primary product surface:
+
+- shared in-chat command language across hosts
+- preferred short prefix: `orc`
+- examples: `orc consult`, `orc verdict`, `orc crown`
+
+Current implementation still ships the `oraculum` shell binary for compatibility, setup, debugging, packaging, and local validation. Do not describe `orc` as already shipped unless the host-native integration for that host actually exists.
 
 ## Read Order
 
@@ -48,13 +56,13 @@ Default loop:
 - crown the recommended survivor
 
 Optimize for falsification and selection of patches, not maximum agent freedom.
-`oraculum consult` is the default end-to-end tournament command: one user command should cover candidate generation, execution, judging, elimination/crowning, and artifactization. Planning-only flows belong under structured advanced subcommands and must not become the default UX.
+When the host-native surface lands, `orc consult` is the default end-to-end tournament command: one user command should cover candidate generation, execution, judging, elimination/crowning, and artifactization. Planning-only flows belong under structured advanced subcommands and must not become the default UX.
 Protect the quick-start path as a product contract: first success should stay one-command and near-zero-config. Keep advanced controls available, but move operator complexity into optional flags, profiles, or advanced config rather than the default path.
-`oraculum consult` must print the latest result summary immediately. `oraculum verdict` is for reopening an earlier or latest consultation later, not for completing the default path.
-Treat Oraculum first as a local installable workflow tool, not a CI-first gate. CI/PR paths may exist, but they are secondary to the default local `consult -> crown` workflow.
-`oraculum consult` may infer a consultation-scoped profile from repo signals and structured runtime selection, but explicit quick-start or advanced operator settings must win over inferred defaults.
+The default end-to-end command, whether host-native `orc consult` or temporary shell fallback `oraculum consult`, must print the latest result summary immediately. `verdict` is for reopening an earlier or latest consultation later, not for completing the default path.
+Treat Oraculum first as a local installable, host-native workflow tool, not a CI-first gate. CI/PR paths may exist, but they are secondary to the default local `consult -> crown` workflow.
+The default consultation command may infer a consultation-scoped profile from repo signals and structured runtime selection, but explicit quick-start or advanced operator settings must win over inferred defaults.
 Use `/.oraculum/config.json` for quick-start defaults only. Put operator controls such as custom rounds, strategies, or repo-local oracles in `/.oraculum/advanced.json`.
-Auto-init and `oraculum init --force` must keep the quick-start path clean: stale or orphaned `advanced.json` must not leak operator settings into the default UX.
+Auto-init and `init --force`, whether reached through host-native `orc` commands or the temporary shell fallback, must keep the quick-start path clean: stale or orphaned `advanced.json` must not leak operator settings into the default UX.
 
 ## Working Bias
 
@@ -70,6 +78,8 @@ Auto-init and `oraculum init --force` must keep the quick-start path clean: stal
 - Prefer replayable, machine-readable outputs.
 - Use an opinionated workflow, not ad-hoc chatting; force clarification before coding when intent is vague.
 - Build harness surfaces before polish: one product workflow across hosts, thin adapters at the edge, stable orchestration operations, state flow, isolation, evaluators, artifacts.
+- Prefer shared command manifests plus host-specific generated skills/rules/plugins over hand-maintained per-host drift.
+- Keep target state and current shipped state explicit in docs and setup flows; do not let future command names masquerade as already-available host features.
 - Pass artifacts forward: `spec -> plan -> implementation -> review -> test -> release`.
 - Review is iterative, not one-shot: after substantial implementation or after fixing review findings, re-read the affected files in full and rerun validation before claiming the tree is clean.
 - A full code review means reviewing the current working tree line-by-line; do not rely on earlier review conclusions once code has changed.
@@ -89,6 +99,9 @@ Auto-init and `oraculum init --force` must keep the quick-start path clean: stal
 Target modules:
 
 - task intake / packet
+- MCP tool surface
+- shared command manifest
+- host artifact generator
 - candidate workspace manager
 - adapters
 - oracle runner
