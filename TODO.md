@@ -5,10 +5,10 @@
   - Confirmed `consult -> crown` in both git and copy workspace modes
   - Covered in the curated corpus and the broad `evidence:beta` matrix
 
-- [ ] Native Windows real e2e
-  - Validate `consult -> crown` on a real Windows host
-  - Cover git / non-git promotion plus symlink / junction behavior
-  - Note: this requires a native Windows machine, not CI alone
+- [x] Native Windows real e2e
+  - Validated on a native `windows-latest` GitHub Actions host from a temporary branch
+  - Covered local `dist` `consult -> crown` corpus plus packed artifact smoke on Windows
+  - Confirmed git / non-git promotion paths alongside native Windows symlink / junction checks in `npm run check`
 
 - [x] Timeout / hung runtime e2e
   - Simulated hung candidates and host runtime stalls for `codex` and `claude-code`
@@ -27,6 +27,6 @@
   - Ran a `consult -> crown` happy path against the installed CLI
 
 - [x] Long-running beta evidence corpus
-  - Added a curated 12-scenario corpus on top of the broad matrix
+  - Added a curated 28-scenario corpus on top of the broad matrix
   - Kept it focused on realistic repo/task shapes rather than combinatorial expansion
-  - Broad matrix + corpus now runs as `npm run evidence:beta` and currently passes `156/156`
+  - Broad matrix + corpus now runs as `npm run evidence:beta` and currently passes `172/172`
