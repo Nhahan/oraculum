@@ -189,7 +189,8 @@ async function writeNodeBinary(root, name, source) {
 function runOrThrow(command, args, options) {
   const shell =
     process.platform === "win32" &&
-    ["bun", "npm", "npx", "pnpm", "yarn", "yarnpkg"].includes(command.toLowerCase());
+    (["bun", "npm", "npx", "pnpm", "yarn", "yarnpkg"].includes(command.toLowerCase()) ||
+      /\.(cmd|bat)$/iu.test(command));
   const result = spawnSync(command, args, {
     cwd: options.cwd,
     env: options.env,
