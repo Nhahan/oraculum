@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify package version matches the tag
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          node -e "const pkg = require('./package.json'); const expected = process.env.TAG_NAME.replace(/^v/, ''); if (pkg.version !== expected) { throw new Error(`package.json version ${pkg.version} does not match tag ${process.env.TAG_NAME}`); }"
+
+      - name: Run checks
+        run: npm run check
+
+      - name: Build CLI
+        run: npm run build
+
+      - name: Pack npm artifact
+        run: npm pack
+
+      - name: Create checksums
+        run: shasum -a 256 oraculum-*.tgz > checksums.txt
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          prerelease_flag=()
+          if [[ "$TAG_NAME" == *-* ]]; then
+            prerelease_flag+=(--prerelease)
+          fi
+
+          gh release create "$TAG_NAME" \
+            oraculum-*.tgz \
+            checksums.txt \
+            --verify-tag \
+            --generate-notes \
+            "${prerelease_flag[@]}"

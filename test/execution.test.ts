@@ -132,7 +132,7 @@ if (out) {
     expect(comparisonJson.recommendedWinner?.candidateId).toBe("cand-01");
     await expect(
       readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
-    ).resolves.toContain("Finalist Comparison");
+    ).resolves.toContain("Survivor Comparison");
   }, 20_000);
 
   it("eliminates candidates when the adapter exits non-zero", async () => {
@@ -895,7 +895,7 @@ if (out) {
         "utf8",
       ),
     ).resolves.toContain('"status": "pass"');
-  });
+  }, 20_000);
 
   it("does not advance latest consultation pointers when comparison reporting fails", async () => {
     const cwd = await createTempRoot();

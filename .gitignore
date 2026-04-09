@@ -5,3 +5,4 @@ dist/
 .oraculum/
 .idea/
 .DS_Store
+*.tgz

@@ -1,7 +1,7 @@
 {
   "name": "oraculum",
-  "version": "0.1.0-beta.1",
-  "description": "Patch search and judgment harness for Claude Code and Codex.",
+  "version": "0.1.0-beta.3",
+  "description": "Oracle-guided patch consultation for Claude Code and Codex.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -14,6 +14,14 @@
     "node": ">=18"
   },
   "packageManager": "npm@10.9.3",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nhahan/oraculum.git"
+  },
+  "homepage": "https://github.com/Nhahan/oraculum",
+  "bugs": {
+    "url": "https://github.com/Nhahan/oraculum/issues"
+  },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
     "check": "npm run lint && npm run typecheck && npm run test",
