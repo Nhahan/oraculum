@@ -1498,7 +1498,7 @@ async function collectScenarioDebug(root) {
         candidate.id,
         "verdicts",
       );
-      if (!(await pathExists(verdictDir))) {
+      if (!existsSync(verdictDir)) {
         continue;
       }
       const verdictFiles = (await readdir(verdictDir))
