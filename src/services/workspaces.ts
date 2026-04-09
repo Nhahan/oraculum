@@ -1,11 +1,11 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm, symlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { OraculumError } from "../core/errors.js";
 import { runSubprocess } from "../core/subprocess.js";
 import type { WorkspaceMode } from "../domain/run.js";
 
-import { copyManagedProjectTree } from "./managed-tree.js";
+import { copyManagedProjectTree, shouldManageProjectEntry } from "./managed-tree.js";
 import { pathExists } from "./project.js";
 
 interface PrepareWorkspaceOptions {
@@ -107,11 +107,45 @@ async function prepareCopiedWorkspace(
   await rm(options.workspaceDir, { recursive: true, force: true });
   await mkdir(options.workspaceDir, { recursive: true });
   await copyManagedProjectTree(options.projectRoot, options.workspaceDir);
+  await linkWorkspaceDependencyTrees(options.projectRoot, options.workspaceDir);
 
   return {
     mode: "copy",
     workspaceDir: options.workspaceDir,
   };
+}
+
+async function linkWorkspaceDependencyTrees(
+  sourceRoot: string,
+  destinationRoot: string,
+  relativeDir = "",
+): Promise<void> {
+  const sourceDir = relativeDir ? join(sourceRoot, relativeDir) : sourceRoot;
+  const entries = await readdir(sourceDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    const relativePath = relativeDir ? join(relativeDir, entry.name) : entry.name;
+    if (entry.name === "node_modules") {
+      const destinationPath = join(destinationRoot, relativePath);
+      await mkdir(dirname(destinationPath), { recursive: true });
+      await symlink(
+        join(sourceRoot, relativePath),
+        destinationPath,
+        process.platform === "win32" ? "junction" : "dir",
+      );
+      continue;
+    }
+
+    if (!shouldManageProjectEntry(entry.name)) {
+      continue;
+    }
+
+    await linkWorkspaceDependencyTrees(sourceRoot, destinationRoot, relativePath);
+  }
 }
 
 async function isGitRepository(projectRoot: string): Promise<boolean> {

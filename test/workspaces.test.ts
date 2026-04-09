@@ -51,6 +51,29 @@ describe("candidate workspace preparation", () => {
     await expect(stat(join(workspaceDir, ".aws"))).rejects.toThrow();
   });
 
+  it("links node_modules dependency trees into copied workspaces", async () => {
+    const projectRoot = await createTempRoot();
+    const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");
+
+    await mkdir(join(projectRoot, "node_modules", "tool"), { recursive: true });
+    await writeFile(join(projectRoot, "node_modules", "tool", "index.js"), "module.exports = 1;\n");
+    await mkdir(join(projectRoot, "packages", "app", "node_modules", "pkg"), { recursive: true });
+    await writeFile(
+      join(projectRoot, "packages", "app", "node_modules", "pkg", "index.js"),
+      "export const value = 1;\n",
+      "utf8",
+    );
+
+    await prepareCandidateWorkspace({ projectRoot, workspaceDir });
+
+    await expect(
+      readFile(join(workspaceDir, "node_modules", "tool", "index.js"), "utf8"),
+    ).resolves.toContain("module.exports = 1");
+    await expect(
+      readFile(join(workspaceDir, "packages", "app", "node_modules", "pkg", "index.js"), "utf8"),
+    ).resolves.toContain("export const value = 1");
+  });
+
   it("creates a git worktree when the root is a git repository", async () => {
     const projectRoot = await createTempRoot();
     const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");
