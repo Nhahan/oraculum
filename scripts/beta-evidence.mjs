@@ -1481,13 +1481,36 @@ async function readNewestRunManifest(root) {
 async function collectScenarioDebug(root) {
   try {
     const run = await readLatestRunManifest(root);
-    return [
+    const lines = [
       `run=${run.id} status=${run.status} profile=${run.profileSelection?.profileId ?? "none"} recommendation=${run.recommendedWinner?.candidateId ?? "none"}`,
-      ...run.candidates.map(
-        (candidate) =>
-          `candidate ${candidate.id}: status=${candidate.status} repairs=${candidate.repairCount} repairedRounds=${candidate.repairedRounds.join(",") || "-"}`,
-      ),
-    ].join("\n");
+    ];
+
+    for (const candidate of run.candidates) {
+      lines.push(
+        `candidate ${candidate.id}: status=${candidate.status} repairs=${candidate.repairCount} repairedRounds=${candidate.repairedRounds.join(",") || "-"}`,
+      );
+      const verdictDir = join(
+        root,
+        ".oraculum",
+        "runs",
+        run.id,
+        "candidates",
+        candidate.id,
+        "verdicts",
+      );
+      if (!(await pathExists(verdictDir))) {
+        continue;
+      }
+      const verdictFiles = (await readdir(verdictDir))
+        .filter((entry) => entry.endsWith(".json"))
+        .sort((left, right) => left.localeCompare(right));
+      for (const verdictFile of verdictFiles) {
+        const verdict = JSON.parse(await readFile(join(verdictDir, verdictFile), "utf8"));
+        lines.push(`  verdict ${verdictFile}: status=${verdict.status} oracle=${verdict.oracleId}`);
+      }
+    }
+
+    return lines.join("\n");
   } catch {
     return undefined;
   }
