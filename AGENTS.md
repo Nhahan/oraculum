@@ -34,7 +34,7 @@ Do not treat Oraculum as a generic multi-agent shell. Its core harness unit is:
 - candidate, not chat session
 - oracle, not roleplay
 - witness, not vague failure
-- promotion gate, not open-ended autonomy
+- crowning gate, not open-ended autonomy
 - comparison report, not raw transcript
 
 Default loop:
@@ -45,13 +45,13 @@ Default loop:
 - judge with oracles
 - repair or eliminate
 - compare finalists
-- promote the recommended survivor
+- crown the recommended survivor
 
 Optimize for falsification and selection of patches, not maximum agent freedom.
-`oraculum consult` is the default end-to-end tournament command: one user command should cover candidate generation, execution, judging, elimination/promotion, and artifactization. Planning-only flows belong under structured advanced subcommands and must not become the default UX.
+`oraculum consult` is the default end-to-end tournament command: one user command should cover candidate generation, execution, judging, elimination/crowning, and artifactization. Planning-only flows belong under structured advanced subcommands and must not become the default UX.
 Protect the quick-start path as a product contract: first success should stay one-command and near-zero-config. Keep advanced controls available, but move operator complexity into optional flags, profiles, or advanced config rather than the default path.
 `oraculum consult` must print the latest result summary immediately. `oraculum verdict` is for reopening an earlier or latest consultation later, not for completing the default path.
-Treat Oraculum first as a local installable workflow tool, not a CI-first gate. CI/PR paths may exist, but they are secondary to the default local `consult -> promote` workflow.
+Treat Oraculum first as a local installable workflow tool, not a CI-first gate. CI/PR paths may exist, but they are secondary to the default local `consult -> crown` workflow.
 `oraculum consult` may infer a consultation-scoped profile from repo signals and structured runtime selection, but explicit quick-start or advanced operator settings must win over inferred defaults.
 Use `/.oraculum/config.json` for quick-start defaults only. Put operator controls such as custom rounds, strategies, or repo-local oracles in `/.oraculum/advanced.json`.
 Auto-init and `oraculum init --force` must keep the quick-start path clean: stale or orphaned `advanced.json` must not leak operator settings into the default UX.
@@ -75,8 +75,8 @@ Auto-init and `oraculum init --force` must keep the quick-start path clean: stal
 - A full code review means reviewing the current working tree line-by-line; do not rely on earlier review conclusions once code has changed.
 - Use fresh-context review/QA when independent judgment matters.
 - Parallel workers require isolated workspaces and explicit coordination.
-- Borrow the references' command/hook/state-machine discipline, but adapt it to `candidate -> oracle -> witness -> promotion`, not generic team orchestration.
-- Preferred execution cadence: `clarify/specify -> plan -> build -> review -> test -> ship/promote -> reflect/learn`.
+- Borrow the references' command/hook/state-machine discipline, but adapt it to `candidate -> oracle -> witness -> crowning`, not generic team orchestration.
+- Preferred execution cadence: `clarify/specify -> plan -> build -> review -> test -> ship/crown -> reflect/learn`.
 
 ## Doc Visibility
 
@@ -92,5 +92,5 @@ Target modules:
 - candidate workspace manager
 - adapters
 - oracle runner
-- tournament / finalist judge / promotion
-- reports / promotion / replay
+- tournament / finalist judge / crowning
+- reports / crowning / replay

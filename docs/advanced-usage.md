@@ -6,7 +6,7 @@ The normal path is still:
 
 ```bash
 oraculum consult "fix session loss on refresh"
-oraculum promote --branch fix/session-loss
+oraculum crown --branch fix/session-loss
 ```
 
 `consult` already prints the latest summary. Everything below is for reopening a consultation later, overriding the default recommendation, or shaping the tournament more explicitly.
@@ -89,34 +89,34 @@ Use this when you want to reopen an older consultation without remembering the e
 ## Promote From A Specific Consultation
 
 ```bash
-oraculum promote --consultation run_20260404_xxxx --branch fix/session-loss --with-report
+oraculum crown --consultation run_20260404_xxxx --branch fix/session-loss --with-report
 ```
 
-Without `--consultation`, `promote` uses the latest promotable consultation automatically. Without a candidate id, it uses the recommended promotion automatically.
+Without `--consultation`, `crown` uses the latest consultation with a recommended survivor automatically. Without a candidate id, it uses the recommended survivor automatically.
 
 ## Manually Override The Recommended Winner
 
 ```bash
-oraculum promote cand-01 --consultation run_20260404_xxxx --branch fix/session-loss
+oraculum crown cand-01 --consultation run_20260404_xxxx --branch fix/session-loss
 ```
 
-Choosing a candidate id yourself is the advanced path. The default path is to let Oraculum recommend a promotion and materialize that choice.
+Choosing a candidate id yourself is the advanced path. The default path is to let Oraculum recommend a survivor and materialize that choice.
 
 ## Report Bundle
 
-Use `--with-report` when you want the promotion record to carry report metadata for later review.
+Use `--with-report` when you want the crowning record to carry report metadata for later review.
 
 ```bash
-oraculum promote --branch fix/session-loss --with-report
+oraculum crown --branch fix/session-loss --with-report
 ```
 
-In a Git-backed project, `promote` creates the target branch and applies the recommended promotion there. In a non-Git project, it syncs the promoted workspace back into the project folder.
+In a Git-backed project, `crown` creates the target branch and applies the recommended survivor there. In a non-Git project, it syncs the crowned workspace back into the project folder.
 
 When available, the report bundle points at artifacts such as:
 
 - finalist-to-finalist comparison summaries
 - Markdown comparison reports
-- recommended promotion records
+- recommended survivor records
 - change summaries, witness rollups, and why-this-won rationale
 
 This keeps the default path short while leaving richer review material in the advanced path.
@@ -201,6 +201,6 @@ Use advanced settings only for things like:
 - choosing a specific runtime
 - changing candidate count
 - adding repo-local oracle commands in `.oraculum/advanced.json`
-- selecting a specific consultation for verdict inspection or promotion
+- selecting a specific consultation for verdict inspection or crowning
 
 If a workflow can be expressed without these controls, prefer the simple path.

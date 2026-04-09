@@ -1,5 +1,5 @@
 <p align="right">
-  <strong>English</strong> | <a href="./README.ko.md">한국어</a>
+  <strong>English</strong> | <a href="https://github.com/Nhahan/oraculum/blob/main/README.ko.md">한국어</a>
 </p>
 
 # Oraculum
@@ -12,15 +12,15 @@
   <a href="https://www.npmjs.com/package/oraculum">
     <img src="https://img.shields.io/npm/v/oraculum?color=blue" alt="npm">
   </a>
-  <a href="LICENSE">
+  <a href="https://github.com/Nhahan/oraculum/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   </a>
 </p>
 
 <p align="center">
-  <strong>Generate competing patches. Judge them. Promote only the survivors.</strong>
+  <strong>Consult competing patches. Read the verdict. Crown only the survivor.</strong>
   <br />
-  <sub>Patch search and judgment harness for Claude Code and Codex</sub>
+  <sub>Oracle-guided patch consultation for Claude Code and Codex</sub>
 </p>
 
 <p align="center">
@@ -41,10 +41,10 @@ Instead of trusting the first patch an AI gives you, Oraculum tries multiple can
 
 ## Installation
 
-Install the current beta:
+Install from npm:
 
 ```bash
-npm install -g oraculum@beta
+npm install -g oraculum
 ```
 
 ## Quick Start
@@ -53,14 +53,14 @@ From the project folder:
 
 ```bash
 oraculum consult "fix session loss on refresh"
-oraculum promote --branch fix/session-loss
+oraculum crown --branch fix/session-loss
 ```
 
-That is the default flow. `consult` initializes Oraculum on first use, runs the tournament, and prints the result summary immediately. `promote` uses the latest promotable consultation and its recommended promotion by default.
+That is the default flow. `consult` initializes Oraculum on first use, runs the tournament, and prints the verdict summary immediately. `crown` uses the latest consultation with a recommended survivor by default.
 
-In a Git-backed project, `promote` creates the branch and applies the winner there. In a non-Git project, it syncs the winner back into the project folder.
+In a Git-backed project, `crown` creates the branch and applies the survivor there. In a non-Git project, it syncs the survivor back into the project folder.
 
-If you want to reopen the latest consultation later, inspect an older one, or browse consultation history, see [Advanced Usage](docs/advanced-usage.md).
+If you want to reopen the latest consultation later, inspect an older one, or browse consultation history, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md).
 
 ## How It Works
 
@@ -68,10 +68,10 @@ If you want to reopen the latest consultation later, inspect an older one, or br
 2. Oraculum creates multiple candidate fixes.
 3. Each candidate runs in its own workspace.
 4. Checks remove weak candidates in stages.
-5. Oraculum recommends a survivor, explains the comparison, and lets you promote it.
+5. Oraculum recommends a survivor, explains the verdict, and lets you crown it.
 
 Results are saved under `.oraculum/`. The source of truth is the saved run state and artifacts, not chat transcript.
 
 ## Advanced Usage
 
-If you want more control over consultation-scoped profile selection, runtimes, candidate counts, specific consultation IDs, report packaging, repo-local oracle configuration, or manually overriding the recommended promotion, see [Advanced Usage](docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; operator controls belong in `.oraculum/advanced.json`.
+If you want more control over consultation-scoped profile selection, runtimes, candidate counts, specific consultation IDs, report packaging, repo-local oracle configuration, or manually overriding the recommended survivor, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; operator controls belong in `.oraculum/advanced.json`.
