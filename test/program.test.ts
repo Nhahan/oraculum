@@ -77,10 +77,10 @@ describe("CLI argument parsing", () => {
     });
   });
 
-  it("rejects promote without a branch name at the CLI boundary", async () => {
+  it("rejects crown without a branch name at the CLI boundary", async () => {
     const program = createProgram();
 
-    await expect(program.parseAsync(["promote"], { from: "user" })).rejects.toMatchObject({
+    await expect(program.parseAsync(["crown"], { from: "user" })).rejects.toMatchObject({
       code: "commander.missingMandatoryOptionValue",
     });
   });

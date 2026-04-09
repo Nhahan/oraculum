@@ -2,34 +2,31 @@ import type { Command } from "commander";
 
 import { materializeExport } from "../services/exports.js";
 
-interface PromoteOptions {
+interface CrownOptions {
   branch: string;
   consultation?: string;
   withReport?: boolean;
 }
 
-export function registerPromoteCommand(program: Command): void {
+export function registerCrownCommand(program: Command): void {
   program
-    .command("promote")
-    .description("Promote the recommended or selected candidate into the project.")
-    .argument(
-      "[candidate-id]",
-      "promoted candidate to materialize; defaults to the recommended promotion",
-    )
+    .command("crown")
+    .description("Crown the recommended or selected survivor and materialize it in the project.")
+    .argument("[candidate-id]", "candidate to crown; defaults to the recommended survivor")
     .requiredOption("-b, --branch <branchName>", "branch name to create")
     .option(
       "--consultation <runId>",
-      "consultation identifier; defaults to the latest exportable consultation",
+      "consultation identifier; defaults to the latest consultation with a recommended survivor",
     )
     .option("--with-report", "include report packaging metadata", false)
-    .action(async (winner: string | undefined, options: PromoteOptions) => {
-      await materializePromotion(winner, options);
+    .action(async (winner: string | undefined, options: CrownOptions) => {
+      await materializeCrowning(winner, options);
     });
 }
 
-async function materializePromotion(
+async function materializeCrowning(
   winner: string | undefined,
-  options: PromoteOptions,
+  options: CrownOptions,
 ): Promise<void> {
   const result = await materializeExport({
     cwd: process.cwd(),
@@ -39,7 +36,7 @@ async function materializePromotion(
     withReport: options.withReport ?? false,
   });
 
-  process.stdout.write(`Promoted ${result.plan.winnerId}\n`);
+  process.stdout.write(`Crowned ${result.plan.winnerId}\n`);
   process.stdout.write(`Consultation: ${result.plan.runId}\n`);
   process.stdout.write(`Mode: ${result.plan.mode}\n`);
   process.stdout.write(`Branch: ${result.plan.branchName}\n`);
@@ -58,5 +55,5 @@ async function materializePromotion(
     process.stdout.write(`Reports: ${result.plan.reportBundle.files.length}\n`);
     process.stdout.write(`Report root: ${result.plan.reportBundle.rootDir}\n`);
   }
-  process.stdout.write(`Record: ${result.path}\n`);
+  process.stdout.write(`Crowning record: ${result.path}\n`);
 }

@@ -167,7 +167,7 @@ describe("consult command", () => {
     expect(mockedExecuteRun).toHaveBeenCalledTimes(1);
   });
 
-  it("prints manual guidance when no recommended promotion is selected", async () => {
+  it("prints manual guidance when no recommended survivor is selected", async () => {
     const program = createProgram();
     const manifest = createPlannedManifest();
     mockedExecuteRun.mockResolvedValue({

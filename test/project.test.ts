@@ -463,7 +463,7 @@ if (out) {
     expect(taskNote).toContain("# Update src/greet.js so greet() returns Hello instead of Bye");
     await expect(readLatestRunId(cwd)).rejects.toThrow("No previous consultation found");
     await expect(readLatestExportableRunId(cwd)).rejects.toThrow(
-      "No promotable consultation found yet",
+      "No crownable consultation found yet",
     );
   });
 
@@ -560,7 +560,7 @@ if (out) {
     expect(latestExportableRunState.runId).toBe(manifest.id);
   }, 20_000);
 
-  it("rejects implicit export when no recommended promotion exists", async () => {
+  it("rejects implicit export when no recommended survivor exists", async () => {
     const cwd = await createInitializedProject();
     await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
 
@@ -577,7 +577,7 @@ if (out) {
         branchName: "fix/session-loss",
         withReport: false,
       }),
-    ).rejects.toThrow("does not have a recommended promotion");
+    ).rejects.toThrow("does not have a recommended survivor");
   });
 
   it("keeps the latest exportable run when a later run is only planned", async () => {

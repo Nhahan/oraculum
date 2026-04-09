@@ -21,7 +21,7 @@ export function registerConsultCommand(program: Command): void {
   program
     .command("consult")
     .description(
-      "Consult Oraculum on one task, auto-select a consultation profile, and run the full tournament.",
+      "Consult the oracle on one task, auto-select a consultation profile, and run the full tournament.",
     )
     .argument("[task]", "task note path, task packet path, or inline task text")
     .option(

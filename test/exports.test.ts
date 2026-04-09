@@ -394,7 +394,7 @@ if (out) {
         withReport: false,
       }),
     ).rejects.toThrow(
-      "Promotion bookkeeping failed after applying changes and the promotion was rolled back",
+      "Crowning bookkeeping failed after applying changes and the crowning was rolled back",
     );
 
     expect(await currentBranch(cwd)).toBe(baseBranch);

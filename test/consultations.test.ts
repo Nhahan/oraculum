@@ -69,14 +69,14 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain(
       "- winner selection: .oraculum/runs/run_1/reports/winner-selection.json",
     );
-    expect(summary).toContain("- promotion record: .oraculum/runs/run_1/reports/export-plan.json");
+    expect(summary).toContain("- crowning record: .oraculum/runs/run_1/reports/export-plan.json");
     expect(summary).toContain("Auto profile: library (high, llm-recommendation)");
-    expect(summary).toContain("Recommended promotion: cand-01 (high, llm-judge)");
+    expect(summary).toContain("Recommended survivor: cand-01 (high, llm-judge)");
     expect(summary).toContain("Next:");
     expect(summary).toContain(
-      "- reopen the promotion record: .oraculum/runs/run_1/reports/export-plan.json",
+      "- reopen the crowning record: .oraculum/runs/run_1/reports/export-plan.json",
     );
-    expect(summary).not.toContain("oraculum promote --branch <branch-name>");
+    expect(summary).not.toContain("oraculum crown --branch <branch-name>");
     expect(summary).toContain("oraculum verdict archive");
   });
 
@@ -89,7 +89,7 @@ describe("consultation workflow summaries", () => {
 
     expect(summary).toContain("- comparison report: not available yet");
     expect(summary).toContain("- winner selection: not available yet");
-    expect(summary).toContain("- promotion record: not created yet");
+    expect(summary).toContain("- crowning record: not created yet");
     expect(summary).toContain(`oraculum verdict consultation ${manifest.id}`);
   });
 
@@ -115,8 +115,8 @@ describe("consultation workflow summaries", () => {
 
     const summary = await renderConsultationSummary(manifest, cwd);
 
-    expect(summary).toContain("- promotion record: not created yet");
-    expect(summary).not.toContain("- reopen the promotion record:");
+    expect(summary).toContain("- crowning record: not created yet");
+    expect(summary).not.toContain("- reopen the crowning record:");
   });
 
   it("shows profile gaps in the consultation summary when deep validation is incomplete", async () => {
@@ -164,11 +164,11 @@ describe("consultation workflow summaries", () => {
 
     const summary = await renderConsultationSummary(manifest, cwd);
 
-    expect(summary).toContain("No finalists yet. Candidate states:");
+    expect(summary).toContain("No survivor yet. Candidate states:");
     expect(summary).toContain(
-      "- review why no candidate survived: open the comparison report above.",
+      "- review why no candidate survived the oracle rounds: open the comparison report above.",
     );
-    expect(summary).not.toContain("oraculum promote <candidate-id> --branch <branch-name>");
+    expect(summary).not.toContain("oraculum crown <candidate-id> --branch <branch-name>");
   });
 
   it("lists recent consultations in descending order", async () => {
@@ -189,12 +189,8 @@ describe("consultation workflow summaries", () => {
 
     expect(manifests.map((manifest) => manifest.id)).toEqual(["run_newer", "run_older"]);
     expect(archive).toContain("Recent consultations:");
-    expect(archive).toContain(
-      "- run_newer | planned | Task | no auto profile | no recommendation yet",
-    );
-    expect(archive).toContain(
-      "- run_older | completed | Task | no auto profile | no recommendation yet",
-    );
+    expect(archive).toContain("- run_newer | planned | Task | no auto profile | no survivor yet");
+    expect(archive).toContain("- run_older | completed | Task | no auto profile | no survivor yet");
     expect(archive).toContain("oraculum verdict consultation run_newer");
   });
 });

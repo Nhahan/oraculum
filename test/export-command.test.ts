@@ -10,7 +10,7 @@ import { materializeExport } from "../src/services/exports.js";
 
 const mockedMaterializeExport = vi.mocked(materializeExport);
 
-describe("promote command", () => {
+describe("crown command", () => {
   beforeEach(() => {
     mockedMaterializeExport.mockReset();
     mockedMaterializeExport.mockResolvedValue({
@@ -27,10 +27,10 @@ describe("promote command", () => {
     });
   });
 
-  it("promotes the recommended result when no candidate id is provided", async () => {
+  it("crowns the recommended survivor when no candidate id is provided", async () => {
     const program = createProgram();
 
-    await program.parseAsync(["promote", "--branch", "fix/session-loss"], {
+    await program.parseAsync(["crown", "--branch", "fix/session-loss"], {
       from: "user",
     });
 
@@ -41,11 +41,11 @@ describe("promote command", () => {
     });
   });
 
-  it("promotes an explicitly selected candidate when provided", async () => {
+  it("crowns an explicitly selected candidate when provided", async () => {
     const program = createProgram();
 
     await program.parseAsync(
-      ["promote", "cand-02", "--consultation", "run_9", "--branch", "fix/session-loss"],
+      ["crown", "cand-02", "--consultation", "run_9", "--branch", "fix/session-loss"],
       { from: "user" },
     );
 

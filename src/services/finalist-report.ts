@@ -144,18 +144,18 @@ function countVerdicts(
 
 function buildComparisonMarkdown(report: ComparisonReport): string {
   const lines: string[] = [
-    "# Finalist Comparison",
+    "# Survivor Comparison",
     "",
     `- Run: ${report.runId}`,
     `- Task: ${report.task.title}`,
     `- Agent: ${report.agent}`,
-    `- Finalists: ${report.finalistCount}`,
+    `- Survivors: ${report.finalistCount}`,
   ];
 
   if (report.recommendedWinner) {
     lines.push(
       "",
-      "## Recommended Promotion",
+      "## Recommended Survivor",
       `- Candidate: ${report.recommendedWinner.candidateId}`,
       `- Confidence: ${report.recommendedWinner.confidence}`,
       `- Source: ${report.recommendedWinner.source}`,
@@ -181,11 +181,11 @@ function buildComparisonMarkdown(report: ComparisonReport): string {
   }
 
   if (report.finalists.length === 0) {
-    lines.push("", "No finalists survived this run.");
+    lines.push("", "No survivors cleared this run.");
     return `${lines.join("\n")}\n`;
   }
 
-  lines.push("", "## Finalists");
+  lines.push("", "## Survivors");
 
   for (const finalist of report.finalists) {
     lines.push(

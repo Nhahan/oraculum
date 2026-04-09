@@ -240,7 +240,7 @@ export async function prepareExportPlan(
   const resolvedWinnerId = options.winnerId ?? manifest.recommendedWinner?.candidateId;
   if (!resolvedWinnerId) {
     throw new OraculumError(
-      `Consultation "${manifest.id}" does not have a recommended promotion. Pass a candidate id explicitly.`,
+      `Consultation "${manifest.id}" does not have a recommended survivor. Pass a candidate id explicitly.`,
     );
   }
 
@@ -253,13 +253,13 @@ export async function prepareExportPlan(
   }
   if (winner.status !== "promoted" && winner.status !== "exported") {
     throw new OraculumError(
-      `Candidate "${winner.id}" is not eligible for promotion because its status is "${winner.status}".`,
+      `Candidate "${winner.id}" is not eligible for crowning because its status is "${winner.status}".`,
     );
   }
 
   if (!winner.workspaceMode) {
     throw new OraculumError(
-      `Candidate "${winner.id}" does not have a materialized workspace mode. Execute the consultation before promoting it.`,
+      `Candidate "${winner.id}" does not have a materialized workspace mode. Execute the consultation before crowning it.`,
     );
   }
 
@@ -267,13 +267,13 @@ export async function prepareExportPlan(
   const mode = winner.workspaceMode === "git-worktree" ? "git-branch" : "workspace-sync";
   if (mode === "git-branch" && !winner.baseRevision) {
     throw new OraculumError(
-      `Candidate "${winner.id}" was produced by an older consultation artifact that does not record its git base revision. Re-run the task before promoting it.`,
+      `Candidate "${winner.id}" was produced by an older consultation artifact that does not record its git base revision. Re-run the task before crowning it.`,
     );
   }
 
   if (mode === "workspace-sync" && !winner.baseSnapshotPath) {
     throw new OraculumError(
-      `Candidate "${winner.id}" was produced by an older consultation artifact that does not record its base snapshot. Re-run the task before promoting it.`,
+      `Candidate "${winner.id}" was produced by an older consultation artifact that does not record its base snapshot. Re-run the task before crowning it.`,
     );
   }
 
@@ -326,7 +326,7 @@ export async function readLatestExportableRunId(cwd: string): Promise<string> {
 
   if (!(await pathExists(latestRunStatePath))) {
     throw new OraculumError(
-      "No promotable consultation found yet. Complete a consultation with a recommended promotion first.",
+      "No crownable consultation found yet. Complete a consultation with a recommended survivor first.",
     );
   }
 

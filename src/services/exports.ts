@@ -103,14 +103,14 @@ export async function materializeExport(
       await outcome.rollback();
     } catch (rollbackError) {
       throw new OraculumError(
-        `Promotion bookkeeping failed after applying changes and rollback did not complete cleanly: ${formatUnknownError(error)}; rollback error: ${formatUnknownError(rollbackError)}`,
+        `Crowning bookkeeping failed after applying changes and rollback did not complete cleanly: ${formatUnknownError(error)}; rollback error: ${formatUnknownError(rollbackError)}`,
       );
     }
 
     try {
       await restoreOptionalTextFile(path, previousPlanContents);
     } catch (restoreError) {
-      cleanupFailures.push(`promotion record (${formatUnknownError(restoreError)})`);
+      cleanupFailures.push(`crowning record (${formatUnknownError(restoreError)})`);
     }
 
     try {
@@ -127,12 +127,12 @@ export async function materializeExport(
 
     if (cleanupFailures.length > 0) {
       throw new OraculumError(
-        `Promotion bookkeeping failed after applying changes and the promotion was rolled back, but cleanup did not complete cleanly: ${cleanupFailures.join(", ")}.`,
+        `Crowning bookkeeping failed after applying changes and the crowning was rolled back, but cleanup did not complete cleanly: ${cleanupFailures.join(", ")}.`,
       );
     }
 
     throw new OraculumError(
-      `Promotion bookkeeping failed after applying changes and the promotion was rolled back: ${formatUnknownError(error)}`,
+      `Crowning bookkeeping failed after applying changes and the crowning was rolled back: ${formatUnknownError(error)}`,
     );
   }
 
@@ -154,7 +154,7 @@ function findExportCandidate(manifest: RunManifest, candidateId: string): Candid
 
   if (candidate.status !== "promoted" && candidate.status !== "exported") {
     throw new OraculumError(
-      `Candidate "${candidate.id}" is not eligible for promotion because its status is "${candidate.status}".`,
+      `Candidate "${candidate.id}" is not eligible for crowning because its status is "${candidate.status}".`,
     );
   }
 
@@ -182,14 +182,14 @@ async function materializeGitBranchExport(
   const initialDirectoryPaths = await listProjectDirectoryPaths(projectRoot);
   if (currentRevision !== winner.baseRevision) {
     throw new OraculumError(
-      `Cannot promote candidate "${winner.id}" because the current HEAD (${currentRevision}) no longer matches its recorded base revision (${winner.baseRevision}).`,
+      `Cannot crown candidate "${winner.id}" because the current HEAD (${currentRevision}) no longer matches its recorded base revision (${winner.baseRevision}).`,
     );
   }
 
   const patch = await generateWorkspacePatch(projectRoot, winner.workspaceDir, winner.baseRevision);
   if (!patch.trim()) {
     throw new OraculumError(
-      `Candidate "${winner.id}" has no materialized patch to promote from ${winner.workspaceDir}.`,
+      `Candidate "${winner.id}" has no materialized patch to crown from ${winner.workspaceDir}.`,
     );
   }
 
@@ -203,7 +203,7 @@ async function materializeGitBranchExport(
     timeoutMs: 30_000,
   });
   if (checkout.exitCode !== 0) {
-    throw new OraculumError(`Failed to create promotion branch "${plan.branchName}".`);
+    throw new OraculumError(`Failed to create target branch "${plan.branchName}" for crowning.`);
   }
 
   const apply = await runSubprocess({
@@ -224,11 +224,11 @@ async function materializeGitBranchExport(
       );
     } catch (rollbackError) {
       throw new OraculumError(
-        `Failed to apply the promoted patch onto branch "${plan.branchName}", and rollback did not complete cleanly: ${formatUnknownError(rollbackError)}`,
+        `Failed to apply the crowned patch onto branch "${plan.branchName}", and rollback did not complete cleanly: ${formatUnknownError(rollbackError)}`,
       );
     }
 
-    throw new OraculumError(`Failed to apply the promoted patch onto branch "${plan.branchName}".`);
+    throw new OraculumError(`Failed to apply the crowned patch onto branch "${plan.branchName}".`);
   }
 
   return {
@@ -285,7 +285,7 @@ async function materializeWorkspaceSyncExport(
       const rollbackError = await restoreManagedProjectBackup(projectRoot, backupRoot);
       if (rollbackError) {
         throw new OraculumError(
-          `Workspace-sync promotion failed and rollback did not complete cleanly: ${formatUnknownError(error)}; rollback error: ${rollbackError.message}`,
+          `Workspace-sync crowning failed and rollback did not complete cleanly: ${formatUnknownError(error)}; rollback error: ${rollbackError.message}`,
         );
       }
     } finally {
@@ -318,7 +318,7 @@ async function ensureCleanGitWorkingTree(projectRoot: string): Promise<void> {
   const hasTrackedChanges = unstaged.exitCode === 1 || staged.exitCode === 1;
   if (hasTrackedChanges) {
     throw new OraculumError(
-      "Cannot promote to a git branch while the current working tree has tracked local changes.",
+      "Cannot crown onto a git branch while the current working tree has tracked local changes.",
     );
   }
 }
@@ -390,7 +390,7 @@ async function generateWorkspacePatch(
     timeoutMs: 30_000,
   });
   if (changedPathsResult.exitCode !== 0 || untrackedResult.exitCode !== 0) {
-    throw new OraculumError(`Failed to inspect promotion patch paths from ${workspaceDir}.`);
+    throw new OraculumError(`Failed to inspect crowning patch paths from ${workspaceDir}.`);
   }
 
   const changedPaths = new Set<string>();
@@ -449,7 +449,7 @@ async function generateWorkspacePatch(
     timeoutMs: 30_000,
   });
   if (diff.exitCode !== 0) {
-    throw new OraculumError(`Failed to generate promotion patch from ${workspaceDir}.`);
+    throw new OraculumError(`Failed to generate crowning patch from ${workspaceDir}.`);
   }
 
   return diff.stdout;
@@ -985,7 +985,7 @@ async function markCandidateExported(
 
     if (restoreFailures.length > 0) {
       throw new OraculumError(
-        `Failed to update promotion bookkeeping and restore previous metadata cleanly: ${restoreFailures.join(", ")}.`,
+        `Failed to update crowning bookkeeping and restore previous metadata cleanly: ${restoreFailures.join(", ")}.`,
       );
     }
 
