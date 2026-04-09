@@ -8,12 +8,20 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const distCliPath = join(repoRoot, "dist", "cli.js");
 const keepEvidence = process.env.ORACULUM_KEEP_EVIDENCE === "1";
-const evidenceMode = process.env.ORACULUM_EVIDENCE_MODE ?? "matrix";
+const evidenceMode = resolveEvidenceMode();
 
 const repoKinds = ["library", "frontend", "migration", "plain"];
 const agents = ["codex", "claude-code"];
 const workspaceModes = ["git", "copy"];
 const packageManagers = ["pnpm", "yarn", "bun"];
+
+function resolveEvidenceMode() {
+  const modeArgument = process.argv.find((argument) => argument.startsWith("--mode="));
+  if (modeArgument) {
+    return modeArgument.slice("--mode=".length);
+  }
+  return process.env.ORACULUM_EVIDENCE_MODE ?? "matrix";
+}
 
 async function main() {
   if (!existsSync(distCliPath)) {
