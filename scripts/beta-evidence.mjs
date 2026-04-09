@@ -50,9 +50,13 @@ async function main() {
     } catch (error) {
       const durationMs = Date.now() - started;
       const message = error instanceof Error ? error.message : String(error);
+      const debug = await collectScenarioDebug(workdir);
       results.push({ id: scenario.id, status: "failed", durationMs, message, workdir });
       process.stdout.write(`FAIL ${scenario.id} (${durationMs}ms)\n`);
       process.stdout.write(`${indent(message)}\n`);
+      if (debug) {
+        process.stdout.write(`${indent(debug)}\n`);
+      }
     }
   }
 
@@ -878,13 +882,14 @@ async function executeScenario(workdir, scenario) {
   }
 
   if (scenario.kind === "filelike-inline-consult") {
+    const normalizedSourcePath = run.taskPacket.sourcePath.replaceAll("\\", "/");
     assertEqual(
       run.taskPacket.sourceKind,
       "task-note",
       `${scenario.id}: file-like text should be materialized as a generated task note.`,
     );
     assertContains(
-      run.taskPacket.sourcePath,
+      normalizedSourcePath,
       ".oraculum/tasks/",
       `${scenario.id}: file-like text should land under generated tasks.`,
     );
@@ -1471,6 +1476,21 @@ async function readNewestRunManifest(root) {
   }
 
   return JSON.parse(await readFile(join(runsDir, runId, "run.json"), "utf8"));
+}
+
+async function collectScenarioDebug(root) {
+  try {
+    const run = await readLatestRunManifest(root);
+    return [
+      `run=${run.id} status=${run.status} profile=${run.profileSelection?.profileId ?? "none"} recommendation=${run.recommendedWinner?.candidateId ?? "none"}`,
+      ...run.candidates.map(
+        (candidate) =>
+          `candidate ${candidate.id}: status=${candidate.status} repairs=${candidate.repairCount} repairedRounds=${candidate.repairedRounds.join(",") || "-"}`,
+      ),
+    ].join("\n");
+  } catch {
+    return undefined;
+  }
 }
 
 async function assertTargetFileContains(root, scenario, candidateId) {

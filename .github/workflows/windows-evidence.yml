@@ -29,7 +29,17 @@ jobs:
         run: npm run check
 
       - name: Run curated Windows evidence corpus
+        env:
+          ORACULUM_KEEP_EVIDENCE: "1"
         run: npm run evidence:beta:corpus
 
       - name: Run published package smoke
         run: npm run evidence:published-smoke
+
+      - name: Upload Windows evidence artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-evidence-workspaces
+          path: ${{ runner.temp }}/oraculum-beta-evidence-*
+          if-no-files-found: ignore
