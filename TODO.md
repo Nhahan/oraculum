@@ -2,7 +2,7 @@
 
 ## Context
 
-Oraculum currently works as a shell CLI (`oraculum consult`, `oraculum verdict`, `oraculum crown`).
+Oraculum now works primarily as a host-native chat surface (`orc consult`, `orc verdict`, `orc crown`).
 
 That is no longer the target product surface.
 
@@ -10,7 +10,7 @@ The target is closer to Ouroboros:
 - users type Oraculum commands directly inside Claude Code or Codex chat
 - those commands are intercepted as chat-native skills/rules
 - the chat-native surface routes to Oraculum MCP tools instead of being treated as natural-language requests
-- terminal CLI may remain as an internal/debug path, but it is no longer the primary product surface
+- terminal CLI may remain for setup, MCP, and debugging, but it is no longer the workflow product surface
 - preferred short command prefix: `orc`
 - `oc` is intentionally not preferred because it is less distinctive and more collision-prone
 
@@ -20,7 +20,7 @@ The core failure discovered in review:
 
 Current shipped state:
 - the reusable orchestration core exists
-- the packaged npm surface still includes the `oraculum` shell binary for compatibility, setup, debugging, and local validation
+- the packaged npm surface still includes the `oraculum` shell binary for setup, MCP, debugging, and local validation
 - the chat-native `orc` surface is now shipped for both Claude Code and Codex after setup
 - a plain `npm install -g oraculum` is **not** enough for the target product surface because it does not yet register MCP or install host-native skills/rules/plugins
 
@@ -76,7 +76,7 @@ Installation model:
 - [x] Decide the chat-native command prefix and vocabulary
   - preferred prefix: `orc`
   - keep the core vocabulary: `consult`, `verdict`, `crown`, `draft`, `init`
-  - shell `oraculum ...` remains a temporary compatibility/debug surface during the transition
+  - shell `oraculum ...` remains only for setup/MCP/debug support
 
 - [x] Define the MCP tool surface Oraculum needs for chat-native use
   - consultation start
@@ -132,13 +132,13 @@ Installation model:
     - [x] verify failure mode without setup is explicit and actionable
 
 - [x] Decide whether shell CLI remains as a compatibility/debug surface
-  - yes, temporarily
-  - treat it as compatibility/setup/debug path only
+  - yes, for setup/MCP/debug only
+  - workflow commands are removed from the shell surface
   - keep it demoted in docs and product framing
 
 - [x] Update README and docs around the new primary surface
   - quick start shows chat-native commands first
-  - shell usage, while retained, is documented as secondary/internal
+  - shell usage is limited to setup/MCP/debug guidance
 
 - [x] Add installation/setup flows for both hosts
   - Claude Code install/setup path
@@ -181,7 +181,7 @@ Installation model:
 - [x] Claude host-native path works end-to-end
 - [x] Codex host-native path works end-to-end
 - [x] Setup/install flow is explicit and validated on both hosts
-- [x] Shell fallback can be further demoted without leaving broken public guidance
+- [x] Shell workflow fallback can be removed without leaving broken public guidance
 
 ## Completion Status
 
@@ -192,10 +192,18 @@ That is the current state.
 Remaining work after this point should be treated as follow-on product work, not as unfinished scope from this TODO.
 
 Examples of follow-on work:
-- further demotion or eventual removal of the shell fallback once the host-native path is the only supported primary surface
+- host-native UX polish after shell workflow fallback removal
 - more host-native UX polish, diagnostics, and packaging cleanup
 - broader evidence collection, release hardening, and operational polish
 - future host/runtime expansion only if product direction changes
+
+## Follow-On Work
+
+- [x] Demote shell fallback further in root docs and default user guidance
+- [x] Remove shell workflow fallback while keeping shell setup/MCP/debug commands
+- [x] Improve host-native UX polish, diagnostics, and packaging cleanup
+- [ ] Continue broader evidence collection, release hardening, and operational polish
+- [ ] Revisit future host/runtime expansion only if product direction changes
 
 ## Suggested Order
 
@@ -206,7 +214,7 @@ Examples of follow-on work:
 5. Wire Codex integration.
 6. Add install/setup flows for both hosts.
 7. Add host-native e2e coverage.
-8. Demote shell fallback further only after the host-native path is proven.
+8. Remove shell workflow fallback only after the host-native path is proven.
 
 ## Current Decision
 
@@ -221,4 +229,4 @@ Feasibility answer:
 Command decision:
 - primary chat-native prefix: `orc`
 - keep `consult`, `verdict`, `crown`, `draft`, `init`
-- treat `oraculum ...` shell commands as temporary compatibility/debug paths, not product-facing entry commands
+- treat `oraculum ...` shell commands as setup/MCP/debug paths, not product-facing workflow commands

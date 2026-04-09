@@ -10,7 +10,8 @@ Target primary product surface:
 - preferred short prefix: `orc`
 - examples: `orc consult`, `orc verdict`, `orc crown`
 
-Host-native `orc` integration is now available for both Claude Code and Codex after setup. The `oraculum` shell binary still ships for compatibility, setup, debugging, packaging, and local validation.
+Host-native `orc` integration is now available for both Claude Code and Codex after setup. The `oraculum` shell binary still ships for setup, MCP serving, debugging, packaging, and local validation.
+The shell binary is now setup/MCP/debug-only. Workflow commands such as `consult`, `verdict`, `crown`, `draft`, and `init` belong to the host-native `orc` surface, not to the shell fallback.
 
 ## Read Order
 
@@ -58,11 +59,11 @@ Default loop:
 Optimize for falsification and selection of patches, not maximum agent freedom.
 `orc consult` is the default end-to-end tournament command: one user command should cover candidate generation, execution, judging, elimination/crowning, and artifactization. Planning-only flows belong under structured advanced subcommands and must not become the default UX.
 Protect the quick-start path as a product contract: first success should stay one-command and near-zero-config. Keep advanced controls available, but move operator complexity into optional flags, profiles, or advanced config rather than the default path.
-The default end-to-end command, whether host-native `orc consult` or temporary shell fallback `oraculum consult`, must print the latest result summary immediately. `verdict` is for reopening an earlier or latest consultation later, not for completing the default path.
+The default end-to-end command is host-native `orc consult`, and it must print the latest result summary immediately. `verdict` is for reopening an earlier or latest consultation later, not for completing the default path.
 Treat Oraculum first as a local installable, host-native workflow tool, not a CI-first gate. CI/PR paths may exist, but they are secondary to the default local `consult -> crown` workflow.
 The default consultation command may infer a consultation-scoped profile from repo signals and structured runtime selection, but explicit quick-start or advanced operator settings must win over inferred defaults.
 Use `/.oraculum/config.json` for quick-start defaults only. Put operator controls such as custom rounds, strategies, or repo-local oracles in `/.oraculum/advanced.json`.
-Auto-init and `init --force`, whether reached through host-native `orc` commands or the temporary shell fallback, must keep the quick-start path clean: stale or orphaned `advanced.json` must not leak operator settings into the default UX.
+Auto-init and `init --force`, reached through host-native `orc` commands, must keep the quick-start path clean: stale or orphaned `advanced.json` must not leak operator settings into the default UX.
 
 ## Working Bias
 

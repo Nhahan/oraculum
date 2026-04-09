@@ -56,6 +56,12 @@ oraculum setup --runtime claude-code
 oraculum setup --runtime codex
 ```
 
+If you want to verify the wiring later:
+
+```bash
+oraculum setup status
+```
+
 ## Quick Start
 
 After setup in Claude Code or Codex:
@@ -65,18 +71,11 @@ orc consult "fix session loss on refresh"
 orc crown fix/session-loss
 ```
 
-The shell fallback still exists for setup, debugging, and compatibility:
-
-```bash
-oraculum consult "fix session loss on refresh"
-oraculum crown --branch fix/session-loss
-```
-
 That flow initializes Oraculum on first use, runs the tournament, and prints the verdict summary immediately. `crown` uses the latest consultation with a recommended survivor by default.
 
 In a Git-backed project, `crown` creates the branch and applies the survivor there. In a non-Git project, it syncs the survivor back into the project folder.
 
-If you want to reopen the latest consultation later, inspect an older one, or browse consultation history, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md).
+If you want to reopen the latest consultation later, inspect an older one, browse consultation history, or use setup/MCP/debug commands from the shell binary, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md).
 
 ## How It Works
 
@@ -90,4 +89,4 @@ Results are saved under `.oraculum/`. The source of truth is the saved run state
 
 ## Advanced Usage
 
-If you want more control over consultation-scoped profile selection, runtimes, candidate counts, specific consultation IDs, report packaging, repo-local oracle configuration, or manually overriding the recommended survivor, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; operator controls belong in `.oraculum/advanced.json`.
+If you want more control over consultation-scoped profile selection, runtimes, consultation history, repo-local oracle configuration, setup diagnostics, or MCP wiring details, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; operator controls belong in `.oraculum/advanced.json`.

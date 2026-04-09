@@ -56,6 +56,12 @@ oraculum setup --runtime claude-code
 oraculum setup --runtime codex
 ```
 
+나중에 연결 상태를 다시 확인하고 싶다면:
+
+```bash
+oraculum setup status
+```
+
 ## 빠른 시작
 
 Claude Code나 Codex에서 설정을 마치면 host-native 흐름은 아래와 같습니다.
@@ -65,18 +71,11 @@ orc consult "fix session loss on refresh"
 orc crown fix/session-loss
 ```
 
-셸 fallback은 설정, 디버깅, 호환성 확인용으로 계속 남아 있습니다.
-
-```bash
-oraculum consult "fix session loss on refresh"
-oraculum crown --branch fix/session-loss
-```
-
-위 shell fallback도 같은 기본 흐름을 따릅니다. `consult`는 처음 사용할 때 Oraculum을 자동 초기화하고, 실행이 끝나면 결과 요약을 바로 출력합니다. `crown`은 추천된 후보가 있는 가장 최근 실행 결과를 기본값으로 사용합니다.
+이 흐름은 처음 사용할 때 Oraculum을 자동 초기화하고, 실행이 끝나면 결과 요약을 바로 출력합니다. `crown`은 추천된 후보가 있는 가장 최근 실행 결과를 기본값으로 사용합니다.
 
 Git 프로젝트에서는 `crown`이 브랜치를 만들고 선택된 후보를 그 브랜치에 적용합니다. Git이 아닌 프로젝트에서는 해당 작업 공간 내용을 프로젝트 폴더에 그대로 동기화합니다.
 
-가장 최근 실행 결과를 나중에 다시 열어보거나, 예전 실행을 조회하거나, 기록 보관함을 살펴보고 싶다면 [고급 사용법](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md)을 참고하세요.
+가장 최근 실행 결과를 나중에 다시 열어보거나, 예전 실행을 조회하거나, 기록 보관함을 살펴보거나, setup/MCP/디버깅용 셸 명령이 필요하다면 [고급 사용법](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md)을 참고하세요.
 
 ## 동작 방식
 
@@ -90,4 +89,4 @@ Git 프로젝트에서는 `crown`이 브랜치를 만들고 선택된 후보를 
 
 ## 고급 사용법
 
-프로필 선택, 런타임 선택, 후보 수 조정, 특정 실행 조회, 보고서 묶음 포함, 레포지토리에 정의한 오라클 설정, 추천 후보 수동 지정 같은 제어가 필요하면 [고급 사용법](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md)을 참고하세요. 빠른 시작용 기본값은 `.oraculum/config.json`에, 운영자용 제어는 `.oraculum/advanced.json`에 둡니다.
+프로필 선택, 런타임 선택, 실행 기록 조회, 레포지토리에 정의한 오라클 설정, setup 진단, MCP 연결 같은 제어가 필요하면 [고급 사용법](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md)을 참고하세요. 빠른 시작용 기본값은 `.oraculum/config.json`에, 운영자용 제어는 `.oraculum/advanced.json`에 둡니다.

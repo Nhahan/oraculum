@@ -9,16 +9,15 @@ orc consult "fix session loss on refresh"
 orc crown fix/session-loss
 ```
 
-Secondary shell fallback:
+`consult` already prints the latest summary. Everything below is for reopening a consultation later, shaping the tournament more explicitly, or using shell-only setup and MCP commands.
+
+The primary product surface is a host-native chat surface with a shared `orc` command language across Claude Code and Codex. The shell binary remains for setup, MCP serving, and debugging. It no longer exposes the workflow commands directly.
+
+If you want to inspect whether host-native wiring is complete, run:
 
 ```bash
-oraculum consult "fix session loss on refresh"
-oraculum crown --branch fix/session-loss
+oraculum setup status
 ```
-
-`consult` already prints the latest summary. Everything below is for reopening a consultation later, overriding the default recommendation, or shaping the tournament more explicitly.
-
-The primary product surface is a host-native chat surface with a shared `orc` command language across Claude Code and Codex. The shell CLI remains a secondary compatibility/debug path.
 
 Every `consult` also runs an automatic profile-selection step. Oraculum scans repo signals, asks the chosen runtime for a structured recommendation, and applies the resulting profile draft to that consultation only. Explicit quick-start and advanced settings still win over inferred defaults.
 
@@ -93,29 +92,17 @@ orc verdict archive 20
 
 Use this when you want to reopen an older consultation without remembering the exact id first.
 
-## Crown From A Specific Consultation
+## Crown The Recommended Survivor
 
 ```text
 orc crown fix/session-loss
 ```
 
-The current host-native `crown` path expects the branch name as the first argument and crowns the latest recommended survivor automatically. The shell fallback still supports the fuller `--consultation`, `--branch`, `--with-report`, and explicit candidate form while the chat-native parser stays narrow.
-
-## Manually Override The Recommended Winner
-
-Choosing a candidate id yourself is the advanced path. Use the shell fallback when you need explicit candidate or consultation selection. The default host-native path is to let Oraculum recommend a survivor and materialize that choice.
-
-## Report Bundle
-
-Use `--with-report` when you want the crowning record to carry report metadata for later review.
-
-```bash
-oraculum crown --branch fix/session-loss --with-report
-```
+The shared host-native `crown` path expects the branch name as the first argument and crowns the latest recommended survivor automatically.
 
 In a Git-backed project, `crown` creates the target branch and applies the recommended survivor there. In a non-Git project, it syncs the crowned workspace back into the project folder.
 
-When available, the report bundle points at artifacts such as:
+When available, the crowning record points at artifacts such as:
 
 - finalist-to-finalist comparison summaries
 - Markdown comparison reports
@@ -139,17 +126,18 @@ If you run `orc init --force`, Oraculum resets the quick-start config and remove
 orc draft tasks/fix-session-loss.md
 ```
 
-Current temporary shell fallback:
+This is mainly for development or internal inspection. It scaffolds the consultation without executing candidates.
+
+## Shell Setup And MCP Commands
+
+Use the shell binary for installation, diagnostics, and MCP serving only.
 
 ```bash
-oraculum consult tasks/fix-session-loss.md
-oraculum verdict run_20260404_xxxx
-oraculum crown --consultation run_20260404_xxxx --branch fix/session-loss
-oraculum init
-oraculum draft tasks/fix-session-loss.md
+oraculum setup --runtime claude-code
+oraculum setup --runtime codex
+oraculum setup status
+oraculum mcp serve
 ```
-
-This is mainly for development or internal inspection. It scaffolds the consultation without executing candidates.
 
 ## Repo-Local Oracles
 
@@ -214,6 +202,6 @@ Use advanced settings only for things like:
 - choosing a specific runtime
 - changing candidate count
 - adding repo-local oracle commands in `.oraculum/advanced.json`
-- selecting a specific consultation for verdict inspection or crowning
+- selecting a specific consultation for verdict inspection
 
 If a workflow can be expressed without these controls, prefer the simple path.
