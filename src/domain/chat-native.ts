@@ -164,8 +164,10 @@ export const setupStatusToolRequestSchema = z.object({
 
 export const hostSetupStatusSchema = z.object({
   host: adapterSchema,
+  status: z.enum(["ready", "partial", "needs-setup"]),
   registered: z.boolean(),
   artifactsInstalled: z.boolean(),
+  nextAction: z.string().min(1),
   notes: z.array(z.string().min(1)).default([]),
 });
 
@@ -175,7 +177,6 @@ export const setupStatusToolResponseSchema = z.object({
   projectInitialized: z.boolean(),
   configPath: z.string().min(1).optional(),
   advancedConfigPath: z.string().min(1).optional(),
-  shellFallbackCommand: z.literal("oraculum"),
   targetPrefix: commandPrefixSchema,
   hosts: z.array(hostSetupStatusSchema).min(1),
   summary: z.string().min(1),

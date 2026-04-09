@@ -105,7 +105,7 @@ export async function loadProjectConfigLayers(cwd: string): Promise<ProjectConfi
 
   if (!(await pathExists(configPath))) {
     throw new OraculumError(
-      `Missing ${configPath}. Run "oraculum init" from the project root first.`,
+      `Missing ${configPath}. Run "orc init" after setup from the project root first.`,
     );
   }
 

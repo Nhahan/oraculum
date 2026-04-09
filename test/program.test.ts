@@ -5,86 +5,6 @@ import packageJson from "../package.json" with { type: "json" };
 import { buildProgram } from "../src/program.js";
 
 describe("CLI argument parsing", () => {
-  it("rejects non-numeric candidate counts before executing the command", async () => {
-    const program = createProgram();
-
-    await expect(
-      program.parseAsync(["consult", "tasks/task.md", "--candidates", "abc"], { from: "user" }),
-    ).rejects.toMatchObject({
-      code: "commander.invalidArgument",
-    });
-  });
-
-  it("rejects non-numeric timeouts before executing the command", async () => {
-    const program = createProgram();
-
-    await expect(
-      program.parseAsync(["consult", "tasks/task.md", "--timeout-ms", "abc"], { from: "user" }),
-    ).rejects.toMatchObject({
-      code: "commander.invalidArgument",
-    });
-  });
-
-  it("rejects partially numeric candidate counts", async () => {
-    const program = createProgram();
-
-    await expect(
-      program.parseAsync(["consult", "tasks/task.md", "--candidates", "3abc"], { from: "user" }),
-    ).rejects.toMatchObject({
-      code: "commander.invalidArgument",
-    });
-  });
-
-  it("rejects partially numeric candidate counts for draft", async () => {
-    const program = createProgram();
-
-    await expect(
-      program.parseAsync(["draft", "tasks/task.md", "--candidates", "3abc"], { from: "user" }),
-    ).rejects.toMatchObject({
-      code: "commander.invalidArgument",
-    });
-  });
-
-  it("rejects candidate counts above the supported maximum", async () => {
-    const program = createProgram();
-
-    await expect(
-      program.parseAsync(["consult", "tasks/task.md", "--candidates", "17"], { from: "user" }),
-    ).rejects.toMatchObject({
-      code: "commander.invalidArgument",
-    });
-  });
-
-  it("rejects partially numeric timeouts", async () => {
-    const program = createProgram();
-
-    await expect(
-      program.parseAsync(["consult", "tasks/task.md", "--timeout-ms", "100ms"], {
-        from: "user",
-      }),
-    ).rejects.toMatchObject({
-      code: "commander.invalidArgument",
-    });
-  });
-
-  it("rejects unsupported agents before executing the command", async () => {
-    const program = createProgram();
-
-    await expect(
-      program.parseAsync(["consult", "tasks/task.md", "--agent", "aider"], { from: "user" }),
-    ).rejects.toMatchObject({
-      code: "commander.invalidArgument",
-    });
-  });
-
-  it("rejects crown without a branch name at the CLI boundary", async () => {
-    const program = createProgram();
-
-    await expect(program.parseAsync(["crown"], { from: "user" })).rejects.toMatchObject({
-      code: "commander.missingMandatoryOptionValue",
-    });
-  });
-
   it("rejects unsupported setup runtimes before executing the command", async () => {
     const program = createProgram();
 
@@ -104,6 +24,35 @@ describe("CLI argument parsing", () => {
       }),
     ).rejects.toMatchObject({
       code: "commander.invalidArgument",
+    });
+  });
+
+  it("rejects setup without a runtime while still allowing setup subcommands", async () => {
+    const program = createProgram();
+
+    await expect(program.parseAsync(["setup"], { from: "user" })).rejects.toThrow(
+      'setup requires "--runtime <claude-code|codex>" unless a subcommand is used.',
+    );
+    await expect(program.parseAsync(["setup", "status"], { from: "user" })).resolves.toBeTruthy();
+  });
+
+  it("does not expose shell workflow commands anymore", async () => {
+    const program = createProgram();
+
+    await expect(program.parseAsync(["consult"], { from: "user" })).rejects.toMatchObject({
+      code: "commander.unknownCommand",
+    });
+    await expect(program.parseAsync(["verdict"], { from: "user" })).rejects.toMatchObject({
+      code: "commander.unknownCommand",
+    });
+    await expect(program.parseAsync(["crown"], { from: "user" })).rejects.toMatchObject({
+      code: "commander.unknownCommand",
+    });
+    await expect(program.parseAsync(["draft"], { from: "user" })).rejects.toMatchObject({
+      code: "commander.unknownCommand",
+    });
+    await expect(program.parseAsync(["init"], { from: "user" })).rejects.toMatchObject({
+      code: "commander.unknownCommand",
     });
   });
 

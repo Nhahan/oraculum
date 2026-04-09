@@ -76,9 +76,8 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain(
       "- reopen the crowning record: .oraculum/runs/run_1/reports/export-plan.json",
     );
-    expect(summary).not.toContain("oraculum crown --branch <branch-name>");
-    expect(summary).toContain("oraculum verdict archive");
-    expect(summary).not.toContain("oraculum verdict consultation");
+    expect(summary).toContain("orc verdict archive");
+    expect(summary).not.toContain("oraculum verdict");
   });
 
   it("renders pending consultations without completed artifacts", async () => {
@@ -91,7 +90,7 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain("- comparison report: not available yet");
     expect(summary).toContain("- winner selection: not available yet");
     expect(summary).toContain("- crowning record: not created yet");
-    expect(summary).toContain(`oraculum verdict ${manifest.id}`);
+    expect(summary).toContain(`orc verdict ${manifest.id}`);
   });
 
   it("does not report a promotion record when only a stale export plan file exists", async () => {
@@ -169,7 +168,7 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain(
       "- review why no candidate survived the oracle rounds: open the comparison report above.",
     );
-    expect(summary).not.toContain("oraculum crown <candidate-id> --branch <branch-name>");
+    expect(summary).not.toContain("oraculum crown");
   });
 
   it("lists recent consultations in descending order", async () => {
@@ -192,7 +191,7 @@ describe("consultation workflow summaries", () => {
     expect(archive).toContain("Recent consultations:");
     expect(archive).toContain("- run_newer | planned | Task | no auto profile | no survivor yet");
     expect(archive).toContain("- run_older | completed | Task | no auto profile | no survivor yet");
-    expect(archive).toContain("oraculum verdict run_newer");
+    expect(archive).toContain("orc verdict run_newer");
   });
 
   it("renders chat-native next steps with the orc prefix", async () => {

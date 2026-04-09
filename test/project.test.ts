@@ -461,10 +461,16 @@ if (out) {
     expect(normalizePathForAssertion(manifest.taskPath)).toContain(".oraculum/tasks/");
     const taskNote = await readFile(manifest.taskPath, "utf8");
     expect(taskNote).toContain("# Update src/greet.js so greet() returns Hello instead of Bye");
-    await expect(readLatestRunId(cwd)).rejects.toThrow("No previous consultation found");
+    await expect(readLatestRunId(cwd)).rejects.toThrow("Start with `orc consult ...` after setup.");
     await expect(readLatestExportableRunId(cwd)).rejects.toThrow(
       "No crownable consultation found yet",
     );
+  });
+
+  it("guides missing project config toward host-native init first", async () => {
+    const cwd = await createTempProject();
+
+    await expect(loadProjectConfig(cwd)).rejects.toThrow('Run "orc init" after setup');
   });
 
   it("rejects missing task paths instead of treating them as inline text", async () => {

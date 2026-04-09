@@ -3,10 +3,11 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const distCliPath = join(repoRoot, "dist", "cli.js");
+const distMcpToolsPath = join(repoRoot, "dist", "services", "mcp-tools.js");
 const keepEvidence = process.env.ORACULUM_KEEP_EVIDENCE === "1";
 const evidenceMode = resolveEvidenceMode();
 
@@ -24,8 +25,10 @@ function resolveEvidenceMode() {
 }
 
 async function main() {
-  if (!existsSync(distCliPath)) {
-    throw new Error(`dist CLI not found at ${distCliPath}. Run "npm run build" first.`);
+  if (!existsSync(distCliPath) || !existsSync(distMcpToolsPath)) {
+    throw new Error(
+      `Built Oraculum artifacts were not found under dist. Run "npm run build" first.`,
+    );
   }
 
   const scenarioRoot = await mkdtemp(join(tmpdir(), "oraculum-beta-evidence-"));
@@ -589,7 +592,7 @@ async function prepareScenario(workdir, scenario) {
     runOrThrow("git", ["commit", "-m", "base"], { cwd: workdir });
   }
 
-  runCli(["init"], { cwd: workdir });
+  await runInitToolRequest({ cwd: workdir });
 
   if (scenario.kind === "no-finalist") {
     await writeAdvancedConfig(workdir, {
@@ -710,10 +713,15 @@ async function executeScenario(workdir, scenario) {
         : join("tasks", `${scenario.repoKind}.md`);
 
   if (scenario.kind === "draft" || scenario.kind === "filelike-inline-draft") {
-    const draft = runCli(["draft", taskArgument, "--agent", scenario.agent, "--candidates", "1"], {
-      cwd: workdir,
-      env,
-    });
+    const draft = await runDraftToolRequest(
+      {
+        cwd: workdir,
+        taskInput: taskArgument,
+        agent: scenario.agent,
+        candidates: 1,
+      },
+      { env },
+    );
     assertContains(draft.stdout, "Drafted only.");
     const run = await readNewestRunManifest(workdir);
     assertEqual(run.status, "planned", `${scenario.id}: expected a planned consultation.`);
@@ -738,18 +746,15 @@ async function executeScenario(workdir, scenario) {
     return;
   }
 
-  const consult = runCli(
-    [
-      "consult",
-      taskArgument,
-      "--agent",
-      scenario.agent,
-      "--candidates",
-      String(scenario.candidateCount),
-      "--timeout-ms",
-      String(scenario.timeoutMs ?? 20000),
-    ],
-    { cwd: workdir, env },
+  const consult = await runConsultToolRequest(
+    {
+      cwd: workdir,
+      taskInput: taskArgument,
+      agent: scenario.agent,
+      candidates: scenario.candidateCount,
+      timeoutMs: scenario.timeoutMs ?? 20000,
+    },
+    { env },
   );
   assertContains(consult.stdout, "Consultation complete.");
 
@@ -791,7 +796,7 @@ async function executeScenario(workdir, scenario) {
       false,
       `${scenario.id}: no-finalist should not leave promoted candidates.`,
     );
-    const verdict = runCli(["verdict"], { cwd: workdir, env });
+    const verdict = await runVerdictToolRequest({ cwd: workdir }, { env });
     assertContains(verdict.stdout, "review why no candidate survived the oracle rounds");
     assertNotContains(verdict.stdout, "crown the recommended survivor");
     return;
@@ -807,7 +812,7 @@ async function executeScenario(workdir, scenario) {
       true,
       `${scenario.id}: missing runtime should eliminate every candidate.`,
     );
-    const verdict = runCli(["verdict"], { cwd: workdir, env });
+    const verdict = await runVerdictToolRequest({ cwd: workdir }, { env });
     assertContains(verdict.stdout, "review why no candidate survived the oracle rounds");
     return;
   }
@@ -819,12 +824,19 @@ async function executeScenario(workdir, scenario) {
       true,
       `${scenario.id}: abstain should still leave survivors.`,
     );
-    const verdict = runCli(["verdict"], { cwd: workdir, env });
-    assertContains(verdict.stdout, "choose a candidate manually");
-    const crown = runCli(["crown", "cand-02", "--branch", buildBranchName(scenario, "manual")], {
-      cwd: workdir,
-      env,
-    });
+    const verdict = await runVerdictToolRequest({ cwd: workdir }, { env });
+    assertContains(
+      verdict.stdout,
+      "The shared `orc crown` path only crowns a recommended survivor.",
+    );
+    const crown = await runCrownToolRequest(
+      {
+        cwd: workdir,
+        candidateId: "cand-02",
+        branchName: buildBranchName(scenario, "manual"),
+      },
+      { env },
+    );
     assertContains(crown.stdout, "Crowned cand-02");
     await assertTargetFileContains(workdir, scenario, "cand-02");
     return;
@@ -887,30 +899,25 @@ async function executeScenario(workdir, scenario) {
         ? { ORACULUM_CODEX_BIN: secondBinaryPath }
         : { ORACULUM_CLAUDE_BIN: secondBinaryPath }),
     };
-    const followup = runCli(
-      [
-        "consult",
-        buildInlineTaskText(scenario.repoKind),
-        "--agent",
-        scenario.agent,
-        "--candidates",
-        "2",
-        "--timeout-ms",
-        "20000",
-      ],
-      { cwd: workdir, env: secondEnv },
+    const followup = await runConsultToolRequest(
+      {
+        cwd: workdir,
+        taskInput: buildInlineTaskText(scenario.repoKind),
+        agent: scenario.agent,
+        candidates: 2,
+        timeoutMs: 20000,
+      },
+      { env: secondEnv },
     );
     assertContains(followup.stdout, "Consultation complete.");
-    const crown = runCli(
-      [
-        "crown",
-        scenario.manualCandidateId,
-        "--consultation",
-        firstRunId,
-        "--branch",
-        buildBranchName(scenario, scenario.manualCandidateId),
-      ],
-      { cwd: workdir, env },
+    const crown = await runCrownToolRequest(
+      {
+        cwd: workdir,
+        candidateId: scenario.manualCandidateId,
+        consultationId: firstRunId,
+        branchName: buildBranchName(scenario, scenario.manualCandidateId),
+      },
+      { env },
     );
     assertContains(crown.stdout, `Crowned ${scenario.manualCandidateId}`);
     await assertTargetFileContains(workdir, scenario, scenario.manualCandidateId);
@@ -942,11 +949,16 @@ async function executeScenario(workdir, scenario) {
     await writeFile(join(workdir, "post-consult-change.txt"), "moved head\n", "utf8");
     runOrThrow("git", ["add", "post-consult-change.txt"], { cwd: workdir });
     runOrThrow("git", ["commit", "-m", "move head"], { cwd: workdir });
-    const crown = runCli(["crown", "--branch", buildBranchName(scenario, "stale")], {
-      cwd: workdir,
-      env,
-      allowFailure: true,
-    });
+    const crown = await runCrownToolRequest(
+      {
+        cwd: workdir,
+        branchName: buildBranchName(scenario, "stale"),
+      },
+      {
+        env,
+        allowFailure: true,
+      },
+    );
     assertContains(crown.stderr + crown.stdout, "recorded base revision");
     return;
   }
@@ -960,11 +972,16 @@ async function executeScenario(workdir, scenario) {
     const branchName = buildBranchName(scenario, "exists");
     runOrThrow("git", ["checkout", "-b", branchName], { cwd: workdir });
     runOrThrow("git", ["checkout", "-"], { cwd: workdir });
-    const crown = runCli(["crown", "--branch", branchName], {
-      cwd: workdir,
-      env,
-      allowFailure: true,
-    });
+    const crown = await runCrownToolRequest(
+      {
+        cwd: workdir,
+        branchName,
+      },
+      {
+        env,
+        allowFailure: true,
+      },
+    );
     assertContains(crown.stderr + crown.stdout, `Branch "${branchName}" already exists.`);
     return;
   }
@@ -979,7 +996,7 @@ async function executeScenario(workdir, scenario) {
       true,
       `${scenario.id}: hung runtime should eliminate every candidate.`,
     );
-    const verdict = runCli(["verdict"], { cwd: workdir, env });
+    const verdict = await runVerdictToolRequest({ cwd: workdir }, { env });
     assertContains(verdict.stdout, "review why no candidate survived the oracle rounds");
     return;
   }
@@ -1031,9 +1048,13 @@ async function executeScenario(workdir, scenario) {
 
 async function assertHappyCrown(workdir, scenario, env, candidateId = "cand-02") {
   const branchName = buildBranchName(scenario, "winner");
-  const crown = runCli(
-    ["crown", ...(candidateId === "cand-02" ? [] : [candidateId]), "--branch", branchName],
-    { cwd: workdir, env },
+  const crown = await runCrownToolRequest(
+    {
+      cwd: workdir,
+      ...(candidateId === "cand-02" ? {} : { candidateId }),
+      branchName,
+    },
+    { env },
   );
   assertContains(crown.stdout, `Crowned ${candidateId}`);
   await assertTargetFileContains(workdir, scenario, candidateId);
@@ -1548,10 +1569,6 @@ async function writeNodeBinary(root, name, source) {
   return wrapperPath;
 }
 
-function runCli(args, options) {
-  return runOrThrow(process.execPath, [distCliPath, ...args], options);
-}
-
 function runOrThrow(command, args, options) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
@@ -1576,6 +1593,131 @@ function runOrThrow(command, args, options) {
     status: result.status ?? 1,
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
+  };
+}
+
+let cachedMcpToolsModule;
+
+async function loadDistMcpTools() {
+  if (!cachedMcpToolsModule) {
+    cachedMcpToolsModule = import(pathToFileURL(distMcpToolsPath).href);
+  }
+
+  return cachedMcpToolsModule;
+}
+
+async function runInitToolRequest(request, options = {}) {
+  const module = await loadDistMcpTools();
+  return invokeTool(
+    options.env,
+    async () => {
+      const response = await module.runInitTool(request);
+      return `Initialized Oraculum in ${response.initialization.projectRoot}\n`;
+    },
+    options.allowFailure,
+  );
+}
+
+async function runConsultToolRequest(request, options = {}) {
+  const module = await loadDistMcpTools();
+  return invokeTool(
+    options.env,
+    async () => {
+      const response = await module.runConsultTool(request);
+      return `Consultation complete.\n${response.summary}`;
+    },
+    options.allowFailure,
+  );
+}
+
+async function runDraftToolRequest(request, options = {}) {
+  const module = await loadDistMcpTools();
+  return invokeTool(
+    options.env,
+    async () => {
+      const response = await module.runDraftTool(request);
+      return `Drafted only. Execution was skipped because the draft command was requested.\n${response.summary}`;
+    },
+    options.allowFailure,
+  );
+}
+
+async function runVerdictToolRequest(request, options = {}) {
+  const module = await loadDistMcpTools();
+  return invokeTool(
+    options.env,
+    async () => {
+      const response = await module.runVerdictTool(request);
+      return response.summary;
+    },
+    options.allowFailure,
+  );
+}
+
+async function runCrownToolRequest(request, options = {}) {
+  const module = await loadDistMcpTools();
+  return invokeTool(
+    options.env,
+    async () => {
+      const response = await module.runCrownTool(request);
+      return [
+        `Crowned ${response.plan.winnerId}`,
+        `Consultation: ${response.plan.runId}`,
+        `Branch: ${response.plan.branchName}`,
+        `Crowning record: ${response.recordPath}`,
+      ].join("\n");
+    },
+    options.allowFailure,
+  );
+}
+
+async function invokeTool(envPatch, action, allowFailure = false) {
+  const restoreEnv = patchEnv(envPatch);
+
+  try {
+    const stdout = await action();
+    return {
+      status: 0,
+      stdout,
+      stderr: "",
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!allowFailure) {
+      throw new Error(message);
+    }
+
+    return {
+      status: 1,
+      stdout: "",
+      stderr: message,
+    };
+  } finally {
+    restoreEnv();
+  }
+}
+
+function patchEnv(envPatch = {}) {
+  const keys = Object.keys(envPatch);
+  const previous = new Map(keys.map((key) => [key, process.env[key]]));
+
+  for (const [key, value] of Object.entries(envPatch)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+
+  return () => {
+    for (const key of keys) {
+      const value = previous.get(key);
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
   };
 }
 

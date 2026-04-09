@@ -15,7 +15,7 @@ import { type RunManifest, runManifestSchema } from "../domain/run.js";
 
 import { pathExists } from "./project.js";
 
-type ConsultationSurface = "shell" | "chat-native";
+type ConsultationSurface = "chat-native";
 
 export async function listRecentConsultations(cwd: string, limit = 10): Promise<RunManifest[]> {
   const projectRoot = resolveProjectRoot(cwd);
@@ -65,10 +65,10 @@ export async function renderConsultationSummary(
     surface?: ConsultationSurface;
   },
 ): Promise<string> {
+  void options;
   const projectRoot = resolveProjectRoot(cwd);
-  const surface = options?.surface ?? "shell";
-  const verdictCommand = getSurfaceCommand(surface, "verdict");
-  const crownCommand = getSurfaceCommand(surface, "crown");
+  const verdictCommand = getSurfaceCommand("verdict");
+  const crownCommand = getSurfaceCommand("crown");
   const finalists = manifest.candidates.filter(
     (candidate) => candidate.status === "promoted" || candidate.status === "exported",
   );
@@ -154,21 +154,11 @@ export async function renderConsultationSummary(
   if (hasCrowningRecord) {
     lines.push(`- reopen the crowning record: ${toDisplayPath(projectRoot, exportPlanPath)}`);
   } else if (manifest.recommendedWinner) {
-    if (surface === "chat-native") {
-      lines.push(`- crown the recommended survivor: ${crownCommand} <branch-name>`);
-    } else {
-      lines.push(`- crown the recommended survivor: ${crownCommand} --branch <branch-name>`);
-    }
+    lines.push(`- crown the recommended survivor: ${crownCommand} <branch-name>`);
   } else if (manifest.status === "completed" && finalists.length > 0) {
-    if (surface === "chat-native") {
-      lines.push(
-        "- inspect the comparison first. If you need to crown a specific candidate manually, use the shell fallback.",
-      );
-    } else {
-      lines.push(
-        `- inspect the comparison and choose a candidate manually: ${crownCommand} <candidate-id> --branch <branch-name>`,
-      );
-    }
+    lines.push(
+      `- inspect the comparison first. The shared \`${crownCommand}\` path only crowns a recommended survivor.`,
+    );
   } else if (manifest.status === "completed") {
     lines.push(
       "- review why no candidate survived the oracle rounds: open the comparison report above.",
@@ -188,9 +178,9 @@ export function renderConsultationArchive(
     surface?: ConsultationSurface;
   },
 ): string {
-  const surface = options?.surface ?? "shell";
-  const consultCommand = getSurfaceCommand(surface, "consult");
-  const verdictCommand = getSurfaceCommand(surface, "verdict");
+  void options;
+  const consultCommand = getSurfaceCommand("consult");
+  const verdictCommand = getSurfaceCommand("verdict");
 
   if (manifests.length === 0) {
     return `No consultations yet. Start with \`${consultCommand} ...\`.\n`;
@@ -219,10 +209,6 @@ function toDisplayPath(projectRoot: string, targetPath: string): string {
   return display.length > 0 ? display : ".";
 }
 
-function getSurfaceCommand(
-  surface: ConsultationSurface,
-  command: "consult" | "verdict" | "crown",
-): string {
-  const prefix = surface === "chat-native" ? "orc" : "oraculum";
-  return `${prefix} ${command}`;
+function getSurfaceCommand(command: "consult" | "verdict" | "crown"): string {
+  return `orc ${command}`;
 }

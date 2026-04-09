@@ -79,15 +79,22 @@ describe("chat-native MCP surface", () => {
     expect(parsed.crowningRecordPath).toBe(getExportPlanPath(projectRoot, "run_20260409_demo"));
   });
 
-  it("describes setup diagnostics without pretending host-native integration already ships", () => {
+  it("describes setup diagnostics with actionable host readiness states", () => {
     const diagnostics = setupStatusToolResponseSchema.parse(
       buildSetupDiagnosticsResponse(process.cwd()),
     );
 
     expect(diagnostics.targetPrefix).toBe("orc");
-    expect(diagnostics.shellFallbackCommand).toBe("oraculum");
     expect(diagnostics.hosts).toHaveLength(2);
-    expect(diagnostics.summary).toContain("Claude Code");
+    expect(diagnostics.summary).toContain("host-native");
+    for (const host of diagnostics.hosts) {
+      expect(["ready", "partial", "needs-setup"]).toContain(host.status);
+      if (host.status === "ready") {
+        expect(host.nextAction.startsWith("Use `orc ...` directly in ")).toBe(true);
+      } else {
+        expect(host.nextAction).toContain("oraculum setup --runtime");
+      }
+    }
     expect(
       diagnostics.hosts
         .find((host) => host.host === "claude-code")
@@ -98,6 +105,5 @@ describe("chat-native MCP surface", () => {
         .find((host) => host.host === "codex")
         ?.notes.some((note) => note.includes("oraculum setup --runtime codex")),
     ).toBe(true);
-    expect(diagnostics.summary).toContain("`oraculum setup --runtime <host>`");
   });
 });

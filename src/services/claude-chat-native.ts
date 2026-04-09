@@ -433,7 +433,7 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
   if (entry.id === "crown") {
     return [
       "- The chat-native crowning path expects the branch name as the first argument.",
-      "- It crowns the recommended survivor. Use the shell fallback for manual candidate selection during the transition.",
+      "- It crowns the recommended survivor from the latest eligible consultation.",
       "- The shared chat-native surface is `orc crown <branch-name>`.",
       "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
     ];

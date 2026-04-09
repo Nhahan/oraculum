@@ -1,11 +1,7 @@
 import { Command } from "commander";
 
-import { registerConsultCommand, registerDraftCommand } from "./commands/consult.js";
-import { registerInitCommand } from "./commands/init.js";
 import { registerMcpCommand } from "./commands/mcp.js";
-import { registerCrownCommand } from "./commands/promote.js";
 import { registerSetupCommand } from "./commands/setup.js";
-import { registerVerdictCommand } from "./commands/verdict.js";
 import { APP_NAME, APP_VERSION } from "./core/constants.js";
 
 export function buildProgram(): Command {
@@ -13,14 +9,9 @@ export function buildProgram(): Command {
 
   program
     .name(APP_NAME)
-    .description("Consult competing patches, collect verdicts, and crown only survivors.")
+    .description("Set up Oraculum host integration and run internal MCP services.")
     .version(APP_VERSION);
 
-  registerConsultCommand(program);
-  registerDraftCommand(program);
-  registerVerdictCommand(program);
-  registerCrownCommand(program);
-  registerInitCommand(program);
   registerSetupCommand(program);
   registerMcpCommand(program);
 

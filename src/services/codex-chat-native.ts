@@ -207,7 +207,6 @@ function buildCodexSkillArgumentLines(entry: CommandManifestEntry): string[] {
         ...shared,
         "- required `branchName`: the first positional argument after `orc crown`",
         "- the chat-native crowning path uses the recommended survivor automatically",
-        "- use the shell fallback for explicit candidate selection, consultation selection, or report packaging during the transition",
         '- Example: `orc crown fix/greet` -> `{ branchName: "fix/greet" }`',
       ];
     case "init":

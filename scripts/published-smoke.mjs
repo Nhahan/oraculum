@@ -3,8 +3,10 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const publishedSpec = process.env.ORACULUM_PUBLISHED_SPEC ?? "oraculum@beta";
+const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+const publishedSpec = process.env.ORACULUM_PUBLISHED_SPEC;
 const keepEvidence = process.env.ORACULUM_KEEP_EVIDENCE === "1";
 
 async function main() {
@@ -15,8 +17,9 @@ async function main() {
     const projectRoot = join(tempRoot, "project");
     await mkdir(prefix, { recursive: true });
     await mkdir(projectRoot, { recursive: true });
+    const installSpec = resolveInstallSpec(tempRoot);
 
-    runOrThrow("npm", ["install", "-g", "--prefix", prefix, publishedSpec], { cwd: tempRoot });
+    runOrThrow("npm", ["install", "-g", "--prefix", prefix, installSpec], { cwd: tempRoot });
 
     const oraculumBinary =
       process.platform === "win32" ? join(prefix, "oraculum.cmd") : join(prefix, "bin", "oraculum");
@@ -37,6 +40,12 @@ async function main() {
     const oraculumCliPath = join(packageRoot, "dist", "cli.js");
     if (!existsSync(oraculumCliPath)) {
       throw new Error(`Installed Oraculum CLI entry was not found at ${oraculumCliPath}.`);
+    }
+    const oraculumMcpToolsPath = join(packageRoot, "dist", "services", "mcp-tools.js");
+    if (!existsSync(oraculumMcpToolsPath)) {
+      throw new Error(
+        `Installed Oraculum MCP tool entry was not found at ${oraculumMcpToolsPath}.`,
+      );
     }
 
     await writeFile(
@@ -139,31 +148,32 @@ process.exit(0);
       ORACULUM_CODEX_BIN: fakeBinaryPath,
     };
 
-    const consult = runOrThrow(
-      process.execPath,
-      [
-        oraculumCliPath,
-        "consult",
-        "Update src/index.js so greet() returns a winner-specific hello string.",
-        "--agent",
-        "codex",
-        "--candidates",
-        "2",
-        "--timeout-ms",
-        "20000",
-      ],
-      { cwd: projectRoot, env },
-    );
+    const { runConsultTool, runCrownTool } = await import(pathToFileURL(oraculumMcpToolsPath).href);
+
+    const consult = await invokeTool(env, async () => {
+      const response = await runConsultTool({
+        cwd: projectRoot,
+        taskInput: "Update src/index.js so greet() returns a winner-specific hello string.",
+        agent: "codex",
+        candidates: 2,
+        timeoutMs: 20000,
+      });
+      return `Consultation complete.\n${response.summary}`;
+    });
     assertContains(consult.stdout, "Consultation complete.");
 
-    const crown = runOrThrow(
-      process.execPath,
-      [oraculumCliPath, "crown", "--branch", "fix/published-smoke"],
-      {
+    const crown = await invokeTool(env, async () => {
+      const response = await runCrownTool({
         cwd: projectRoot,
-        env,
-      },
-    );
+        branchName: "fix/published-smoke",
+      });
+      return [
+        `Crowned ${response.plan.winnerId}`,
+        `Consultation: ${response.plan.runId}`,
+        `Branch: ${response.plan.branchName}`,
+        `Crowning record: ${response.recordPath}`,
+      ].join("\n");
+    });
     assertContains(crown.stdout, "Crowned cand-02");
 
     const branch = runOrThrow("git", ["branch", "--show-current"], {
@@ -175,7 +185,7 @@ process.exit(0);
     const contents = await readFile(join(projectRoot, "src", "index.js"), "utf8");
     assertContains(contents, "cand-02");
 
-    process.stdout.write(`Published smoke passed for ${publishedSpec}.\n`);
+    process.stdout.write(`Packaged smoke passed for ${installSpec}.\n`);
   } finally {
     if (!keepEvidence) {
       await rm(tempRoot, { recursive: true, force: true });
@@ -234,6 +244,66 @@ function runOrThrow(command, args, options) {
   return {
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
+  };
+}
+
+function resolveInstallSpec(tempRoot) {
+  if (publishedSpec) {
+    return publishedSpec;
+  }
+
+  if (!existsSync(join(repoRoot, "dist"))) {
+    runOrThrow("npm", ["run", "build"], { cwd: repoRoot });
+  }
+
+  const pack = runOrThrow("npm", ["pack", "--json", "--pack-destination", tempRoot], {
+    cwd: repoRoot,
+  });
+  const parsed = JSON.parse(pack.stdout);
+  const filename = Array.isArray(parsed) ? parsed[0]?.filename : undefined;
+  if (typeof filename !== "string" || filename.length === 0) {
+    throw new Error(`Unable to determine packed artifact from npm pack output:\n${pack.stdout}`);
+  }
+
+  return join(tempRoot, filename);
+}
+
+async function invokeTool(envPatch, action) {
+  const restoreEnv = patchEnv(envPatch);
+
+  try {
+    const stdout = await action();
+    return {
+      status: 0,
+      stdout,
+      stderr: "",
+    };
+  } finally {
+    restoreEnv();
+  }
+}
+
+function patchEnv(envPatch = {}) {
+  const keys = Object.keys(envPatch);
+  const previous = new Map(keys.map((key) => [key, process.env[key]]));
+
+  for (const [key, value] of Object.entries(envPatch)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+
+  return () => {
+    for (const key of keys) {
+      const value = previous.get(key);
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
   };
 }
 

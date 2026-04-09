@@ -316,7 +316,9 @@ export async function readLatestRunId(cwd: string): Promise<string> {
   const latestRunStatePath = getLatestRunStatePath(projectRoot);
 
   if (!(await pathExists(latestRunStatePath))) {
-    throw new OraculumError("No previous consultation found. Start with `oraculum consult ...`.");
+    throw new OraculumError(
+      "No previous consultation found. Start with `orc consult ...` after setup.",
+    );
   }
 
   const raw = await readFile(latestRunStatePath, "utf8");

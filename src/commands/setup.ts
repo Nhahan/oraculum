@@ -19,9 +19,15 @@ export function registerSetupCommand(program: Command): void {
   const setup = program
     .command("setup")
     .description("Register chat-native host integration and MCP wiring.")
-    .requiredOption("-r, --runtime <runtime>", "target host runtime", parseRuntime)
+    .option("-r, --runtime <runtime>", "target host runtime", parseRuntime)
     .option("--scope <scope>", "installation scope: user, project, or local", parseScope, "user")
     .action(async (options: SetupOptions) => {
+      if (!options.runtime) {
+        throw new OraculumError(
+          'setup requires "--runtime <claude-code|codex>" unless a subcommand is used.',
+        );
+      }
+
       if (options.runtime === "claude-code") {
         const result = await setupClaudeCodeHost({
           scope: options.scope,
@@ -67,8 +73,9 @@ export function registerSetupCommand(program: Command): void {
         }
 
         process.stdout.write(
-          `${host.host}: registered=${host.registered ? "yes" : "no"} artifacts=${host.artifactsInstalled ? "yes" : "no"}\n`,
+          `${host.host}: status=${host.status} registered=${host.registered ? "yes" : "no"} artifacts=${host.artifactsInstalled ? "yes" : "no"}\n`,
         );
+        process.stdout.write(`- next: ${host.nextAction}\n`);
         for (const note of host.notes) {
           process.stdout.write(`- ${note}\n`);
         }

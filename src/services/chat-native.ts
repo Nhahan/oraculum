@@ -465,12 +465,13 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
   projectInitialized: boolean;
   configPath: string;
   advancedConfigPath: string;
-  shellFallbackCommand: "oraculum";
   targetPrefix: "orc";
   hosts: Array<{
     host: "claude-code" | "codex";
+    status: "ready" | "partial" | "needs-setup";
     registered: boolean;
     artifactsInstalled: boolean;
+    nextAction: string;
     notes: string[];
   }>;
   summary: string;
@@ -484,8 +485,11 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
   const codexSkillsDir = join(homedir(), ".codex", "skills");
   const codexRulesDir = join(homedir(), ".codex", "rules");
   const claudeRegistered = hasMcpServer(claudeMcpPath, "oraculum");
+  const claudeArtifactsInstalled = hasClaudePluginInstalled();
   const codexRegistered = hasCodexMcpServer(codexConfigPath);
   const codexArtifactsInstalled = hasCodexArtifactsInstalled(codexSkillsDir, codexRulesDir);
+  const claudeStatus = computeHostSetupStatus(claudeRegistered, claudeArtifactsInstalled);
+  const codexStatus = computeHostSetupStatus(codexRegistered, codexArtifactsInstalled);
 
   return {
     mode: "setup-status",
@@ -493,13 +497,17 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
     projectInitialized: existsSync(configPath),
     configPath,
     advancedConfigPath,
-    shellFallbackCommand: "oraculum",
     targetPrefix: "orc",
     hosts: [
       {
         host: "claude-code",
+        status: claudeStatus,
         registered: claudeRegistered,
-        artifactsInstalled: hasClaudePluginInstalled(),
+        artifactsInstalled: claudeArtifactsInstalled,
+        nextAction:
+          claudeStatus === "ready"
+            ? "Use `orc ...` directly in Claude Code."
+            : "Run `oraculum setup --runtime claude-code`.",
         notes: [
           `Expected MCP config path: ${claudeMcpPath}`,
           `Expected Claude plugin root: ${claudePluginRoot}`,
@@ -508,8 +516,13 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
       },
       {
         host: "codex",
+        status: codexStatus,
         registered: codexRegistered,
         artifactsInstalled: codexArtifactsInstalled,
+        nextAction:
+          codexStatus === "ready"
+            ? "Use `orc ...` directly in Codex."
+            : "Run `oraculum setup --runtime codex`.",
         notes: [
           `Expected MCP config path: ${codexConfigPath}`,
           `Expected skill install root: ${codexSkillsDir}`,
@@ -519,7 +532,9 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
       },
     ],
     summary:
-      "Oraculum can register Claude Code and Codex host-native routing through `oraculum setup --runtime <host>`.",
+      claudeStatus === "ready" && codexStatus === "ready"
+        ? "Claude Code and Codex are ready for host-native `orc ...` commands."
+        : "Run `oraculum setup --runtime <host>` to finish host-native `orc ...` routing, then use `oraculum setup status` to verify the wiring.",
   };
 }
 
@@ -578,4 +593,19 @@ function hasCodexArtifactsInstalled(skillsDir: string, rulesDir: string): boolea
   }
 
   return getExpectedCodexSkillDirs().every((dirName) => existsSync(join(skillsDir, dirName)));
+}
+
+function computeHostSetupStatus(
+  registered: boolean,
+  artifactsInstalled: boolean,
+): "ready" | "partial" | "needs-setup" {
+  if (registered && artifactsInstalled) {
+    return "ready";
+  }
+
+  if (!registered && !artifactsInstalled) {
+    return "needs-setup";
+  }
+
+  return "partial";
 }
