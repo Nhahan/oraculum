@@ -2,11 +2,11 @@
 
 This page is for users who want more control than the default one-command flow.
 
-Target host-native path:
+Claude Code host-native path after setup:
 
 ```text
 orc consult "fix session loss on refresh"
-orc crown --branch fix/session-loss
+orc crown fix/session-loss
 ```
 
 Current temporary shell fallback:
@@ -18,7 +18,7 @@ oraculum crown --branch fix/session-loss
 
 `consult` already prints the latest summary. Everything below is for reopening a consultation later, overriding the default recommendation, or shaping the tournament more explicitly.
 
-The product target is a host-native chat surface with a shared `orc` command language across Claude Code and Codex. The current shell CLI remains a secondary compatibility/debug path while that host-native surface is being completed.
+The product target is a host-native chat surface with a shared `orc` command language across Claude Code and Codex. Claude Code setup is available today through `oraculum setup --runtime claude-code`. Codex is still completing that host-native path, so the current shell CLI remains a secondary compatibility/debug path while Codex catches up.
 
 Every `consult` also runs an automatic profile-selection step. Oraculum scans repo signals, asks the chosen runtime for a structured recommendation, and applies the resulting profile draft to that consultation only. Explicit quick-start and advanced settings still win over inferred defaults.
 
@@ -96,10 +96,10 @@ Use this when you want to reopen an older consultation without remembering the e
 ## Crown From A Specific Consultation
 
 ```text
-orc crown --consultation run_20260404_xxxx --branch fix/session-loss --with-report
+orc crown fix/session-loss
 ```
 
-Without `--consultation`, `crown` uses the latest consultation with a recommended survivor automatically. Without a candidate id, it uses the recommended survivor automatically.
+The current host-native `crown` path expects the branch name as the first argument and crowns the latest recommended survivor automatically. The shell fallback still supports the fuller `--consultation`, `--branch`, `--with-report`, and explicit candidate form while the chat-native parser stays narrow.
 
 ## Manually Override The Recommended Winner
 

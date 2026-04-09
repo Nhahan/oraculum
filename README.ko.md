@@ -49,18 +49,26 @@ npm에서 설치합니다.
 npm install -g oraculum
 ```
 
+Claude Code용 설정(setup)은 이제 사용할 수 있습니다.
+
+```bash
+oraculum setup --runtime claude-code
+```
+
+Codex용 chat-native 설정은 아직 작업 중입니다. 그전까지 Codex는 셸 fallback을 사용합니다.
+
 ## 빠른 시작
 
-목표로 하는 host-native 흐름은 Claude Code나 Codex 채팅 안에서 아래처럼 쓰는 것입니다.
+Claude Code에서 설정 후 사용할 host-native 흐름은 아래와 같습니다.
 
 ```text
 orc consult "fix session loss on refresh"
-orc crown --branch fix/session-loss
+orc crown fix/session-loss
 ```
 
 현재 구현 메모:
 
-레포는 아직 host-native 명령 표면을 마무리하는 중이라, 개발/디버그용 shell fallback이 함께 남아 있습니다.
+Claude Code는 설정 후 host-native 경로를 사용할 수 있습니다. Codex는 아직 이 경로를 마무리하는 중이라, 개발/디버그용 shell fallback이 함께 남아 있습니다.
 
 ```bash
 oraculum consult "fix session loss on refresh"

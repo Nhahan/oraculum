@@ -49,18 +49,26 @@ Install from npm:
 npm install -g oraculum
 ```
 
+Claude Code setup is now available:
+
+```bash
+oraculum setup --runtime claude-code
+```
+
+Codex host-native setup is still in progress. Until that lands, Codex continues to rely on the shell fallback.
+
 ## Quick Start
 
-Target host-native flow inside Claude Code or Codex chat:
+Claude Code host-native flow after setup:
 
 ```text
 orc consult "fix session loss on refresh"
-orc crown --branch fix/session-loss
+orc crown fix/session-loss
 ```
 
 Current implementation note:
 
-The repository is still finishing the host-native command surface. Until that lands, the development/debug shell fallback remains:
+Claude Code now ships a host-native path after setup. Codex is still finishing that path, so the development/debug shell fallback remains:
 
 ```bash
 oraculum consult "fix session loss on refresh"
