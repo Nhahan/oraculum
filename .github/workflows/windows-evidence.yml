@@ -33,7 +33,18 @@ jobs:
           ORACULUM_KEEP_EVIDENCE: "1"
         run: npm run evidence:beta:corpus
 
-      - name: Run published package smoke
+      - name: Pack local npm artifact
+        run: npm pack
+
+      - name: Resolve local packed artifact
+        run: |
+          $package = (Get-ChildItem oraculum-*.tgz | Select-Object -First 1).FullName
+          if (-not $package) {
+            throw "No packed npm artifact was found."
+          }
+          "ORACULUM_PUBLISHED_SPEC=$package" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run packaged artifact smoke
         run: npm run evidence:published-smoke
 
       - name: Upload Windows evidence artifacts
