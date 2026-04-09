@@ -37,7 +37,7 @@
 
 Oraculum은 Claude Code와 Codex를 위한 오라클 기반(oracle-guided) 패치 워크플로우 도구입니다.
 
-제품이 목표로 하는 주 표면은 두 호스트에서 공통으로 쓰는 채팅 내부 명령어입니다. 기본 접두사는 `orc`이며, 핵심 흐름은 `orc consult`, `orc verdict`, `orc crown`입니다.
+주 표면은 두 호스트에서 공통으로 쓰는 채팅 내부 명령어입니다. 기본 접두사는 `orc`이며, 핵심 흐름은 `orc consult`, `orc verdict`, `orc crown`입니다.
 
 그 아래에서 여러 후보를 격리된 환경에서 실행하고, 레포지토리에 정의한 오라클(repo-local oracle)로 판정하고, 판정(verdict)과 근거(witness)를 남긴 뒤, 마지막으로 끝까지 살아남은 후보만 최종 반영(crown)하도록 만드는 반복 가능한 워크플로우를 제공합니다.
 
@@ -49,26 +49,23 @@ npm에서 설치합니다.
 npm install -g oraculum
 ```
 
-Claude Code용 설정(setup)은 이제 사용할 수 있습니다.
+그 다음 사용하는 호스트에 맞게 Oraculum을 등록합니다.
 
 ```bash
 oraculum setup --runtime claude-code
+oraculum setup --runtime codex
 ```
-
-Codex용 chat-native 설정은 아직 작업 중입니다. 그전까지 Codex는 셸 fallback을 사용합니다.
 
 ## 빠른 시작
 
-Claude Code에서 설정 후 사용할 host-native 흐름은 아래와 같습니다.
+Claude Code나 Codex에서 설정을 마치면 host-native 흐름은 아래와 같습니다.
 
 ```text
 orc consult "fix session loss on refresh"
 orc crown fix/session-loss
 ```
 
-현재 구현 메모:
-
-Claude Code는 설정 후 host-native 경로를 사용할 수 있습니다. Codex는 아직 이 경로를 마무리하는 중이라, 개발/디버그용 shell fallback이 함께 남아 있습니다.
+셸 fallback은 설정, 디버깅, 호환성 확인용으로 계속 남아 있습니다.
 
 ```bash
 oraculum consult "fix session loss on refresh"

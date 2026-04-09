@@ -2,14 +2,14 @@
 
 This page is for users who want more control than the default one-command flow.
 
-Claude Code host-native path after setup:
+Host-native path after setup in Claude Code or Codex:
 
 ```text
 orc consult "fix session loss on refresh"
 orc crown fix/session-loss
 ```
 
-Current temporary shell fallback:
+Secondary shell fallback:
 
 ```bash
 oraculum consult "fix session loss on refresh"
@@ -18,7 +18,7 @@ oraculum crown --branch fix/session-loss
 
 `consult` already prints the latest summary. Everything below is for reopening a consultation later, overriding the default recommendation, or shaping the tournament more explicitly.
 
-The product target is a host-native chat surface with a shared `orc` command language across Claude Code and Codex. Claude Code setup is available today through `oraculum setup --runtime claude-code`. Codex is still completing that host-native path, so the current shell CLI remains a secondary compatibility/debug path while Codex catches up.
+The primary product surface is a host-native chat surface with a shared `orc` command language across Claude Code and Codex. The shell CLI remains a secondary compatibility/debug path.
 
 Every `consult` also runs an automatic profile-selection step. Oraculum scans repo signals, asks the chosen runtime for a structured recommendation, and applies the resulting profile draft to that consultation only. Explicit quick-start and advanced settings still win over inferred defaults.
 
@@ -79,7 +79,7 @@ The selected profile is consultation-scoped. It does not rewrite your saved quic
 ## Inspect A Specific Consultation
 
 ```text
-orc verdict consultation run_20260404_xxxx
+orc verdict run_20260404_xxxx
 ```
 
 Without a consultation id, `verdict` uses the latest consultation automatically.
@@ -103,18 +103,14 @@ The current host-native `crown` path expects the branch name as the first argume
 
 ## Manually Override The Recommended Winner
 
-```text
-orc crown cand-01 --consultation run_20260404_xxxx --branch fix/session-loss
-```
-
-Choosing a candidate id yourself is the advanced path. The default path is to let Oraculum recommend a survivor and materialize that choice.
+Choosing a candidate id yourself is the advanced path. Use the shell fallback when you need explicit candidate or consultation selection. The default host-native path is to let Oraculum recommend a survivor and materialize that choice.
 
 ## Report Bundle
 
 Use `--with-report` when you want the crowning record to carry report metadata for later review.
 
-```text
-orc crown --branch fix/session-loss --with-report
+```bash
+oraculum crown --branch fix/session-loss --with-report
 ```
 
 In a Git-backed project, `crown` creates the target branch and applies the recommended survivor there. In a non-Git project, it syncs the crowned workspace back into the project folder.
@@ -147,7 +143,7 @@ Current temporary shell fallback:
 
 ```bash
 oraculum consult tasks/fix-session-loss.md
-oraculum verdict consultation run_20260404_xxxx
+oraculum verdict run_20260404_xxxx
 oraculum crown --consultation run_20260404_xxxx --branch fix/session-loss
 oraculum init
 oraculum draft tasks/fix-session-loss.md

@@ -10,7 +10,7 @@ Target primary product surface:
 - preferred short prefix: `orc`
 - examples: `orc consult`, `orc verdict`, `orc crown`
 
-Current implementation still ships the `oraculum` shell binary for compatibility, setup, debugging, packaging, and local validation. Do not describe `orc` as already shipped unless the host-native integration for that host actually exists.
+Host-native `orc` integration is now available for both Claude Code and Codex after setup. The `oraculum` shell binary still ships for compatibility, setup, debugging, packaging, and local validation.
 
 ## Read Order
 
@@ -56,7 +56,7 @@ Default loop:
 - crown the recommended survivor
 
 Optimize for falsification and selection of patches, not maximum agent freedom.
-When the host-native surface lands, `orc consult` is the default end-to-end tournament command: one user command should cover candidate generation, execution, judging, elimination/crowning, and artifactization. Planning-only flows belong under structured advanced subcommands and must not become the default UX.
+`orc consult` is the default end-to-end tournament command: one user command should cover candidate generation, execution, judging, elimination/crowning, and artifactization. Planning-only flows belong under structured advanced subcommands and must not become the default UX.
 Protect the quick-start path as a product contract: first success should stay one-command and near-zero-config. Keep advanced controls available, but move operator complexity into optional flags, profiles, or advanced config rather than the default path.
 The default end-to-end command, whether host-native `orc consult` or temporary shell fallback `oraculum consult`, must print the latest result summary immediately. `verdict` is for reopening an earlier or latest consultation later, not for completing the default path.
 Treat Oraculum first as a local installable, host-native workflow tool, not a CI-first gate. CI/PR paths may exist, but they are secondary to the default local `consult -> crown` workflow.

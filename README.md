@@ -37,7 +37,7 @@
 
 Oraculum is an oracle-guided patch workflow for Claude Code and Codex.
 
-The target product surface is a shared in-chat command language across both hosts: `orc consult`, `orc verdict`, and `orc crown`.
+The primary product surface is a shared in-chat command language across both hosts: `orc consult`, `orc verdict`, and `orc crown`.
 
 Under that surface, Oraculum turns patching into a repeatable workflow: run competing candidates in isolation, judge them with repo-local oracles, keep verdicts and witnesses, and crown only the survivor.
 
@@ -49,26 +49,23 @@ Install from npm:
 npm install -g oraculum
 ```
 
-Claude Code setup is now available:
+Then register Oraculum with the host you use:
 
 ```bash
 oraculum setup --runtime claude-code
+oraculum setup --runtime codex
 ```
-
-Codex host-native setup is still in progress. Until that lands, Codex continues to rely on the shell fallback.
 
 ## Quick Start
 
-Claude Code host-native flow after setup:
+After setup in Claude Code or Codex:
 
 ```text
 orc consult "fix session loss on refresh"
 orc crown fix/session-loss
 ```
 
-Current implementation note:
-
-Claude Code now ships a host-native path after setup. Codex is still finishing that path, so the development/debug shell fallback remains:
+The shell fallback still exists for setup, debugging, and compatibility:
 
 ```bash
 oraculum consult "fix session loss on refresh"
