@@ -35,9 +35,9 @@
 
 ## Overview
 
-Oraculum is a local installable workflow tool that sits between your codebase and an AI coding runtime.
+Oraculum is an oracle-guided patch workflow for Claude Code and Codex.
 
-Instead of trusting the first patch an AI gives you, Oraculum tries multiple candidate fixes, checks them, and helps you keep only the survivors.
+It turns patching into a repeatable local workflow: run competing candidates in isolation, judge them with repo-local oracles, keep verdicts and witnesses, and crown only the survivor.
 
 ## Installation
 
