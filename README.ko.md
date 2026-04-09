@@ -18,9 +18,9 @@
 </p>
 
 <p align="center">
-  <strong>경쟁하는 패치를 consult하고, verdict를 읽고, 마지막 생존 결과만 crown합니다.</strong>
+  <strong>여러 패치를 겨루게 하고, 판정(verdict)을 읽고, 끝까지 살아남은 결과만 최종 반영(crown)합니다.</strong>
   <br />
-  <sub>Claude Code와 Codex를 위한 oracle-guided 패치 consultation 도구</sub>
+  <sub>Claude Code와 Codex를 위한 오라클 기반(oracle-guided) 패치 검증 도구</sub>
 </p>
 
 <p align="center">
@@ -35,9 +35,9 @@
 
 ## 개요
 
-Oraculum은 코드베이스와 AI 코딩 런타임 사이에 위치하는 로컬 설치형 워크플로우 도구입니다.
+Oraculum은 Claude Code와 Codex를 위한 오라클 기반(oracle-guided) 패치 워크플로우 도구입니다.
 
-AI가 처음 제시한 패치를 그대로 믿는 대신, 여러 후보 패치를 생성하고 검사한 뒤 살아남은 결과만 남기도록 돕습니다.
+여러 후보를 격리된 환경에서 실행하고, 레포지토리에 정의한 오라클(repo-local oracle)로 판정하고, 판정(verdict)과 근거(witness)를 남긴 뒤, 마지막으로 끝까지 살아남은 후보만 최종 반영(crown)하도록 만드는 반복 가능한 로컬 워크플로우입니다.
 
 ## 설치
 
@@ -56,22 +56,22 @@ oraculum consult "fix session loss on refresh"
 oraculum crown --branch fix/session-loss
 ```
 
-이것이 기본 흐름입니다. `consult`는 처음 사용할 때 Oraculum을 자동 초기화하고, consultation을 실행한 뒤 verdict 요약을 바로 출력합니다. `crown`은 추천 survivor가 있는 가장 최근 consultation을 기본값으로 사용합니다.
+이것이 기본 흐름입니다. `consult`는 처음 사용할 때 Oraculum을 자동 초기화하고, 실행이 끝나면 결과 요약을 바로 출력합니다. `crown`은 추천된 후보가 있는 가장 최근 실행 결과를 기본값으로 사용합니다.
 
-Git 프로젝트에서는 `crown`이 브랜치를 만들고 survivor를 그 브랜치에 적용합니다. Git이 아닌 프로젝트에서는 survivor workspace를 프로젝트 폴더로 동기화합니다.
+Git 프로젝트에서는 `crown`이 브랜치를 만들고 선택된 후보를 그 브랜치에 적용합니다. Git이 아닌 프로젝트에서는 해당 작업 공간 내용을 프로젝트 폴더에 그대로 동기화합니다.
 
-가장 최근 consultation을 나중에 다시 열어보거나, 이전 consultation을 조회하거나, consultation 기록을 탐색하고 싶다면 [고급 사용법](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md)을 참고하세요.
+가장 최근 실행 결과를 나중에 다시 열어보거나, 예전 실행을 조회하거나, 기록 보관함을 살펴보고 싶다면 [고급 사용법](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md)을 참고하세요.
 
 ## 동작 방식
 
 1. Oraculum에 하나의 작업을 입력합니다.
 2. Oraculum이 여러 후보 패치를 만듭니다.
-3. 각 후보는 독립된 workspace에서 실행됩니다.
+3. 각 후보는 독립된 작업 공간에서 실행됩니다.
 4. 단계별 검사로 약한 후보를 제거합니다.
-5. 최종 생존 후보를 추천하고, verdict 근거를 남기고, crown할 수 있게 합니다.
+5. 끝까지 살아남은 후보를 추천하고, 그 근거를 남기고, 마지막으로 최종 반영할 수 있게 합니다.
 
-결과는 `.oraculum/` 아래에 저장됩니다. 기준이 되는 것은 채팅 transcript가 아니라 저장된 run 상태와 artifact입니다.
+결과는 `.oraculum/` 아래에 저장됩니다. 기준이 되는 것은 채팅 기록이 아니라 저장된 실행 상태와 산출물입니다.
 
 ## 고급 사용법
 
-consultation-scoped profile selection, 런타임 선택, 후보 수 조정, 특정 consultation 조회, report packaging, repo-local oracle 설정, 추천 survivor 수동 override 같은 제어가 필요하면 [고급 사용법](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md)을 참고하세요. quick-start 기본값은 `.oraculum/config.json`에, 운영자용 제어는 `.oraculum/advanced.json`에 둡니다.
+프로필 선택, 런타임 선택, 후보 수 조정, 특정 실행 조회, 보고서 묶음 포함, 레포지토리에 정의한 오라클 설정, 추천 후보 수동 지정 같은 제어가 필요하면 [고급 사용법](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md)을 참고하세요. 빠른 시작용 기본값은 `.oraculum/config.json`에, 운영자용 제어는 `.oraculum/advanced.json`에 둡니다.
