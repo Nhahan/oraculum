@@ -23,7 +23,7 @@ Assumption: Oraculum is designed around frontier, human-level coding models such
 - [ ] Provide compact, high-signal context to the model instead of pre-deciding the answer in code. Raw facts should make the model smarter, not replace the model's judgment.
 - [ ] Prefer repo-local explicit commands over inferred commands. A script or explicit oracle defined by the repo/operator is stronger evidence than a tool-name heuristic.
 - [ ] Generate built-in commands only for generic product-owned checks or explicit repo-local commands. Do not derive commands from dependency names, config filenames, or framework names.
-- [ ] When a command is plausible but unsafe or under-specified, record `missingCapabilities` or skipped-command evidence instead of running it.
+- [x] When a command is plausible but unsafe or under-specified, record `missingCapabilities` or skipped-command evidence instead of running it.
 
 ### Model-Owned Responsibilities
 
@@ -78,9 +78,9 @@ Assumption: Oraculum is designed around frontier, human-level coding models such
 - [x] Replace legacy `tags`-driven runtime-unavailable scoring with executable command evidence. Keep `tags` only as artifact compatibility until readers no longer need it.
 - [x] Split final profile choice from raw fact output: collectors may emit `intent`/`language`/`build-system`/`test-runner`/`migration-tool` evidence, but they must not force `library`, `frontend`, or `migration` directly.
 - [x] Make runtime-unavailable profile selection conservative: prefer `generic` plus missing-capability evidence unless repo-local explicit commands make a stronger profile safe.
-- [ ] Introduce command-candidate metadata such as `source`, `capability`, `safety`, `requiresExplicitOptIn`, and `provenance` for commands that survive the explicit-command boundary.
-- [ ] Store skipped command candidates in profile artifacts with reasons such as `unsafe-db-touching`, `global-tool-not-explicit`, `missing-config`, `ambiguous-package-manager`, `duplicate-expensive-command`, or `requires-opt-in`.
-- [ ] Remove or gate global PATH use for generated commands. Global tools should be allowed only when explicit config enables them, provenance is recorded, and tests cover it.
+- [x] Introduce command-candidate metadata such as `source`, `capability`, `safety`, `requiresExplicitOptIn`, and `provenance` for commands that survive the explicit-command boundary.
+- [x] Store skipped command candidates in profile artifacts with reasons such as `unsafe-db-touching`, `global-tool-not-explicit`, `missing-config`, `ambiguous-package-manager`, `duplicate-expensive-command`, or `requires-opt-in`.
+- [x] Remove or gate global PATH use for generated commands. Generated and explicit repo-local oracles now default to `pathPolicy: "local-only"` and only inherit the host global `PATH` when the oracle or command candidate explicitly records `pathPolicy: "inherit"`, with witness details and regression coverage.
 - [x] Remove Prisma direct commands instead of quarantining them as a command pack.
 
 ### Regression Tests For Heuristics
@@ -90,8 +90,8 @@ Assumption: Oraculum is designed around frontier, human-level coding models such
 - [x] Add tests proving English task keywords such as `frontend`, `migration`, `schema`, or `database` are auxiliary context only and cannot override stronger repo facts.
 - [x] Add tests proving `packageManager=unknown` never produces npm script commands, npm pack checks, or Node-only smoke commands.
 - [x] Add tests proving a zero-signal repo produces `generic`, low confidence, and visible missing-capability evidence rather than a weak guessed profile.
-- [ ] Add tests proving duplicate expensive commands are deduplicated even if multiple collectors propose them under different labels.
-- [ ] Add tests proving skipped command candidates are persisted in the profile-selection artifact and visible to `verdict`.
+- [x] Add tests proving duplicate expensive commands are deduplicated even if multiple collectors propose them under different labels.
+- [x] Add tests proving skipped command candidates are persisted in the profile-selection artifact and visible to `verdict`.
 - [ ] Add counterexample fixtures for polyglot repos where Node and non-Node signals coexist and neither ecosystem silently dominates profile choice.
 
 ### Code Review Gate
@@ -117,7 +117,7 @@ Assumption: Oraculum is designed around frontier, human-level coding models such
 - [x] Runtime-unavailable profile scoring uses English task-text keywords such as `frontend`, `migration`, `schema`, and `prisma`. It should not rely on English-only text as a primary generalization signal.
 - [ ] `UNMANAGED_ENTRY_NAMES` excludes ambiguous names such as `dist` globally. Some repositories intentionally track generated distribution/source directories, so ambiguous exclusions need raw workspace context or an override path.
 - [x] `resolveProjectRoot` currently treats the invocation `cwd` as the project root. That is simple, but nested invocation from a package/subdirectory can create the wrong `.oraculum` root and miss repository-level signals.
-- [ ] Repo-local oracle `cwd` is limited to `workspace` or `project`. Monorepos and polyglot repos often need safe relative subproject working directories.
+- [x] Repo-local oracle `cwd` is limited to `workspace` or `project`. Monorepos and polyglot repos often need safe relative subproject working directories.
 - [ ] Non-Git crowning still requires a `branchName` even though workspace-sync mode does not create a branch. That is a Git-shaped UX leak into generic/local repositories.
 - [x] Subprocess stdout/stderr are accumulated in memory without output limits. Arbitrary repo-local checks can produce very large logs.
 - [x] POSIX timeout cleanup kills only the immediate subprocess, not necessarily its process tree. Arbitrary repo-local checks can leave child processes behind.
@@ -164,32 +164,32 @@ Assumption: Oraculum is designed around frontier, human-level coding models such
 
 ## Phase 3: Make Oracle Generation Capability-Based
 
-- [ ] Extend `ProfileCommandCandidate` with enough metadata to explain why a command exists:
+- [x] Extend `ProfileCommandCandidate` with enough metadata to explain why a command exists:
   - `toolchain`
   - `capability`
   - `cost`
   - `source` such as `script`, `config`, `local-tool`, or `explicit`
   - `requiresExplicitOptIn` when relevant
-- [ ] Ensure command selection chooses by capability, not by ecosystem-specific command IDs.
+- [x] Ensure command selection chooses by capability, not by ecosystem-specific command IDs.
 - [x] Add a package-manager policy for Node checks so package/export smoke uses the detected toolchain or explicitly records why npm is being used.
-- [ ] Keep `fast`, `impact`, and `deep` as workflow rounds, but map explicit command capabilities into them without assuming tool-specific semantics.
+- [x] Keep `fast`, `impact`, and `deep` as workflow rounds, but map explicit command capabilities into them without assuming tool-specific semantics.
 - [ ] Keep explicit `.oraculum/advanced.json` oracles as the highest priority.
 - [x] If a direct command would require tool-specific inference, emit raw capability evidence instead of generating a command.
-- [ ] Record skipped command candidates and why they were skipped, for example missing explicit command, unsafe global tool use, no safe cwd, or ambiguous package manager.
-- [ ] Extend generated and explicit oracle cwd support to safe relative subdirectories, for example `{ "cwd": "workspace", "relativeCwd": "packages/app" }`, with path traversal rejection.
+- [x] Record skipped command candidates and why they were skipped, for example missing explicit command, unsafe global tool use, no safe cwd, or ambiguous package manager.
+- [x] Extend generated and explicit oracle cwd support to safe relative subdirectories, for example `{ "cwd": "workspace", "relativeCwd": "packages/app" }`, with path traversal rejection.
 - [x] Do not generate database-touching migration commands from tool names. Migration validation must come from repo-local scripts or explicit oracles.
 - [x] Revisit Prisma generated-command naming. Decision: no Prisma command pack in default behavior.
 - [x] Decide whether existing Prisma direct command generation should remain as a safe optional pack or become missing-capability evidence by default. Decision: remove direct commands; use repo-local scripts or explicit oracles only.
 - [x] Add tests proving non-Prisma migration tools are detected as capabilities but do not receive unsafe invented commands.
 - [ ] Add tests proving two different explicit command collectors can contribute commands without duplicate command execution.
-- [ ] Add tests proving duplicated capabilities do not run the same expensive command twice under different labels unless explicitly configured.
+- [x] Add tests proving duplicated capabilities do not run the same expensive command twice under different labels unless explicitly configured.
 
 ## Phase 4: Generalize Oracle Execution Environment
 
 - [x] Replace the unconditional `node_modules/.bin` PATH injection in `src/services/oracles.ts` with an existing-only generic local binary path list. Explicit config or candidate-workspace local paths remain the preferred source for execution metadata.
 - [x] Keep Node local bin support, but make it one entry in a generic local-tool path list.
 - [ ] Prefer candidate-workspace local tool paths when the workspace owns or links dependencies; only fall back to project-root tool paths when that is intentional and recorded.
-- [ ] Make global PATH tool use explicit, provenance-tracked, and optionally disabled for generated oracles.
+- [x] Make global PATH tool use explicit, provenance-tracked, and optionally disabled for generated oracles.
 - [ ] Add local tool path support for at least:
   - `.venv/bin` and `.venv/Scripts`
   - `venv/bin` and `venv/Scripts`
