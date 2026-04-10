@@ -143,6 +143,54 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain("- No e2e or visual deep check was detected.");
   });
 
+  it("shows skipped profile commands from the profile-selection artifact", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      profileSelection: {
+        profileId: "generic",
+        confidence: "low",
+        source: "fallback-detection",
+        summary: "No executable profile-specific command evidence was detected.",
+        candidateCount: 3,
+        strategyIds: ["minimal-change", "safety-first"],
+        oracleIds: [],
+        missingCapabilities: ["No repo-local validation command was detected."],
+        signals: ["e2e-config"],
+      },
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(
+      getProfileSelectionPath(cwd, manifest.id),
+      `${JSON.stringify(
+        {
+          signals: {
+            packageManager: "unknown",
+            skippedCommandCandidates: [
+              {
+                id: "e2e-deep",
+                label: "End-to-end or visual checks",
+                capability: "e2e-or-visual",
+                reason: "missing-explicit-command",
+                detail:
+                  "A test-runner capability was detected, but no repo-local e2e/smoke script or explicit oracle exposes the executable command.",
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+
+    expect(summary).toContain("Skipped profile commands:");
+    expect(summary).toContain(
+      "- e2e-deep: missing-explicit-command - A test-runner capability was detected",
+    );
+  });
+
   it("does not suggest manual promotion when no finalists survived", async () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {

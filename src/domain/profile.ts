@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { roundIdSchema } from "./config.js";
+import { oraclePathPolicySchema, roundIdSchema } from "./config.js";
 
 export const decisionConfidenceLevels = ["low", "medium", "high"] as const;
 export const consultationProfileIds = ["generic", "library", "frontend", "migration"] as const;
@@ -32,6 +32,31 @@ export const profileSignalSourceSchema = z.enum([
   "fallback-inference",
 ]);
 
+export const profileSignalProvenanceSchema = z.object({
+  signal: z.string().min(1),
+  source: profileSignalSourceSchema,
+  path: z.string().min(1).optional(),
+  detail: z.string().min(1).optional(),
+});
+
+export const profileCommandSourceSchema = z.enum(["repo-local-script", "product-owned"]);
+export const profileCommandSafetySchema = z.enum([
+  "repo-local-declared",
+  "product-owned-read-only",
+  "product-owned-temporary",
+  "requires-explicit-opt-in",
+]);
+export const profileSkippedCommandReasonSchema = z.enum([
+  "ambiguous-package-manager",
+  "duplicate-expensive-command",
+  "global-tool-not-explicit",
+  "missing-config",
+  "missing-explicit-command",
+  "requires-opt-in",
+  "unsafe-db-touching",
+  "unsupported-package-manager",
+]);
+
 export const profileCommandCandidateSchema = z.object({
   id: z.string().min(1),
   roundId: roundIdSchema,
@@ -39,6 +64,14 @@ export const profileCommandCandidateSchema = z.object({
   command: z.string().min(1),
   args: z.array(z.string()).default([]),
   invariant: z.string().min(1),
+  dedupeKey: z.string().min(1).optional(),
+  pathPolicy: oraclePathPolicySchema.optional(),
+  source: profileCommandSourceSchema.optional(),
+  capability: z.string().min(1).optional(),
+  safety: profileCommandSafetySchema.optional(),
+  requiresExplicitOptIn: z.boolean().optional(),
+  provenance: profileSignalProvenanceSchema.optional(),
+  safetyRationale: z.string().min(1).optional(),
 });
 
 export const profileCapabilitySignalSchema = z.object({
@@ -50,11 +83,13 @@ export const profileCapabilitySignalSchema = z.object({
   detail: z.string().min(1).optional(),
 });
 
-export const profileSignalProvenanceSchema = z.object({
-  signal: z.string().min(1),
-  source: profileSignalSourceSchema,
-  path: z.string().min(1).optional(),
-  detail: z.string().min(1).optional(),
+export const profileSkippedCommandCandidateSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  capability: z.string().min(1),
+  reason: profileSkippedCommandReasonSchema,
+  detail: z.string().min(1),
+  provenance: profileSignalProvenanceSchema.optional(),
 });
 
 export const profileRepoSignalsSchema = z.object({
@@ -68,6 +103,7 @@ export const profileRepoSignalsSchema = z.object({
   capabilities: z.array(profileCapabilitySignalSchema).default([]),
   provenance: z.array(profileSignalProvenanceSchema).default([]),
   commandCatalog: z.array(profileCommandCandidateSchema).default([]),
+  skippedCommandCandidates: z.array(profileSkippedCommandCandidateSchema).default([]),
 });
 
 export const agentProfileRecommendationSchema = z.object({
@@ -144,6 +180,7 @@ export type PackageManager = z.infer<typeof packageManagerSchema>;
 export type ProfileCommandCandidate = z.infer<typeof profileCommandCandidateSchema>;
 export type ProfileCapabilitySignal = z.infer<typeof profileCapabilitySignalSchema>;
 export type ProfileSignalProvenance = z.infer<typeof profileSignalProvenanceSchema>;
+export type ProfileSkippedCommandCandidate = z.infer<typeof profileSkippedCommandCandidateSchema>;
 export type ProfileRepoSignals = z.infer<typeof profileRepoSignalsSchema>;
 export type AgentProfileRecommendation = z.infer<typeof agentProfileRecommendationSchema>;
 export type ConsultationProfileSelection = z.infer<typeof consultationProfileSelectionSchema>;

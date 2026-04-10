@@ -580,6 +580,7 @@ if (out) {
         notes: [],
         capabilities: [],
         provenance: [],
+        skippedCommandCandidates: [],
         commandCatalog: [
           {
             id: "lint-fast",
@@ -660,6 +661,7 @@ process.stdout.write(JSON.stringify({
         notes: [],
         capabilities: [],
         provenance: [],
+        skippedCommandCandidates: [],
         commandCatalog: [
           {
             id: "build-impact",

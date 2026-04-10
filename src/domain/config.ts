@@ -1,3 +1,5 @@
+import { isAbsolute, win32 } from "node:path";
+
 import { z } from "zod";
 
 import { CONFIG_VERSION } from "../core/constants.js";
@@ -7,6 +9,23 @@ export const roundIdSchema = z.enum(["fast", "impact", "deep"]);
 export const oracleScopeSchema = z.enum(["workspace", "project"]);
 export const oracleEnforcementSchema = z.enum(["hard", "repairable", "signal"]);
 export const oracleConfidenceSchema = z.enum(["low", "medium", "high"]);
+export const oraclePathPolicySchema = z.enum(["local-only", "inherit"]);
+export const oracleRelativeCwdSchema = z
+  .string()
+  .min(1)
+  .superRefine((value, context) => {
+    if (
+      value.includes("\0") ||
+      isAbsolute(value) ||
+      win32.isAbsolute(value) ||
+      value.split(/[\\/]+/u).includes("..")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Oracle relativeCwd must be a safe relative path inside the selected cwd scope.",
+      });
+    }
+  });
 export const repairPolicySchema = z
   .object({
     enabled: z.boolean().default(true),
@@ -34,6 +53,8 @@ export const repoOracleSchema = z.object({
   shell: z.boolean().optional(),
   invariant: z.string().min(1),
   cwd: oracleScopeSchema.default("workspace"),
+  relativeCwd: oracleRelativeCwdSchema.optional(),
+  pathPolicy: oraclePathPolicySchema.default("local-only"),
   enforcement: oracleEnforcementSchema.default("hard"),
   confidence: oracleConfidenceSchema.default("medium"),
   timeoutMs: z
@@ -123,6 +144,7 @@ export type RoundId = z.infer<typeof roundIdSchema>;
 export type OracleScope = z.infer<typeof oracleScopeSchema>;
 export type OracleEnforcement = z.infer<typeof oracleEnforcementSchema>;
 export type OracleConfidence = z.infer<typeof oracleConfidenceSchema>;
+export type OraclePathPolicy = z.infer<typeof oraclePathPolicySchema>;
 export type RepairPolicy = z.infer<typeof repairPolicySchema>;
 export type Strategy = z.infer<typeof strategySchema>;
 export type Round = z.infer<typeof roundSchema>;

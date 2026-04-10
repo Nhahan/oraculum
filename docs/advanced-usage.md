@@ -66,6 +66,7 @@ That artifact records:
 - detected repo signals
 - capability signals and signal provenance
 - the command catalog offered to the runtime
+- skipped command candidates and reasons
 - the chosen profile id
 - confidence and rationale
 - missing capabilities
@@ -84,7 +85,7 @@ The selected profile is consultation-scoped. It does not rewrite your saved quic
 
 Oraculum assumes Claude Code or Codex is a frontier coding model. Deterministic code owns facts and safety: file signals, manifests, workspace roots, explicit config, command allowlists, timeouts, and artifact persistence. The model owns semantic judgment: profile choice, risk level, validation sufficiency, and which provided commands to select.
 
-The model cannot invent executable commands for Oraculum to run. It returns command ids from the catalog Oraculum provided, and Oraculum rejects unknown profile ids, strategy ids, and command ids. If runtime profile selection fails or is disabled, runtime-unavailable detection is conservative: zero-signal repositories use `generic`, ambiguous package managers do not silently become npm, and missing validation is recorded as `missingCapabilities`.
+The model cannot invent executable commands for Oraculum to run. It returns command ids from the catalog Oraculum provided, and Oraculum rejects unknown profile ids, strategy ids, and command ids. Catalog commands include source, capability, dedupe key, path policy, safety, and provenance metadata. If a plausible command is not safe to generate, Oraculum records it under `skippedCommandCandidates` with a reason instead of running it. If runtime profile selection fails or is disabled, runtime-unavailable detection is conservative: zero-signal repositories use `generic`, ambiguous package managers do not silently become npm, and missing validation is recorded as `missingCapabilities`.
 
 Repo-local scripts and explicit `.oraculum/advanced.json` oracles are strongest. Oraculum should not grow a built-in encyclopedia of framework, ORM, migration-tool, test-runner, or language-specific command recipes. Named tools, including Prisma or Drizzle, are recorded as evidence unless a repo-local script or explicit oracle defines the command.
 
@@ -184,6 +185,9 @@ Example:
       "roundId": "fast",
       "command": "npm",
       "args": ["run", "lint"],
+      "cwd": "workspace",
+      "relativeCwd": "packages/app",
+      "pathPolicy": "inherit",
       "invariant": "The candidate must satisfy lint checks.",
       "enforcement": "hard"
     }
@@ -192,6 +196,8 @@ Example:
 ```
 
 Use `command` with `args` when you want an exact executable invocation. Use a shell-style command string only when that is the behavior you want.
+`cwd` can be `workspace` or `project`; add `relativeCwd` when a monorepo or polyglot check must run below that scope. `relativeCwd` must stay inside the selected scope, so absolute paths and `..` traversal are rejected.
+`pathPolicy` defaults to `local-only`, which exposes only discovered candidate/project local tool paths; an explicit oracle `env.PATH` overrides that computed value. Use `pathPolicy: "inherit"` only when the oracle intentionally needs the host global `PATH`, for example an operator-owned package-manager command.
 
 Supported enforcement levels:
 

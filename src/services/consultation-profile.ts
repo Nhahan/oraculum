@@ -87,6 +87,45 @@ const PROFILE_FALLBACK_PRIORITY: ConsultationProfileId[] = [
   "generic",
 ];
 
+interface ProfileCommandSlot {
+  capability: string;
+  roundId: ProfileCommandCandidate["roundId"];
+}
+
+const PROFILE_COMMAND_SLOTS: Record<ConsultationProfileId, ProfileCommandSlot[]> = {
+  generic: [
+    { roundId: "fast", capability: "lint" },
+    { roundId: "fast", capability: "typecheck" },
+    { roundId: "impact", capability: "changed-area-test" },
+    { roundId: "impact", capability: "unit-test" },
+    { roundId: "impact", capability: "build" },
+    { roundId: "deep", capability: "full-suite-test" },
+  ],
+  library: [
+    { roundId: "fast", capability: "lint" },
+    { roundId: "fast", capability: "typecheck" },
+    { roundId: "impact", capability: "unit-test" },
+    { roundId: "impact", capability: "package-export-smoke" },
+    { roundId: "deep", capability: "full-suite-test" },
+    { roundId: "deep", capability: "package-export-smoke" },
+  ],
+  frontend: [
+    { roundId: "fast", capability: "lint" },
+    { roundId: "fast", capability: "typecheck" },
+    { roundId: "impact", capability: "changed-area-test" },
+    { roundId: "impact", capability: "build" },
+    { roundId: "deep", capability: "e2e-or-visual" },
+  ],
+  migration: [
+    { roundId: "fast", capability: "schema-validation" },
+    { roundId: "fast", capability: "lint" },
+    { roundId: "fast", capability: "typecheck" },
+    { roundId: "impact", capability: "migration-dry-run" },
+    { roundId: "deep", capability: "rollback-simulation" },
+    { roundId: "deep", capability: "migration-drift" },
+  ],
+};
+
 export async function recommendConsultationProfile(
   options: RecommendConsultationProfileOptions,
 ): Promise<RecommendedConsultationProfile> {
@@ -228,11 +267,6 @@ async function collectProfileRepoSignals(projectRoot: string): Promise<ProfileRe
     packageJson,
     scripts,
   });
-  const commandCatalog = buildCommandCatalog({
-    packageJson,
-    packageManager,
-    scripts,
-  });
   const capabilities = buildCapabilitySignals({
     dependencies,
     files: knownFiles,
@@ -241,6 +275,12 @@ async function collectProfileRepoSignals(projectRoot: string): Promise<ProfileRe
     scripts,
     tags,
     workspaceRoots,
+  });
+  const { commandCatalog, skippedCommandCandidates } = buildCommandCatalog({
+    capabilities,
+    packageJson,
+    packageManager,
+    scripts,
   });
   const provenance = buildSignalProvenance(tags, capabilities);
   const notes = buildSignalNotes(tags, commandCatalog, packageManager, packageJson);
@@ -256,6 +296,7 @@ async function collectProfileRepoSignals(projectRoot: string): Promise<ProfileRe
     capabilities,
     provenance,
     commandCatalog,
+    skippedCommandCandidates,
   });
 }
 
@@ -342,21 +383,27 @@ function buildFallbackRecommendation(
     frontend: 0,
     migration: 0,
   };
-  const commandIds = new Set(signals.commandCatalog.map((command) => command.id));
+  const commandSlots = new Set(signals.commandCatalog.map(commandSlotKey));
 
-  if (commandIds.has("package-smoke-deep") || commandIds.has("pack-impact")) {
+  if (
+    commandSlots.has(commandSlotKey({ roundId: "deep", capability: "package-export-smoke" })) ||
+    commandSlots.has(commandSlotKey({ roundId: "impact", capability: "package-export-smoke" }))
+  ) {
     scores.library += 5;
   }
-  if (commandIds.has("unit-impact") || commandIds.has("full-suite-deep")) {
+  if (
+    commandSlots.has(commandSlotKey({ roundId: "impact", capability: "unit-test" })) ||
+    commandSlots.has(commandSlotKey({ roundId: "deep", capability: "full-suite-test" }))
+  ) {
     scores.library += 1;
   }
-  if (commandIds.has("e2e-deep")) {
+  if (commandSlots.has(commandSlotKey({ roundId: "deep", capability: "e2e-or-visual" }))) {
     scores.frontend += 5;
   }
   if (
-    commandIds.has("schema-fast") ||
-    commandIds.has("migration-impact") ||
-    commandIds.has("rollback-deep")
+    commandSlots.has(commandSlotKey({ roundId: "fast", capability: "schema-validation" })) ||
+    commandSlots.has(commandSlotKey({ roundId: "impact", capability: "migration-dry-run" })) ||
+    commandSlots.has(commandSlotKey({ roundId: "deep", capability: "rollback-simulation" }))
   ) {
     scores.migration += 5;
   }
@@ -386,7 +433,11 @@ function buildFallbackRecommendation(
         : "low";
 
   const selectedCommandIds = chooseFallbackCommandIds(chosenProfile, signals.commandCatalog);
-  const missingCapabilities = inferMissingCapabilities(chosenProfile, selectedCommandIds);
+  const missingCapabilities = inferMissingCapabilities(
+    chosenProfile,
+    selectedCommandIds,
+    signals.commandCatalog,
+  );
 
   return agentProfileRecommendationSchema.parse({
     profileId: chosenProfile,
@@ -429,74 +480,96 @@ function chooseFallbackCommandIds(
   profileId: ConsultationProfileId,
   catalog: ProfileCommandCandidate[],
 ): string[] {
-  const availableIds = new Set(catalog.map((candidate) => candidate.id));
-  const desiredByProfile: Record<ConsultationProfileId, string[]> = {
-    generic: [
-      "lint-fast",
-      "typecheck-fast",
-      "changed-tests-impact",
-      "unit-impact",
-      "build-impact",
-      "full-suite-deep",
-    ],
-    library: [
-      "lint-fast",
-      "typecheck-fast",
-      "unit-impact",
-      "pack-impact",
-      "full-suite-deep",
-      "package-smoke-deep",
-    ],
-    frontend: ["lint-fast", "typecheck-fast", "changed-tests-impact", "build-impact", "e2e-deep"],
-    migration: [
-      "schema-fast",
-      "lint-fast",
-      "typecheck-fast",
-      "migration-impact",
-      "rollback-deep",
-      "migration-drift-deep",
-    ],
-  };
+  const selectedCommandIds: string[] = [];
+  const usedExecutionKeys = new Set<string>();
 
-  return desiredByProfile[profileId].filter((id) => availableIds.has(id));
+  for (const desiredSlot of PROFILE_COMMAND_SLOTS[profileId]) {
+    const candidate = catalog.find((command) => {
+      const executionKey = commandExecutionKey(command);
+      return (
+        command.roundId === desiredSlot.roundId &&
+        command.capability === desiredSlot.capability &&
+        !usedExecutionKeys.has(executionKey)
+      );
+    });
+    if (!candidate) {
+      continue;
+    }
+
+    selectedCommandIds.push(candidate.id);
+    usedExecutionKeys.add(commandExecutionKey(candidate));
+  }
+
+  return selectedCommandIds;
 }
 
 function inferMissingCapabilities(
   profileId: ConsultationProfileId,
   selectedCommandIds: string[],
+  catalog: ProfileCommandCandidate[],
 ): string[] {
-  const selected = new Set(selectedCommandIds);
+  const byId = new Map(catalog.map((candidate) => [candidate.id, candidate]));
+  const selectedCommands = selectedCommandIds.flatMap((id) => {
+    const candidate = byId.get(id);
+    return candidate ? [candidate] : [];
+  });
+  const selectedSlots = new Set(
+    selectedCommands.flatMap((candidate) =>
+      candidate.capability ? [commandSlotKey(candidate)] : [],
+    ),
+  );
+  const selectedExecutionKeys = new Set(selectedCommands.map(commandExecutionKey));
+  const hasSelectedSlot = (slot: ProfileCommandSlot) =>
+    selectedSlots.has(commandSlotKey(slot)) ||
+    catalog.some(
+      (candidate) =>
+        candidate.roundId === slot.roundId &&
+        candidate.capability === slot.capability &&
+        selectedExecutionKeys.has(commandExecutionKey(candidate)),
+    );
   const missing: string[] = [];
 
-  if (profileId === "generic" && selected.size === 0) {
+  if (profileId === "generic" && selectedSlots.size === 0) {
     missing.push("No repo-local validation command was detected.");
   }
-  if (profileId === "library" && !selected.has("full-suite-deep")) {
+  if (
+    profileId === "library" &&
+    !hasSelectedSlot({ roundId: "deep", capability: "full-suite-test" })
+  ) {
     missing.push("No full-suite deep test command was detected.");
   }
   if (
     profileId === "library" &&
-    !selected.has("package-smoke-deep") &&
-    !selected.has("pack-impact")
+    !hasSelectedSlot({ roundId: "deep", capability: "package-export-smoke" }) &&
+    !hasSelectedSlot({ roundId: "impact", capability: "package-export-smoke" })
   ) {
     missing.push("No package packaging smoke check was detected.");
   }
-  if (profileId === "frontend" && !selected.has("build-impact")) {
+  if (profileId === "frontend" && !hasSelectedSlot({ roundId: "impact", capability: "build" })) {
     missing.push("No build validation command was detected.");
   }
-  if (profileId === "frontend" && !selected.has("e2e-deep")) {
+  if (
+    profileId === "frontend" &&
+    !hasSelectedSlot({ roundId: "deep", capability: "e2e-or-visual" })
+  ) {
     missing.push("No e2e or visual deep check was detected.");
   }
-  if (profileId === "migration" && !selected.has("schema-fast")) {
+  if (
+    profileId === "migration" &&
+    !hasSelectedSlot({ roundId: "fast", capability: "schema-validation" })
+  ) {
     missing.push("No schema validation command was detected.");
   }
-  if (profileId === "migration" && !selected.has("migration-impact")) {
+  if (
+    profileId === "migration" &&
+    !hasSelectedSlot({ roundId: "impact", capability: "migration-dry-run" })
+  ) {
     missing.push("No migration planning or dry-run command was detected.");
   }
   if (
     profileId === "migration" &&
-    !selected.has("rollback-deep") &&
-    !selected.has("migration-drift-deep")
+    !hasSelectedSlot({ roundId: "deep", capability: "rollback-simulation" }) &&
+    !hasSelectedSlot({ roundId: "deep", capability: "migration-drift" })
   ) {
     missing.push("No rollback simulation or migration drift deep check was detected.");
   }
@@ -526,7 +599,11 @@ function sanitizeRecommendation(
     candidateCount: clampCandidateCount(recommendation.candidateCount),
     strategyIds: filteredStrategyIds.length > 0 ? filteredStrategyIds : fallback.strategyIds,
     selectedCommandIds,
-    missingCapabilities: inferMissingCapabilities(recommendation.profileId, selectedCommandIds),
+    missingCapabilities: inferMissingCapabilities(
+      recommendation.profileId,
+      selectedCommandIds,
+      signals.commandCatalog,
+    ),
   });
 }
 
@@ -554,7 +631,7 @@ function buildGeneratedOracles(
       continue;
     }
 
-    const commandKey = JSON.stringify([candidate.command, candidate.args]);
+    const commandKey = commandExecutionKey(candidate);
     if (seenCommands.has(commandKey)) {
       continue;
     }
@@ -567,6 +644,7 @@ function buildGeneratedOracles(
       args: candidate.args,
       invariant: candidate.invariant,
       cwd: "workspace",
+      pathPolicy: candidate.pathPolicy ?? "local-only",
       enforcement: "hard",
       confidence: candidate.roundId === "deep" ? "medium" : "high",
       timeoutMs: GENERATED_ORACLE_TIMEOUT_MS[candidate.roundId],
@@ -575,4 +653,18 @@ function buildGeneratedOracles(
   }
 
   return oracles;
+}
+
+function commandSlotKey(slot: {
+  capability?: string | undefined;
+  roundId: ProfileCommandCandidate["roundId"];
+}): string {
+  return `${slot.roundId}:${slot.capability ?? "unknown"}`;
+}
+
+function commandExecutionKey(candidate: ProfileCommandCandidate): string {
+  return (
+    candidate.dedupeKey ??
+    JSON.stringify([candidate.command, candidate.args, candidate.pathPolicy ?? "local-only"])
+  );
 }

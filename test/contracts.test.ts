@@ -151,43 +151,69 @@ describe("oracle and adapter contracts", () => {
   });
 
   it("supports repo-local command oracle configuration", () => {
-    const config = projectConfigSchema.parse({
-      version: 1,
-      defaultAgent: "claude-code",
-      defaultCandidates: 4,
-      adapters: ["claude-code", "codex"],
-      strategies: [
-        {
-          id: "minimal-change",
-          label: "Minimal Change",
-          description: "Keep the diff small.",
-        },
-      ],
-      rounds: [
-        {
-          id: "fast",
-          label: "Fast",
-          description: "Quick checks.",
-        },
-      ],
-      oracles: [
-        {
-          id: "lint-fast",
-          roundId: "fast",
-          command: "npm run lint",
-          invariant: "The candidate must satisfy lint checks.",
-          enforcement: "hard",
-        },
-      ],
-      repair: {
-        enabled: true,
-        maxAttemptsPerRound: 1,
-      },
-    });
+    const config = projectConfigSchema.parse(
+      buildProjectConfigWithOracle({
+        id: "lint-fast",
+        roundId: "fast",
+        command: "npm run lint",
+        invariant: "The candidate must satisfy lint checks.",
+        enforcement: "hard",
+      }),
+    );
 
     expect(config.oracles[0]?.cwd).toBe("workspace");
     expect(config.oracles[0]?.confidence).toBe("medium");
+    expect(config.oracles[0]?.pathPolicy).toBe("local-only");
     expect(config.repair.maxAttemptsPerRound).toBe(1);
+  });
+
+  it("requires explicit oracle path policy before inheriting global PATH", () => {
+    const config = projectConfigSchema.parse(
+      buildProjectConfigWithOracle({
+        id: "global-tool",
+        roundId: "impact",
+        command: "tool-from-path",
+        args: ["--check"],
+        invariant: "The operator explicitly allows global PATH lookup.",
+        pathPolicy: "inherit",
+      }),
+    );
+
+    expect(config.oracles[0]?.pathPolicy).toBe("inherit");
+  });
+
+  it("accepts safe repo-local oracle relative cwd values", () => {
+    const config = projectConfigSchema.parse(
+      buildProjectConfigWithOracle({
+        id: "workspace-package",
+        roundId: "impact",
+        command: "npm",
+        args: ["test"],
+        invariant: "Nested package checks must pass.",
+        cwd: "workspace",
+        relativeCwd: "packages/app",
+      }),
+    );
+
+    expect(config.oracles[0]?.relativeCwd).toBe("packages/app");
+  });
+
+  it("rejects repo-local oracle relative cwd traversal and absolute paths", () => {
+    for (const relativeCwd of ["../outside", "packages/../outside", "/tmp/outside", "C:\\tmp"]) {
+      expect(() =>
+        projectConfigSchema.parse(
+          buildProjectConfigWithOracle({
+            id: "unsafe-cwd",
+            roundId: "impact",
+            command: "npm",
+            args: ["test"],
+            invariant: "Unsafe cwd must be rejected.",
+            cwd: "workspace",
+            relativeCwd,
+          }),
+        ),
+      ).toThrow("relativeCwd must be a safe relative path");
+    }
   });
 
   it("rejects repo-local oracle ids that collide within a round or with built-ins", () => {
@@ -403,4 +429,37 @@ async function createTempProject(): Promise<string> {
   const path = await mkdtemp(join(tmpdir(), "oraculum-contracts-"));
   tempRoots.push(path);
   return path;
+}
+
+function buildProjectConfigWithOracle(oracle: Record<string, unknown>): Record<string, unknown> {
+  return {
+    version: 1,
+    defaultAgent: "claude-code",
+    defaultCandidates: 4,
+    adapters: ["claude-code", "codex"],
+    strategies: [
+      {
+        id: "minimal-change",
+        label: "Minimal Change",
+        description: "Keep the diff small.",
+      },
+    ],
+    rounds: [
+      {
+        id: "fast",
+        label: "Fast",
+        description: "Quick checks.",
+      },
+      {
+        id: "impact",
+        label: "Impact",
+        description: "Impact checks.",
+      },
+    ],
+    oracles: [oracle],
+    repair: {
+      enabled: true,
+      maxAttemptsPerRound: 1,
+    },
+  };
 }

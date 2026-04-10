@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { basename, delimiter, join } from "node:path";
+import { basename, delimiter, isAbsolute, join, relative, resolve } from "node:path";
 
 import type { AgentRunResult } from "../adapters/types.js";
 import {
@@ -260,11 +260,12 @@ async function evaluateRepoOracle(
 
   try {
     const shell = oracle.shell ?? inferRepoOracleShell(oracle.command, oracle.args);
+    const oracleCwd = resolveOracleCwd(options, oracle);
     const commandResult = await runSubprocess({
       command: oracle.command,
       args: oracle.args,
-      cwd: oracle.cwd === "project" ? options.projectRoot : options.candidate.workspaceDir,
-      env: buildOracleEnvironment(options, oracle),
+      cwd: oracleCwd,
+      env: buildOracleEnvironment(options, oracle, oracleCwd),
       ...(shell !== undefined ? { shell } : {}),
       ...(oracle.timeoutMs !== undefined ? { timeoutMs: oracle.timeoutMs } : {}),
     });
@@ -287,6 +288,7 @@ async function evaluateRepoOracle(
       detail: buildOracleWitnessDetail(
         options,
         oracle,
+        oracleCwd,
         commandResult.exitCode,
         commandResult.timedOut,
       ),
@@ -351,6 +353,7 @@ async function evaluateRepoOracle(
 function buildOracleEnvironment(
   options: EvaluateCandidateRoundOptions,
   oracle: RepoOracle,
+  oracleCwd: string,
 ): NodeJS.ProcessEnv {
   const explicitPathEntry = Object.entries(oracle.env ?? {}).find(
     ([key]) => key.toUpperCase() === "PATH",
@@ -364,9 +367,9 @@ function buildOracleEnvironment(
   const oraclePath =
     explicitPathEntry !== undefined
       ? inheritedPath
-      : localToolPaths.length > 0
-        ? [...localToolPaths, ...(inheritedPath ? [inheritedPath] : [])].join(delimiter)
-        : inheritedPath;
+      : oracle.pathPolicy === "inherit" && inheritedPath
+        ? [...localToolPaths, inheritedPath].join(delimiter)
+        : localToolPaths.join(delimiter);
 
   return {
     ...oracle.env,
@@ -380,6 +383,8 @@ function buildOracleEnvironment(
     ORACULUM_CANDIDATE_STRATEGY_ID: options.candidate.strategyId,
     ORACULUM_CANDIDATE_STRATEGY_LABEL: options.candidate.strategyLabel,
     ORACULUM_CANDIDATE_WORKSPACE_DIR: options.candidate.workspaceDir,
+    ORACULUM_ORACLE_CWD: oracleCwd,
+    ORACULUM_ORACLE_PATH_POLICY: oracle.pathPolicy,
     ORACULUM_CANDIDATE_LOG_DIR: getCandidateLogsDir(
       options.projectRoot,
       options.runId,
@@ -393,6 +398,34 @@ function buildOracleEnvironment(
     ),
     ...(oraclePath !== undefined ? { [pathKey]: oraclePath } : {}),
   };
+}
+
+function resolveOracleCwd(options: EvaluateCandidateRoundOptions, oracle: RepoOracle): string {
+  const scopeRoot = oracle.cwd === "project" ? options.projectRoot : options.candidate.workspaceDir;
+  if (!oracle.relativeCwd) {
+    return scopeRoot;
+  }
+
+  const resolved = resolve(scopeRoot, oracle.relativeCwd);
+  const relativePath = relative(scopeRoot, resolved);
+  if (isContainedRelativePath(relativePath)) {
+    const realScopeRoot = realpathSync(scopeRoot);
+    const realResolved = existsSync(resolved) ? realpathSync(resolved) : resolved;
+    if (isContainedRelativePath(relative(realScopeRoot, realResolved))) {
+      return resolved;
+    }
+  }
+
+  throw new Error(`Oracle "${oracle.id}" relativeCwd escapes the ${oracle.cwd} scope.`);
+}
+
+function isContainedRelativePath(relativePath: string): boolean {
+  if (relativePath === "") {
+    return true;
+  }
+
+  const firstSegment = relativePath.split(/[\\/]+/u)[0];
+  return firstSegment !== ".." && !isAbsolute(relativePath);
 }
 
 function collectLocalToolPaths(options: EvaluateCandidateRoundOptions): string[] {
@@ -448,6 +481,7 @@ function buildFailureSummary(oracle: RepoOracle, exitCode: number, timedOut: boo
 function buildOracleWitnessDetail(
   options: EvaluateCandidateRoundOptions,
   oracle: RepoOracle,
+  oracleCwd: string,
   exitCode: number,
   timedOut: boolean,
 ): string {
@@ -455,6 +489,9 @@ function buildOracleWitnessDetail(
     `Command exited with code ${exitCode}.`,
     timedOut ? "The command timed out." : undefined,
     `Scope=${oracle.cwd === "project" ? "project" : "workspace"}.`,
+    oracle.relativeCwd ? `RelativeCwd=${oracle.relativeCwd}.` : undefined,
+    `PathPolicy=${oracle.pathPolicy}.`,
+    `OracleCwd=${oracleCwd}.`,
     `Workspace=${options.candidate.workspaceDir}.`,
   ]
     .filter((part) => part !== undefined)

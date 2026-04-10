@@ -11,6 +11,10 @@ import {
   getWinnerSelectionPath,
   resolveProjectRoot,
 } from "../core/paths.js";
+import {
+  type ProfileSkippedCommandCandidate,
+  profileRepoSignalsSchema,
+} from "../domain/profile.js";
 import { type RunManifest, runManifestSchema } from "../domain/run.js";
 
 import { pathExists } from "./project.js";
@@ -98,6 +102,18 @@ export async function renderConsultationSummary(
         "Profile gaps:",
         ...manifest.profileSelection.missingCapabilities.map((item) => `- ${item}`),
       );
+    }
+    const skippedCommandCandidates = await readSkippedProfileCommands(projectRoot, manifest.id);
+    if (skippedCommandCandidates.length > 0) {
+      lines.push(
+        "Skipped profile commands:",
+        ...skippedCommandCandidates
+          .slice(0, 5)
+          .map((candidate) => `- ${candidate.id}: ${candidate.reason} - ${candidate.detail}`),
+      );
+      if (skippedCommandCandidates.length > 5) {
+        lines.push(`- ${skippedCommandCandidates.length - 5} more in profile-selection.json`);
+      }
     }
   }
 
@@ -211,4 +227,22 @@ function toDisplayPath(projectRoot: string, targetPath: string): string {
 
 function getSurfaceCommand(command: "consult" | "verdict" | "crown"): string {
   return `orc ${command}`;
+}
+
+async function readSkippedProfileCommands(
+  projectRoot: string,
+  runId: string,
+): Promise<ProfileSkippedCommandCandidate[]> {
+  const profileSelectionPath = getProfileSelectionPath(projectRoot, runId);
+  if (!(await pathExists(profileSelectionPath))) {
+    return [];
+  }
+
+  try {
+    const raw = JSON.parse(await readFile(profileSelectionPath, "utf8")) as { signals?: unknown };
+    const signals = profileRepoSignalsSchema.safeParse(raw.signals);
+    return signals.success ? signals.data.skippedCommandCandidates : [];
+  } catch {
+    return [];
+  }
 }

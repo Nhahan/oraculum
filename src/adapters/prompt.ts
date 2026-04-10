@@ -248,8 +248,27 @@ export function buildProfileSelectionPrompt(request: AgentProfileRequest): strin
       `  Round: ${candidate.roundId}`,
       `  Label: ${candidate.label}`,
       `  Command: ${[candidate.command, ...candidate.args].join(" ")}`,
+      ...(candidate.source ? [`  Source: ${candidate.source}`] : []),
+      ...(candidate.capability ? [`  Capability: ${candidate.capability}`] : []),
+      ...(candidate.dedupeKey ? [`  Dedupe key: ${candidate.dedupeKey}`] : []),
+      ...(candidate.pathPolicy ? [`  Path policy: ${candidate.pathPolicy}`] : []),
+      ...(candidate.safety ? [`  Safety: ${candidate.safety}`] : []),
+      ...(candidate.safetyRationale ? [`  Safety rationale: ${candidate.safetyRationale}`] : []),
       `  Invariant: ${candidate.invariant}`,
     );
+  }
+
+  if (request.signals.skippedCommandCandidates.length > 0) {
+    sections.push("", "Skipped command candidates:");
+    for (const candidate of request.signals.skippedCommandCandidates) {
+      sections.push(
+        `- ${candidate.id}`,
+        `  Label: ${candidate.label}`,
+        `  Capability: ${candidate.capability}`,
+        `  Reason: ${candidate.reason}`,
+        `  Detail: ${candidate.detail}`,
+      );
+    }
   }
 
   sections.push(

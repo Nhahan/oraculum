@@ -361,7 +361,21 @@ if (out) {
     expect(recommendation.selection.missingCapabilities).toEqual([]);
     const artifact = JSON.parse(
       await readFile(getProfileSelectionPath(cwd, "run_library_pack"), "utf8"),
-    ) as { signals: { capabilities: Array<{ kind: string; value: string }> } };
+    ) as {
+      signals: {
+        capabilities: Array<{ kind: string; value: string }>;
+        commandCatalog: Array<{
+          capability?: string;
+          id: string;
+          pathPolicy?: string;
+          provenance?: { path?: string; signal: string; source: string };
+          safety?: string;
+          safetyRationale?: string;
+          source?: string;
+        }>;
+        skippedCommandCandidates: Array<{ id: string }>;
+      };
+    };
     expect(artifact.signals.capabilities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "intent", value: "library" }),
@@ -369,6 +383,131 @@ if (out) {
         expect.objectContaining({ kind: "command", value: "lint" }),
       ]),
     );
+    expect(artifact.signals.commandCatalog).toContainEqual(
+      expect.objectContaining({
+        capability: "lint",
+        id: "lint-fast",
+        pathPolicy: "inherit",
+        safety: "repo-local-declared",
+        source: "repo-local-script",
+        provenance: expect.objectContaining({
+          path: "package.json",
+          signal: "script:lint",
+          source: "root-config",
+        }),
+      }),
+    );
+    expect(artifact.signals.commandCatalog).toContainEqual(
+      expect.objectContaining({
+        capability: "package-export-smoke",
+        id: "package-smoke-deep",
+        pathPolicy: "inherit",
+        safety: "product-owned-temporary",
+        source: "product-owned",
+        safetyRationale: expect.stringContaining("temporary directory"),
+      }),
+    );
+    expect(artifact.signals.skippedCommandCandidates).toEqual([]);
+  });
+
+  it("deduplicates aliased expensive package scripts under a single command candidate", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep tests stable.\n", "utf8");
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "duplicate-test-aliases",
+          packageManager: "npm@10.0.0",
+          scripts: {
+            test: 'node -e "process.exit(0)"',
+            "test:full": 'node -e "process.exit(0)"',
+            verify: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_duplicate_aliases"), { recursive: true });
+
+    await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_duplicate_aliases"),
+      runId: "run_duplicate_aliases",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    const artifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_duplicate_aliases"), "utf8"),
+    ) as {
+      signals: {
+        commandCatalog: Array<{ args: string[]; dedupeKey?: string; id: string }>;
+        skippedCommandCandidates: Array<{ reason: string }>;
+      };
+    };
+    const fullSuiteCommands = artifact.signals.commandCatalog.filter(
+      (command) => command.id === "full-suite-deep",
+    );
+    expect(fullSuiteCommands).toHaveLength(1);
+    expect(fullSuiteCommands[0]?.args).toEqual(["run", "test"]);
+    expect(fullSuiteCommands[0]?.dedupeKey).toBe('package-script:node -e "process.exit(0)"');
+    expect(artifact.signals.skippedCommandCandidates).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ reason: "duplicate-expensive-command" })]),
+    );
+  });
+
+  it("deduplicates duplicate expensive script bodies under different command labels", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep tests stable.\n", "utf8");
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "duplicate-test-bodies",
+          packageManager: "npm@10.0.0",
+          scripts: {
+            unit: 'node -e "process.exit(0)"',
+            test: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_duplicate_bodies"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_duplicate_bodies"),
+      runId: "run_duplicate_bodies",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    const testOracles = recommendation.config.oracles.filter(
+      (oracle) =>
+        oracle.command === "npm" &&
+        (oracle.args.join(" ") === "run unit" || oracle.args.join(" ") === "run test"),
+    );
+    expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.oracleIds).toContain("unit-impact");
+    expect(recommendation.selection.oracleIds).not.toContain("full-suite-deep");
+    expect(recommendation.selection.missingCapabilities).toEqual([
+      "No package packaging smoke check was detected.",
+    ]);
+    expect(testOracles).toHaveLength(1);
   });
 
   it("records nested workspace signals without inventing root-level commands", async () => {
@@ -782,10 +921,37 @@ if (out) {
 
     const artifact = JSON.parse(
       await readFile(getProfileSelectionPath(cwd, "run_unknown_package_manager"), "utf8"),
-    ) as { signals: { commandCatalog: Array<{ command: string }>; notes: string[] } };
+    ) as {
+      signals: {
+        commandCatalog: Array<{ command: string }>;
+        notes: string[];
+        skippedCommandCandidates: Array<{
+          id: string;
+          provenance?: { path?: string; signal: string; source: string };
+          reason: string;
+        }>;
+      };
+    };
     expect(artifact.signals.commandCatalog).toEqual([]);
     expect(artifact.signals.notes).toContain(
       "No lockfile or packageManager field was detected; package scripts were not auto-generated because the package manager is ambiguous.",
+    );
+    expect(artifact.signals.skippedCommandCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lint-fast",
+          reason: "ambiguous-package-manager",
+          provenance: expect.objectContaining({
+            path: "package.json",
+            signal: "script:lint",
+            source: "root-config",
+          }),
+        }),
+        expect.objectContaining({
+          id: "full-suite-deep",
+          reason: "ambiguous-package-manager",
+        }),
+      ]),
     );
   });
 
@@ -860,6 +1026,30 @@ if (out) {
 
     expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.oracleIds).not.toContain("e2e-deep");
+    const artifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_frontend"), "utf8"),
+    ) as {
+      signals: {
+        skippedCommandCandidates: Array<{
+          capability: string;
+          id: string;
+          provenance?: { path?: string; signal: string; source: string };
+          reason: string;
+        }>;
+      };
+    };
+    expect(artifact.signals.skippedCommandCandidates).toContainEqual(
+      expect.objectContaining({
+        capability: "e2e-or-visual",
+        id: "e2e-deep",
+        reason: "missing-explicit-command",
+        provenance: expect.objectContaining({
+          path: "playwright.config.ts",
+          signal: "test-runner:playwright",
+          source: "root-config",
+        }),
+      }),
+    );
   });
 
   it("detects common frontend config filename variants without generating tool commands", async () => {
@@ -1034,6 +1224,12 @@ if (out) {
       signals: {
         capabilities: Array<{ kind: string; path?: string; source: string; value: string }>;
         commandCatalog: Array<{ command: string; id: string }>;
+        skippedCommandCandidates: Array<{
+          capability: string;
+          id: string;
+          provenance?: { path?: string; signal: string; source: string };
+          reason: string;
+        }>;
       };
     };
     expect(artifact.signals.capabilities).toContainEqual(
@@ -1049,6 +1245,18 @@ if (out) {
         expect.objectContaining({ command: "/usr/local/bin/prisma" }),
         expect.objectContaining({ command: "prisma" }),
       ]),
+    );
+    expect(artifact.signals.skippedCommandCandidates).toContainEqual(
+      expect.objectContaining({
+        capability: "migration-dry-run",
+        id: "migration-impact",
+        reason: "missing-explicit-command",
+        provenance: expect.objectContaining({
+          path: "prisma/schema.prisma",
+          signal: "migration-tool:prisma",
+          source: "root-config",
+        }),
+      }),
     );
   });
 
