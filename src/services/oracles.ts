@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, delimiter, join } from "node:path";
 
@@ -351,13 +352,21 @@ function buildOracleEnvironment(
   options: EvaluateCandidateRoundOptions,
   oracle: RepoOracle,
 ): NodeJS.ProcessEnv {
-  const inheritedEnv = {
-    ...process.env,
-    ...oracle.env,
-  };
-  const pathKey = Object.keys(inheritedEnv).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
-  const inheritedPath = inheritedEnv[pathKey];
-  const projectNodeBin = join(options.projectRoot, "node_modules", ".bin");
+  const explicitPathEntry = Object.entries(oracle.env ?? {}).find(
+    ([key]) => key.toUpperCase() === "PATH",
+  );
+  const pathKey =
+    explicitPathEntry?.[0] ??
+    Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ??
+    "PATH";
+  const inheritedPath = explicitPathEntry ? explicitPathEntry[1] : process.env[pathKey];
+  const localToolPaths = collectLocalToolPaths(options);
+  const oraclePath =
+    explicitPathEntry !== undefined
+      ? inheritedPath
+      : localToolPaths.length > 0
+        ? [...localToolPaths, ...(inheritedPath ? [inheritedPath] : [])].join(delimiter)
+        : inheritedPath;
 
   return {
     ...oracle.env,
@@ -382,8 +391,33 @@ function buildOracleEnvironment(
       options.runId,
       options.candidate.id,
     ),
-    [pathKey]: inheritedPath ? `${projectNodeBin}${delimiter}${inheritedPath}` : projectNodeBin,
+    ...(oraclePath !== undefined ? { [pathKey]: oraclePath } : {}),
   };
+}
+
+function collectLocalToolPaths(options: EvaluateCandidateRoundOptions): string[] {
+  const candidateWorkspaceDir = options.candidate.workspaceDir;
+  const roots = [candidateWorkspaceDir, options.projectRoot];
+  const relativeToolDirs = [
+    join("node_modules", ".bin"),
+    join(".venv", process.platform === "win32" ? "Scripts" : "bin"),
+    join("venv", process.platform === "win32" ? "Scripts" : "bin"),
+    "bin",
+  ];
+  const seen = new Set<string>();
+  const paths: string[] = [];
+
+  for (const root of roots) {
+    for (const relativeDir of relativeToolDirs) {
+      const absolutePath = join(root, relativeDir);
+      if (!seen.has(absolutePath) && existsSync(absolutePath)) {
+        seen.add(absolutePath);
+        paths.push(absolutePath);
+      }
+    }
+  }
+
+  return paths;
 }
 
 function inferRepoOracleShell(command: string, args: string[]): boolean | undefined {

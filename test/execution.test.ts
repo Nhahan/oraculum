@@ -582,6 +582,197 @@ if (out) {
     ).resolves.toBe("lint --strict");
   }, 20_000);
 
+  it("builds oracle PATH from existing local tool directories only", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await configureProjectOracles(cwd, [
+      {
+        id: "local-tool-paths",
+        roundId: "impact",
+        command: process.execPath,
+        args: [
+          "-e",
+          [
+            "const { delimiter, join } = require('node:path');",
+            "const entries = (process.env.PATH || '').split(delimiter);",
+            "const workspaceVenv = join(process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin');",
+            "const projectNodeBin = join(process.env.ORACULUM_PROJECT_ROOT, 'node_modules', '.bin');",
+            "if (!entries.includes(workspaceVenv)) { console.error('missing workspace venv'); process.exit(2); }",
+            "if (entries.includes(projectNodeBin)) { console.error('unexpected project node_modules bin'); process.exit(3); }",
+          ].join(" "),
+        ],
+        invariant: "Repo-local oracle PATH should include only existing local tool directories.",
+        enforcement: "hard",
+      },
+    ]);
+    await writeFile(join(cwd, "tasks", "local-tool-paths.md"), "# Local tool paths\nCheck PATH.\n");
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const path = require("node:path");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+fs.mkdirSync(path.join(process.cwd(), ".venv", process.platform === "win32" ? "Scripts" : "bin"), { recursive: true });
+fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
+if (out) {
+  fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/local-tool-paths.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+  }, 20_000);
+
+  it("orders candidate-local oracle PATH entries before project-root local tools", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await mkdir(join(cwd, "node_modules", ".bin"), { recursive: true });
+    await configureProjectOracles(cwd, [
+      {
+        id: "candidate-tool-path-precedence",
+        roundId: "impact",
+        command: process.execPath,
+        args: [
+          "-e",
+          [
+            "const { delimiter, join } = require('node:path');",
+            "const entries = (process.env.PATH || '').split(delimiter);",
+            "const candidateNodeBin = join(process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR, 'node_modules', '.bin');",
+            "const projectNodeBin = join(process.env.ORACULUM_PROJECT_ROOT, 'node_modules', '.bin');",
+            "const candidateIndex = entries.indexOf(candidateNodeBin);",
+            "const projectIndex = entries.indexOf(projectNodeBin);",
+            "if (candidateIndex < 0) { console.error('missing candidate node_modules bin'); process.exit(2); }",
+            "if (projectIndex < 0) { console.error('missing project node_modules bin'); process.exit(3); }",
+            "if (candidateIndex >= projectIndex) { console.error('candidate tools should precede project tools'); process.exit(4); }",
+          ].join(" "),
+        ],
+        invariant: "Candidate-local tools should take precedence over project-root tools.",
+        enforcement: "hard",
+      },
+    ]);
+    await writeFile(
+      join(cwd, "tasks", "candidate-tool-path-precedence.md"),
+      "# Candidate tool path precedence\nCheck PATH order.\n",
+    );
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const path = require("node:path");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+fs.mkdirSync(path.join(process.cwd(), "node_modules", ".bin"), { recursive: true });
+fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
+if (out) {
+  fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/candidate-tool-path-precedence.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+  }, 20_000);
+
+  it("preserves an explicit empty oracle PATH override over local tool directory injection", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await configureProjectOracles(cwd, [
+      {
+        id: "empty-path",
+        roundId: "impact",
+        command: process.execPath,
+        args: [
+          "-e",
+          [
+            "if (process.env.PATH !== '') {",
+            "  console.error('expected empty PATH, received: ' + process.env.PATH);",
+            "  process.exit(2);",
+            "}",
+          ].join(" "),
+        ],
+        env: {
+          PATH: "",
+        },
+        invariant: "Explicit oracle PATH overrides should be preserved.",
+        enforcement: "hard",
+      },
+    ]);
+    await writeFile(join(cwd, "tasks", "empty-path.md"), "# Empty PATH\nCheck env override.\n");
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const path = require("node:path");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+fs.mkdirSync(path.join(process.cwd(), "node_modules", ".bin"), { recursive: true });
+fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
+if (out) {
+  fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/empty-path.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+  }, 20_000);
+
   it("falls back to deterministic winner selection when the judge exits non-zero", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
@@ -969,6 +1160,7 @@ async function writeLibraryProfileProject(cwd: string): Promise<void> {
       {
         name: "execution-library",
         version: "1.0.0",
+        packageManager: "npm@10.0.0",
         type: "module",
         exports: "./src/index.js",
         scripts: {

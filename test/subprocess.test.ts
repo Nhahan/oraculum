@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -38,6 +38,59 @@ setInterval(() => {}, 1_000);
 
     expect(result.timedOut).toBe(true);
     expect(Date.now() - startedAt).toBeLessThan(2_000);
+  });
+
+  it("bounds stdout and stderr capture while preserving truncation flags", async () => {
+    const root = await createTempRoot();
+    const scriptPath = await writeNodeBinary(
+      root,
+      "large-output",
+      `process.stdout.write("x".repeat(32));
+process.stderr.write("y".repeat(32));
+`,
+    );
+
+    const result = await runSubprocess({
+      command: scriptPath,
+      args: [],
+      cwd: root,
+      maxOutputBytes: 8,
+    });
+
+    expect(result.stdout).toBe("x".repeat(8));
+    expect(result.stderr).toBe("y".repeat(8));
+    expect(result.stdoutTruncated).toBe(true);
+    expect(result.stderrTruncated).toBe(true);
+  });
+
+  const posixIt = process.platform === "win32" ? it.skip : it;
+
+  posixIt("terminates the subprocess process group on timeout", async () => {
+    const root = await createTempRoot();
+    const markerPath = join(root, "grandchild-survived.txt");
+    const scriptPath = await writeNodeBinary(
+      root,
+      "spawn-grandchild",
+      `const { spawn } = require("node:child_process");
+spawn(process.execPath, [
+  "-e",
+  "setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(markerPath)}, 'alive'), 700); setInterval(() => {}, 1000);",
+], { stdio: "ignore" });
+process.on("SIGTERM", () => {});
+setInterval(() => {}, 1_000);
+`,
+    );
+
+    const result = await runSubprocess({
+      command: scriptPath,
+      args: [],
+      cwd: root,
+      timeoutMs: 100,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 900));
+
+    expect(result.timedOut).toBe(true);
+    await expect(readFile(markerPath)).rejects.toThrow();
   });
 });
 

@@ -628,7 +628,9 @@ function result(input: {
     exitCode: input.exitCode,
     signal: null,
     stderr: input.stderr ?? "",
+    stderrTruncated: false,
     stdout: input.stdout ?? "",
+    stdoutTruncated: false,
     timedOut: false,
   };
 }

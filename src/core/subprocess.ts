@@ -7,7 +7,9 @@ export interface SubprocessResult {
   exitCode: number;
   signal: NodeJS.Signals | null;
   stderr: string;
+  stderrTruncated: boolean;
   stdout: string;
+  stdoutTruncated: boolean;
   timedOut: boolean;
 }
 
@@ -16,6 +18,7 @@ interface RunSubprocessOptions {
   command: string;
   cwd: string;
   env?: NodeJS.ProcessEnv;
+  maxOutputBytes?: number;
   shell?: boolean | string;
   stdin?: string;
   timeoutMs?: number;
@@ -25,10 +28,15 @@ export async function runSubprocess(options: RunSubprocessOptions): Promise<Subp
   const startedAt = Date.now();
   const shell =
     options.shell ?? (process.platform === "win32" && /\.(cmd|bat)$/iu.test(options.command));
+  const maxOutputBytes = options.maxOutputBytes ?? 10 * 1024 * 1024;
 
   return new Promise((resolve, reject) => {
     let stdout = "";
     let stderr = "";
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let stdoutTruncated = false;
+    let stderrTruncated = false;
     let closed = false;
     let timedOut = false;
 
@@ -38,6 +46,7 @@ export async function runSubprocess(options: RunSubprocessOptions): Promise<Subp
         ...process.env,
         ...options.env,
       },
+      detached: process.platform !== "win32",
       ...(shell !== undefined ? { shell } : {}),
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
@@ -71,11 +80,27 @@ export async function runSubprocess(options: RunSubprocessOptions): Promise<Subp
     }
 
     child.stdout.on("data", (chunk: Buffer | string) => {
-      stdout += chunk.toString();
+      const appended = appendBoundedOutput({
+        chunk,
+        current: stdout,
+        currentBytes: stdoutBytes,
+        maxOutputBytes,
+      });
+      stdout = appended.output;
+      stdoutBytes = appended.bytes;
+      stdoutTruncated ||= appended.truncated;
     });
 
     child.stderr.on("data", (chunk: Buffer | string) => {
-      stderr += chunk.toString();
+      const appended = appendBoundedOutput({
+        chunk,
+        current: stderr,
+        currentBytes: stderrBytes,
+        maxOutputBytes,
+      });
+      stderr = appended.output;
+      stderrBytes = appended.bytes;
+      stderrTruncated ||= appended.truncated;
     });
 
     child.on("error", (error) => {
@@ -105,11 +130,46 @@ export async function runSubprocess(options: RunSubprocessOptions): Promise<Subp
         exitCode: code ?? (timedOut ? 124 : 1),
         signal,
         stderr,
+        stderrTruncated,
         stdout,
+        stdoutTruncated,
         timedOut,
       });
     });
   });
+}
+
+function appendBoundedOutput(options: {
+  chunk: Buffer | string;
+  current: string;
+  currentBytes: number;
+  maxOutputBytes: number;
+}): { bytes: number; output: string; truncated: boolean } {
+  if (options.maxOutputBytes <= 0 || options.currentBytes >= options.maxOutputBytes) {
+    return {
+      bytes: Math.max(0, options.maxOutputBytes),
+      output: options.current,
+      truncated: true,
+    };
+  }
+
+  const chunk = Buffer.isBuffer(options.chunk)
+    ? options.chunk
+    : Buffer.from(options.chunk.toString());
+  const remainingBytes = options.maxOutputBytes - options.currentBytes;
+  if (chunk.byteLength <= remainingBytes) {
+    return {
+      bytes: options.currentBytes + chunk.byteLength,
+      output: options.current + chunk.toString(),
+      truncated: false,
+    };
+  }
+
+  return {
+    bytes: options.maxOutputBytes,
+    output: options.current + chunk.subarray(0, remainingBytes).toString(),
+    truncated: true,
+  };
 }
 
 function terminateChild(child: ReturnType<typeof spawn>, force: boolean): void {
@@ -134,5 +194,14 @@ function terminateChild(child: ReturnType<typeof spawn>, force: boolean): void {
     return;
   }
 
-  child.kill(force ? "SIGKILL" : "SIGTERM");
+  const signal = force ? "SIGKILL" : "SIGTERM";
+  if (child.pid) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // Fall through to direct child termination if the process group is unavailable.
+    }
+  }
+  child.kill(signal);
 }

@@ -51,6 +51,29 @@ describe("candidate workspace preparation", () => {
     await expect(stat(join(workspaceDir, ".aws"))).rejects.toThrow();
   });
 
+  it("does not copy common non-Node dependency and cache trees into copied workspaces", async () => {
+    const projectRoot = await createTempRoot();
+    const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");
+
+    await writeFile(join(projectRoot, "README.md"), "hello\n", "utf8");
+    await mkdir(join(projectRoot, ".venv", "lib"), { recursive: true });
+    await writeFile(join(projectRoot, ".venv", "lib", "python"), "python\n", "utf8");
+    await mkdir(join(projectRoot, "__pycache__"), { recursive: true });
+    await writeFile(join(projectRoot, "__pycache__", "module.pyc"), "cache\n", "utf8");
+    await mkdir(join(projectRoot, "target", "debug"), { recursive: true });
+    await writeFile(join(projectRoot, "target", "debug", "binary"), "binary\n", "utf8");
+    await mkdir(join(projectRoot, ".gradle", "caches"), { recursive: true });
+    await writeFile(join(projectRoot, ".gradle", "caches", "state"), "cache\n", "utf8");
+
+    await prepareCandidateWorkspace({ projectRoot, workspaceDir });
+
+    await expect(readFile(join(workspaceDir, "README.md"), "utf8")).resolves.toContain("hello");
+    await expect(stat(join(workspaceDir, ".venv"))).rejects.toThrow();
+    await expect(stat(join(workspaceDir, "__pycache__"))).rejects.toThrow();
+    await expect(stat(join(workspaceDir, "target"))).rejects.toThrow();
+    await expect(stat(join(workspaceDir, ".gradle"))).rejects.toThrow();
+  });
+
   it("links node_modules dependency trees into copied workspaces", async () => {
     const projectRoot = await createTempRoot();
     const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");

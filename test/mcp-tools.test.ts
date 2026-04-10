@@ -621,7 +621,9 @@ function createSubprocessResult(
     exitCode: 0,
     signal: null,
     stderr: "",
+    stderrTruncated: false,
     stdout: "",
+    stdoutTruncated: false,
     timedOut: false,
     ...overrides,
   };
