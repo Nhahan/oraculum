@@ -16,6 +16,7 @@ const agents = ["codex", "claude-code"];
 const workspaceModes = ["git", "copy"];
 const packageManagers = ["pnpm", "yarn", "bun"];
 const scenarioSpecificAdvancedConfigKinds = new Set(["no-finalist", "repair", "advanced-override"]);
+const javaStatusFileSegments = ["src", "main", "java", "example", "Status.java"];
 const explicitMarkerOracleFixtures = {
   python: {
     label: "Python",
@@ -28,6 +29,14 @@ const explicitMarkerOracleFixtures = {
   rust: {
     label: "Rust",
     fileSegments: ["src", "lib.rs"],
+  },
+  "java-gradle": {
+    label: "Java/Gradle",
+    fileSegments: javaStatusFileSegments,
+  },
+  "java-maven": {
+    label: "Java/Maven",
+    fileSegments: javaStatusFileSegments,
   },
 };
 
@@ -358,6 +367,22 @@ function buildCorpusScenarios() {
       workspaceMode: "copy",
       profileId: "generic",
       corpusName: "rust-explicit-oracle",
+    }),
+    createScenario({
+      kind: "happy",
+      repoKind: "java-gradle",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      corpusName: "java-gradle-explicit-oracle",
+    }),
+    createScenario({
+      kind: "happy",
+      repoKind: "java-maven",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      corpusName: "java-maven-explicit-oracle",
     }),
     createScenario({
       kind: "happy",
@@ -1353,6 +1378,36 @@ process.stdout.write("turbo workspace ok");
     return;
   }
 
+  if (repoKind === "java-gradle") {
+    await writeFile(
+      join(root, "settings.gradle"),
+      "rootProject.name = 'scenario-gradle'\n",
+      "utf8",
+    );
+    await writeFile(join(root, "build.gradle"), "plugins {\n  id 'java'\n}\n", "utf8");
+    await writeJavaStatusSource(root);
+    return;
+  }
+
+  if (repoKind === "java-maven") {
+    await writeFile(
+      join(root, "pom.xml"),
+      [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        "<project>",
+        "  <modelVersion>4.0.0</modelVersion>",
+        "  <groupId>example</groupId>",
+        "  <artifactId>scenario-maven</artifactId>",
+        "  <version>0.1.0</version>",
+        "</project>",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await writeJavaStatusSource(root);
+    return;
+  }
+
   if (repoKind === "service") {
     await mkdir(join(root, "routes"), { recursive: true });
     await writeFile(
@@ -1533,6 +1588,26 @@ process.exit(1);
   }
 }
 
+async function writeJavaStatusSource(root) {
+  await mkdir(join(root, "src", "main", "java", "example"), { recursive: true });
+  await writeFile(
+    join(root, ...javaStatusFileSegments),
+    [
+      "package example;",
+      "",
+      "public final class Status {",
+      "  private Status() {}",
+      "",
+      "  public static String status() {",
+      '    return "offline";',
+      "  }",
+      "}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
 async function writeTaskInputs(root, repoKind) {
   await mkdir(join(root, "tasks"), { recursive: true });
   const taskBodies = {
@@ -1543,6 +1618,8 @@ async function writeTaskInputs(root, repoKind) {
     python: "# Python patch\nUpdate the service status text.\n",
     go: "# Go patch\nUpdate the service status text.\n",
     rust: "# Rust patch\nUpdate the service status text.\n",
+    "java-gradle": "# Java/Gradle patch\nUpdate the service status text.\n",
+    "java-maven": "# Java/Maven patch\nUpdate the service status text.\n",
     docs: "# Docs patch\nRevise the report wording.\n",
     service: "# Service patch\nUpdate the service status response.\n",
     monorepo: "# Monorepo patch\nUpdate the workspace package greeting.\n",
@@ -1571,6 +1648,12 @@ function buildInlineTaskText(repoKind) {
   }
   if (repoKind === "rust") {
     return "Update src/lib.rs so status() returns a winner-specific online status string.";
+  }
+  if (repoKind === "java-gradle") {
+    return "Update src/main/java/example/Status.java so status() returns a winner-specific online status string.";
+  }
+  if (repoKind === "java-maven") {
+    return "Update src/main/java/example/Status.java so status() returns a winner-specific online status string.";
   }
   if (repoKind === "service") {
     return "Update src/server.js so serviceStatus() returns a winner-specific online status string.";
@@ -1717,6 +1800,9 @@ const scenario = ${JSON.stringify({
     candidateCount: scenario.candidateCount,
     agent: scenario.agent,
   })};
+const explicitMarkerFileSegments = ${JSON.stringify(
+    explicitMarkerOracleFixtures[scenario.repoKind]?.fileSegments ?? null,
+  )};
 
 function mutateWorkspace() {
   if (scenario.kind === "hung-runtime") {
@@ -1758,20 +1844,8 @@ function mutateWorkspace() {
     fs.writeFileSync(file, next, "utf8");
     return;
   }
-  if (scenario.repoKind === "python") {
-    const file = path.join(process.cwd(), "src", "app.py");
-    const next = fs.readFileSync(file, "utf8").replace('"offline"', '"online-' + candidateId + '"');
-    fs.writeFileSync(file, next, "utf8");
-    return;
-  }
-  if (scenario.repoKind === "go") {
-    const file = path.join(process.cwd(), "internal", "status", "status.go");
-    const next = fs.readFileSync(file, "utf8").replace('"offline"', '"online-' + candidateId + '"');
-    fs.writeFileSync(file, next, "utf8");
-    return;
-  }
-  if (scenario.repoKind === "rust") {
-    const file = path.join(process.cwd(), "src", "lib.rs");
+  if (explicitMarkerFileSegments) {
+    const file = path.join(process.cwd(), ...explicitMarkerFileSegments);
     const next = fs.readFileSync(file, "utf8").replace('"offline"', '"online-' + candidateId + '"');
     fs.writeFileSync(file, next, "utf8");
     return;
@@ -2095,26 +2169,32 @@ async function collectScenarioDebug(root) {
 }
 
 async function assertTargetFileContains(root, scenario, candidateId) {
-  const file =
-    scenario.repoKind === "monorepo"
-      ? join(root, "packages", "app", "src", "index.js")
-      : scenario.repoKind === "frontend"
-        ? join(root, "src", "page.js")
-        : scenario.repoKind === "migration"
-          ? join(root, "prisma", "schema.prisma")
-          : scenario.repoKind === "docs"
-            ? join(root, "docs", "report.md")
-            : scenario.repoKind === "python"
-              ? join(root, "src", "app.py")
-              : scenario.repoKind === "go"
-                ? join(root, "internal", "status", "status.go")
-                : scenario.repoKind === "rust"
-                  ? join(root, "src", "lib.rs")
-                  : scenario.repoKind === "service"
-                    ? join(root, "src", "server.js")
-                    : join(root, "src", "index.js");
+  const file = targetFileForScenario(root, scenario);
   const contents = await readFile(file, "utf8");
   assertContains(contents, candidateId);
+}
+
+function targetFileForScenario(root, scenario) {
+  const explicitMarkerFixture = explicitMarkerOracleFixtures[scenario.repoKind];
+  if (explicitMarkerFixture) {
+    return join(root, ...explicitMarkerFixture.fileSegments);
+  }
+  if (scenario.repoKind === "monorepo") {
+    return join(root, "packages", "app", "src", "index.js");
+  }
+  if (scenario.repoKind === "frontend") {
+    return join(root, "src", "page.js");
+  }
+  if (scenario.repoKind === "migration") {
+    return join(root, "prisma", "schema.prisma");
+  }
+  if (scenario.repoKind === "docs") {
+    return join(root, "docs", "report.md");
+  }
+  if (scenario.repoKind === "service") {
+    return join(root, "src", "server.js");
+  }
+  return join(root, "src", "index.js");
 }
 
 async function assertPathPresence(path, shouldExist) {

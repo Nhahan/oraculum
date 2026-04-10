@@ -235,8 +235,8 @@ Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace
 - [x] Add a Python-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred `pytest`/`ruff` commands.
 - [x] Add a Go-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred `go test` commands.
 - [x] Add a Rust-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred `cargo` commands.
-- [ ] Add a Java/Gradle-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred Gradle commands.
-- [ ] Add a Java/Maven-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred Maven commands.
+- [x] Add a Java/Gradle-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred Gradle commands.
+- [x] Add a Java/Maven-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred Maven commands.
 - [ ] Add a docs/static fixture that does not use Node scripts.
 - [ ] Add a mixed polyglot fixture where Node and non-Node raw facts coexist and neither ecosystem silently dominates profile choice.
 - [ ] Add a nested workspace fixture where the actionable code and checks live below the repository root.
