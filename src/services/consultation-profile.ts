@@ -309,13 +309,24 @@ async function detectKnownFiles(projectRoot: string): Promise<string[]> {
     "tsconfig.json",
     "vite.config.ts",
     "vite.config.js",
+    "vite.config.mjs",
+    "vite.config.cjs",
     "next.config.js",
     "next.config.mjs",
     "next.config.ts",
+    "next.config.cjs",
     "playwright.config.ts",
     "playwright.config.js",
+    "playwright.config.mjs",
+    "playwright.config.cjs",
     "cypress.config.ts",
     "cypress.config.js",
+    "cypress.config.mjs",
+    "cypress.config.cjs",
+    ".storybook/main.ts",
+    ".storybook/main.js",
+    ".storybook/main.mjs",
+    ".storybook/main.cjs",
     "storybook/main.ts",
     "storybook/main.js",
     "prisma/schema.prisma",
@@ -365,9 +376,16 @@ function buildSignalTags(options: {
       [
         "vite.config.ts",
         "vite.config.js",
+        "vite.config.mjs",
+        "vite.config.cjs",
         "next.config.js",
         "next.config.mjs",
         "next.config.ts",
+        "next.config.cjs",
+        ".storybook/main.ts",
+        ".storybook/main.js",
+        ".storybook/main.mjs",
+        ".storybook/main.cjs",
         "storybook/main.ts",
         "storybook/main.js",
       ].includes(file),
@@ -380,8 +398,12 @@ function buildSignalTags(options: {
       [
         "playwright.config.ts",
         "playwright.config.js",
+        "playwright.config.mjs",
+        "playwright.config.cjs",
         "cypress.config.ts",
         "cypress.config.js",
+        "cypress.config.mjs",
+        "cypress.config.cjs",
       ].includes(file),
     )
   ) {
@@ -663,15 +685,17 @@ function buildCommandCatalog(options: {
     files.has("prisma/migrations") &&
     dependenciesIntersection(dependencies, PRISMA_DEPENDENCIES)
   ) {
-    const schemaPath = files.has("prisma/schema.prisma") ? "prisma/schema.prisma" : "schema.prisma";
-    addDirectToolCommand(
-      "migration-impact",
-      "impact",
-      "Prisma migration status",
-      "Migration planning or dry-run should succeed.",
-      "prisma",
-      ["migrate", "status", "--schema", schemaPath],
-    );
+    const schemaPath = findPrismaSchemaPath(files);
+    if (schemaPath) {
+      addDirectToolCommand(
+        "migration-impact",
+        "impact",
+        "Prisma migration status",
+        "Migration planning or dry-run should succeed.",
+        "prisma",
+        ["migrate", "status", "--schema", schemaPath],
+      );
+    }
   }
   for (const script of [
     "e2e",
@@ -696,7 +720,12 @@ function buildCommandCatalog(options: {
   }
   if (
     !catalog.some((command) => command.id === "e2e-deep") &&
-    filesIntersection(files, ["playwright.config.ts", "playwright.config.js"]) &&
+    filesIntersection(files, [
+      "playwright.config.ts",
+      "playwright.config.js",
+      "playwright.config.mjs",
+      "playwright.config.cjs",
+    ]) &&
     dependenciesIntersection(dependencies, PLAYWRIGHT_DEPENDENCIES)
   ) {
     addDirectToolCommand(
@@ -710,7 +739,12 @@ function buildCommandCatalog(options: {
   }
   if (
     !catalog.some((command) => command.id === "e2e-deep") &&
-    filesIntersection(files, ["cypress.config.ts", "cypress.config.js"]) &&
+    filesIntersection(files, [
+      "cypress.config.ts",
+      "cypress.config.js",
+      "cypress.config.mjs",
+      "cypress.config.cjs",
+    ]) &&
     dependenciesIntersection(dependencies, CYPRESS_DEPENDENCIES)
   ) {
     addDirectToolCommand(
@@ -728,7 +762,7 @@ function buildCommandCatalog(options: {
       "deep",
       "Full test suite",
       script,
-      "The full test suite should pass before promotion.",
+      "The full test suite should pass before crowning.",
     );
     if (catalog.some((command) => command.id === "full-suite-deep")) {
       break;
@@ -772,7 +806,7 @@ function buildCommandCatalog(options: {
           "if (exitCode !== 0) process.exit(exitCode);",
         ].join(" "),
       ],
-      invariant: "The package should produce a real tarball before promotion.",
+      invariant: "The package should produce a real tarball before crowning.",
     });
   }
   for (const script of [
@@ -797,23 +831,25 @@ function buildCommandCatalog(options: {
     files.has("prisma/migrations") &&
     dependenciesIntersection(dependencies, PRISMA_DEPENDENCIES)
   ) {
-    const schemaPath = files.has("prisma/schema.prisma") ? "prisma/schema.prisma" : "schema.prisma";
-    addDirectToolCommand(
-      "migration-drift-deep",
-      "deep",
-      "Prisma migration drift diff",
-      "Migration history and the schema should stay aligned before promotion.",
-      "prisma",
-      [
-        "migrate",
-        "diff",
-        "--from-migrations",
-        "prisma/migrations",
-        "--to-schema-datamodel",
-        schemaPath,
-        "--exit-code",
-      ],
-    );
+    const schemaPath = findPrismaSchemaPath(files);
+    if (schemaPath) {
+      addDirectToolCommand(
+        "migration-drift-deep",
+        "deep",
+        "Prisma migration drift diff",
+        "Migration history and the schema should stay aligned before crowning.",
+        "prisma",
+        [
+          "migrate",
+          "diff",
+          "--from-migrations",
+          "prisma/migrations",
+          "--to-schema-datamodel",
+          schemaPath,
+          "--exit-code",
+        ],
+      );
+    }
   }
   if (
     options.packageJson?.exports !== undefined ||
@@ -1078,6 +1114,16 @@ function dependenciesIntersection(dependencies: Set<string>, expected: Set<strin
 
 function filesIntersection(files: Set<string>, expected: string[]): boolean {
   return expected.some((file) => files.has(file));
+}
+
+function findPrismaSchemaPath(files: Set<string>): string | undefined {
+  if (files.has("prisma/schema.prisma")) {
+    return "prisma/schema.prisma";
+  }
+  if (files.has("schema.prisma")) {
+    return "schema.prisma";
+  }
+  return undefined;
 }
 
 function sanitizeRecommendation(

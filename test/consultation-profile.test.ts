@@ -314,6 +314,54 @@ if (out) {
     expect(recommendation.selection.missingCapabilities).toEqual([]);
   });
 
+  it("detects common frontend config filename variants for profile and e2e checks", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nUpdate the page title.\n", "utf8");
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "demo-frontend-config-variants",
+          type: "module",
+          devDependencies: {
+            "@playwright/test": "^1.55.0",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(join(cwd, ".storybook"), { recursive: true });
+    await writeFile(join(cwd, ".storybook", "main.mjs"), "export default {};\n", "utf8");
+    await writeFile(join(cwd, "playwright.config.mjs"), "export default {};\n", "utf8");
+    await mkdir(getReportsDir(cwd, "run_frontend_variants"), { recursive: true });
+    setToolPathFinderForTests((tool) =>
+      tool === "playwright" ? "/usr/local/bin/playwright" : undefined,
+    );
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_frontend_variants"),
+      runId: "run_frontend_variants",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("frontend");
+    expect(recommendation.selection.signals).toEqual(
+      expect.arrayContaining(["frontend-build", "e2e-config", "task-frontend"]),
+    );
+    expect(recommendation.selection.oracleIds).toContain("e2e-deep");
+    const e2eOracle = recommendation.config.oracles.find((oracle) => oracle.id === "e2e-deep");
+    expect(e2eOracle?.command).toBe("/usr/local/bin/playwright");
+    expect(e2eOracle?.args).toEqual(["test"]);
+  });
+
   it("prefers repo-local frontend tools over global PATH tools for deep checks", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
@@ -366,6 +414,65 @@ if (out) {
       expect.arrayContaining(["schema-fast", "migration-impact", "migration-drift-deep"]),
     );
     expect(recommendation.selection.missingCapabilities).toEqual([]);
+  });
+
+  it("does not generate Prisma migration commands when migration history lacks a schema file", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nAdjust the migration.\n", "utf8");
+    await mkdir(join(cwd, "prisma", "migrations", "0001_init"), { recursive: true });
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "demo-migration-missing-schema",
+          type: "module",
+          dependencies: {
+            prisma: "^6.0.0",
+            "@prisma/client": "^6.0.0",
+          },
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+            typecheck: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(cwd, "prisma", "migrations", "0001_init", "migration.sql"),
+      "-- migration\n",
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_migration_missing_schema"), { recursive: true });
+    setToolPathFinderForTests((tool) => (tool === "prisma" ? "/usr/local/bin/prisma" : undefined));
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_migration_missing_schema"),
+      runId: "run_migration_missing_schema",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("migration");
+    expect(recommendation.selection.oracleIds).not.toContain("schema-fast");
+    expect(recommendation.selection.oracleIds).not.toContain("migration-impact");
+    expect(recommendation.selection.oracleIds).not.toContain("migration-drift-deep");
+    expect(recommendation.selection.missingCapabilities).toContain(
+      "No schema validation command was detected.",
+    );
+    expect(recommendation.selection.missingCapabilities).toContain(
+      "No migration planning or dry-run command was detected.",
+    );
+    expect(recommendation.selection.missingCapabilities).toContain(
+      "No rollback simulation or migration drift deep check was detected.",
+    );
   });
 
   it("treats missing Prisma binaries as a deep-check gap instead of generating a failing command", async () => {
