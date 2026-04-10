@@ -157,6 +157,54 @@ const scenarios = [
       );
     },
   },
+  {
+    id: "python-package-free",
+    invariant:
+      "src/app.py must return the exact requested status literal without package metadata.",
+    targetPath: "src/app.py",
+    expectedValue: "stable python status",
+    packageJson: false,
+    profileId: "generic",
+    shallowCheck: {
+      command: process.execPath,
+      args: ["checks/smoke.mjs"],
+    },
+    initialFiles() {
+      return {
+        "src/app.py": 'def status():\n    return "before"\n',
+        "checks/smoke.mjs": [
+          'import assert from "node:assert/strict";',
+          'import { readFileSync } from "node:fs";',
+          "",
+          'const source = readFileSync("src/app.py", "utf8");',
+          "assert.match(source, /def status\\(\\):/);",
+          "",
+        ].join("\n"),
+        "checks/invariant.mjs": [
+          'import assert from "node:assert/strict";',
+          'import { existsSync, readFileSync } from "node:fs";',
+          'const source = readFileSync("src/app.py", "utf8");',
+          'assert.equal(existsSync("package.json"), false);',
+          `assert.equal(source.includes(${JSON.stringify('return "stable python status"')}), true);`,
+          "",
+        ].join("\n"),
+      };
+    },
+    applyBad(root) {
+      writeFileSync(
+        root,
+        "src/app.py",
+        `def status():\n    return ${JSON.stringify("stable python status. K")}\n`,
+      );
+    },
+    applyGood(root) {
+      writeFileSync(
+        root,
+        "src/app.py",
+        `def status():\n    return ${JSON.stringify("stable python status")}\n`,
+      );
+    },
+  },
 ];
 
 async function main() {
@@ -197,8 +245,9 @@ async function runScenario(tempRoot, fakeCodex, scenario) {
   await cp(baseRoot, oraculumRoot, { recursive: true });
 
   scenario.applyBad(oneShotRoot);
+  const shallowCheck = scenario.shallowCheck ?? { command: "npm", args: ["test"] };
   const oneShot = {
-    shallow: runCheck("npm", ["test"], oneShotRoot),
+    shallow: runCheck(shallowCheck.command, shallowCheck.args, oneShotRoot),
     invariant: runCheck(process.execPath, ["checks/invariant.mjs"], oneShotRoot),
   };
   assertEqual(oneShot.shallow, "passed", `${scenario.id}: one-shot shallow test should pass.`);
@@ -240,7 +289,7 @@ async function runScenario(tempRoot, fakeCodex, scenario) {
     assertEqual(crown.plan.winnerId, "cand-02", `${scenario.id}: crowned winner mismatch.`);
     assertEqual(crown.materialization.verified, true, `${scenario.id}: crown should be verified.`);
     assertEqual(
-      runCheck("npm", ["test"], oraculumRoot),
+      runCheck(shallowCheck.command, shallowCheck.args, oraculumRoot),
       "passed",
       `${scenario.id}: crowned shallow test should pass.`,
     );
@@ -266,21 +315,23 @@ async function runScenario(tempRoot, fakeCodex, scenario) {
 async function writeFixture(root, scenario) {
   await mkdir(root, { recursive: true });
   await mkdir(join(root, ".oraculum"), { recursive: true });
-  await writeFile(
-    join(root, "package.json"),
-    `${JSON.stringify(
-      {
-        name: `workflow-comparison-${scenario.id}`,
-        private: true,
-        type: "module",
-        scripts: {
-          test: "node --test",
+  if (scenario.packageJson !== false) {
+    await writeFile(
+      join(root, "package.json"),
+      `${JSON.stringify(
+        {
+          name: `workflow-comparison-${scenario.id}`,
+          private: true,
+          type: "module",
+          scripts: {
+            test: "node --test",
+          },
         },
-      },
-      null,
-      2,
-    )}\n`,
-  );
+        null,
+        2,
+      )}\n`,
+    );
+  }
   await writeFile(
     join(root, ".oraculum", "config.json"),
     `${JSON.stringify(
@@ -359,6 +410,7 @@ function buildFakeCodexSource() {
       {
         targetPath: scenario.targetPath,
         expectedValue: scenario.expectedValue,
+        profileId: scenario.profileId ?? "library",
       },
     ]),
   );
@@ -417,6 +469,11 @@ function applyBadPatch() {
       "});",
       "",
     ].join("\\n"));
+    return;
+  }
+  if (scenarioId === "python-package-free") {
+    write("src/app.py", "def status():\\n    return " + JSON.stringify(scenario.expectedValue + ". K") + "\\n");
+    return;
   }
 }
 
@@ -425,13 +482,17 @@ function applyGoodPatch() {
     write("src/feature.js", "export function featureEnabled() {\\n  return true;\\n}\\n");
     return;
   }
+  if (scenarioId === "python-package-free") {
+    write("src/app.py", "def status():\\n    return " + JSON.stringify(scenario.expectedValue) + "\\n");
+    return;
+  }
   write(scenario.targetPath, "export function message() {\\n  return " + JSON.stringify(scenario.expectedValue) + ";\\n}\\n");
 }
 
 function profilePayload() {
   return {
-    profileId: "library",
-    confidence: "high",
+    profileId: scenario.profileId,
+    confidence: scenario.profileId === "generic" ? "medium" : "high",
     summary: "Controlled workflow comparison fixture.",
     candidateCount,
     strategyIds: ["minimal-change", "test-amplified"],

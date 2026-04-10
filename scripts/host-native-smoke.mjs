@@ -11,6 +11,7 @@ const timeoutMs = Number.parseInt(process.env.ORACULUM_HOST_NATIVE_TIMEOUT_MS ??
 const claudeModel = process.env.ORACULUM_HOST_NATIVE_CLAUDE_MODEL ?? "sonnet";
 const runtimeInput = process.env.ORACULUM_HOST_NATIVE_RUNTIMES ?? "claude-code,codex";
 const candidateAgentInput = process.env.ORACULUM_HOST_NATIVE_AGENT ?? "host";
+const scenarioInput = process.env.ORACULUM_HOST_NATIVE_SCENARIOS ?? "node-package,package-free";
 const hostNativeCandidateCount = parseBoundedInteger(
   process.env.ORACULUM_HOST_NATIVE_CANDIDATES ?? "1",
   "ORACULUM_HOST_NATIVE_CANDIDATES",
@@ -22,6 +23,7 @@ const runtimes = runtimeInput
   .split(",")
   .map((runtime) => runtime.trim())
   .filter((runtime) => runtime.length > 0);
+const scenarios = resolveScenarios(scenarioInput);
 
 async function main() {
   assertRuntimes(runtimes);
@@ -42,13 +44,16 @@ async function main() {
 
   try {
     for (const runtime of runtimes) {
-      results.push(await runRuntimeSmoke(tempRoot, runtime));
+      for (const scenario of scenarios) {
+        results.push(await runRuntimeSmoke(tempRoot, runtime, scenario));
+      }
     }
 
     for (const result of results) {
       process.stdout.write(
         `${[
           `Host-native smoke passed for ${result.runtime}.`,
+          `scenario=${result.scenario}`,
           `run=${result.runId}`,
           `branch=${result.branchName}`,
           `value=${result.value}`,
@@ -79,14 +84,17 @@ async function setupRuntime(runtime) {
   );
 }
 
-async function runRuntimeSmoke(tempRoot, runtime) {
-  const projectRoot = join(tempRoot, `${runtime}-project`);
-  const expectedValue = `hello from ${runtime} host-native smoke`;
-  const branchName = `fix/${runtime}-host-native-smoke`;
+async function runRuntimeSmoke(tempRoot, runtime, scenario) {
+  const projectRoot = join(tempRoot, `${runtime}-${scenario.id}-project`);
+  const expectedValue = `hello from ${runtime} ${scenario.id} host-native smoke`;
+  const branchName = `fix/${runtime}-${scenario.id}-host-native-smoke`;
   const candidateAgent = resolveCandidateAgent(runtime);
-  await createFixtureProject(projectRoot, expectedValue, candidateAgent);
+  await createFixtureProject(projectRoot, scenario, expectedValue, candidateAgent);
 
-  const consultPrompt = `orc consult "Change src/message.js so message() returns exactly ${JSON.stringify(expectedValue)}. Keep the patch minimal. Do not edit tests or .oraculum configuration."`;
+  const packageConstraint = scenario.packageJson
+    ? "Keep the patch minimal. Do not edit tests or .oraculum configuration."
+    : "This repository intentionally has no package.json; do not add package.json, npm scripts, or package metadata. Keep the patch minimal. Do not edit .oraculum configuration.";
+  const consultPrompt = `orc consult "Change ${scenario.sourcePath} so message() returns exactly ${JSON.stringify(expectedValue)}. ${packageConstraint}"`;
   const consult = await runHost(runtime, projectRoot, consultPrompt);
   const consultLogPath = join(projectRoot, `${runtime}-consult.jsonl`);
   await writeFile(consultLogPath, consult.stdout + consult.stderr, "utf8");
@@ -124,7 +132,7 @@ async function runRuntimeSmoke(tempRoot, runtime) {
   const value = (
     await runCommand(
       process.execPath,
-      ["-e", "import('./src/message.js').then((module) => console.log(module.message()))"],
+      ["-e", buildExactMessageCheckScript(scenario, expectedValue)],
       {
         cwd: projectRoot,
         label: `${runtime} import verification`,
@@ -136,11 +144,13 @@ async function runRuntimeSmoke(tempRoot, runtime) {
     throw new Error(`Expected ${runtime} message "${expectedValue}", received "${value}".`);
   }
 
-  await runCommand("npm", ["test", "--", "--test-reporter=spec"], {
-    cwd: projectRoot,
-    label: `${runtime} npm test`,
-    timeoutMs: 60_000,
-  });
+  if (scenario.packageJson) {
+    await runCommand("npm", ["test", "--", "--test-reporter=spec"], {
+      cwd: projectRoot,
+      label: `${runtime} npm test`,
+      timeoutMs: 60_000,
+    });
+  }
 
   const manifest = JSON.parse(
     await readFile(join(projectRoot, ".oraculum", "runs", runId, "run.json"), "utf8"),
@@ -169,6 +179,7 @@ async function runRuntimeSmoke(tempRoot, runtime) {
 
   return {
     runtime,
+    scenario: scenario.id,
     runId,
     branchName,
     value,
@@ -215,45 +226,49 @@ async function runHost(runtime, projectRoot, prompt) {
   );
 }
 
-async function createFixtureProject(projectRoot, expectedValue, candidateAgent) {
+async function createFixtureProject(projectRoot, scenario, expectedValue, candidateAgent) {
   await mkdir(join(projectRoot, "src"), { recursive: true });
-  await mkdir(join(projectRoot, "test"), { recursive: true });
   await mkdir(join(projectRoot, ".oraculum"), { recursive: true });
-  await writeFile(
-    join(projectRoot, "package.json"),
-    `${JSON.stringify(
-      {
-        name: "oraculum-host-native-smoke",
-        private: true,
-        type: "module",
-        scripts: {
-          test: "node --test",
+  if (scenario.packageJson) {
+    await mkdir(join(projectRoot, "test"), { recursive: true });
+    await writeFile(
+      join(projectRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: `oraculum-host-native-smoke-${scenario.id}`,
+          private: true,
+          type: "module",
+          scripts: {
+            test: "node --test",
+          },
         },
-      },
-      null,
-      2,
-    )}\n`,
-    "utf8",
-  );
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+  }
   await writeFile(
-    join(projectRoot, "src", "message.js"),
+    join(projectRoot, scenario.sourcePath),
     'export function message() {\n  return "before";\n}\n',
     "utf8",
   );
-  await writeFile(
-    join(projectRoot, "test", "message.test.js"),
-    [
-      'import test from "node:test";',
-      'import assert from "node:assert/strict";',
-      'import { message } from "../src/message.js";',
-      "",
-      'test("message returns the requested literal", () => {',
-      `  assert.equal(message(), ${JSON.stringify(expectedValue)});`,
-      "});",
-      "",
-    ].join("\n"),
-    "utf8",
-  );
+  if (scenario.packageJson) {
+    await writeFile(
+      join(projectRoot, "test", "message.test.js"),
+      [
+        'import test from "node:test";',
+        'import assert from "node:assert/strict";',
+        `import { message } from "../${scenario.sourcePath}";`,
+        "",
+        'test("message returns the requested literal", () => {',
+        `  assert.equal(message(), ${JSON.stringify(expectedValue)});`,
+        "});",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+  }
   await writeFile(
     join(projectRoot, ".oraculum", "config.json"),
     `${JSON.stringify(
@@ -277,19 +292,7 @@ async function createFixtureProject(projectRoot, expectedValue, candidateAgent) 
             id: "exact-message-literal",
             roundId: "impact",
             command: process.execPath,
-            args: [
-              "-e",
-              [
-                `const expected = ${JSON.stringify(expectedValue)};`,
-                "import('./src/message.js').then((module) => {",
-                "  const actual = module.message();",
-                "  if (actual !== expected) {",
-                "    console.error('Expected ' + expected + ', received ' + actual);",
-                "    process.exit(1);",
-                "  }",
-                "});",
-              ].join("\n"),
-            ],
+            args: ["-e", buildExactMessageCheckScript(scenario, expectedValue)],
             invariant: "message() returns the exact requested literal.",
             cwd: "workspace",
             enforcement: "hard",
@@ -333,6 +336,56 @@ async function createFixtureProject(projectRoot, expectedValue, candidateAgent) 
     label: "git commit",
     timeoutMs: 30_000,
   });
+}
+
+function resolveScenarios(input) {
+  const definitions = new Map(
+    [
+      {
+        id: "node-package",
+        sourcePath: "src/message.js",
+        packageJson: true,
+      },
+      {
+        id: "package-free",
+        sourcePath: "src/message.mjs",
+        packageJson: false,
+      },
+    ].map((scenario) => [scenario.id, scenario]),
+  );
+  return input
+    .split(",")
+    .map((scenario) => scenario.trim())
+    .filter((scenario) => scenario.length > 0)
+    .map((scenario) => {
+      const definition = definitions.get(scenario);
+      if (!definition) {
+        throw new Error(
+          `Unsupported ORACULUM_HOST_NATIVE_SCENARIOS value "${scenario}". Use node-package and/or package-free.`,
+        );
+      }
+      return definition;
+    });
+}
+
+function buildExactMessageCheckScript(scenario, expectedValue) {
+  return [
+    'const { existsSync } = require("node:fs");',
+    `const expected = ${JSON.stringify(expectedValue)};`,
+    `import(${JSON.stringify(`./${scenario.sourcePath}`)}).then((module) => {`,
+    "  const actual = module.message();",
+    "  if (actual !== expected) {",
+    "    console.error('Expected ' + expected + ', received ' + actual);",
+    "    process.exit(1);",
+    "  }",
+    scenario.packageJson
+      ? ""
+      : "  if (existsSync('package.json')) { console.error('package.json must not be added'); process.exit(1); }",
+    "  console.log(actual);",
+    "});",
+  ]
+    .filter((line) => line.length > 0)
+    .join("\n");
 }
 
 async function readLatestRunId(projectRoot) {
