@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { basename, extname } from "node:path";
 
 import { z } from "zod";
@@ -37,13 +38,25 @@ export type MaterializedTaskPacket = z.infer<typeof materializedTaskPacketSchema
 export type TaskPacketSummary = z.infer<typeof taskPacketSummarySchema>;
 
 export function deriveTaskPacketId(taskPath: string): string {
-  const stem = basename(taskPath, extname(taskPath))
+  const rawStem = basename(taskPath, extname(taskPath));
+  const stem = rawStem
     .trim()
     .toLowerCase()
     .replaceAll(/[^a-z0-9]+/g, "-")
     .replaceAll(/^-+|-+$/g, "");
 
-  return stem || "task";
+  if (stem) {
+    return stem;
+  }
+
+  const unicodeStem = rawStem
+    .trim()
+    .toLowerCase()
+    .normalize("NFKC")
+    .replaceAll(/[^\p{Letter}\p{Number}]+/gu, "-")
+    .replaceAll(/^-+|-+$/gu, "");
+  const stableSuffix = createHash("sha256").update(rawStem).digest("hex").slice(0, 8);
+  return `${unicodeStem || "task"}-${stableSuffix}`;
 }
 
 export function extractTaskTitle(taskPath: string, content: string): string {

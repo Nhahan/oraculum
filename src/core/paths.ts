@@ -1,10 +1,26 @@
-import { join, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
 export const ORACULUM_DIRNAME = ".oraculum";
 export const TASKS_DIRNAME = "tasks";
 
 export function resolveProjectRoot(cwd: string): string {
-  return resolve(cwd);
+  const start = resolve(cwd);
+  return findInitializedProjectRoot(start) ?? start;
+}
+
+function findInitializedProjectRoot(start: string): string | undefined {
+  let current = start;
+  while (true) {
+    if (existsSync(getConfigPath(current))) {
+      return current;
+    }
+    const parent = dirname(current);
+    if (parent === current) {
+      return undefined;
+    }
+    current = parent;
+  }
 }
 
 export function getOraculumDir(projectRoot: string): string {

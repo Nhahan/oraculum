@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { extname, resolve } from "node:path";
 
 import { createAgentAdapter } from "../adapters/index.js";
 import { OraculumError } from "../core/errors.js";
@@ -65,9 +65,14 @@ interface BuildExportPlanOptions {
 }
 
 export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
+  const invocationCwd = resolve(options.cwd);
   const projectRoot = resolveProjectRoot(options.cwd);
   const configLayers = await loadProjectConfigLayers(projectRoot);
-  const resolvedTaskPath = await materializeTaskInput(projectRoot, options.taskInput);
+  const resolvedTaskPath = await materializeTaskInput(
+    projectRoot,
+    invocationCwd,
+    options.taskInput,
+  );
 
   if (!(await pathExists(resolvedTaskPath))) {
     throw new OraculumError(`Task file not found: ${resolvedTaskPath}`);
@@ -369,18 +374,27 @@ function selectStrategies(config: ProjectConfig, candidateCount: number): Strate
   });
 }
 
-async function materializeTaskInput(projectRoot: string, taskInput: string): Promise<string> {
+async function materializeTaskInput(
+  projectRoot: string,
+  invocationCwd: string,
+  taskInput: string,
+): Promise<string> {
   const normalized = taskInput.trim();
   if (!normalized) {
     throw new OraculumError("Task input must not be empty.");
   }
 
-  const asPath = resolve(projectRoot, normalized);
-  if (await pathExists(asPath)) {
-    return asPath;
+  const invocationPath = resolve(invocationCwd, normalized);
+  if (await pathExists(invocationPath)) {
+    return invocationPath;
+  }
+
+  const projectPath = resolve(projectRoot, normalized);
+  if (projectPath !== invocationPath && (await pathExists(projectPath))) {
+    return projectPath;
   }
   if (looksLikeTaskPath(normalized)) {
-    throw new OraculumError(`Task file not found: ${asPath}`);
+    throw new OraculumError(`Task file not found: ${invocationPath}`);
   }
 
   const generatedTasksDir = getGeneratedTasksDir(projectRoot);
@@ -444,11 +458,7 @@ function looksLikeTaskPath(taskInput: string): boolean {
     return true;
   }
 
-  return (
-    taskInput.startsWith(".") ||
-    (!hasWhitespace &&
-      (taskInput.endsWith(".md") || taskInput.endsWith(".json") || taskInput.endsWith(".txt")))
-  );
+  return taskInput.startsWith(".") || (!hasWhitespace && extname(taskInput).length > 0);
 }
 
 export async function writeLatestRunState(projectRoot: string, runId: string): Promise<void> {

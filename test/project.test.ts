@@ -15,6 +15,7 @@ import {
   getRunManifestPath,
   getRunsDir,
   getWinnerSelectionPath,
+  resolveProjectRoot,
 } from "../src/core/paths.js";
 import {
   projectAdvancedConfigSchema,
@@ -350,6 +351,70 @@ describe("project scaffold", () => {
     expect(saved.candidates[0]?.id).toBe("cand-01");
   });
 
+  it("resolves nested invocation to the nearest initialized Oraculum root", async () => {
+    const cwd = await createInitializedProject();
+    const nested = join(cwd, "packages", "app");
+    await mkdir(join(nested, "tasks"), { recursive: true });
+    await writeFile(join(nested, "tasks", "fix-session-loss.md"), "# fix nested package\n", "utf8");
+
+    const manifest = await planRun({
+      cwd: nested,
+      taskInput: "tasks/fix-session-loss.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    expect(resolveProjectRoot(nested)).toBe(cwd);
+    expect(manifest.taskPath).toBe(join(nested, "tasks", "fix-session-loss.md"));
+    const saved = runManifestSchema.parse(
+      JSON.parse(await readFile(getRunManifestPath(cwd, manifest.id), "utf8")) as unknown,
+    );
+    expect(saved.taskPath).toBe(join(nested, "tasks", "fix-session-loss.md"));
+  });
+
+  it("prefers invocation-directory task files over same-named project-root task files", async () => {
+    const cwd = await createInitializedProject();
+    const nested = join(cwd, "packages", "app");
+    await mkdir(join(nested, "tasks"), { recursive: true });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# root task\n", "utf8");
+    await writeFile(join(nested, "tasks", "fix.md"), "# nested task\n", "utf8");
+
+    const manifest = await planRun({
+      cwd: nested,
+      taskInput: "tasks/fix.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    expect(manifest.taskPath).toBe(join(nested, "tasks", "fix.md"));
+    expect(manifest.taskPacket.title).toBe("nested task");
+  });
+
+  it("falls back to project-root task files from nested invocations", async () => {
+    const cwd = await createInitializedProject();
+    const nested = join(cwd, "packages", "app");
+    await mkdir(nested, { recursive: true });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# root task\n", "utf8");
+
+    const manifest = await planRun({
+      cwd: nested,
+      taskInput: "tasks/fix.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    expect(manifest.taskPath).toBe(join(cwd, "tasks", "fix.md"));
+    expect(manifest.taskPacket.title).toBe("root task");
+  });
+
+  it("keeps uninitialized nested directories local instead of guessing a repository root", async () => {
+    const cwd = await createTempProject();
+    const nested = join(cwd, "packages", "app");
+    await mkdir(nested, { recursive: true });
+
+    expect(resolveProjectRoot(nested)).toBe(nested);
+  });
+
   it("rejects candidate counts above the supported maximum before creating a consultation", async () => {
     const cwd = await createInitializedProject();
     await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
@@ -483,6 +548,51 @@ if (out) {
         candidates: 1,
       }),
     ).rejects.toThrow("Task file not found:");
+  });
+
+  it("rejects missing source-file-looking task paths instead of treating them as inline text", async () => {
+    const cwd = await createInitializedProject();
+
+    await expect(
+      planRun({
+        cwd,
+        taskInput: "reports/quality-review.html",
+        candidates: 1,
+      }),
+    ).rejects.toThrow("Task file not found:");
+  });
+
+  it("rejects missing source-code-looking task paths for common non-Node extensions", async () => {
+    const cwd = await createInitializedProject();
+
+    for (const taskInput of ["src/review.py", "cmd/review.go", "crates/review.rs"]) {
+      await expect(
+        planRun({
+          cwd,
+          taskInput,
+          candidates: 1,
+        }),
+      ).rejects.toThrow("Task file not found:");
+    }
+  });
+
+  it("loads source-file-looking task paths when the file exists", async () => {
+    const cwd = await createInitializedProject();
+    await mkdir(join(cwd, "reports"), { recursive: true });
+    await writeFile(
+      join(cwd, "reports", "quality-review.html"),
+      "<h1>Quality review</h1>\n<p>Inspect the report.</p>\n",
+      "utf8",
+    );
+
+    const manifest = await planRun({
+      cwd,
+      taskInput: "reports/quality-review.html",
+      candidates: 1,
+    });
+
+    expect(manifest.taskPath).toBe(join(cwd, "reports", "quality-review.html"));
+    expect(manifest.taskPacket.title).toBe("quality review");
   });
 
   it("treats file-like inline task text without an extension as inline text", async () => {

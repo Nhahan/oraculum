@@ -22,7 +22,11 @@ import {
   projectQuickConfigSchema,
 } from "../src/domain/config.js";
 import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
-import { materializedTaskPacketSchema, taskPacketSchema } from "../src/domain/task.js";
+import {
+  deriveTaskPacketId,
+  materializedTaskPacketSchema,
+  taskPacketSchema,
+} from "../src/domain/task.js";
 import { initializeProject } from "../src/services/project.js";
 import { planRun } from "../src/services/runs.js";
 import { loadTaskPacket } from "../src/services/task-packets.js";
@@ -49,6 +53,35 @@ describe("task packet contracts", () => {
     expect(packet.title).toBe("Fix session loss");
     expect(packet.intent).toContain("Preserve login state");
     expect(materializedTaskPacketSchema.parse(packet).id).toBe("fix-session-loss");
+  });
+
+  it("derives stable non-collapsing ids from non-English task filenames", async () => {
+    const root = await createTempProject();
+    const taskPath = join(root, "사업화_준비도_검토보고서.md");
+    await writeFile(taskPath, "# 보고서 검토\nHTML 품질을 검토한다.\n", "utf8");
+
+    const packet = await loadTaskPacket(taskPath);
+
+    expect(packet.id).toMatch(/^사업화-준비도-검토보고서-[a-f0-9]{8}$/u);
+  });
+
+  it("derives non-English task ids independent of the absolute checkout path", () => {
+    const filename = "사업화_준비도_검토보고서.md";
+
+    expect(deriveTaskPacketId(join("/tmp/a", filename))).toBe(
+      deriveTaskPacketId(join("/tmp/b", filename)),
+    );
+  });
+
+  it("derives readable ids from task filenames with spaces and no extension", async () => {
+    const root = await createTempProject();
+    const taskPath = join(root, "fix session loss");
+    await writeFile(taskPath, "Preserve login state during refresh.\n", "utf8");
+
+    const packet = await loadTaskPacket(taskPath);
+
+    expect(packet.id).toBe("fix-session-loss");
+    expect(packet.title).toBe("fix session loss");
   });
 
   it("loads a structured task packet from JSON", async () => {
