@@ -84,7 +84,6 @@ if (out) {
     expect(savedManifest.profileSelection?.oracleIds).toEqual([
       "lint-fast",
       "typecheck-fast",
-      "unit-impact",
       "pack-impact",
       "full-suite-deep",
       "package-smoke-deep",
@@ -95,8 +94,14 @@ if (out) {
       throw new Error("expected consultation config path to be recorded");
     }
     const savedConfig = JSON.parse(await readFile(configPath, "utf8")) as {
-      oracles?: Array<{ id: string; args?: string[] }>;
+      oracles?: Array<{ id: string; args?: string[]; command?: string; timeoutMs?: number }>;
     };
+    expect(
+      savedConfig.oracles?.filter(
+        (oracle) => oracle.command === "npm" && oracle.args?.join(" ") === "run test",
+      ),
+    ).toHaveLength(1);
+    expect(savedConfig.oracles?.every((oracle) => typeof oracle.timeoutMs === "number")).toBe(true);
     const packageSmokeDeep = savedConfig.oracles?.find(
       (oracle) => oracle.id === "package-smoke-deep",
     );
@@ -203,8 +208,11 @@ if (out) {
       taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
     });
 
-    expect(recommendation.config.oracles).toHaveLength(6);
+    expect(recommendation.config.oracles).toHaveLength(5);
     expect(recommendation.config.oracles.every((oracle) => oracle.cwd === "workspace")).toBe(true);
+    expect(recommendation.config.oracles.every((oracle) => oracle.timeoutMs !== undefined)).toBe(
+      true,
+    );
   });
 
   it("can skip runtime profile selection and rely on fallback detection for planning-only flows", async () => {
@@ -253,6 +261,7 @@ if (out) {
     });
 
     expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.candidateCount).toBe(3);
     expect(recommendation.selection.summary).toContain("defaulted to the safest library profile");
   });
 

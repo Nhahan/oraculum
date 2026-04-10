@@ -820,7 +820,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"profileId":"library","confidence":"high","summary":"Library scripts are present.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast","unit-impact","full-suite-deep"],"missingCapabilities":[]}',
+    '{"profileId":"library","confidence":"high","summary":"Library scripts are present.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast","pack-impact","full-suite-deep"],"missingCapabilities":[]}',
     "utf8",
   );
 }
@@ -885,7 +885,7 @@ if (out) {
     ).resolves.toContain('"status": "pass"');
     await expect(
       readFile(
-        getCandidateVerdictPath(cwd, planned.id, "cand-01", "impact", "unit-impact"),
+        getCandidateVerdictPath(cwd, planned.id, "cand-01", "impact", "pack-impact"),
         "utf8",
       ),
     ).resolves.toContain('"status": "pass"');

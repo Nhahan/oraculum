@@ -5,7 +5,12 @@ import { basename, dirname, join } from "node:path";
 
 import type { AgentAdapter } from "../adapters/types.js";
 import { getProfileSelectionPath } from "../core/paths.js";
-import { type ProjectConfig, projectConfigSchema, type RepoOracle } from "../domain/config.js";
+import {
+  defaultProjectConfig,
+  type ProjectConfig,
+  projectConfigSchema,
+  type RepoOracle,
+} from "../domain/config.js";
 import {
   type AgentProfileRecommendation,
   agentProfileRecommendationSchema,
@@ -58,6 +63,12 @@ const PROFILE_DEFAULT_CANDIDATES: Record<ConsultationProfileId, number> = {
   frontend: 4,
   migration: 3,
 };
+
+const GENERATED_ORACLE_TIMEOUT_MS = {
+  fast: 60_000,
+  impact: 5 * 60_000,
+  deep: 10 * 60_000,
+} as const satisfies Record<ProfileCommandCandidate["roundId"], number>;
 
 const PROFILE_STRATEGIES: Record<ConsultationProfileId, string[]> = {
   library: ["minimal-change", "test-amplified", "safety-first"],
@@ -163,7 +174,8 @@ function applyProfileSelection(options: {
 
   const explicitCandidateCount =
     options.configLayers.usesLegacyConfig ||
-    options.configLayers.quick.defaultCandidates !== undefined;
+    (options.configLayers.quick.defaultCandidates !== undefined &&
+      options.configLayers.quick.defaultCandidates !== defaultProjectConfig.defaultCandidates);
   const explicitStrategies =
     options.configLayers.usesLegacyConfig ||
     options.configLayers.advanced?.strategies !== undefined;
@@ -596,7 +608,7 @@ function buildCommandCatalog(options: {
       ["validate", "--schema", "schema.prisma"],
     );
   }
-  for (const script of ["test:unit", "unit", "test"]) {
+  for (const script of ["test:unit", "unit"]) {
     addScriptCommand(
       "unit-impact",
       "impact",
@@ -966,7 +978,10 @@ function buildFallbackRecommendation(
     profileId: chosenProfile,
     confidence,
     summary: buildFallbackSummary(chosenProfile, confidence, scores, signals, taskPacket),
-    candidateCount: PROFILE_DEFAULT_CANDIDATES[chosenProfile],
+    candidateCount:
+      confidence === "low"
+        ? Math.min(3, PROFILE_DEFAULT_CANDIDATES[chosenProfile])
+        : PROFILE_DEFAULT_CANDIDATES[chosenProfile],
     strategyIds: PROFILE_STRATEGIES[chosenProfile],
     selectedCommandIds,
     missingCapabilities,
@@ -1113,11 +1128,18 @@ function buildGeneratedOracles(
   const byId = new Map(catalog.map((candidate) => [candidate.id, candidate]));
   const oracles: RepoOracle[] = [];
 
+  const seenCommands = new Set<string>();
   for (const commandId of selectedCommandIds) {
     const candidate = byId.get(commandId);
     if (!candidate) {
       continue;
     }
+
+    const commandKey = JSON.stringify([candidate.command, candidate.args]);
+    if (seenCommands.has(commandKey)) {
+      continue;
+    }
+    seenCommands.add(commandKey);
 
     oracles.push({
       id: candidate.id,
@@ -1128,6 +1150,7 @@ function buildGeneratedOracles(
       cwd: "workspace",
       enforcement: "hard",
       confidence: candidate.roundId === "deep" ? "medium" : "high",
+      timeoutMs: GENERATED_ORACLE_TIMEOUT_MS[candidate.roundId],
       env: {},
     });
   }
