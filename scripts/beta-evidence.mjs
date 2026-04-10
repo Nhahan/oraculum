@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -47,6 +47,28 @@ const explicitMarkerOracleFixtures = {
   polyglot: {
     label: "Polyglot",
     fileSegments: ["services", "worker", "app.py"],
+  },
+};
+const taskInputEdgeCases = {
+  "unicode-file": {
+    pathSegments: ["tasks", "사업화_준비도_검토보고서.md"],
+    taskBody: "# 보고서 검토\nHTML 품질을 검토하고 winner marker를 반영한다.\n",
+  },
+  "space-file": {
+    pathSegments: ["tasks", "review notes", "quality review.md"],
+    taskBody: "# Quality review\nUpdate the implementation while preserving spaced task paths.\n",
+  },
+  "source-html": {
+    pathSegments: ["site", "index.html"],
+  },
+  "source-py": {
+    pathSegments: ["src", "app.py"],
+  },
+  "source-go": {
+    pathSegments: ["internal", "status", "status.go"],
+  },
+  "source-rs": {
+    pathSegments: ["src", "lib.rs"],
   },
 };
 
@@ -420,6 +442,76 @@ function buildCorpusScenarios() {
       corpusName: "nested-workspace-explicit-oracle",
     }),
     createScenario({
+      kind: "migration-missing-capability",
+      repoKind: "alembic",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      corpusName: "alembic-missing-capability",
+    }),
+    createScenario({
+      kind: "migration-explicit-oracle",
+      repoKind: "alembic",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "migration",
+      corpusName: "alembic-explicit-oracle",
+    }),
+    createScenario({
+      kind: "task-input-edge",
+      repoKind: "library",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "library",
+      taskInputMode: "unicode-file",
+      corpusName: "task-input-unicode-file",
+    }),
+    createScenario({
+      kind: "task-input-edge",
+      repoKind: "library",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "library",
+      taskInputMode: "space-file",
+      corpusName: "task-input-space-path",
+    }),
+    createScenario({
+      kind: "task-input-edge",
+      repoKind: "docs-static",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      taskInputMode: "source-html",
+      corpusName: "task-input-source-html",
+    }),
+    createScenario({
+      kind: "task-input-edge",
+      repoKind: "python",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      taskInputMode: "source-py",
+      corpusName: "task-input-source-py",
+    }),
+    createScenario({
+      kind: "task-input-edge",
+      repoKind: "go",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      taskInputMode: "source-go",
+      corpusName: "task-input-source-go",
+    }),
+    createScenario({
+      kind: "task-input-edge",
+      repoKind: "rust",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      taskInputMode: "source-rs",
+      corpusName: "task-input-source-rs",
+    }),
+    createScenario({
       kind: "happy",
       repoKind: "docs",
       agent: "codex",
@@ -763,7 +855,7 @@ function createScenario({
 async function prepareScenario(workdir, scenario) {
   await mkdir(workdir, { recursive: true });
   await writeRepositoryTemplate(workdir, scenario);
-  await writeTaskInputs(workdir, scenario.repoKind);
+  await writeTaskInputs(workdir, scenario);
 
   if (scenario.workspaceMode === "git") {
     runOrThrow("git", ["init"], { cwd: workdir });
@@ -874,6 +966,45 @@ async function prepareScenario(workdir, scenario) {
     });
   }
 
+  if (scenario.kind === "migration-explicit-oracle") {
+    await mkdir(join(workdir, "tools"), { recursive: true });
+    await writeFile(
+      join(workdir, "tools", "check-alembic.mjs"),
+      [
+        'import { readFileSync } from "node:fs";',
+        'import { join } from "node:path";',
+        "",
+        "const workspace = process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR;",
+        "if (!workspace) {",
+        '  process.stderr.write("missing ORACULUM_CANDIDATE_WORKSPACE_DIR");',
+        "  process.exit(1);",
+        "}",
+        'const file = join(workspace, "migrations", "versions", "0001_initial.py");',
+        'const text = readFileSync(file, "utf8");',
+        'if (!text.includes("cand-")) {',
+        '  process.stderr.write("candidate marker missing");',
+        "  process.exit(1);",
+        "}",
+        'process.stdout.write("explicit alembic oracle ok");',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await writeAdvancedConfig(workdir, {
+      version: 1,
+      oracles: [
+        {
+          id: "migration-explicit-impact",
+          roundId: "impact",
+          command: process.execPath,
+          args: [join("tools", "check-alembic.mjs")],
+          invariant: "The Alembic-shaped fixture must use an explicit repo-local migration check.",
+          enforcement: "hard",
+        },
+      ],
+    });
+  }
+
   const explicitMarkerOracle = buildExplicitMarkerOracle(scenario.repoKind);
   if (explicitMarkerOracle && !scenarioSpecificAdvancedConfigKinds.has(scenario.kind)) {
     await writeAdvancedConfig(workdir, {
@@ -936,6 +1067,9 @@ function markerFileSegmentsForScenario(repoKind) {
   if (repoKind === "nested-workspace") {
     return nestedWorkspaceStatusFileSegments;
   }
+  if (repoKind === "alembic") {
+    return ["migrations", "versions", "0001_initial.py"];
+  }
   return undefined;
 }
 
@@ -952,12 +1086,7 @@ async function executeScenario(workdir, scenario) {
       : { ORACULUM_CLAUDE_BIN: scenario.fakeBinaryPath }),
   };
 
-  const taskArgument =
-    scenario.taskInputMode === "inline"
-      ? buildInlineTaskText(scenario.repoKind)
-      : scenario.taskInputMode === "filelike-inline"
-        ? "fix/session-loss-on-refresh"
-        : join("tasks", `${scenario.repoKind}.md`);
+  const taskArgument = buildTaskArgument(scenario);
 
   if (scenario.kind === "draft" || scenario.kind === "filelike-inline-draft") {
     const draft = await runDraftToolRequest(
@@ -1268,6 +1397,66 @@ async function executeScenario(workdir, scenario) {
     return;
   }
 
+  if (scenario.kind === "migration-missing-capability") {
+    assertEqual(
+      run.recommendedWinner?.candidateId,
+      "cand-02",
+      `${scenario.id}: expected a survivor even when migration validation is missing.`,
+    );
+    assertContains(
+      run.profileSelection?.missingCapabilities.join("\n") ?? "",
+      "No repo-local validation command was detected.",
+    );
+    const profileArtifact = await readProfileSelectionArtifact(workdir, run.id);
+    const skippedCommandCandidates = JSON.stringify(
+      profileArtifact.signals?.skippedCommandCandidates ?? [],
+    );
+    assertContains(skippedCommandCandidates, "migration-impact");
+    assertContains(skippedCommandCandidates, "missing-explicit-command");
+    assertContains(skippedCommandCandidates, "migration-tool:alembic");
+    const verdict = await runVerdictToolRequest({ cwd: workdir }, { env });
+    assertContains(verdict.stdout, "Profile gaps:");
+    assertContains(verdict.stdout, "No repo-local validation command was detected.");
+    assertContains(verdict.stdout, "Skipped profile commands:");
+    assertContains(verdict.stdout, "migration-impact: missing-explicit-command");
+    await assertHappyCrown(workdir, scenario, env);
+    return;
+  }
+
+  if (scenario.kind === "migration-explicit-oracle") {
+    assertEqual(
+      run.recommendedWinner?.candidateId,
+      "cand-02",
+      `${scenario.id}: expected a survivor with an explicit migration oracle.`,
+    );
+    assertEqual(
+      run.profileSelection?.missingCapabilities.length,
+      0,
+      `${scenario.id}: explicit advanced migration oracle should clear profile validation gaps.`,
+    );
+    const verdictFiles = await readdir(
+      join(workdir, ".oraculum", "runs", run.id, "candidates", "cand-02", "verdicts"),
+    );
+    assertContains(
+      verdictFiles.join(","),
+      "impact--migration-explicit-impact.json",
+      `${scenario.id}: explicit Alembic migration oracle should execute.`,
+    );
+    await assertHappyCrown(workdir, scenario, env);
+    return;
+  }
+
+  if (scenario.kind === "task-input-edge") {
+    assertEqual(
+      run.recommendedWinner?.candidateId,
+      "cand-02",
+      `${scenario.id}: expected a survivor for the task-input edge scenario.`,
+    );
+    assertTaskInputEdge(workdir, scenario, run);
+    await assertHappyCrown(workdir, scenario, env);
+    return;
+  }
+
   if (scenario.kind === "large-diff") {
     assertEqual(
       run.recommendedWinner?.candidateId,
@@ -1320,6 +1509,53 @@ async function assertHappyCrown(workdir, scenario, env, candidateId = "cand-02")
     const branch = runOrThrow("git", ["branch", "--show-current"], { cwd: workdir }).stdout.trim();
     assertEqual(branch, branchName, `${scenario.id}: expected crowned git branch.`);
   }
+}
+
+function buildTaskArgument(scenario) {
+  if (scenario.taskInputMode === "inline") {
+    return buildInlineTaskText(scenario.repoKind);
+  }
+
+  if (scenario.taskInputMode === "filelike-inline") {
+    return "fix/session-loss-on-refresh";
+  }
+
+  const edgeCase = taskInputEdgeCases[scenario.taskInputMode];
+  if (edgeCase) {
+    return join(...edgeCase.pathSegments);
+  }
+
+  return join("tasks", `${scenario.repoKind}.md`);
+}
+
+function assertTaskInputEdge(workdir, scenario, run) {
+  const edgeCase = taskInputEdgeCases[scenario.taskInputMode];
+  if (!edgeCase) {
+    throw new Error(`${scenario.id}: unknown task-input edge mode ${scenario.taskInputMode}`);
+  }
+
+  const normalizedSourcePath = run.taskPacket.sourcePath.replaceAll("\\", "/");
+  const expectedPathSuffix = edgeCase.pathSegments.join("/");
+  assertEqual(
+    run.taskPacket.sourceKind,
+    "task-note",
+    `${scenario.id}: edge task input should materialize as a task note.`,
+  );
+  assertContains(
+    normalizedSourcePath,
+    expectedPathSuffix,
+    `${scenario.id}: edge task input should preserve the requested source path.`,
+  );
+  assertNotContains(
+    normalizedSourcePath,
+    ".oraculum/tasks/",
+    `${scenario.id}: existing edge task input paths should not be rewritten into generated inline notes.`,
+  );
+  assertEqual(
+    normalizedSourcePath.startsWith(workdir.replaceAll("\\", "/")),
+    true,
+    `${scenario.id}: edge task input should resolve inside the scenario workspace.`,
+  );
 }
 
 async function writeRepositoryTemplate(root, scenario) {
@@ -1547,6 +1783,22 @@ process.stdout.write("turbo workspace ok");
     return;
   }
 
+  if (repoKind === "alembic") {
+    await mkdir(join(root, "migrations", "versions"), { recursive: true });
+    await writeFile(join(root, "alembic.ini"), "[alembic]\nscript_location = migrations\n", "utf8");
+    await writeFile(
+      join(root, "migrations", "env.py"),
+      'def run_migrations_online():\n    return "offline"\n',
+      "utf8",
+    );
+    await writeFile(
+      join(root, "migrations", "versions", "0001_initial.py"),
+      'revision_message = "offline"\n',
+      "utf8",
+    );
+    return;
+  }
+
   if (repoKind === "service") {
     await mkdir(join(root, "routes"), { recursive: true });
     await writeFile(
@@ -1747,7 +1999,8 @@ async function writeJavaStatusSource(root) {
   );
 }
 
-async function writeTaskInputs(root, repoKind) {
+async function writeTaskInputs(root, scenario) {
+  const { repoKind, taskInputMode } = scenario;
   await mkdir(join(root, "tasks"), { recursive: true });
   const taskBodies = {
     library: "# Library patch\nUpdate the greeting implementation.\n",
@@ -1762,11 +2015,18 @@ async function writeTaskInputs(root, repoKind) {
     "docs-static": "# Static docs patch\nUpdate the page status text.\n",
     polyglot: "# Polyglot patch\nUpdate the worker status text.\n",
     "nested-workspace": "# Nested workspace patch\nUpdate the nested status text.\n",
+    alembic: "# Alembic migration patch\nUpdate the migration revision marker.\n",
     docs: "# Docs patch\nRevise the report wording.\n",
     service: "# Service patch\nUpdate the service status response.\n",
     monorepo: "# Monorepo patch\nUpdate the workspace package greeting.\n",
   };
   await writeFile(join(root, "tasks", `${repoKind}.md`), taskBodies[repoKind], "utf8");
+  const edgeCase = taskInputEdgeCases[taskInputMode];
+  if (edgeCase?.taskBody) {
+    const edgeTaskPath = join(root, ...edgeCase.pathSegments);
+    await mkdir(dirname(edgeTaskPath), { recursive: true });
+    await writeFile(edgeTaskPath, edgeCase.taskBody, "utf8");
+  }
 }
 
 function buildInlineTaskText(repoKind) {
@@ -1805,6 +2065,9 @@ function buildInlineTaskText(repoKind) {
   }
   if (repoKind === "nested-workspace") {
     return "Update workspaces/review-app/src/status.txt so the nested workspace status includes the winning candidate.";
+  }
+  if (repoKind === "alembic") {
+    return "Update migrations/versions/0001_initial.py so the migration marker includes the winning candidate.";
   }
   if (repoKind === "service") {
     return "Update src/server.js so serviceStatus() returns a winner-specific online status string.";
@@ -2279,6 +2542,15 @@ async function readNewestRunManifest(root) {
   }
 
   return JSON.parse(await readFile(join(runsDir, runId, "run.json"), "utf8"));
+}
+
+async function readProfileSelectionArtifact(root, runId) {
+  return JSON.parse(
+    await readFile(
+      join(root, ".oraculum", "runs", runId, "reports", "profile-selection.json"),
+      "utf8",
+    ),
+  );
 }
 
 async function collectScenarioDebug(root) {

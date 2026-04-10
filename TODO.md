@@ -240,10 +240,10 @@ Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace
 - [x] Add a docs/static fixture that does not use Node scripts.
 - [x] Add a mixed polyglot fixture where Node and non-Node raw facts coexist and neither ecosystem silently dominates profile choice.
 - [x] Add a nested workspace fixture where the actionable code and checks live below the repository root.
-- [ ] Add a migration fixture for Alembic or Django that records missing capability unless safe repo-local scripts exist.
-- [ ] Add task-input fixtures with non-English filenames, spaces in paths, and source-file-looking task references such as `.html`, `.py`, `.go`, and `.rs`.
-- [ ] Ensure each corpus fixture exercises `consult -> crown`, not just profile selection.
-- [ ] Keep the corpus fast by using fake local tools behind explicit repo-local commands; do not use the corpus to justify new named-tool inferred command recipes.
+- [x] Add a migration fixture for Alembic or Django that records missing capability unless safe repo-local scripts exist.
+- [x] Add task-input fixtures with non-English filenames, spaces in paths, and source-file-looking task references such as `.html`, `.py`, `.go`, and `.rs`.
+- [x] Ensure each Phase 7 generalized corpus fixture exercises `consult -> crown`, not just profile selection. Draft-only regression scenarios remain explicitly scoped exceptions.
+- [x] Keep the corpus fast by using fake local tools behind explicit repo-local commands; do not use the corpus to justify new named-tool inferred command recipes.
 - [ ] Add a separate `evidence:polyglot` script if the full corpus becomes too slow for normal beta checks.
 - [ ] Extend `workflow-comparison` and `host-native` smoke evidence with at least one non-Node or package-json-free scenario before using them as generality evidence.
 - [ ] Add subdirectory-invocation evidence where Oraculum is invoked below the repository root and still records artifacts/checks in the intended root.
@@ -284,8 +284,8 @@ Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace
 - [x] Zero-signal repositories get a generic/default profile result, not a misleading Node/library result.
 - [x] Non-English paths, spaces in paths, and source-file-looking task references are handled intentionally rather than accidentally treated as inline prose.
 - [ ] Nested cwd invocation, non-Git crowning, relative oracle cwd, and large-output/time-out subprocess behavior are covered by regression tests.
-- [ ] Node, Python, Go, Rust, Java, docs/static, and migration-style fixtures have explicit evidence coverage through raw facts, repo-local commands, or missing-capability outcomes.
+- [x] Node, Python, Go, Rust, Java, docs/static, and migration-style fixtures have explicit evidence coverage through raw facts, repo-local commands, or missing-capability outcomes.
 - [x] Named-tool inferred commands are not generated from frameworks, ORMs, migration tools, test runners, or language ecosystems.
 - [x] Generated Node package checks do not silently use `npm` when another package manager or no package-manager policy applies.
-- [ ] Missing capabilities are visible in verdict/profile artifacts instead of hidden behind weak or invented commands.
+- [x] Missing capabilities are visible in verdict/profile artifacts instead of hidden behind weak or invented commands.
 - [x] Existing Node happy paths, frontend e2e detection, package smoke checks, and Prisma raw-signal/no-direct-command behavior remain covered by regression tests.
