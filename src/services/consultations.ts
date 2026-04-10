@@ -170,7 +170,14 @@ export async function renderConsultationSummary(
   if (hasCrowningRecord) {
     lines.push(`- reopen the crowning record: ${toDisplayPath(projectRoot, exportPlanPath)}`);
   } else if (manifest.recommendedWinner) {
-    lines.push(`- crown the recommended survivor: ${crownCommand} <branch-name>`);
+    const recommendedCandidate = manifest.candidates.find(
+      (candidate) => candidate.id === manifest.recommendedWinner?.candidateId,
+    );
+    const crownTarget =
+      recommendedCandidate?.workspaceMode === "copy"
+        ? crownCommand
+        : `${crownCommand} <branch-name>`;
+    lines.push(`- crown the recommended survivor: ${crownTarget}`);
   } else if (manifest.status === "completed" && finalists.length > 0) {
     lines.push(
       `- inspect the comparison first. The shared \`${crownCommand}\` path only crowns a recommended survivor.`,

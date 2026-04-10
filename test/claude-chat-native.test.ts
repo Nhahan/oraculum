@@ -69,8 +69,9 @@ describe("Claude Code chat-native packaging", () => {
     expect(crownSkill?.content).toContain("mcp_tool: oraculum_crown");
     expect(crownSkill?.content).toContain('branchName: "$1"');
     expect(crownSkill?.content).toContain(
-      "- The chat-native crowning path expects the branch name as the first argument.",
+      "- The first argument is required only when crowning a Git-backed candidate onto a new branch.",
     );
+    expect(crownSkill?.content).toContain("`orc crown` for non-Git projects");
     expect(crownSkill?.content).toContain(
       "After the MCP tool succeeds, report the verified materialization result and stop",
     );
@@ -78,7 +79,7 @@ describe("Claude Code chat-native packaging", () => {
     const consultSkill = skills.find((file) => file.path.includes("/consult/"));
     expect(consultSkill?.content).toContain('taskInput: "$ARGUMENTS"');
     expect(consultSkill?.content).toContain('agent: "claude-code"');
-    expect(consultSkill?.content).toContain("do not replace `orc crown <branch-name>`");
+    expect(consultSkill?.content).toContain("do not replace the next Oraculum command");
   });
 
   it("writes packaged Claude artifacts into dist during the build", async () => {

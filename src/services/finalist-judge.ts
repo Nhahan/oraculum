@@ -7,6 +7,7 @@ import {
   getWinnerSelectionPath,
   resolveProjectRoot,
 } from "../core/paths.js";
+import type { ManagedTreeRules } from "../domain/config.js";
 import type { OracleVerdict } from "../domain/oracle.js";
 import type { ConsultationProfileSelection } from "../domain/profile.js";
 import {
@@ -26,6 +27,7 @@ interface RecommendWinnerOptions {
   projectRoot: string;
   runId: string;
   taskPacket: unknown;
+  managedTreeRules?: ManagedTreeRules;
   verdictsByCandidate: Map<string, OracleVerdict[]>;
   consultationProfile?: ConsultationProfileSelection;
 }
@@ -41,6 +43,7 @@ export async function recommendWinnerWithJudge(
   const finalists = await buildEnrichedFinalistSummaries({
     candidates: options.candidates,
     candidateResults: options.candidateResults,
+    ...(options.managedTreeRules ? { managedTreeRules: options.managedTreeRules } : {}),
     verdictsByCandidate: options.verdictsByCandidate,
   });
   if (finalists.length === 0) {

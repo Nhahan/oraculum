@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { z } from "zod";
 
 import { OraculumError } from "../core/errors.js";
+import type { ManagedTreeRules } from "../domain/config.js";
 
 import {
   listManagedProjectEntries,
@@ -29,8 +30,11 @@ const managedProjectSnapshotSchema = z.object({
 type ManagedSnapshotEntry = z.infer<typeof managedSnapshotEntrySchema>;
 export type ManagedProjectSnapshot = z.infer<typeof managedProjectSnapshotSchema>;
 
-export async function captureManagedProjectSnapshot(root: string): Promise<ManagedProjectSnapshot> {
-  const paths = await listManagedProjectEntries(root);
+export async function captureManagedProjectSnapshot(
+  root: string,
+  options: { rules?: ManagedTreeRules } = {},
+): Promise<ManagedProjectSnapshot> {
+  const paths = await listManagedProjectEntries(root, options);
   const entries = await Promise.all(paths.map((entry) => captureManagedEntry(root, entry)));
 
   return managedProjectSnapshotSchema.parse({
@@ -47,9 +51,10 @@ export async function readManagedProjectSnapshot(path: string): Promise<ManagedP
 export async function assertManagedProjectSnapshotUnchanged(
   projectRoot: string,
   snapshotPath: string,
+  options: { rules?: ManagedTreeRules } = {},
 ): Promise<void> {
   const expected = await readManagedProjectSnapshot(snapshotPath);
-  const current = await captureManagedProjectSnapshot(projectRoot);
+  const current = await captureManagedProjectSnapshot(projectRoot, options);
   const differences = diffSnapshots(expected.entries, current.entries);
 
   if (differences.length === 0) {

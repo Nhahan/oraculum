@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  getAdvancedConfigPath,
   getCandidateDir,
   getCandidateManifestPath,
   getExportPatchPath,
@@ -94,6 +95,37 @@ describe("materialized exports", () => {
       JSON.parse(await readFile(getRunManifestPath(cwd, planned.id), "utf8")) as unknown,
     );
     expect(savedManifest.candidates[0]?.status).toBe("exported");
+  }, 20_000);
+
+  it("requires a target branch name for git-backed crowning", async () => {
+    const cwd = await createTempRoot();
+    await initializeGitProject(cwd);
+    await writeFile(join(cwd, ".gitignore"), ".oraculum/\n", "utf8");
+    await writeFile(join(cwd, "app.txt"), "original\n", "utf8");
+    await commitAll(cwd, "initial project");
+    await initializeProject({ cwd, force: false });
+
+    const fakeCodex = await writeExportingCodex(cwd);
+    const planned = await planRun({
+      cwd,
+      taskInput: "fix session loss on refresh",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    await expect(
+      materializeExport({
+        cwd,
+        withReport: false,
+      }),
+    ).rejects.toThrow("Git-backed crowning requires a target branch name");
   }, 20_000);
 
   it("preserves file renames when generating a git branch export patch", async () => {
@@ -492,11 +524,12 @@ if (out) {
 
     const result = await materializeExport({
       cwd,
-      branchName: "fix/session-loss",
       withReport: false,
     });
 
     expect(result.plan.mode).toBe("workspace-sync");
+    expect(result.plan.branchName).toBeUndefined();
+    expect(result.plan.materializationLabel).toBeUndefined();
     expect(result.plan.appliedPathCount).toBe(2);
     expect(result.plan.removedPathCount).toBe(1);
     expect(await readFile(join(cwd, "app.txt"), "utf8")).toBe("patched\n");
@@ -511,6 +544,72 @@ if (out) {
     };
     expect(syncSummary.appliedFiles).toEqual(expect.arrayContaining(["added.txt", "app.txt"]));
     expect(syncSummary.removedFiles).toEqual(["remove.txt"]);
+  });
+
+  it("syncs explicitly included ambiguous dist paths in non-git workspace mode", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeJsonFile(getAdvancedConfigPath(cwd), {
+      version: 1,
+      managedTree: {
+        includePaths: ["dist"],
+        excludePaths: [],
+      },
+    });
+    await mkdir(join(cwd, "dist"), { recursive: true });
+    await writeFile(join(cwd, "dist", "index.js"), "original dist\n", "utf8");
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (prompt.includes("You are selecting the best Oraculum finalist.")) {
+  if (out) {
+    fs.writeFileSync(
+      out,
+      '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 updates dist intentionally."}',
+      "utf8",
+    );
+  }
+  process.exit(0);
+}
+fs.writeFileSync(path.join(process.cwd(), "dist", "index.js"), "patched dist\\n", "utf8");
+if (out) {
+  fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "update the checked-in dist bundle",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    const result = await materializeExport({
+      cwd,
+      withReport: false,
+    });
+
+    expect(result.plan.mode).toBe("workspace-sync");
+    expect(result.plan.appliedPathCount).toBe(1);
+    expect(await readFile(join(cwd, "dist", "index.js"), "utf8")).toBe("patched dist\n");
   });
 
   it("retargets absolute directory links during workspace-sync export under win32 semantics", async () => {
@@ -786,6 +885,66 @@ if (out) {
     expect(
       await readFile(join(cwd, "packages", "app", "node_modules", "pkg", "index.js"), "utf8"),
     ).toBe("changed after run\n");
+  });
+
+  it("preserves linked non-Node dependency and cache trees during workspace-sync export", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "app.txt"), "original\n", "utf8");
+    await mkdir(join(cwd, ".venv", process.platform === "win32" ? "Scripts" : "bin"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(cwd, ".venv", process.platform === "win32" ? "Scripts" : "bin", "python"),
+      "python before\n",
+      "utf8",
+    );
+    await mkdir(join(cwd, "target", "debug"), { recursive: true });
+    await writeFile(join(cwd, "target", "debug", "app"), "rust target before\n", "utf8");
+    await mkdir(join(cwd, ".gradle", "caches"), { recursive: true });
+    await writeFile(join(cwd, ".gradle", "caches", "state"), "gradle before\n", "utf8");
+
+    const fakeCodex = await writeExportingCodex(cwd);
+    const planned = await planRun({
+      cwd,
+      taskInput: "patch app while preserving non-node dependency caches",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    await writeFile(
+      join(cwd, ".venv", process.platform === "win32" ? "Scripts" : "bin", "python"),
+      "python changed after run\n",
+      "utf8",
+    );
+    await writeFile(join(cwd, "target", "debug", "app"), "rust target changed after run\n", "utf8");
+    await writeFile(join(cwd, ".gradle", "caches", "state"), "gradle changed after run\n", "utf8");
+
+    await materializeExport({
+      cwd,
+      withReport: false,
+    });
+
+    expect(await readFile(join(cwd, "app.txt"), "utf8")).toBe("patched\n");
+    expect(
+      await readFile(
+        join(cwd, ".venv", process.platform === "win32" ? "Scripts" : "bin", "python"),
+        "utf8",
+      ),
+    ).toBe("python changed after run\n");
+    expect(await readFile(join(cwd, "target", "debug", "app"), "utf8")).toBe(
+      "rust target changed after run\n",
+    );
+    expect(await readFile(join(cwd, ".gradle", "caches", "state"), "utf8")).toBe(
+      "gradle changed after run\n",
+    );
   });
 
   it("preserves excluded nested content when a managed parent directory disappears", async () => {

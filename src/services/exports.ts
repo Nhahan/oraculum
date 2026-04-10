@@ -24,6 +24,11 @@ import {
 } from "../core/paths.js";
 import { runSubprocess } from "../core/subprocess.js";
 import {
+  defaultProjectConfig,
+  type ManagedTreeRules,
+  projectConfigSchema,
+} from "../domain/config.js";
+import {
   type CandidateManifest,
   candidateManifestSchema,
   type ExportPlan,
@@ -41,14 +46,15 @@ import {
   readSymlinkTargetType as readManagedSymlinkTargetType,
   shouldManageProjectPath,
 } from "./managed-tree.js";
-import { pathExists, writeJsonFile } from "./project.js";
+import { loadProjectConfig, pathExists, writeJsonFile } from "./project.js";
 import { prepareExportPlan, readRunManifest } from "./runs.js";
 
 interface MaterializeExportOptions {
   cwd: string;
   runId?: string;
   winnerId?: string;
-  branchName: string;
+  branchName?: string;
+  materializationLabel?: string;
   withReport: boolean;
 }
 
@@ -71,6 +77,7 @@ export async function materializeExport(
   const { path, plan: planned } = await prepareExportPlan(options);
   const syncSummaryPath = getExportSyncSummaryPath(projectRoot, planned.runId);
   const manifest = await readRunManifest(projectRoot, planned.runId);
+  const managedTreeRules = await readRunManagedTreeRules(projectRoot, manifest);
   const winner = findExportCandidate(manifest, planned.winnerId);
   const [previousPlanContents, previousSyncSummaryContents] = await Promise.all([
     readOptionalTextFile(path),
@@ -81,8 +88,8 @@ export async function materializeExport(
 
   const outcome =
     planned.mode === "git-branch"
-      ? await materializeGitBranchExport(projectRoot, planned, winner)
-      : await materializeWorkspaceSyncExport(projectRoot, planned, winner);
+      ? await materializeGitBranchExport(projectRoot, planned, winner, managedTreeRules)
+      : await materializeWorkspaceSyncExport(projectRoot, planned, winner, managedTreeRules);
 
   const updatedPlan = exportPlanSchema.parse({
     ...planned,
@@ -161,14 +168,32 @@ function findExportCandidate(manifest: RunManifest, candidateId: string): Candid
   return candidate;
 }
 
+async function readRunManagedTreeRules(
+  projectRoot: string,
+  manifest: RunManifest,
+): Promise<ManagedTreeRules> {
+  if (manifest.configPath && (await pathExists(manifest.configPath))) {
+    const raw = JSON.parse(await readFile(manifest.configPath, "utf8")) as unknown;
+    return projectConfigSchema.parse(raw).managedTree;
+  }
+
+  try {
+    return (await loadProjectConfig(projectRoot)).managedTree;
+  } catch {
+    return defaultProjectConfig.managedTree;
+  }
+}
+
 async function materializeGitBranchExport(
   projectRoot: string,
   plan: ExportPlan,
   winner: CandidateManifest,
+  managedTreeRules: ManagedTreeRules,
 ): Promise<MaterializationOutcome> {
+  const branchName = requireGitBranchName(plan);
   const patchPath = plan.patchPath ?? getExportPatchPath(projectRoot, plan.runId);
   await ensureCleanGitWorkingTree(projectRoot);
-  await ensureBranchDoesNotExist(projectRoot, plan.branchName);
+  await ensureBranchDoesNotExist(projectRoot, branchName);
 
   if (!winner.baseRevision) {
     throw new OraculumError(
@@ -186,7 +211,12 @@ async function materializeGitBranchExport(
     );
   }
 
-  const patch = await generateWorkspacePatch(projectRoot, winner.workspaceDir, winner.baseRevision);
+  const patch = await generateWorkspacePatch(
+    projectRoot,
+    winner.workspaceDir,
+    winner.baseRevision,
+    managedTreeRules,
+  );
   if (!patch.trim()) {
     throw new OraculumError(
       `Candidate "${winner.id}" has no materialized patch to crown from ${winner.workspaceDir}.`,
@@ -198,12 +228,12 @@ async function materializeGitBranchExport(
 
   const checkout = await runSubprocess({
     command: "git",
-    args: ["checkout", "-b", plan.branchName],
+    args: ["checkout", "-b", branchName],
     cwd: projectRoot,
     timeoutMs: 30_000,
   });
   if (checkout.exitCode !== 0) {
-    throw new OraculumError(`Failed to create target branch "${plan.branchName}" for crowning.`);
+    throw new OraculumError(`Failed to create target branch "${branchName}" for crowning.`);
   }
 
   const apply = await runSubprocess({
@@ -216,7 +246,7 @@ async function materializeGitBranchExport(
     try {
       await rollbackFailedBranchExport(
         projectRoot,
-        plan.branchName,
+        branchName,
         currentBranch,
         currentRevision,
         initialUntrackedPaths,
@@ -224,11 +254,11 @@ async function materializeGitBranchExport(
       );
     } catch (rollbackError) {
       throw new OraculumError(
-        `Failed to apply the crowned patch onto branch "${plan.branchName}", and rollback did not complete cleanly: ${formatUnknownError(rollbackError)}`,
+        `Failed to apply the crowned patch onto branch "${branchName}", and rollback did not complete cleanly: ${formatUnknownError(rollbackError)}`,
       );
     }
 
-    throw new OraculumError(`Failed to apply the crowned patch onto branch "${plan.branchName}".`);
+    throw new OraculumError(`Failed to apply the crowned patch onto branch "${branchName}".`);
   }
 
   return {
@@ -239,7 +269,7 @@ async function materializeGitBranchExport(
     async rollback() {
       await rollbackFailedBranchExport(
         projectRoot,
-        plan.branchName,
+        branchName,
         currentBranch,
         currentRevision,
         initialUntrackedPaths,
@@ -249,10 +279,21 @@ async function materializeGitBranchExport(
   };
 }
 
+function requireGitBranchName(plan: ExportPlan): string {
+  if (!plan.branchName) {
+    throw new OraculumError(
+      `Git-branch crowning for consultation "${plan.runId}" requires a target branch name.`,
+    );
+  }
+
+  return plan.branchName;
+}
+
 async function materializeWorkspaceSyncExport(
   projectRoot: string,
   plan: ExportPlan,
   winner: CandidateManifest,
+  managedTreeRules: ManagedTreeRules,
 ): Promise<MaterializationOutcome> {
   if (!winner.baseSnapshotPath) {
     throw new OraculumError(
@@ -260,10 +301,16 @@ async function materializeWorkspaceSyncExport(
     );
   }
 
-  await assertManagedProjectSnapshotUnchanged(projectRoot, winner.baseSnapshotPath);
-  const backupRoot = await createManagedProjectBackup(projectRoot, plan.runId);
+  await assertManagedProjectSnapshotUnchanged(projectRoot, winner.baseSnapshotPath, {
+    rules: managedTreeRules,
+  });
+  const backupRoot = await createManagedProjectBackup(projectRoot, plan.runId, managedTreeRules);
   try {
-    const summary = await syncWorkspaceIntoProject(projectRoot, winner.workspaceDir);
+    const summary = await syncWorkspaceIntoProject(
+      projectRoot,
+      winner.workspaceDir,
+      managedTreeRules,
+    );
     return {
       async cleanup() {
         await rm(backupRoot, { recursive: true, force: true });
@@ -273,7 +320,11 @@ async function materializeWorkspaceSyncExport(
         removedPathCount: summary.removedFiles.length,
       },
       async rollback() {
-        const rollbackError = await restoreManagedProjectBackup(projectRoot, backupRoot);
+        const rollbackError = await restoreManagedProjectBackup(
+          projectRoot,
+          backupRoot,
+          managedTreeRules,
+        );
         if (rollbackError) {
           throw rollbackError;
         }
@@ -282,7 +333,11 @@ async function materializeWorkspaceSyncExport(
     };
   } catch (error) {
     try {
-      const rollbackError = await restoreManagedProjectBackup(projectRoot, backupRoot);
+      const rollbackError = await restoreManagedProjectBackup(
+        projectRoot,
+        backupRoot,
+        managedTreeRules,
+      );
       if (rollbackError) {
         throw new OraculumError(
           `Workspace-sync crowning failed and rollback did not complete cleanly: ${formatUnknownError(error)}; rollback error: ${rollbackError.message}`,
@@ -366,6 +421,7 @@ async function generateWorkspacePatch(
   projectRoot: string,
   workspaceDir: string,
   baseRevision: string,
+  managedTreeRules: ManagedTreeRules,
 ): Promise<string> {
   const stage = await runSubprocess({
     command: "git",
@@ -410,7 +466,7 @@ async function generateWorkspacePatch(
         ? [parts[1]?.trim(), parts[2]?.trim()]
         : [parts[2]?.trim()];
       for (const candidatePath of renameOrCopyPaths) {
-        if (candidatePath && shouldManageProjectPath(candidatePath)) {
+        if (candidatePath && shouldManageProjectPath(candidatePath, managedTreeRules)) {
           changedPaths.add(candidatePath);
         }
       }
@@ -418,13 +474,13 @@ async function generateWorkspacePatch(
     }
 
     const candidatePath = parts[1]?.trim();
-    if (candidatePath && shouldManageProjectPath(candidatePath)) {
+    if (candidatePath && shouldManageProjectPath(candidatePath, managedTreeRules)) {
       changedPaths.add(candidatePath);
     }
   }
   for (const line of untrackedResult.stdout.split(/\r?\n/u)) {
     const trimmed = line.trim();
-    if (trimmed && shouldManageProjectPath(trimmed)) {
+    if (trimmed && shouldManageProjectPath(trimmed, managedTreeRules)) {
       changedPaths.add(trimmed);
     }
   }
@@ -618,14 +674,19 @@ async function removeDirectoryIfEmpty(absolutePath: string): Promise<void> {
 async function syncWorkspaceIntoProject(
   projectRoot: string,
   workspaceDir: string,
+  managedTreeRules: ManagedTreeRules,
 ): Promise<WorkspaceSyncSummary> {
-  const workspaceEntries = await listManagedProjectEntries(workspaceDir);
-  const projectEntries = await listManagedProjectEntries(projectRoot);
+  const workspaceEntries = await listManagedProjectEntries(workspaceDir, {
+    rules: managedTreeRules,
+  });
+  const projectEntries = await listManagedProjectEntries(projectRoot, {
+    rules: managedTreeRules,
+  });
   const workspaceSet = new Set(workspaceEntries.map((entry) => entry.path));
   const appliedFiles: string[] = [];
 
   for (const entry of workspaceEntries) {
-    const changed = await syncManagedPath(workspaceDir, projectRoot, entry);
+    const changed = await syncManagedPath(workspaceDir, projectRoot, entry, managedTreeRules);
     if (changed) {
       appliedFiles.push(entry.path);
     }
@@ -653,6 +714,7 @@ async function syncManagedPath(
   sourceRoot: string,
   destinationRoot: string,
   entry: ManagedPathEntry,
+  managedTreeRules: ManagedTreeRules,
 ): Promise<boolean> {
   const sourcePath = join(sourceRoot, entry.path);
   const destinationPath = join(destinationRoot, entry.path);
@@ -662,7 +724,13 @@ async function syncManagedPath(
   }
 
   if (entry.kind === "symlink") {
-    return syncManagedSymlink(sourceRoot, sourcePath, destinationRoot, entry.path);
+    return syncManagedSymlink(
+      sourceRoot,
+      sourcePath,
+      destinationRoot,
+      entry.path,
+      managedTreeRules,
+    );
   }
 
   const destinationExists = await pathExists(destinationPath);
@@ -676,7 +744,12 @@ async function syncManagedPath(
   if (destinationExists) {
     const destinationStats = await lstat(destinationPath);
     if (!destinationStats.isFile()) {
-      await removeManagedDirectoryForReplacement(destinationRoot, entry.path, destinationStats);
+      await removeManagedDirectoryForReplacement(
+        destinationRoot,
+        entry.path,
+        destinationStats,
+        managedTreeRules,
+      );
     }
   }
 
@@ -730,6 +803,7 @@ async function syncManagedSymlink(
   sourcePath: string,
   destinationRoot: string,
   relativePath: string,
+  managedTreeRules: ManagedTreeRules,
 ): Promise<boolean> {
   const destinationPath = join(destinationRoot, relativePath);
   const sourceTarget = await readlink(sourcePath);
@@ -741,6 +815,7 @@ async function syncManagedSymlink(
     sourceRoot,
     target: sourceTarget,
     targetType: sourceTargetType,
+    rules: managedTreeRules,
   });
 
   if (await symlinkMatches(destinationPath, replicatedTarget, sourceTargetType)) {
@@ -750,7 +825,12 @@ async function syncManagedSymlink(
   if (await pathExists(destinationPath)) {
     const destinationStats = await lstat(destinationPath);
     if (destinationStats.isDirectory()) {
-      await removeManagedDirectoryForReplacement(destinationRoot, relativePath, destinationStats);
+      await removeManagedDirectoryForReplacement(
+        destinationRoot,
+        relativePath,
+        destinationStats,
+        managedTreeRules,
+      );
     } else {
       await rm(destinationPath, { recursive: true, force: true });
     }
@@ -788,10 +868,14 @@ async function readSymlinkTargetType(
   return readManagedSymlinkTargetType(path);
 }
 
-async function createManagedProjectBackup(projectRoot: string, runId: string): Promise<string> {
+async function createManagedProjectBackup(
+  projectRoot: string,
+  runId: string,
+  managedTreeRules: ManagedTreeRules,
+): Promise<string> {
   const backupRoot = await mkdtemp(join(tmpdir(), `oraculum-export-${runId}-`));
   try {
-    await copyManagedProjectTree(projectRoot, backupRoot);
+    await copyManagedProjectTree(projectRoot, backupRoot, { rules: managedTreeRules });
   } catch (error) {
     await rm(backupRoot, { recursive: true, force: true });
     throw error;
@@ -803,9 +887,10 @@ async function createManagedProjectBackup(projectRoot: string, runId: string): P
 async function restoreManagedProjectBackup(
   projectRoot: string,
   backupRoot: string,
+  managedTreeRules: ManagedTreeRules,
 ): Promise<Error | undefined> {
   try {
-    await syncWorkspaceIntoProject(projectRoot, backupRoot);
+    await syncWorkspaceIntoProject(projectRoot, backupRoot, managedTreeRules);
     return undefined;
   } catch (error) {
     return error instanceof Error ? error : new Error(String(error));
@@ -883,6 +968,7 @@ async function removeManagedDirectoryForReplacement(
   projectRoot: string,
   relativePath: string,
   destinationStats: Awaited<ReturnType<typeof lstat>>,
+  managedTreeRules: ManagedTreeRules,
 ): Promise<void> {
   const absolutePath = join(projectRoot, relativePath);
   if (!destinationStats.isDirectory()) {
@@ -890,9 +976,12 @@ async function removeManagedDirectoryForReplacement(
     return;
   }
 
-  const nestedManagedEntries = await listManagedProjectEntries(absolutePath);
+  const nestedManagedEntries = await listManagedProjectEntries(projectRoot, {
+    relativeDir: relativePath,
+    rules: managedTreeRules,
+  });
   for (const entry of [...nestedManagedEntries].sort(compareManagedEntriesForRemoval)) {
-    await removeManagedPath(absolutePath, entry);
+    await removeManagedPath(projectRoot, entry);
   }
 
   const removed = await removeManagedDirectoryIfEmpty(absolutePath);

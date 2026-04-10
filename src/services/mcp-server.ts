@@ -123,7 +123,12 @@ export function createOraculumMcpServer(): McpServer {
             text: [
               `Crowned ${response.plan.winnerId}`,
               `Consultation: ${response.plan.runId}`,
-              `Branch: ${response.plan.branchName}`,
+              ...(response.plan.mode === "git-branch" && response.plan.branchName
+                ? [`Branch: ${response.plan.branchName}`]
+                : []),
+              ...(response.materialization.materializationLabel
+                ? [`Label: ${response.materialization.materializationLabel}`]
+                : []),
               ...(response.materialization.currentBranch
                 ? [`Current branch: ${response.materialization.currentBranch}`]
                 : []),

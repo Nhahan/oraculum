@@ -3,13 +3,19 @@ import { dirname, join } from "node:path";
 
 import { OraculumError } from "../core/errors.js";
 import { runSubprocess } from "../core/subprocess.js";
+import type { ManagedTreeRules } from "../domain/config.js";
 import type { WorkspaceMode } from "../domain/run.js";
 
-import { copyManagedProjectTree, shouldManageProjectEntry } from "./managed-tree.js";
+import {
+  copyManagedProjectTree,
+  shouldLinkProjectDependencyTree,
+  shouldManageProjectPath,
+} from "./managed-tree.js";
 import { pathExists } from "./project.js";
 
 interface PrepareWorkspaceOptions {
   baseRevision?: string;
+  managedTreeRules?: ManagedTreeRules;
   projectRoot: string;
   workspaceDir: string;
 }
@@ -106,8 +112,15 @@ async function prepareCopiedWorkspace(
 ): Promise<WorkspacePreparation> {
   await rm(options.workspaceDir, { recursive: true, force: true });
   await mkdir(options.workspaceDir, { recursive: true });
-  await copyManagedProjectTree(options.projectRoot, options.workspaceDir);
-  await linkWorkspaceDependencyTrees(options.projectRoot, options.workspaceDir);
+  await copyManagedProjectTree(options.projectRoot, options.workspaceDir, {
+    ...(options.managedTreeRules ? { rules: options.managedTreeRules } : {}),
+  });
+  await linkWorkspaceUnmanagedDependencyTrees(
+    options.projectRoot,
+    options.workspaceDir,
+    "",
+    options.managedTreeRules,
+  );
 
   return {
     mode: "copy",
@@ -115,10 +128,11 @@ async function prepareCopiedWorkspace(
   };
 }
 
-async function linkWorkspaceDependencyTrees(
+async function linkWorkspaceUnmanagedDependencyTrees(
   sourceRoot: string,
   destinationRoot: string,
   relativeDir = "",
+  managedTreeRules?: ManagedTreeRules,
 ): Promise<void> {
   const sourceDir = relativeDir ? join(sourceRoot, relativeDir) : sourceRoot;
   const entries = await readdir(sourceDir, { withFileTypes: true });
@@ -129,7 +143,7 @@ async function linkWorkspaceDependencyTrees(
     }
 
     const relativePath = relativeDir ? join(relativeDir, entry.name) : entry.name;
-    if (entry.name === "node_modules") {
+    if (shouldLinkProjectDependencyTree(relativePath, managedTreeRules)) {
       const destinationPath = join(destinationRoot, relativePath);
       await mkdir(dirname(destinationPath), { recursive: true });
       await symlink(
@@ -140,11 +154,16 @@ async function linkWorkspaceDependencyTrees(
       continue;
     }
 
-    if (!shouldManageProjectEntry(entry.name)) {
+    if (!shouldManageProjectPath(relativePath, managedTreeRules)) {
       continue;
     }
 
-    await linkWorkspaceDependencyTrees(sourceRoot, destinationRoot, relativePath);
+    await linkWorkspaceUnmanagedDependencyTrees(
+      sourceRoot,
+      destinationRoot,
+      relativePath,
+      managedTreeRules,
+    );
   }
 }
 

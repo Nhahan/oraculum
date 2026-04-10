@@ -130,6 +130,10 @@ describe("oracle and adapter contracts", () => {
   it("accepts advanced operator settings separately from quick-start defaults", () => {
     const advanced = projectAdvancedConfigSchema.parse({
       version: 1,
+      managedTree: {
+        includePaths: ["dist", "target/docs"],
+        excludePaths: ["build"],
+      },
       repair: {
         enabled: true,
         maxAttemptsPerRound: 1,
@@ -147,7 +151,22 @@ describe("oracle and adapter contracts", () => {
     });
 
     expect(advanced.oracles?.[0]?.args).toEqual(["run", "lint"]);
+    expect(advanced.managedTree?.includePaths).toEqual(["dist", "target/docs"]);
     expect(advanced.repair?.maxAttemptsPerRound).toBe(1);
+  });
+
+  it("rejects unsafe managed tree include and exclude paths", () => {
+    for (const path of ["../outside", "packages/../outside", "/tmp/outside", "C:\\tmp"]) {
+      expect(() =>
+        projectAdvancedConfigSchema.parse({
+          version: 1,
+          managedTree: {
+            includePaths: [path],
+            excludePaths: [],
+          },
+        }),
+      ).toThrow("Managed tree paths must be safe relative paths");
+    }
   });
 
   it("supports repo-local command oracle configuration", () => {

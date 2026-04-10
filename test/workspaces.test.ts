@@ -51,7 +51,7 @@ describe("candidate workspace preparation", () => {
     await expect(stat(join(workspaceDir, ".aws"))).rejects.toThrow();
   });
 
-  it("does not copy common non-Node dependency and cache trees into copied workspaces", async () => {
+  it("links common unmanaged dependency and cache trees into copied workspaces", async () => {
     const projectRoot = await createTempRoot();
     const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");
 
@@ -67,11 +67,47 @@ describe("candidate workspace preparation", () => {
 
     await prepareCandidateWorkspace({ projectRoot, workspaceDir });
 
+    await writeFile(join(projectRoot, ".venv", "lib", "python"), "python updated\n", "utf8");
+    await writeFile(join(projectRoot, "target", "debug", "binary"), "binary updated\n", "utf8");
+    await writeFile(join(projectRoot, ".gradle", "caches", "state"), "cache updated\n", "utf8");
+
     await expect(readFile(join(workspaceDir, "README.md"), "utf8")).resolves.toContain("hello");
-    await expect(stat(join(workspaceDir, ".venv"))).rejects.toThrow();
+    await expect(readFile(join(workspaceDir, ".venv", "lib", "python"), "utf8")).resolves.toBe(
+      "python updated\n",
+    );
     await expect(stat(join(workspaceDir, "__pycache__"))).rejects.toThrow();
-    await expect(stat(join(workspaceDir, "target"))).rejects.toThrow();
-    await expect(stat(join(workspaceDir, ".gradle"))).rejects.toThrow();
+    await expect(readFile(join(workspaceDir, "target", "debug", "binary"), "utf8")).resolves.toBe(
+      "binary updated\n",
+    );
+    await expect(readFile(join(workspaceDir, ".gradle", "caches", "state"), "utf8")).resolves.toBe(
+      "cache updated\n",
+    );
+  });
+
+  it("copies explicitly included ambiguous directories into copied workspaces", async () => {
+    const projectRoot = await createTempRoot();
+    const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");
+
+    await mkdir(join(projectRoot, "dist"), { recursive: true });
+    await writeFile(join(projectRoot, "dist", "index.js"), "dist source\n", "utf8");
+    await mkdir(join(projectRoot, "target", "docs"), { recursive: true });
+    await writeFile(join(projectRoot, "target", "docs", "index.html"), "docs\n", "utf8");
+
+    await prepareCandidateWorkspace({
+      managedTreeRules: {
+        includePaths: ["dist", "target/docs"],
+        excludePaths: [],
+      },
+      projectRoot,
+      workspaceDir,
+    });
+
+    await expect(readFile(join(workspaceDir, "dist", "index.js"), "utf8")).resolves.toBe(
+      "dist source\n",
+    );
+    await expect(
+      readFile(join(workspaceDir, "target", "docs", "index.html"), "utf8"),
+    ).resolves.toBe("docs\n");
   });
 
   it("links node_modules dependency trees into copied workspaces", async () => {

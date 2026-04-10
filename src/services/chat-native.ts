@@ -357,12 +357,13 @@ export const oraculumCommandManifest = [
       {
         name: "branchName",
         kind: "string",
-        description: "Target branch name to create.",
-        required: true,
+        description:
+          "Git branch name to create; optional workspace-sync label in non-Git projects.",
+        required: false,
         positional: true,
       },
     ],
-    examples: ["orc crown fix/session-loss"],
+    examples: ["orc crown fix/session-loss", "orc crown"],
     hostAdditions: {},
   },
   {

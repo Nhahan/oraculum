@@ -463,7 +463,6 @@ describe("chat-native MCP tools", () => {
       plan: {
         runId: "run_1",
         winnerId: "cand-01",
-        branchName: "fix/session-loss",
         mode: "workspace-sync",
         workspaceDir: "/tmp/workspace",
         appliedPathCount: 2,
@@ -476,15 +475,17 @@ describe("chat-native MCP tools", () => {
 
     const response = await runCrownTool({
       cwd: root,
-      branchName: "fix/session-loss",
       withReport: false,
     });
 
+    expect(mockedMaterializeExport).toHaveBeenCalledWith({
+      cwd: root,
+      withReport: false,
+    });
     expect(response.materialization).toEqual({
       materialized: true,
       verified: true,
       mode: "workspace-sync",
-      branchName: "fix/session-loss",
       changedPaths: ["added.txt", "app.txt", "removed.txt"],
       changedPathCount: 3,
       checks: [
@@ -492,6 +493,43 @@ describe("chat-native MCP tools", () => {
         expect.objectContaining({ id: "changed-paths", status: "passed" }),
       ],
     });
+  });
+
+  it("reports legacy workspace-sync branch names as materialization labels", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oraculum-mcp-crown-sync-label-"));
+    tempRoots.push(root);
+    const summaryPath = join(root, ".oraculum", "runs", "run_1", "reports", "export-sync.json");
+    await mkdir(join(root, ".oraculum", "runs", "run_1", "reports"), { recursive: true });
+    await writeFile(
+      summaryPath,
+      `${JSON.stringify({ appliedFiles: ["app.txt"], removedFiles: [] }, null, 2)}\n`,
+      "utf8",
+    );
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        branchName: "legacy-label",
+        mode: "workspace-sync",
+        workspaceDir: "/tmp/workspace",
+        appliedPathCount: 1,
+        removedPathCount: 0,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: join(root, ".oraculum", "runs", "run_1", "reports", "export-plan.json"),
+    });
+
+    const response = await runCrownTool({
+      cwd: root,
+      withReport: false,
+    });
+
+    expect(response.materialization).toMatchObject({
+      mode: "workspace-sync",
+      materializationLabel: "legacy-label",
+    });
+    expect(response.materialization.branchName).toBeUndefined();
   });
 
   it("rejects crowning when the current branch post-check fails", async () => {

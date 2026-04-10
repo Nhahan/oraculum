@@ -51,7 +51,8 @@ describe("Codex chat-native packaging", () => {
     );
     expect(crownSkill?.content).toContain("Call the MCP tool `oraculum_crown`.");
     expect(crownSkill?.content).toContain("report the verified tool result concisely and stop");
-    expect(crownSkill?.content).toContain("first positional argument after `orc crown`");
+    expect(crownSkill?.content).toContain("required only for Git-backed crowning");
+    expect(crownSkill?.content).toContain("Example: `orc crown` -> no branchName field");
     expect(getExpectedCodexRuleFileName()).toBe("oraculum.md");
     expect(getExpectedCodexSkillDirs()).toContain("oraculum-consult");
   });

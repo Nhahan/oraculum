@@ -473,7 +473,7 @@ if (out) {
       cwd,
       runId: manifest.id,
       winnerId: "cand-01",
-      branchName: "fix/session-loss",
+      branchName: "manual-sync-label",
       withReport: true,
     });
 
@@ -482,7 +482,8 @@ if (out) {
     );
 
     expect(result.plan.winnerId).toBe("cand-01");
-    expect(saved.branchName).toBe("fix/session-loss");
+    expect(saved.branchName).toBeUndefined();
+    expect(saved.materializationLabel).toBe("manual-sync-label");
     expect(saved.withReport).toBe(true);
     expect(saved.reportBundle?.files).toEqual(
       expect.arrayContaining([

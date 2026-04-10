@@ -1,7 +1,12 @@
 import { z } from "zod";
 
 import { adapterSchema } from "./config.js";
-import { exportModeSchema, exportPlanSchema, runManifestSchema } from "./run.js";
+import {
+  exportModeSchema,
+  exportPlanSchema,
+  optionalNonEmptyStringSchema,
+  runManifestSchema,
+} from "./run.js";
 
 export const commandPrefixSchema = z.literal("orc");
 
@@ -134,7 +139,8 @@ export const verdictArchiveToolResponseSchema = z.object({
 
 export const crownToolRequestSchema = z.object({
   cwd: z.string().min(1),
-  branchName: z.string().min(1),
+  branchName: optionalNonEmptyStringSchema,
+  materializationLabel: optionalNonEmptyStringSchema,
   consultationId: z.string().min(1).optional(),
   candidateId: z.string().min(1).optional(),
   withReport: z.boolean().default(false),
@@ -146,16 +152,27 @@ export const crownMaterializationCheckSchema = z.object({
   summary: z.string().min(1),
 });
 
-export const crownMaterializationSchema = z.object({
-  materialized: z.literal(true),
-  verified: z.literal(true),
-  mode: exportModeSchema,
-  branchName: z.string().min(1),
-  currentBranch: z.string().min(1).optional(),
-  changedPaths: z.array(z.string().min(1)).default([]),
-  changedPathCount: z.number().int().min(0),
-  checks: z.array(crownMaterializationCheckSchema).min(1),
-});
+export const crownMaterializationSchema = z
+  .object({
+    materialized: z.literal(true),
+    verified: z.literal(true),
+    mode: exportModeSchema,
+    branchName: optionalNonEmptyStringSchema,
+    materializationLabel: optionalNonEmptyStringSchema,
+    currentBranch: z.string().min(1).optional(),
+    changedPaths: z.array(z.string().min(1)).default([]),
+    changedPathCount: z.number().int().min(0),
+    checks: z.array(crownMaterializationCheckSchema).min(1),
+  })
+  .superRefine((materialization, context) => {
+    if (materialization.mode === "git-branch" && !materialization.branchName) {
+      context.addIssue({
+        code: "custom",
+        message: "Git branch materializations must include branchName.",
+        path: ["branchName"],
+      });
+    }
+  });
 
 export const crownToolResponseSchema = z.object({
   mode: z.literal("crown"),

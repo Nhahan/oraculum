@@ -147,7 +147,8 @@ export async function runCrownTool(input: CrownToolRequest): Promise<CrownToolRe
   const request = crownToolRequestSchema.parse(input);
   const result = await materializeExport({
     cwd: request.cwd,
-    branchName: request.branchName,
+    ...(request.branchName ? { branchName: request.branchName } : {}),
+    ...(request.materializationLabel ? { materializationLabel: request.materializationLabel } : {}),
     withReport: request.withReport,
     ...(request.consultationId ? { runId: request.consultationId } : {}),
     ...(request.candidateId ? { winnerId: request.candidateId } : {}),
@@ -373,8 +374,9 @@ async function buildCrownMaterialization(
   let currentBranch: string | undefined;
 
   if (plan.mode === "git-branch") {
+    const branchName = requireMaterializedBranchName(plan);
     checks.push(assertGitPatchArtifact(plan));
-    currentBranch = await readVerifiedCurrentGitBranch(projectRoot, plan.branchName);
+    currentBranch = await readVerifiedCurrentGitBranch(projectRoot, branchName);
     checks.push({
       id: "current-branch",
       status: "passed",
@@ -398,16 +400,30 @@ async function buildCrownMaterialization(
     summary: `${changedPaths.length} changed path${changedPaths.length === 1 ? "" : "s"} detected.`,
   });
 
+  const materializationLabel =
+    plan.mode === "workspace-sync" ? (plan.materializationLabel ?? plan.branchName) : undefined;
+
   return {
     materialized: true,
     verified: true,
     mode: plan.mode,
-    branchName: plan.branchName,
+    ...(plan.mode === "git-branch" && plan.branchName ? { branchName: plan.branchName } : {}),
+    ...(materializationLabel ? { materializationLabel } : {}),
     ...(currentBranch ? { currentBranch } : {}),
     changedPaths,
     changedPathCount: changedPaths.length,
     checks,
   };
+}
+
+function requireMaterializedBranchName(plan: CrownToolResponse["plan"]): string {
+  if (!plan.branchName) {
+    throw new OraculumError(
+      `Crowning post-check failed: git-branch export "${plan.runId}" did not record a branch name.`,
+    );
+  }
+
+  return plan.branchName;
 }
 
 function assertGitPatchArtifact(plan: CrownToolResponse["plan"]): CrownMaterializationCheck {

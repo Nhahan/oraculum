@@ -268,6 +268,40 @@ describe("consultation workflow summaries", () => {
     expect(archive).toContain(`orc verdict ${manifest.id}`);
     expect(archive).not.toContain("oraculum verdict");
   });
+
+  it("renders bare crown guidance for non-git workspace-sync survivors", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      recommendedWinner: {
+        candidateId: "cand-01",
+        confidence: "high",
+        source: "llm-judge",
+        summary: "cand-01 is the recommended promotion.",
+      },
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/workspace",
+          taskPacketPath: "/tmp/task-packet.json",
+          workspaceMode: "copy",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+    await writeManifest(cwd, manifest);
+
+    const summary = await renderConsultationSummary(manifest, cwd, {
+      surface: "chat-native",
+    });
+
+    expect(summary).toContain("- crown the recommended survivor: orc crown");
+    expect(summary).not.toContain("orc crown <branch-name>");
+  });
 });
 
 async function createInitializedProject(): Promise<string> {

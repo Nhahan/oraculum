@@ -1,10 +1,24 @@
-import { lstat, mkdir, mkdtemp, readlink, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readlink,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { copyManagedProjectTree, readSymlinkTargetType } from "../src/services/managed-tree.js";
+import {
+  copyManagedProjectTree,
+  readSymlinkTargetType,
+  shouldLinkProjectDependencyTree,
+  shouldManageProjectPath,
+} from "../src/services/managed-tree.js";
 import { createDirectoryLink, normalizeLinkedPath } from "./helpers/platform.js";
 
 const tempRoots: string[] = [];
@@ -18,6 +32,72 @@ afterEach(async () => {
 });
 
 describe("managed tree symlink semantics", () => {
+  it("allows explicit management of ambiguous generated directories without overriding protected paths", async () => {
+    const sourceRoot = await createTempRoot();
+    const destinationRoot = await createTempRoot();
+    await mkdir(join(sourceRoot, "dist"), { recursive: true });
+    await writeFile(join(sourceRoot, "dist", "index.js"), "dist source\n", "utf8");
+    await writeFile(join(sourceRoot, ".env"), "SECRET=1\n", "utf8");
+
+    await copyManagedProjectTree(sourceRoot, destinationRoot, {
+      rules: {
+        includePaths: ["dist"],
+        excludePaths: [],
+      },
+    });
+
+    expect(
+      shouldManageProjectPath("dist/index.js", { includePaths: ["dist"], excludePaths: [] }),
+    ).toBe(true);
+    expect(
+      shouldManageProjectPath("dist/node_modules/pkg/index.js", {
+        includePaths: ["dist"],
+        excludePaths: [],
+      }),
+    ).toBe(false);
+    expect(shouldManageProjectPath(".env", { includePaths: [".env"], excludePaths: [] })).toBe(
+      false,
+    );
+    await expect(readFile(join(destinationRoot, "dist", "index.js"), "utf8")).resolves.toBe(
+      "dist source\n",
+    );
+    await expect(lstat(join(destinationRoot, ".env"))).rejects.toThrow();
+  });
+
+  it("allows explicit exclusion of ambiguous source-shaped directories", async () => {
+    const sourceRoot = await createTempRoot();
+    const destinationRoot = await createTempRoot();
+    await mkdir(join(sourceRoot, "build"), { recursive: true });
+    await writeFile(join(sourceRoot, "build", "artifact.txt"), "artifact\n", "utf8");
+
+    await copyManagedProjectTree(sourceRoot, destinationRoot, {
+      rules: {
+        includePaths: [],
+        excludePaths: ["build"],
+      },
+    });
+
+    expect(
+      shouldManageProjectPath("build/artifact.txt", { includePaths: [], excludePaths: ["build"] }),
+    ).toBe(false);
+    await expect(lstat(join(destinationRoot, "build"))).rejects.toThrow();
+  });
+
+  it("links only unmanaged dependency trees and respects explicit managed includes", () => {
+    const rules = {
+      includePaths: ["target/docs"],
+      excludePaths: [],
+    };
+
+    expect(shouldLinkProjectDependencyTree("node_modules", rules)).toBe(true);
+    expect(shouldLinkProjectDependencyTree(".venv", rules)).toBe(true);
+    expect(shouldLinkProjectDependencyTree(".gradle", rules)).toBe(true);
+    expect(shouldLinkProjectDependencyTree("target", rules)).toBe(false);
+    expect(shouldLinkProjectDependencyTree("target/docs", rules)).toBe(false);
+    expect(shouldLinkProjectDependencyTree("target/debug", rules)).toBe(true);
+    expect(shouldLinkProjectDependencyTree(".env", rules)).toBe(false);
+  });
+
   it("preserves relative directory symlinks as dir links under win32 semantics", async () => {
     const root = await createTempRoot();
     await mkdir(join(root, "target-dir"), { recursive: true });

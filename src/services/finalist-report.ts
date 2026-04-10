@@ -7,7 +7,7 @@ import {
   getFinalistComparisonMarkdownPath,
   resolveProjectRoot,
 } from "../core/paths.js";
-import type { Adapter } from "../domain/config.js";
+import type { Adapter, ManagedTreeRules } from "../domain/config.js";
 import type { OracleVerdict } from "../domain/oracle.js";
 import { consultationProfileSelectionSchema } from "../domain/profile.js";
 import {
@@ -36,6 +36,7 @@ interface WriteFinalistComparisonReportOptions {
   verdictsByCandidate: Map<string, OracleVerdict[]>;
   agent: Adapter;
   consultationProfile?: z.infer<typeof consultationProfileSelectionSchema>;
+  managedTreeRules?: ManagedTreeRules;
 }
 
 const comparisonReportSchema = z.object({
@@ -73,6 +74,7 @@ export async function writeFinalistComparisonReport(
   const finalists = await buildEnrichedFinalistSummaries({
     candidates: options.candidates,
     candidateResults: options.candidateResults,
+    ...(options.managedTreeRules ? { managedTreeRules: options.managedTreeRules } : {}),
     verdictsByCandidate: options.verdictsByCandidate,
   });
   const candidateById = new Map(options.candidates.map((candidate) => [candidate.id, candidate]));

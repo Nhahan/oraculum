@@ -110,12 +110,15 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
         baseRevision = await readProjectRevision(projectRoot);
       } else {
         baseSnapshotPath = getCandidateBaseSnapshotPath(projectRoot, manifest.id, candidate.id);
-        const snapshot = await captureManagedProjectSnapshot(projectRoot);
+        const snapshot = await captureManagedProjectSnapshot(projectRoot, {
+          rules: projectConfig.managedTree,
+        });
         await writeJsonFile(baseSnapshotPath, snapshot);
       }
 
       const workspace = await prepareCandidateWorkspace({
         ...(baseRevision ? { baseRevision } : {}),
+        managedTreeRules: projectConfig.managedTree,
         projectRoot,
         workspaceDir: candidate.workspaceDir,
       });
@@ -386,6 +389,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
         projectRoot,
         runId: manifest.id,
         taskPacket,
+        managedTreeRules: projectConfig.managedTree,
         verdictsByCandidate,
       })
     : { fallbackAllowed: true };
@@ -415,6 +419,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     ...(recommendedWinner ? { recommendedWinner } : {}),
     runId: completedManifest.id,
     taskPacket: completedManifest.taskPacket,
+    managedTreeRules: projectConfig.managedTree,
     verdictsByCandidate,
     ...(completedManifest.profileSelection
       ? { consultationProfile: completedManifest.profileSelection }

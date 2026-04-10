@@ -159,7 +159,9 @@ const builtInOracles: OracleDefinition[] = [
     oracleId: "materialized-patch",
     roundId: "impact",
     async evaluate(options) {
-      const changeInsight = await collectCandidateChangeInsight(options.candidate);
+      const changeInsight = await collectCandidateChangeInsight(options.candidate, {
+        rules: options.projectConfig.managedTree,
+      });
       const hasMaterializedPatch = changeInsight.changeSummary.changedPathCount > 0;
       const changeWitness = witnessSchema.parse({
         id: `${options.candidate.id}-materialized-patch`,

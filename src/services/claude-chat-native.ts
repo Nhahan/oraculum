@@ -423,7 +423,7 @@ function buildClaudeSkillMcpArgs(entry: CommandManifestEntry): Record<string, un
 function buildUsageExamples(entry: CommandManifestEntry): string[] {
   switch (entry.id) {
     case "crown":
-      return ["orc crown fix/session-loss"];
+      return ["orc crown fix/session-loss", "orc crown"];
     case "consult":
       return ['orc consult "fix session loss on refresh"'];
     case "draft":
@@ -440,17 +440,18 @@ function buildUsageExamples(entry: CommandManifestEntry): string[] {
 function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
   if (entry.id === "crown") {
     return [
-      "- The chat-native crowning path expects the branch name as the first argument.",
+      "- The first argument is required only when crowning a Git-backed candidate onto a new branch.",
+      "- In non-Git workspace-sync mode, `orc crown` may omit the first argument; if one is present, Oraculum records it as a materialization label rather than a Git branch.",
       "- It crowns the recommended survivor from the latest eligible consultation and materializes the patch.",
       "- After the MCP tool succeeds, report the verified materialization result and stop; do not re-apply the patch or run extra Bash, Edit, or Write steps unless the user explicitly asks.",
-      "- The shared chat-native surface is `orc crown <branch-name>`.",
+      "- The shared chat-native surface is `orc crown <branch-name>` for Git projects and `orc crown` for non-Git projects.",
       "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
     ];
   }
 
   return [
     "- This skill is intended for exact-prefix routing inside Claude Code.",
-    "- After the MCP tool returns, relay Oraculum's result; do not replace `orc crown <branch-name>` with a bare `orc crown` next step.",
+    "- After the MCP tool returns, relay Oraculum's result; do not replace the next Oraculum command with ad-hoc shell work.",
     "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
   ];
 }

@@ -59,6 +59,10 @@ export const reportBundleSchema = z.object({
 });
 
 export const exportModeSchema = z.enum(["git-branch", "workspace-sync"]);
+export const optionalNonEmptyStringSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim().length === 0 ? undefined : value),
+  z.string().min(1).optional(),
+);
 
 export const runManifestSchema = z.object({
   id: z.string().min(1),
@@ -75,19 +79,30 @@ export const runManifestSchema = z.object({
   recommendedWinner: runRecommendationSchema.optional(),
 });
 
-export const exportPlanSchema = z.object({
-  runId: z.string().min(1),
-  winnerId: z.string().min(1),
-  branchName: z.string().min(1),
-  mode: exportModeSchema,
-  workspaceDir: z.string().min(1),
-  patchPath: z.string().min(1).optional(),
-  appliedPathCount: z.number().int().min(0).optional(),
-  removedPathCount: z.number().int().min(0).optional(),
-  withReport: z.boolean(),
-  reportBundle: reportBundleSchema.optional(),
-  createdAt: z.string().min(1),
-});
+export const exportPlanSchema = z
+  .object({
+    runId: z.string().min(1),
+    winnerId: z.string().min(1),
+    branchName: optionalNonEmptyStringSchema,
+    materializationLabel: optionalNonEmptyStringSchema,
+    mode: exportModeSchema,
+    workspaceDir: z.string().min(1),
+    patchPath: z.string().min(1).optional(),
+    appliedPathCount: z.number().int().min(0).optional(),
+    removedPathCount: z.number().int().min(0).optional(),
+    withReport: z.boolean(),
+    reportBundle: reportBundleSchema.optional(),
+    createdAt: z.string().min(1),
+  })
+  .superRefine((plan, context) => {
+    if (plan.mode === "git-branch" && !plan.branchName) {
+      context.addIssue({
+        code: "custom",
+        message: "Git branch exports must include branchName.",
+        path: ["branchName"],
+      });
+    }
+  });
 
 export const latestRunStateSchema = z.object({
   runId: z.string().min(1),

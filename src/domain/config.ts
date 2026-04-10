@@ -32,6 +32,28 @@ export const repairPolicySchema = z
     maxAttemptsPerRound: z.number().int().min(0).max(3).default(1),
   })
   .strict();
+export const managedTreeRelativePathSchema = z
+  .string()
+  .min(1)
+  .superRefine((value, context) => {
+    if (
+      value.includes("\0") ||
+      isAbsolute(value) ||
+      win32.isAbsolute(value) ||
+      value.split(/[\\/]+/u).includes("..")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Managed tree paths must be safe relative paths inside the project root.",
+      });
+    }
+  });
+export const managedTreeRulesSchema = z
+  .object({
+    includePaths: z.array(managedTreeRelativePathSchema).default([]),
+    excludePaths: z.array(managedTreeRelativePathSchema).default([]),
+  })
+  .strict();
 
 export const strategySchema = z.object({
   id: z.string().min(1),
@@ -85,6 +107,7 @@ const runtimeProjectConfigBaseSchema = z
     rounds: z.array(roundSchema).min(1),
     oracles: z.array(repoOracleSchema).default([]),
     repair: repairPolicySchema,
+    managedTree: managedTreeRulesSchema.default({ includePaths: [], excludePaths: [] }),
   })
   .strict();
 
@@ -136,6 +159,7 @@ export const projectAdvancedConfigSchema = z
     rounds: z.array(roundSchema).min(1).optional(),
     oracles: z.array(repoOracleSchema).optional(),
     repair: repairPolicySchema.optional(),
+    managedTree: managedTreeRulesSchema.optional(),
   })
   .strict();
 
@@ -146,6 +170,7 @@ export type OracleEnforcement = z.infer<typeof oracleEnforcementSchema>;
 export type OracleConfidence = z.infer<typeof oracleConfidenceSchema>;
 export type OraclePathPolicy = z.infer<typeof oraclePathPolicySchema>;
 export type RepairPolicy = z.infer<typeof repairPolicySchema>;
+export type ManagedTreeRules = z.infer<typeof managedTreeRulesSchema>;
 export type Strategy = z.infer<typeof strategySchema>;
 export type Round = z.infer<typeof roundSchema>;
 export type RepoOracle = z.infer<typeof repoOracleSchema>;
@@ -201,6 +226,10 @@ export const defaultProjectConfig: ProjectConfig = {
   repair: {
     enabled: true,
     maxAttemptsPerRound: 1,
+  },
+  managedTree: {
+    includePaths: [],
+    excludePaths: [],
   },
 };
 

@@ -209,9 +209,12 @@ function buildCodexSkillArgumentLines(entry: CommandManifestEntry): string[] {
     case "crown":
       return [
         ...shared,
-        "- required `branchName`: the first positional argument after `orc crown`",
+        "- optional `branchName`: the first positional argument after `orc crown` when present; required only for Git-backed crowning",
+        "- omit `branchName` when the user typed bare `orc crown`",
+        "- in non-Git workspace-sync mode, Oraculum treats a provided `branchName` value as a materialization label rather than a Git branch",
         "- the chat-native crowning path uses the recommended survivor automatically",
         '- Example: `orc crown fix/greet` -> `{ branchName: "fix/greet" }`',
+        "- Example: `orc crown` -> no branchName field",
       ];
     case "init":
       return [...shared, "- optional `force`: parse the presence of `--force` as `true`"];

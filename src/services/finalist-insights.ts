@@ -3,6 +3,7 @@ import {
   type FinalistSummary,
   finalistSummarySchema,
 } from "../adapters/types.js";
+import type { ManagedTreeRules } from "../domain/config.js";
 import type { OracleVerdict } from "../domain/oracle.js";
 import type { CandidateManifest } from "../domain/run.js";
 
@@ -12,6 +13,7 @@ import { buildFinalistSummaries } from "./finalists.js";
 interface BuildEnrichedFinalistSummariesOptions {
   candidates: CandidateManifest[];
   candidateResults: AgentRunResult[];
+  managedTreeRules?: ManagedTreeRules;
   verdictsByCandidate: Map<string, OracleVerdict[]>;
 }
 
@@ -30,7 +32,9 @@ export async function buildEnrichedFinalistSummaries(
       const candidate = candidateById.get(finalist.candidateId);
       const verdicts = options.verdictsByCandidate.get(finalist.candidateId) ?? [];
       const changeInsight = candidate
-        ? await collectCandidateChangeInsight(candidate)
+        ? await collectCandidateChangeInsight(candidate, {
+            ...(options.managedTreeRules ? { rules: options.managedTreeRules } : {}),
+          })
         : emptyChangeInsight();
 
       return finalistSummarySchema.parse({

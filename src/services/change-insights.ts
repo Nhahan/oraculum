@@ -1,4 +1,5 @@
 import { runSubprocess } from "../core/subprocess.js";
+import type { ManagedTreeRules } from "../domain/config.js";
 import type { CandidateManifest } from "../domain/run.js";
 
 import {
@@ -23,13 +24,18 @@ export interface CandidateChangeInsight {
 
 export async function collectCandidateChangeInsight(
   candidate: CandidateManifest,
+  options: { rules?: ManagedTreeRules } = {},
 ): Promise<CandidateChangeInsight> {
   if (candidate.workspaceMode === "git-worktree" && candidate.baseRevision) {
-    return collectGitChangeInsight(candidate.workspaceDir, candidate.baseRevision);
+    return collectGitChangeInsight(candidate.workspaceDir, candidate.baseRevision, options);
   }
 
   if (candidate.baseSnapshotPath) {
-    return collectSnapshotChangeInsight(candidate.workspaceDir, candidate.baseSnapshotPath);
+    return collectSnapshotChangeInsight(
+      candidate.workspaceDir,
+      candidate.baseSnapshotPath,
+      options,
+    );
   }
 
   return emptyChangeInsight();
@@ -38,8 +44,9 @@ export async function collectCandidateChangeInsight(
 export async function listManagedGitChangedPaths(
   workspaceDir: string,
   baseRevision: string,
+  options: { rules?: ManagedTreeRules } = {},
 ): Promise<string[]> {
-  const insight = await collectGitChangeInsight(workspaceDir, baseRevision);
+  const insight = await collectGitChangeInsight(workspaceDir, baseRevision, options);
   return insight.changedPaths;
 }
 
@@ -59,6 +66,7 @@ export function emptyChangeInsight(): CandidateChangeInsight {
 async function collectGitChangeInsight(
   workspaceDir: string,
   baseRevision: string,
+  options: { rules?: ManagedTreeRules } = {},
 ): Promise<CandidateChangeInsight> {
   const [nameStatus, numstat, untracked] = await Promise.all([
     runSubprocess({
@@ -105,9 +113,11 @@ async function collectGitChangeInsight(
       const sourcePath = parts[1]?.trim();
       const destinationPath = parts[2]?.trim();
       const managedSource =
-        sourcePath && shouldManageProjectPath(sourcePath) ? sourcePath : undefined;
+        sourcePath && shouldManageProjectPath(sourcePath, options.rules) ? sourcePath : undefined;
       const managedDestination =
-        destinationPath && shouldManageProjectPath(destinationPath) ? destinationPath : undefined;
+        destinationPath && shouldManageProjectPath(destinationPath, options.rules)
+          ? destinationPath
+          : undefined;
       if (!managedSource && !managedDestination) {
         continue;
       }
@@ -124,7 +134,7 @@ async function collectGitChangeInsight(
     }
 
     const resolvedPath = parts[1]?.trim();
-    if (!resolvedPath || !shouldManageProjectPath(resolvedPath)) {
+    if (!resolvedPath || !shouldManageProjectPath(resolvedPath, options.rules)) {
       continue;
     }
 
@@ -141,7 +151,7 @@ async function collectGitChangeInsight(
 
   for (const line of untracked.stdout.split(/\r?\n/u)) {
     const trimmed = line.trim();
-    if (!trimmed || !shouldManageProjectPath(trimmed)) {
+    if (!trimmed || !shouldManageProjectPath(trimmed, options.rules)) {
       continue;
     }
 
@@ -159,7 +169,7 @@ async function collectGitChangeInsight(
     }
 
     const [added, deleted, path] = line.split("\t");
-    if (!path || !shouldManageProjectPath(path.trim())) {
+    if (!path || !shouldManageProjectPath(path.trim(), options.rules)) {
       continue;
     }
     if (added && /^\d+$/u.test(added)) {
@@ -187,10 +197,11 @@ async function collectGitChangeInsight(
 async function collectSnapshotChangeInsight(
   workspaceDir: string,
   snapshotPath: string,
+  options: { rules?: ManagedTreeRules } = {},
 ): Promise<CandidateChangeInsight> {
   const [expected, current] = await Promise.all([
     readManagedProjectSnapshot(snapshotPath),
-    captureManagedProjectSnapshot(workspaceDir),
+    captureManagedProjectSnapshot(workspaceDir, options),
   ]);
 
   const diff = diffSnapshotEntries(expected, current);

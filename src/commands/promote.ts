@@ -39,7 +39,16 @@ async function materializeCrowning(
   process.stdout.write(`Crowned ${result.plan.winnerId}\n`);
   process.stdout.write(`Consultation: ${result.plan.runId}\n`);
   process.stdout.write(`Mode: ${result.plan.mode}\n`);
-  process.stdout.write(`Branch: ${result.plan.branchName}\n`);
+  if (result.plan.mode === "git-branch" && result.plan.branchName) {
+    process.stdout.write(`Branch: ${result.plan.branchName}\n`);
+  }
+  const materializationLabel =
+    result.plan.mode === "workspace-sync"
+      ? (result.plan.materializationLabel ?? result.plan.branchName)
+      : undefined;
+  if (materializationLabel) {
+    process.stdout.write(`Label: ${materializationLabel}\n`);
+  }
   process.stdout.write(`Workspace: ${result.plan.workspaceDir}\n`);
   if (result.plan.patchPath) {
     process.stdout.write(`Patch: ${result.plan.patchPath}\n`);

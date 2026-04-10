@@ -60,7 +60,8 @@ interface BuildExportPlanOptions {
   cwd: string;
   runId?: string;
   winnerId?: string;
-  branchName: string;
+  branchName?: string;
+  materializationLabel?: string;
   withReport: boolean;
 }
 
@@ -274,6 +275,11 @@ export async function prepareExportPlan(
 
   const reportFiles = options.withReport ? await collectReportFiles(projectRoot, manifest.id) : [];
   const mode = winner.workspaceMode === "git-worktree" ? "git-branch" : "workspace-sync";
+  if (mode === "git-branch" && !options.branchName) {
+    throw new OraculumError(
+      "Git-backed crowning requires a target branch name. Use `orc crown <branch-name>`.",
+    );
+  }
   if (mode === "git-branch" && !winner.baseRevision) {
     throw new OraculumError(
       `Candidate "${winner.id}" was produced by an older consultation artifact that does not record its git base revision. Re-run the task before crowning it.`,
@@ -289,9 +295,12 @@ export async function prepareExportPlan(
   const plan: ExportPlan = {
     runId: manifest.id,
     winnerId: winner.id,
-    branchName: options.branchName,
     mode,
     workspaceDir: winner.workspaceDir,
+    ...(mode === "git-branch" ? { branchName: options.branchName } : {}),
+    ...(mode === "workspace-sync"
+      ? { materializationLabel: options.materializationLabel ?? options.branchName }
+      : {}),
     ...(mode === "git-branch" ? { patchPath: getExportPatchPath(projectRoot, manifest.id) } : {}),
     withReport: options.withReport,
     ...(options.withReport && reportFiles.length > 0
