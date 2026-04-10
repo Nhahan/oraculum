@@ -136,6 +136,7 @@ Use the shell binary for installation, diagnostics, and MCP serving only.
 oraculum setup --runtime claude-code
 oraculum setup --runtime codex
 oraculum setup status
+oraculum setup status --json
 oraculum mcp serve
 ```
 

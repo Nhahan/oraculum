@@ -202,6 +202,8 @@ Examples of follow-on work:
 - [x] Demote shell fallback further in root docs and default user guidance
 - [x] Remove shell workflow fallback while keeping shell setup/MCP/debug commands
 - [x] Improve host-native UX polish, diagnostics, and packaging cleanup
+- [x] Add a clean-install release smoke that validates packaged setup for both hosts
+- [x] Expand the curated evidence corpus with a docs-heavy repository shape
 - [ ] Continue broader evidence collection, release hardening, and operational polish
 - [ ] Revisit future host/runtime expansion only if product direction changes
 
