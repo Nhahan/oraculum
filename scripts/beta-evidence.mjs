@@ -15,6 +15,17 @@ const repoKinds = ["library", "frontend", "migration", "plain"];
 const agents = ["codex", "claude-code"];
 const workspaceModes = ["git", "copy"];
 const packageManagers = ["pnpm", "yarn", "bun"];
+const scenarioSpecificAdvancedConfigKinds = new Set(["no-finalist", "repair", "advanced-override"]);
+const explicitMarkerOracleFixtures = {
+  python: {
+    label: "Python",
+    fileSegments: ["src", "app.py"],
+  },
+  go: {
+    label: "Go",
+    fileSegments: ["internal", "status", "status.go"],
+  },
+};
 
 function resolveEvidenceMode() {
   const modeArgument = process.argv.find((argument) => argument.startsWith("--mode="));
@@ -319,6 +330,22 @@ function buildCorpusScenarios() {
       workspaceMode: "copy",
       profileId: "generic",
       corpusName: "generic-no-package-json",
+    }),
+    createScenario({
+      kind: "happy",
+      repoKind: "python",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      corpusName: "python-explicit-oracle",
+    }),
+    createScenario({
+      kind: "happy",
+      repoKind: "go",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      corpusName: "go-explicit-oracle",
     }),
     createScenario({
       kind: "happy",
@@ -759,6 +786,14 @@ async function prepareScenario(workdir, scenario) {
     });
   }
 
+  const explicitMarkerOracle = buildExplicitMarkerOracle(scenario.repoKind);
+  if (explicitMarkerOracle && !scenarioSpecificAdvancedConfigKinds.has(scenario.kind)) {
+    await writeAdvancedConfig(workdir, {
+      version: 1,
+      oracles: [explicitMarkerOracle],
+    });
+  }
+
   if (scenario.binaryMode === "missing") {
     scenario.fakeBinaryPath = join(workdir, "missing-runtime");
   } else {
@@ -772,6 +807,34 @@ async function prepareScenario(workdir, scenario) {
       scenario.packageManager,
     );
   }
+}
+
+function buildExplicitMarkerOracle(repoKind) {
+  const fixture = explicitMarkerOracleFixtures[repoKind];
+  if (!fixture) {
+    return undefined;
+  }
+
+  const fileSegments = fixture.fileSegments.map((segment) => JSON.stringify(segment)).join(", ");
+
+  return {
+    id: `${repoKind}-explicit-impact`,
+    roundId: "impact",
+    command: process.execPath,
+    args: [
+      "-e",
+      [
+        "const fs = require('node:fs');",
+        "const path = require('node:path');",
+        `const file = path.join(process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR, ${fileSegments});`,
+        "const text = fs.readFileSync(file, 'utf8');",
+        "if (!text.includes('cand-')) { process.stderr.write('candidate marker missing'); process.exit(1); }",
+        `process.stdout.write(${JSON.stringify(`explicit ${repoKind} oracle ok`)});`,
+      ].join(" "),
+    ],
+    invariant: `The ${fixture.label}-shaped fixture must pass only the explicit repo-local Oraculum oracle.`,
+    enforcement: "hard",
+  };
 }
 
 async function executeScenario(workdir, scenario) {
@@ -1247,6 +1310,23 @@ process.stdout.write("turbo workspace ok");
     return;
   }
 
+  if (repoKind === "python") {
+    await writeFile(join(root, "src", "app.py"), 'def status():\n    return "offline"\n', "utf8");
+    await writeFile(join(root, "pyproject.toml"), '[project]\nname = "scenario-python"\n');
+    return;
+  }
+
+  if (repoKind === "go") {
+    await mkdir(join(root, "internal", "status"), { recursive: true });
+    await writeFile(join(root, "go.mod"), "module example.com/scenario\n\ngo 1.22\n", "utf8");
+    await writeFile(
+      join(root, "internal", "status", "status.go"),
+      'package status\n\nfunc Status() string {\n\treturn "offline"\n}\n',
+      "utf8",
+    );
+    return;
+  }
+
   if (repoKind === "service") {
     await mkdir(join(root, "routes"), { recursive: true });
     await writeFile(
@@ -1434,6 +1514,8 @@ async function writeTaskInputs(root, repoKind) {
     frontend: "# Frontend patch\nUpdate the page title.\n",
     migration: "# Migration patch\nAdjust the schema comment.\n",
     plain: "# Plain patch\nUpdate the greeting text.\n",
+    python: "# Python patch\nUpdate the service status text.\n",
+    go: "# Go patch\nUpdate the service status text.\n",
     docs: "# Docs patch\nRevise the report wording.\n",
     service: "# Service patch\nUpdate the service status response.\n",
     monorepo: "# Monorepo patch\nUpdate the workspace package greeting.\n",
@@ -1453,6 +1535,12 @@ function buildInlineTaskText(repoKind) {
   }
   if (repoKind === "docs") {
     return "Update docs/report.md so the report reflects the winning candidate with a small editorial change.";
+  }
+  if (repoKind === "python") {
+    return "Update src/app.py so status() returns a winner-specific online status string.";
+  }
+  if (repoKind === "go") {
+    return "Update internal/status/status.go so Status() returns a winner-specific online status string.";
   }
   if (repoKind === "service") {
     return "Update src/server.js so serviceStatus() returns a winner-specific online status string.";
@@ -1637,6 +1725,18 @@ function mutateWorkspace() {
   if (scenario.repoKind === "docs") {
     const file = path.join(process.cwd(), "docs", "report.md");
     const next = fs.readFileSync(file, "utf8").replace("Baseline report", "Report for " + candidateId);
+    fs.writeFileSync(file, next, "utf8");
+    return;
+  }
+  if (scenario.repoKind === "python") {
+    const file = path.join(process.cwd(), "src", "app.py");
+    const next = fs.readFileSync(file, "utf8").replace('"offline"', '"online-' + candidateId + '"');
+    fs.writeFileSync(file, next, "utf8");
+    return;
+  }
+  if (scenario.repoKind === "go") {
+    const file = path.join(process.cwd(), "internal", "status", "status.go");
+    const next = fs.readFileSync(file, "utf8").replace('"offline"', '"online-' + candidateId + '"');
     fs.writeFileSync(file, next, "utf8");
     return;
   }
@@ -1968,9 +2068,13 @@ async function assertTargetFileContains(root, scenario, candidateId) {
           ? join(root, "prisma", "schema.prisma")
           : scenario.repoKind === "docs"
             ? join(root, "docs", "report.md")
-            : scenario.repoKind === "service"
-              ? join(root, "src", "server.js")
-              : join(root, "src", "index.js");
+            : scenario.repoKind === "python"
+              ? join(root, "src", "app.py")
+              : scenario.repoKind === "go"
+                ? join(root, "internal", "status", "status.go")
+                : scenario.repoKind === "service"
+                  ? join(root, "src", "server.js")
+                  : join(root, "src", "index.js");
   const contents = await readFile(file, "utf8");
   assertContains(contents, candidateId);
 }
