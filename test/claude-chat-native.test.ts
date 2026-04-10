@@ -45,6 +45,10 @@ describe("Claude Code chat-native packaging", () => {
     expect(plugin.name).toBe("oraculum");
     expect(plugin.skills).toBe("./skills/");
     expect(mcp.mcpServers).toHaveProperty("oraculum");
+    expect(
+      (mcp.mcpServers as Record<string, { env?: Record<string, string> }>).oraculum?.env
+        ?.ORACULUM_AGENT_RUNTIME,
+    ).toBe("claude-code");
 
     expect(commands.map((file) => file.path)).toEqual([
       "commands/consult.md",
@@ -67,6 +71,14 @@ describe("Claude Code chat-native packaging", () => {
     expect(crownSkill?.content).toContain(
       "- The chat-native crowning path expects the branch name as the first argument.",
     );
+    expect(crownSkill?.content).toContain(
+      "After the MCP tool succeeds, report the verified materialization result and stop",
+    );
+
+    const consultSkill = skills.find((file) => file.path.includes("/consult/"));
+    expect(consultSkill?.content).toContain('taskInput: "$ARGUMENTS"');
+    expect(consultSkill?.content).toContain('agent: "claude-code"');
+    expect(consultSkill?.content).toContain("do not replace `orc crown <branch-name>`");
   });
 
   it("writes packaged Claude artifacts into dist during the build", async () => {
@@ -128,12 +140,12 @@ describe("Claude Code setup", () => {
     });
 
     const mcpConfig = JSON.parse(await readFile(result.mcpConfigPath, "utf8")) as {
-      mcpServers: Record<string, { command: string; args: string[] }>;
+      mcpServers: Record<string, { args: string[]; command: string; env?: Record<string, string> }>;
     };
     const effectivePluginMcpConfig = JSON.parse(
       await readFile(result.effectiveMcpConfigPath, "utf8"),
     ) as {
-      mcpServers: Record<string, { command: string; args: string[] }>;
+      mcpServers: Record<string, { args: string[]; command: string; env?: Record<string, string> }>;
     };
     const state = JSON.parse(await readFile(statePath, "utf8")) as {
       marketplaces: Array<{ name: string }>;
@@ -143,8 +155,12 @@ describe("Claude Code setup", () => {
     expect(mcpConfig.mcpServers.oraculum?.command).toBe(process.execPath);
     expect(mcpConfig.mcpServers.oraculum?.args.at(-2)).toBe("mcp");
     expect(mcpConfig.mcpServers.oraculum?.args.at(-1)).toBe("serve");
+    expect(mcpConfig.mcpServers.oraculum?.env?.ORACULUM_AGENT_RUNTIME).toBe("claude-code");
     expect(effectivePluginMcpConfig.mcpServers.oraculum?.args.at(-2)).toBe("mcp");
     expect(effectivePluginMcpConfig.mcpServers.oraculum?.args.at(-1)).toBe("serve");
+    expect(effectivePluginMcpConfig.mcpServers.oraculum?.env?.ORACULUM_AGENT_RUNTIME).toBe(
+      "claude-code",
+    );
     expect(result.installRoot).toContain(".oraculum");
     expect(state.marketplaces).toEqual([{ name: "oraculum" }]);
     expect(state.plugins).toEqual([{ name: "oraculum" }]);

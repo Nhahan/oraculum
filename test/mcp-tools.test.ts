@@ -1,4 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../src/core/subprocess.js", () => ({
+  runSubprocess: vi.fn(),
+}));
 
 vi.mock("../src/services/runs.js", () => ({
   planRun: vi.fn(),
@@ -25,6 +33,7 @@ vi.mock("../src/services/exports.js", () => ({
   materializeExport: vi.fn(),
 }));
 
+import { runSubprocess } from "../src/core/subprocess.js";
 import {
   listRecentConsultations,
   renderConsultationArchive,
@@ -53,9 +62,18 @@ const mockedListRecentConsultations = vi.mocked(listRecentConsultations);
 const mockedRenderConsultationArchive = vi.mocked(renderConsultationArchive);
 const mockedRenderConsultationSummary = vi.mocked(renderConsultationSummary);
 const mockedMaterializeExport = vi.mocked(materializeExport);
+const mockedRunSubprocess = vi.mocked(runSubprocess);
+let tempRoots: string[] = [];
 
 describe("chat-native MCP tools", () => {
+  afterEach(async () => {
+    await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    tempRoots = [];
+  });
+
   beforeEach(() => {
+    delete process.env.ORACULUM_AGENT_RUNTIME;
+
     mockedPlanRun.mockReset();
     mockedReadLatestRunManifest.mockReset();
     mockedReadRunManifest.mockReset();
@@ -66,6 +84,7 @@ describe("chat-native MCP tools", () => {
     mockedRenderConsultationArchive.mockReset();
     mockedRenderConsultationSummary.mockReset();
     mockedMaterializeExport.mockReset();
+    mockedRunSubprocess.mockReset();
 
     mockedEnsureProjectInitialized.mockResolvedValue(undefined);
     mockedListRecentConsultations.mockResolvedValue([createCompletedManifest()]);
@@ -95,6 +114,7 @@ describe("chat-native MCP tools", () => {
       },
       path: "/tmp/export-plan.json",
     });
+    mockedRunSubprocess.mockResolvedValue(createSubprocessResult({ exitCode: 1 }));
   });
 
   it("runs consult through the shared MCP tool path", async () => {
@@ -106,7 +126,7 @@ describe("chat-native MCP tools", () => {
       timeoutMs: 1200,
     });
 
-    expect(mockedEnsureProjectInitialized).toHaveBeenCalledWith("/tmp/project");
+    expect(mockedEnsureProjectInitialized).toHaveBeenCalledWith("/tmp/project", {});
     expect(mockedPlanRun).toHaveBeenCalledWith({
       cwd: "/tmp/project",
       taskInput: "tasks/task.md",
@@ -130,6 +150,67 @@ describe("chat-native MCP tools", () => {
     expect(response.mode).toBe("consult");
   });
 
+  it("uses the host runtime as the auto-init quick-start default", async () => {
+    process.env.ORACULUM_AGENT_RUNTIME = "codex";
+
+    await runConsultTool({
+      cwd: "/tmp/project",
+      taskInput: "tasks/task.md",
+    });
+
+    expect(mockedEnsureProjectInitialized).toHaveBeenCalledWith("/tmp/project", {
+      defaultAgent: "codex",
+    });
+    expect(mockedPlanRun).toHaveBeenCalledWith({
+      cwd: "/tmp/project",
+      taskInput: "tasks/task.md",
+      autoProfile: {
+        allowRuntime: true,
+      },
+    });
+  });
+
+  it("parses inline host command options before planning a consultation", async () => {
+    await runConsultTool({
+      cwd: "/tmp/project",
+      taskInput: '"tasks/fix session.md" --agent codex --candidates 3 --timeout-ms 2400',
+    });
+
+    expect(mockedPlanRun).toHaveBeenCalledWith({
+      cwd: "/tmp/project",
+      taskInput: "tasks/fix session.md",
+      agent: "codex",
+      candidates: 3,
+      autoProfile: {
+        allowRuntime: true,
+        timeoutMs: 2400,
+      },
+    });
+    expect(mockedExecuteRun).toHaveBeenCalledWith({
+      cwd: "/tmp/project",
+      runId: "run_1",
+      timeoutMs: 2400,
+    });
+  });
+
+  it("rejects incomplete inline host command options before planning", async () => {
+    await expect(
+      runConsultTool({
+        cwd: "/tmp/project",
+        taskInput: "tasks/fix.md --agent",
+      }),
+    ).rejects.toThrow("--agent requires a value");
+    expect(mockedPlanRun).not.toHaveBeenCalled();
+
+    await expect(
+      runConsultTool({
+        cwd: "/tmp/project",
+        taskInput: "tasks/fix.md --candidates not-a-number",
+      }),
+    ).rejects.toThrow("--candidates must be an integer");
+    expect(mockedPlanRun).not.toHaveBeenCalled();
+  });
+
   it("runs draft without executing candidates", async () => {
     const response = await runDraftTool({
       cwd: "/tmp/project",
@@ -151,6 +232,24 @@ describe("chat-native MCP tools", () => {
     expect(response.mode).toBe("draft");
   });
 
+  it("parses inline host command options before planning a draft", async () => {
+    const response = await runDraftTool({
+      cwd: "/tmp/project",
+      taskInput: '"fix session loss on refresh" --agent codex --candidates 3',
+    });
+
+    expect(mockedPlanRun).toHaveBeenCalledWith({
+      cwd: "/tmp/project",
+      taskInput: "fix session loss on refresh",
+      agent: "codex",
+      candidates: 3,
+      autoProfile: {
+        allowRuntime: false,
+      },
+    });
+    expect(response.mode).toBe("draft");
+  });
+
   it("reopens verdicts and archives through MCP tools", async () => {
     const verdict = await runVerdictTool({
       cwd: "/tmp/project",
@@ -168,8 +267,36 @@ describe("chat-native MCP tools", () => {
   });
 
   it("crowns through the MCP tool path", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oraculum-mcp-crown-"));
+    tempRoots.push(root);
+    const patchPath = await writeExportPatch(root, [
+      "diff --git a/src/message.js b/src/message.js",
+      "--- a/src/message.js",
+      "+++ b/src/message.js",
+      "@@ -1 +1 @@",
+      '-export const message = "before";',
+      '+export const message = "after";',
+      "",
+    ]);
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        branchName: "fix/session-loss",
+        mode: "git-branch",
+        workspaceDir: "/tmp/workspace",
+        patchPath,
+        withReport: true,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: join(root, ".oraculum", "runs", "run_1", "reports", "export-plan.json"),
+    });
+    mockedRunSubprocess.mockResolvedValueOnce(
+      createSubprocessResult({ stdout: "fix/session-loss\n" }),
+    );
+
     const response = await runCrownTool({
-      cwd: "/tmp/project",
+      cwd: root,
       branchName: "fix/session-loss",
       candidateId: "cand-02",
       consultationId: "run_9",
@@ -177,14 +304,257 @@ describe("chat-native MCP tools", () => {
     });
 
     expect(mockedMaterializeExport).toHaveBeenCalledWith({
-      cwd: "/tmp/project",
+      cwd: root,
       branchName: "fix/session-loss",
       winnerId: "cand-02",
       runId: "run_9",
       withReport: true,
     });
-    expect(mockedReadRunManifest).toHaveBeenCalledWith("/tmp/project", "run_1");
+    expect(mockedReadRunManifest).toHaveBeenCalledWith(root, "run_1");
     expect(response.mode).toBe("crown");
+    expect(response.materialization).toMatchObject({
+      materialized: true,
+      verified: true,
+      mode: "git-branch",
+      branchName: "fix/session-loss",
+      currentBranch: "fix/session-loss",
+      changedPaths: ["src/message.js"],
+      changedPathCount: 1,
+    });
+  });
+
+  it("returns materialized branch and changed paths after crowning", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oraculum-mcp-crown-paths-"));
+    tempRoots.push(root);
+    const patchPath = await writeExportPatch(root, [
+      "diff --git a/README.md b/README.md",
+      "--- a/README.md",
+      "+++ b/README.md",
+      "@@ -1 +1 @@",
+      "-before",
+      "+after",
+      "diff --git a/src/message.js b/src/message.js",
+      "--- a/src/message.js",
+      "+++ b/src/message.js",
+      "@@ -1 +1 @@",
+      '-export const message = "before";',
+      '+export const message = "after";',
+      "",
+    ]);
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        branchName: "fix/session-loss",
+        mode: "git-branch",
+        workspaceDir: "/tmp/workspace",
+        patchPath,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: join(root, ".oraculum", "runs", "run_1", "reports", "export-plan.json"),
+    });
+    mockedRunSubprocess.mockResolvedValueOnce(
+      createSubprocessResult({ stdout: "fix/session-loss\n" }),
+    );
+
+    const response = await runCrownTool({
+      cwd: root,
+      branchName: "fix/session-loss",
+      withReport: false,
+    });
+
+    expect(response.materialization).toEqual({
+      materialized: true,
+      verified: true,
+      mode: "git-branch",
+      branchName: "fix/session-loss",
+      currentBranch: "fix/session-loss",
+      changedPaths: ["README.md", "src/message.js"],
+      changedPathCount: 2,
+      checks: [
+        expect.objectContaining({ id: "git-patch-artifact", status: "passed" }),
+        expect.objectContaining({ id: "current-branch", status: "passed" }),
+        expect.objectContaining({ id: "changed-paths", status: "passed" }),
+      ],
+    });
+  });
+
+  it("reads git-branch changed paths from the export patch artifact", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oraculum-mcp-crown-patch-"));
+    tempRoots.push(root);
+    const patchPath = join(root, ".oraculum", "runs", "run_1", "reports", "export.patch");
+    await mkdir(join(root, ".oraculum", "runs", "run_1", "reports"), { recursive: true });
+    await writeFile(
+      patchPath,
+      [
+        "diff --git a/src/message.js b/src/message.js",
+        "--- a/src/message.js",
+        "+++ b/src/message.js",
+        "@@ -1 +1 @@",
+        '-export const message = "before";',
+        '+export const message = "after";',
+        "diff --git a/src/new-file.js b/src/new-file.js",
+        "--- /dev/null",
+        "+++ b/src/new-file.js",
+        "@@ -0,0 +1 @@",
+        "+export const added = true;",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        branchName: "fix/session-loss",
+        mode: "git-branch",
+        workspaceDir: "/tmp/workspace",
+        patchPath,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: join(root, ".oraculum", "runs", "run_1", "reports", "export-plan.json"),
+    });
+    mockedRunSubprocess.mockResolvedValueOnce(
+      createSubprocessResult({ stdout: "fix/session-loss\n" }),
+    );
+
+    const response = await runCrownTool({
+      cwd: root,
+      branchName: "fix/session-loss",
+      withReport: false,
+    });
+
+    expect(response.materialization).toEqual({
+      materialized: true,
+      verified: true,
+      mode: "git-branch",
+      branchName: "fix/session-loss",
+      currentBranch: "fix/session-loss",
+      changedPaths: ["src/message.js", "src/new-file.js"],
+      changedPathCount: 2,
+      checks: [
+        expect.objectContaining({ id: "git-patch-artifact", status: "passed" }),
+        expect.objectContaining({ id: "current-branch", status: "passed" }),
+        expect.objectContaining({ id: "changed-paths", status: "passed" }),
+      ],
+    });
+  });
+
+  it("returns verified workspace-sync materialization from the sync summary", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oraculum-mcp-crown-sync-"));
+    tempRoots.push(root);
+    const summaryPath = join(root, ".oraculum", "runs", "run_1", "reports", "export-sync.json");
+    await mkdir(join(root, ".oraculum", "runs", "run_1", "reports"), { recursive: true });
+    await writeFile(
+      summaryPath,
+      `${JSON.stringify(
+        {
+          appliedFiles: ["app.txt", "added.txt"],
+          removedFiles: ["removed.txt"],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        branchName: "fix/session-loss",
+        mode: "workspace-sync",
+        workspaceDir: "/tmp/workspace",
+        appliedPathCount: 2,
+        removedPathCount: 1,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: join(root, ".oraculum", "runs", "run_1", "reports", "export-plan.json"),
+    });
+
+    const response = await runCrownTool({
+      cwd: root,
+      branchName: "fix/session-loss",
+      withReport: false,
+    });
+
+    expect(response.materialization).toEqual({
+      materialized: true,
+      verified: true,
+      mode: "workspace-sync",
+      branchName: "fix/session-loss",
+      changedPaths: ["added.txt", "app.txt", "removed.txt"],
+      changedPathCount: 3,
+      checks: [
+        expect.objectContaining({ id: "workspace-sync-summary", status: "passed" }),
+        expect.objectContaining({ id: "changed-paths", status: "passed" }),
+      ],
+    });
+  });
+
+  it("rejects crowning when the current branch post-check fails", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oraculum-mcp-crown-branch-mismatch-"));
+    tempRoots.push(root);
+    const patchPath = await writeExportPatch(root, [
+      "diff --git a/src/message.js b/src/message.js",
+      "--- a/src/message.js",
+      "+++ b/src/message.js",
+      "@@ -1 +1 @@",
+      '-export const message = "before";',
+      '+export const message = "after";',
+      "",
+    ]);
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        branchName: "fix/session-loss",
+        mode: "git-branch",
+        workspaceDir: "/tmp/workspace",
+        patchPath,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: join(root, ".oraculum", "runs", "run_1", "reports", "export-plan.json"),
+    });
+    mockedRunSubprocess.mockResolvedValueOnce(createSubprocessResult({ stdout: "main\n" }));
+
+    await expect(
+      runCrownTool({
+        cwd: root,
+        branchName: "fix/session-loss",
+        withReport: false,
+      }),
+    ).rejects.toThrow('expected current git branch "fix/session-loss", received "main"');
+  });
+
+  it("rejects crowning when the git patch artifact is missing", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oraculum-mcp-crown-missing-patch-"));
+    tempRoots.push(root);
+    const missingPatchPath = join(root, ".oraculum", "runs", "run_1", "reports", "export.patch");
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        branchName: "fix/session-loss",
+        mode: "git-branch",
+        workspaceDir: "/tmp/workspace",
+        patchPath: missingPatchPath,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: join(root, ".oraculum", "runs", "run_1", "reports", "export-plan.json"),
+    });
+
+    await expect(
+      runCrownTool({
+        cwd: root,
+        branchName: "fix/session-loss",
+        withReport: false,
+      }),
+    ).rejects.toThrow("expected export patch does not exist");
   });
 
   it("initializes projects through the MCP tool path", async () => {
@@ -241,6 +611,27 @@ function createPlannedManifest() {
       },
     ],
   };
+}
+
+function createSubprocessResult(
+  overrides: Partial<Awaited<ReturnType<typeof runSubprocess>>> = {},
+): Awaited<ReturnType<typeof runSubprocess>> {
+  return {
+    durationMs: 1,
+    exitCode: 0,
+    signal: null,
+    stderr: "",
+    stdout: "",
+    timedOut: false,
+    ...overrides,
+  };
+}
+
+async function writeExportPatch(root: string, lines: string[]): Promise<string> {
+  const patchPath = join(root, ".oraculum", "runs", "run_1", "reports", "export.patch");
+  await mkdir(join(root, ".oraculum", "runs", "run_1", "reports"), { recursive: true });
+  await writeFile(patchPath, lines.join("\n"), "utf8");
+  return patchPath;
 }
 
 function createCompletedManifest() {

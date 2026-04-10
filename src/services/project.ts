@@ -11,6 +11,7 @@ import {
   resolveProjectRoot,
 } from "../core/paths.js";
 import {
+  type Adapter,
   defaultProjectConfig,
   defaultQuickProjectConfig,
   type ProjectAdvancedConfig,
@@ -23,6 +24,7 @@ import {
 
 interface InitializeProjectOptions {
   cwd: string;
+  defaultAgent?: Adapter;
   force: boolean;
 }
 
@@ -64,7 +66,13 @@ export async function initializeProject(
   if (options.force) {
     await rm(advancedConfigPath, { force: true });
   }
-  await writeJsonFile(configPath, defaultQuickProjectConfig);
+  await writeJsonFile(
+    configPath,
+    projectQuickConfigSchema.parse({
+      ...defaultQuickProjectConfig,
+      ...(options.defaultAgent ? { defaultAgent: options.defaultAgent } : {}),
+    }),
+  );
 
   return {
     projectRoot,
@@ -75,6 +83,7 @@ export async function initializeProject(
 
 export async function ensureProjectInitialized(
   cwd: string,
+  options: { defaultAgent?: Adapter } = {},
 ): Promise<InitializeProjectResult | undefined> {
   const projectRoot = resolveProjectRoot(cwd);
   const configPath = getConfigPath(projectRoot);
@@ -90,6 +99,7 @@ export async function ensureProjectInitialized(
 
   return initializeProject({
     cwd: projectRoot,
+    ...(options.defaultAgent ? { defaultAgent: options.defaultAgent } : {}),
     force: false,
   });
 }

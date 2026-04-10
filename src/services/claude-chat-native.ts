@@ -103,6 +103,10 @@ export function buildClaudePluginMcpConfig(): Record<string, unknown> {
       oraculum: {
         command: process.platform === "win32" ? "oraculum.cmd" : "oraculum",
         args: ["mcp", "serve"],
+        env: {
+          ORACULUM_AGENT_RUNTIME: "claude-code",
+          ORACULUM_LLM_BACKEND: "claude-code",
+        },
         timeout: 600,
       },
     },
@@ -287,6 +291,10 @@ function buildClaudePluginMcpConfigFromInvocation(invocation: {
       oraculum: {
         command: invocation.command,
         args: [...invocation.args, "mcp", "serve"],
+        env: {
+          ORACULUM_AGENT_RUNTIME: "claude-code",
+          ORACULUM_LLM_BACKEND: "claude-code",
+        },
         timeout: 600,
       },
     },
@@ -400,7 +408,7 @@ function buildClaudeSkillMcpArgs(entry: CommandManifestEntry): Record<string, un
   switch (entry.id) {
     case "consult":
     case "draft":
-      return { cwd: "$CWD", taskInput: "$1" };
+      return { cwd: "$CWD", taskInput: "$ARGUMENTS", agent: "claude-code" };
     case "verdict":
       return { cwd: "$CWD", consultationId: "$1" };
     case "crown":
@@ -433,7 +441,8 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
   if (entry.id === "crown") {
     return [
       "- The chat-native crowning path expects the branch name as the first argument.",
-      "- It crowns the recommended survivor from the latest eligible consultation.",
+      "- It crowns the recommended survivor from the latest eligible consultation and materializes the patch.",
+      "- After the MCP tool succeeds, report the verified materialization result and stop; do not re-apply the patch or run extra Bash, Edit, or Write steps unless the user explicitly asks.",
       "- The shared chat-native surface is `orc crown <branch-name>`.",
       "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
     ];
@@ -441,6 +450,7 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
 
   return [
     "- This skill is intended for exact-prefix routing inside Claude Code.",
+    "- After the MCP tool returns, relay Oraculum's result; do not replace `orc crown <branch-name>` with a bare `orc crown` next step.",
     "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
   ];
 }

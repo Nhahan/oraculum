@@ -124,6 +124,12 @@ export function createOraculumMcpServer(): McpServer {
               `Crowned ${response.plan.winnerId}`,
               `Consultation: ${response.plan.runId}`,
               `Branch: ${response.plan.branchName}`,
+              ...(response.materialization.currentBranch
+                ? [`Current branch: ${response.materialization.currentBranch}`]
+                : []),
+              `Changed paths: ${response.materialization.changedPathCount}`,
+              `Post-checks: ${response.materialization.checks.length} passed`,
+              "The survivor patch has already been materialized; do not apply it again.",
               `Crowning record: ${response.recordPath}`,
             ].join("\n"),
           },

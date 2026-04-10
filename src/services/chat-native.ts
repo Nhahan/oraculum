@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import type { ZodTypeAny } from "zod";
 
+import { APP_VERSION } from "../core/constants.js";
 import {
   getAdvancedConfigPath,
   getConfigPath,
@@ -562,11 +563,41 @@ function hasMcpServer(path: string, serverId: string): boolean {
 
 function hasClaudePluginInstalled(): boolean {
   const pluginsDir = join(homedir(), ".claude", "plugins");
+  return hasClaudePluginArtifactsInstalled(pluginsDir);
+}
+
+export function hasClaudePluginArtifactsInstalled(pluginsDir: string): boolean {
   if (!existsSync(pluginsDir)) {
     return false;
   }
 
-  return existsSync(join(pluginsDir, "oraculum")) || existsSync(join(pluginsDir, "@oraculum"));
+  if (existsSync(join(pluginsDir, "oraculum")) || existsSync(join(pluginsDir, "@oraculum"))) {
+    return true;
+  }
+
+  const installedPluginsPath = join(pluginsDir, "installed_plugins.json");
+  if (!existsSync(installedPluginsPath)) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(installedPluginsPath, "utf8")) as {
+      plugins?: Record<string, Array<{ installPath?: unknown; version?: unknown }>>;
+    };
+    const installed = parsed.plugins?.["oraculum@oraculum"];
+    if (!Array.isArray(installed)) {
+      return false;
+    }
+
+    return installed.some(
+      (entry) =>
+        entry.version === APP_VERSION &&
+        typeof entry.installPath === "string" &&
+        existsSync(join(entry.installPath, "plugin.json")),
+    );
+  } catch {
+    return false;
+  }
 }
 
 function hasCodexMcpServer(path: string): boolean {

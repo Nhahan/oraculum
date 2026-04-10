@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { adapterSchema } from "./config.js";
-import { exportPlanSchema, runManifestSchema } from "./run.js";
+import { exportModeSchema, exportPlanSchema, runManifestSchema } from "./run.js";
 
 export const commandPrefixSchema = z.literal("orc");
 
@@ -140,10 +140,28 @@ export const crownToolRequestSchema = z.object({
   withReport: z.boolean().default(false),
 });
 
+export const crownMaterializationCheckSchema = z.object({
+  id: z.enum(["current-branch", "git-patch-artifact", "changed-paths", "workspace-sync-summary"]),
+  status: z.literal("passed"),
+  summary: z.string().min(1),
+});
+
+export const crownMaterializationSchema = z.object({
+  materialized: z.literal(true),
+  verified: z.literal(true),
+  mode: exportModeSchema,
+  branchName: z.string().min(1),
+  currentBranch: z.string().min(1).optional(),
+  changedPaths: z.array(z.string().min(1)).default([]),
+  changedPathCount: z.number().int().min(0),
+  checks: z.array(crownMaterializationCheckSchema).min(1),
+});
+
 export const crownToolResponseSchema = z.object({
   mode: z.literal("crown"),
   plan: exportPlanSchema,
   recordPath: z.string().min(1),
+  materialization: crownMaterializationSchema,
   consultation: runManifestSchema,
 });
 
@@ -196,6 +214,8 @@ export type VerdictToolResponse = z.infer<typeof verdictToolResponseSchema>;
 export type VerdictArchiveToolRequest = z.infer<typeof verdictArchiveToolRequestSchema>;
 export type VerdictArchiveToolResponse = z.infer<typeof verdictArchiveToolResponseSchema>;
 export type CrownToolRequest = z.infer<typeof crownToolRequestSchema>;
+export type CrownMaterialization = z.infer<typeof crownMaterializationSchema>;
+export type CrownMaterializationCheck = z.infer<typeof crownMaterializationCheckSchema>;
 export type CrownToolResponse = z.infer<typeof crownToolResponseSchema>;
 export type InitToolRequest = z.infer<typeof initToolRequestSchema>;
 export type InitToolResponse = z.infer<typeof initToolResponseSchema>;

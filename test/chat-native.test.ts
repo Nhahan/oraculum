@@ -1,9 +1,10 @@
 import { constants } from "node:fs";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { APP_VERSION } from "../src/core/constants.js";
 import { getExportPlanPath, getRunConfigPath, getRunDir } from "../src/core/paths.js";
 import {
   consultToolResponseSchema,
@@ -14,6 +15,7 @@ import {
   buildConsultationArtifacts,
   buildSetupDiagnosticsResponse,
   getMcpToolSchemas,
+  hasClaudePluginArtifactsInstalled,
   oraculumCommandManifest,
   oraculumMcpToolSurface,
 } from "../src/services/chat-native.js";
@@ -105,5 +107,36 @@ describe("chat-native MCP surface", () => {
         .find((host) => host.host === "codex")
         ?.notes.some((note) => note.includes("oraculum setup --runtime codex")),
     ).toBe(true);
+  });
+
+  it("recognizes the Claude plugin cache layout created by Claude Code", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oraculum-claude-plugin-cache-"));
+    tempRoots.push(root);
+    const pluginsDir = join(root, "plugins");
+    const installPath = join(pluginsDir, "cache", "oraculum", "oraculum", APP_VERSION);
+    await mkdir(installPath, { recursive: true });
+    await writeFile(join(installPath, "plugin.json"), "{}\n", "utf8");
+    await writeFile(
+      join(pluginsDir, "installed_plugins.json"),
+      `${JSON.stringify(
+        {
+          version: 2,
+          plugins: {
+            "oraculum@oraculum": [
+              {
+                installPath,
+                scope: "user",
+                version: APP_VERSION,
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    expect(hasClaudePluginArtifactsInstalled(pluginsDir)).toBe(true);
   });
 });

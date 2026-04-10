@@ -44,7 +44,13 @@ describe("Codex chat-native packaging", () => {
     ]);
 
     const crownSkill = skills.find((file) => file.path.includes("/oraculum-crown/"));
+    const consultSkill = skills.find((file) => file.path.includes("/oraculum-consult/"));
+    expect(consultSkill?.content).toContain("default to `codex` when omitted");
+    expect(consultSkill?.content).toContain(
+      '`orc consult tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
+    );
     expect(crownSkill?.content).toContain("Call the MCP tool `oraculum_crown`.");
+    expect(crownSkill?.content).toContain("report the verified tool result concisely and stop");
     expect(crownSkill?.content).toContain("first positional argument after `orc crown`");
     expect(getExpectedCodexRuleFileName()).toBe("oraculum.md");
     expect(getExpectedCodexSkillDirs()).toContain("oraculum-consult");

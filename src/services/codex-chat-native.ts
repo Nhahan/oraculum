@@ -160,6 +160,8 @@ function renderCodexSkill(entry: CommandManifestEntry): string {
     "",
     `Call the MCP tool \`${entry.mcpTool}\`.`,
     "",
+    "After the MCP tool succeeds, report the verified tool result concisely and stop. Do not run Bash, Edit, Write, or ad-hoc follow-up work unless the user explicitly asks.",
+    "",
     "## Argument Mapping",
     "",
     ...buildCodexSkillArgumentLines(entry),
@@ -185,17 +187,19 @@ function buildCodexSkillArgumentLines(entry: CommandManifestEntry): string[] {
       return [
         ...shared,
         "- `taskInput`: the first positional argument after removing recognized flags from the command",
-        "- optional `--agent <claude-code|codex>`",
+        "- optional `--agent <claude-code|codex>`; default to `codex` when omitted",
         "- optional `--candidates <n>`",
         "- optional `--timeout-ms <ms>`",
+        '- Example: `orc consult tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
         '- Example: `orc consult tasks/fix.md --agent claude-code --candidates 1` -> `{ taskInput: "tasks/fix.md", agent: "claude-code", candidates: 1 }`',
       ];
     case "draft":
       return [
         ...shared,
         "- `taskInput`: the first positional argument after removing recognized flags from the command",
-        "- optional `--agent <claude-code|codex>`",
+        "- optional `--agent <claude-code|codex>`; default to `codex` when omitted",
         "- optional `--candidates <n>`",
+        '- Example: `orc draft tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
         '- Example: `orc draft tasks/fix.md --agent codex --candidates 2` -> `{ taskInput: "tasks/fix.md", agent: "codex", candidates: 2 }`',
       ];
     case "verdict":
