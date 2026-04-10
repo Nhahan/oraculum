@@ -39,6 +39,9 @@ jobs:
       - name: Build CLI
         run: npm run build
 
+      - name: Run packaged smoke checks
+        run: npm run evidence:smoke
+
       - name: Pack npm artifact
         run: npm pack
 

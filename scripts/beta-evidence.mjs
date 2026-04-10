@@ -373,6 +373,48 @@ function buildCorpusScenarios() {
       corpusName: "monorepo-copy-claude",
     }),
     createScenario({
+      kind: "monorepo",
+      repoKind: "monorepo",
+      agent: "codex",
+      workspaceMode: "git",
+      packageManager: "bun",
+      profileId: "library",
+      corpusName: "monorepo-bun-git-codex",
+    }),
+    createScenario({
+      kind: "monorepo",
+      repoKind: "monorepo",
+      agent: "claude-code",
+      workspaceMode: "copy",
+      packageManager: "yarn",
+      profileId: "library",
+      corpusName: "monorepo-yarn-copy-claude",
+    }),
+    createScenario({
+      kind: "happy",
+      repoKind: "service",
+      agent: "codex",
+      workspaceMode: "git",
+      profileId: "library",
+      corpusName: "service-git-codex",
+    }),
+    createScenario({
+      kind: "happy",
+      repoKind: "service",
+      agent: "claude-code",
+      workspaceMode: "copy",
+      profileId: "library",
+      corpusName: "service-copy-claude",
+    }),
+    createScenario({
+      kind: "no-finalist",
+      repoKind: "service",
+      agent: "codex",
+      workspaceMode: "git",
+      profileId: "library",
+      corpusName: "service-no-finalist-codex",
+    }),
+    createScenario({
       kind: "hung-runtime",
       repoKind: "library",
       agent: "codex",
@@ -594,7 +636,10 @@ function createScenario({
     workspaceMode,
     profileId:
       profileId ??
-      (repoKind === "plain" || repoKind === "monorepo" || repoKind === "docs"
+      (repoKind === "plain" ||
+      repoKind === "monorepo" ||
+      repoKind === "docs" ||
+      repoKind === "service"
         ? "library"
         : repoKind),
     binaryMode,
@@ -1103,7 +1148,9 @@ async function writeRepositoryTemplate(root, scenario) {
       'export function greet() {\n  return "Bye";\n}\n',
       "utf8",
     );
-    await writeFile(join(root, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n", "utf8");
+    if ((packageManager ?? "pnpm") === "pnpm") {
+      await writeFile(join(root, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n", "utf8");
+    }
     await writeFile(
       join(root, "turbo.json"),
       '{ "$schema": "https://turbo.build/schema.json" }\n',
@@ -1114,7 +1161,7 @@ async function writeRepositoryTemplate(root, scenario) {
       version: "0.0.0",
       private: true,
       type: "module",
-      packageManager: "pnpm@0.0.0",
+      ...(packageManager ? { packageManager: `${packageManager}@0.0.0` } : {}),
       workspaces: ["packages/*"],
       scripts: {
         lint: "turbo run lint --filter @acme/app",
@@ -1185,6 +1232,57 @@ process.stdout.write("turbo workspace ok");
         typecheck: `${nodeEval("process.exit(0)")}`,
         test: `${nodeEval("process.exit(0)")}`,
         build: `${nodeEval("process.exit(0)")}`,
+      },
+    });
+    return;
+  }
+
+  if (repoKind === "service") {
+    await mkdir(join(root, "routes"), { recursive: true });
+    await writeFile(
+      join(root, "src", "server.js"),
+      'export function serviceStatus() {\n  return "offline";\n}\n',
+      "utf8",
+    );
+    await writeFile(
+      join(root, "routes", "health.js"),
+      'export const healthRoute = "/health";\n',
+      "utf8",
+    );
+    await writeFile(
+      join(root, "openapi.yaml"),
+      [
+        "openapi: 3.0.0",
+        "info:",
+        "  title: Service API",
+        "  version: 0.0.0",
+        "paths:",
+        "  /health:",
+        "    get:",
+        "      responses:",
+        "        '200':",
+        "          description: ok",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await writePackageJson(root, {
+      name: "scenario-service",
+      version: "0.0.0",
+      type: "module",
+      ...(packageManager ? { packageManager: `${packageManager}@0.0.0` } : {}),
+      main: "./src/server.js",
+      exports: {
+        ".": "./src/server.js",
+      },
+      scripts: {
+        lint: `${nodeEval("process.exit(0)")}`,
+        typecheck: `${nodeEval("process.exit(0)")}`,
+        test: `${nodeEval("process.exit(0)")}`,
+        build: `${nodeEval("process.exit(0)")}`,
+      },
+      dependencies: {
+        fastify: "0.0.0",
       },
     });
     return;
@@ -1327,6 +1425,7 @@ async function writeTaskInputs(root, repoKind) {
     migration: "# Migration patch\nAdjust the schema comment.\n",
     plain: "# Plain patch\nUpdate the greeting text.\n",
     docs: "# Docs patch\nRevise the report wording.\n",
+    service: "# Service patch\nUpdate the service status response.\n",
     monorepo: "# Monorepo patch\nUpdate the workspace package greeting.\n",
   };
   await writeFile(join(root, "tasks", `${repoKind}.md`), taskBodies[repoKind], "utf8");
@@ -1344,6 +1443,9 @@ function buildInlineTaskText(repoKind) {
   }
   if (repoKind === "docs") {
     return "Update docs/report.md so the report reflects the winning candidate with a small editorial change.";
+  }
+  if (repoKind === "service") {
+    return "Update src/server.js so serviceStatus() returns a winner-specific online status string.";
   }
   return "Update src/index.js so greet() returns a winner-specific hello string.";
 }
@@ -1525,6 +1627,12 @@ function mutateWorkspace() {
   if (scenario.repoKind === "docs") {
     const file = path.join(process.cwd(), "docs", "report.md");
     const next = fs.readFileSync(file, "utf8").replace("Baseline report", "Report for " + candidateId);
+    fs.writeFileSync(file, next, "utf8");
+    return;
+  }
+  if (scenario.repoKind === "service") {
+    const file = path.join(process.cwd(), "src", "server.js");
+    const next = fs.readFileSync(file, "utf8").replace('"offline"', '"online-' + candidateId + '"');
     fs.writeFileSync(file, next, "utf8");
     return;
   }
@@ -1850,7 +1958,9 @@ async function assertTargetFileContains(root, scenario, candidateId) {
           ? join(root, "prisma", "schema.prisma")
           : scenario.repoKind === "docs"
             ? join(root, "docs", "report.md")
-            : join(root, "src", "index.js");
+            : scenario.repoKind === "service"
+              ? join(root, "src", "server.js")
+              : join(root, "src", "index.js");
   const contents = await readFile(file, "utf8");
   assertContains(contents, candidateId);
 }
