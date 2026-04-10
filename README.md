@@ -37,7 +37,7 @@
 
 Oraculum turns AI patching into a tournament instead of a one-shot edit.
 
-Candidates run in isolation, repo-local checks act as oracles, evidence is recorded, and only the survivor is promoted.
+Candidates run in isolation, repo-local checks act as oracles, evidence is recorded, and only the survivor is crowned.
 
 ## Installation
 
