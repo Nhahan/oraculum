@@ -29,6 +29,8 @@
     "evidence:beta": "npm run build && node scripts/beta-evidence.mjs --mode=all",
     "evidence:beta:corpus": "npm run build && node scripts/beta-evidence.mjs --mode=corpus",
     "evidence:beta:matrix": "npm run build && node scripts/beta-evidence.mjs --mode=matrix",
+    "evidence:host-native": "npm run build && node scripts/host-native-smoke.mjs",
+    "evidence:workflow-comparison": "npm run build && node scripts/workflow-comparison.mjs",
     "evidence:smoke": "npm run evidence:published-smoke && npm run evidence:release-smoke",
     "evidence:published-smoke": "node scripts/published-smoke.mjs",
     "evidence:release-smoke": "node scripts/release-smoke.mjs",
