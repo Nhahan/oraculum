@@ -107,7 +107,7 @@ Assumption: Oraculum is designed around frontier, human-level coding models such
 - [ ] `src/services/consultation-profile.ts` remains the main Node-centric hotspot: it reads `package.json`, detects Node package managers, inspects JS/frontend dependencies, and still coordinates package command selection. Prisma, Playwright, and Cypress direct command generation has been removed.
 - [x] `src/adapters/prompt.ts`, `src/adapters/claude.ts`, and `src/adapters/codex.ts` embed the same limited profile enum in prompts and JSON schemas. Any profile model change must update both host adapters.
 - [x] `src/services/oracles.ts` always prepends `node_modules/.bin` to oracle `PATH`. That helps Node repositories but is not a general local-tool strategy for Python, Go, Rust, Java, or generic Makefile repos.
-- [ ] `src/services/managed-tree.ts` and `src/services/workspaces.ts` have useful isolation rules, but copy-mode dependency linking only knows `node_modules`. Non-Node dependency/cache/build trees are not modeled explicitly.
+- [x] `src/services/managed-tree.ts` and `src/services/workspaces.ts` have useful isolation rules, but copy-mode dependency linking only knows `node_modules`. Non-Node dependency/cache/build trees are not modeled explicitly.
 - [ ] `scripts/beta-evidence.mjs` is still mostly Node-backed. Even `docs`, `service`, and `monorepo` scenarios use `package.json` scripts, so the evidence corpus overstates generality.
 - [x] Existing Prisma direct command generation is not acceptable as default behavior. It was removed; Prisma now remains raw capability evidence unless validation is provided by a repo-local script or explicit oracle.
 - [x] `collectProfileRepoSignals` only inspects root-level Node metadata and a fixed root-level file list. Nested packages, polyglot subprojects, and workspace/module-level toolchain signals can be missed.
@@ -115,10 +115,10 @@ Assumption: Oraculum is designed around frontier, human-level coding models such
 - [x] Node package smoke checks currently hardcode `npm pack` even when the detected package manager is `pnpm`, `yarn`, or `bun`. Treat npm pack checks as a Node/npm-specific capability unless the package-manager policy says otherwise.
 - [x] `materializeTaskInput` only treats missing `.md`, `.json`, and `.txt` values as task-file paths. File-like task references such as `.html`, `.py`, `.go`, `.rs`, or non-English filenames can be misread as inline task text.
 - [x] Runtime-unavailable profile scoring uses English task-text keywords such as `frontend`, `migration`, `schema`, and `prisma`. It should not rely on English-only text as a primary generalization signal.
-- [ ] `UNMANAGED_ENTRY_NAMES` excludes ambiguous names such as `dist` globally. Some repositories intentionally track generated distribution/source directories, so ambiguous exclusions need raw workspace context or an override path.
+- [x] `UNMANAGED_ENTRY_NAMES` excludes ambiguous names such as `dist` globally. Some repositories intentionally track generated distribution/source directories, so ambiguous exclusions need raw workspace context or an override path.
 - [x] `resolveProjectRoot` currently treats the invocation `cwd` as the project root. That is simple, but nested invocation from a package/subdirectory can create the wrong `.oraculum` root and miss repository-level signals.
 - [x] Repo-local oracle `cwd` is limited to `workspace` or `project`. Monorepos and polyglot repos often need safe relative subproject working directories.
-- [ ] Non-Git crowning still requires a `branchName` even though workspace-sync mode does not create a branch. That is a Git-shaped UX leak into generic/local repositories.
+- [x] Non-Git crowning still requires a `branchName` even though workspace-sync mode does not create a branch. That is a Git-shaped UX leak into generic/local repositories.
 - [x] Subprocess stdout/stderr are accumulated in memory without output limits. Arbitrary repo-local checks can produce very large logs.
 - [x] POSIX timeout cleanup kills only the immediate subprocess, not necessarily its process tree. Arbitrary repo-local checks can leave child processes behind.
 - [x] Task packet ids derived from filenames currently normalize to ASCII-only slugs. Non-English task filenames can collapse to generic ids such as `task`.
@@ -210,11 +210,11 @@ Assumption: Oraculum is designed around frontier, human-level coding models such
   - `target`
   - `.gradle`
   - `.tox`
-- [ ] Be careful with ambiguous names like `dist`, `build`, `target`, and `vendor`; they can be source or published artifacts in some ecosystems and generated/dependency cache in others.
-- [ ] Replace `linkWorkspaceDependencyTrees` with a generalized dependency-tree linker driven by explicit config and safe raw facts.
-- [ ] Preserve current `node_modules` symlink/junction behavior.
-- [ ] Add copy-mode e2e fixtures for Python `.venv`, Rust `target`, and Gradle `.gradle` so workspace sync does not accidentally copy or delete heavy dependency trees.
-- [ ] Keep managed tree rules configurable if a repository intentionally tracks generated directories.
+- [x] Be careful with ambiguous names like `dist`, `build`, `target`, and `vendor`; they can be source or published artifacts in some ecosystems and generated/dependency cache in others.
+- [x] Replace `linkWorkspaceDependencyTrees` with a generalized dependency-tree linker driven by explicit config and safe raw facts.
+- [x] Preserve current `node_modules` symlink/junction behavior.
+- [x] Add copy-mode e2e fixtures for Python `.venv`, Rust `target`, and Gradle `.gradle` so workspace sync does not accidentally copy or delete heavy dependency trees.
+- [x] Keep managed tree rules configurable if a repository intentionally tracks generated directories.
 - [ ] Add a large/binary file policy for non-git snapshot mode so hashing and copying do not make general repositories unexpectedly slow or memory-heavy.
 - [ ] Add configurable unmanaged/sensitive path rules for common IDE, cloud, infra, and credential directories without over-excluding legitimate source trees.
 
@@ -223,9 +223,11 @@ Assumption: Oraculum is designed around frontier, human-level coding models such
 - [x] Make task-path detection extension-aware without limiting it to `.md`, `.json`, and `.txt`.
 - [x] Preserve stable, collision-resistant task packet ids for Unicode and non-English filenames.
 - [x] Add tests for task filenames with spaces, Unicode, source-code extensions, and no extension.
-- [ ] Separate Git branch naming from generic workspace-sync crowning so non-Git projects are not forced to provide a fake branch-like name.
-- [ ] Decide whether `orc crown` should accept an optional materialization label for workspace-sync mode or no positional value when no Git branch will be created.
-- [ ] Keep existing Git-backed `orc crown <branch-name>` behavior stable.
+- [x] Separate Git branch naming from generic workspace-sync crowning so non-Git projects are not forced to provide a fake branch-like name.
+- [x] Decide whether `orc crown` should accept an optional materialization label for workspace-sync mode or no positional value when no Git branch will be created.
+- [x] Keep existing Git-backed `orc crown <branch-name>` behavior stable.
+
+Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace-sync crowning uses bare `orc crown` by default; a first positional value is recorded only as `materializationLabel`, not as a Git branch.
 
 ## Phase 7: Expand Evidence Corpus Beyond Node
 

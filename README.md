@@ -73,7 +73,7 @@ orc crown fix/session-loss
 
 That flow initializes Oraculum on first use, runs the tournament, and prints the verdict summary immediately. `crown` uses the latest consultation with a recommended survivor by default.
 
-In a Git-backed project, `crown` creates the branch and applies the survivor there. In a non-Git project, it syncs the survivor back into the project folder.
+In a Git-backed project, `crown` creates the named branch and applies the survivor there. In a non-Git project, use bare `orc crown`; it syncs the survivor back into the project folder without requiring a fake branch name.
 
 If you want to reopen the latest consultation later, inspect an older one, browse consultation history, or use setup/MCP/debug commands from the shell binary, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md).
 

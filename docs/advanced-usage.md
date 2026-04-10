@@ -118,9 +118,9 @@ Use this when you want to reopen an older consultation without remembering the e
 orc crown fix/session-loss
 ```
 
-The shared host-native `crown` path expects the target branch name or materialization label as the first argument and crowns the latest recommended survivor automatically.
+The shared host-native `crown` path crowns the latest recommended survivor automatically.
 
-In a Git-backed project, `crown` creates the target branch and applies the recommended survivor there. In a non-Git project, it syncs the crowned workspace back into the project folder.
+In a Git-backed project, `crown` expects the target branch name as the first argument, creates that branch, and applies the recommended survivor there. In a non-Git project, use bare `orc crown`; it syncs the crowned workspace back into the project folder. If you pass a first argument in workspace-sync mode, Oraculum records it only as a materialization label.
 
 When available, the crowning record points at artifacts such as:
 
@@ -217,6 +217,26 @@ You can also tune bounded repair behavior in `.oraculum/advanced.json`:
 }
 ```
 
+## Managed Tree Rules
+
+Copy-mode workspaces and non-Git crowning ignore dependency, cache, runtime-state, and sensitive paths by default. Copy-mode workspaces may link unmanaged local dependency/cache trees such as `node_modules`, `.venv`, `venv`, `.tox`, `target`, or `.gradle` instead of copying them. This preserves existing local tool behavior without treating those names as validation commands.
+
+Some names are ambiguous across ecosystems: `dist` or `target` may be generated output in one repository and intentional source or published artifacts in another.
+
+Use `managedTree` only when the repository really intends to include or exclude such paths:
+
+```json
+{
+  "version": 1,
+  "managedTree": {
+    "includePaths": ["dist", "target/docs"],
+    "excludePaths": ["build"]
+  }
+}
+```
+
+Paths must be safe relative paths inside the project root. `includePaths` can opt ambiguous generated directories back into workspace copy, snapshots, change detection, and non-Git crowning. Included paths are managed, so they are not dependency-tree linked. `includePaths` does not override protected paths such as `.git`, `.oraculum`, `.env*`, or credential directories.
+
 ## Where Advanced Settings Belong
 
 Quick start should stay simple.
@@ -230,6 +250,7 @@ Use `.oraculum/advanced.json` for operator controls such as:
 
 - repo-local oracles
 - repair policy
+- managed tree include/exclude rules for ambiguous generated paths
 - custom rounds and strategy portfolios
 - future profile- or policy-level overrides
 
