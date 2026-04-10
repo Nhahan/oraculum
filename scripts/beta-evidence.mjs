@@ -442,6 +442,14 @@ function buildCorpusScenarios() {
       corpusName: "nested-workspace-explicit-oracle",
     }),
     createScenario({
+      kind: "subdirectory-invocation",
+      repoKind: "plain",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      corpusName: "package-free-subdirectory-invocation",
+    }),
+    createScenario({
       kind: "migration-missing-capability",
       repoKind: "alembic",
       agent: "codex",
@@ -856,6 +864,9 @@ async function prepareScenario(workdir, scenario) {
   await mkdir(workdir, { recursive: true });
   await writeRepositoryTemplate(workdir, scenario);
   await writeTaskInputs(workdir, scenario);
+  if (scenario.kind === "subdirectory-invocation") {
+    await mkdir(invocationCwdForScenario(workdir, scenario), { recursive: true });
+  }
 
   if (scenario.workspaceMode === "git") {
     runOrThrow("git", ["init"], { cwd: workdir });
@@ -960,6 +971,53 @@ async function prepareScenario(workdir, scenario) {
           command: process.execPath,
           args: [join("workspaces", "review-app", "tools", "check-status.mjs")],
           invariant: "The nested workspace check must validate the nested target file.",
+          enforcement: "hard",
+        },
+      ],
+    });
+  }
+
+  if (scenario.kind === "subdirectory-invocation") {
+    await mkdir(join(workdir, "tools"), { recursive: true });
+    await writeFile(
+      join(workdir, "tools", "check-subdirectory-root.mjs"),
+      [
+        'import { existsSync, readFileSync } from "node:fs";',
+        'import { join } from "node:path";',
+        "",
+        "const projectRoot = process.env.ORACULUM_PROJECT_ROOT;",
+        "const workspace = process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR;",
+        "if (!projectRoot || !workspace) {",
+        '  process.stderr.write("missing Oraculum root/workspace environment");',
+        "  process.exit(1);",
+        "}",
+        'if (!existsSync(join(projectRoot, ".oraculum", "config.json"))) {',
+        '  process.stderr.write("project root .oraculum config missing");',
+        "  process.exit(1);",
+        "}",
+        'if (existsSync(join(projectRoot, "packages", "app", ".oraculum"))) {',
+        '  process.stderr.write("nested invocation created a stray .oraculum directory");',
+        "  process.exit(1);",
+        "}",
+        'const text = readFileSync(join(workspace, "src", "index.js"), "utf8");',
+        'if (!text.includes("cand-")) {',
+        '  process.stderr.write("candidate marker missing");',
+        "  process.exit(1);",
+        "}",
+        'process.stdout.write("subdirectory root oracle ok");',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await writeAdvancedConfig(workdir, {
+      version: 1,
+      oracles: [
+        {
+          id: "subdirectory-root-impact",
+          roundId: "impact",
+          command: process.execPath,
+          args: [join("tools", "check-subdirectory-root.mjs")],
+          invariant: "A nested invocation must keep project artifacts at the initialized root.",
           enforcement: "hard",
         },
       ],
@@ -1086,12 +1144,13 @@ async function executeScenario(workdir, scenario) {
       : { ORACULUM_CLAUDE_BIN: scenario.fakeBinaryPath }),
   };
 
+  const toolCwd = invocationCwdForScenario(workdir, scenario);
   const taskArgument = buildTaskArgument(scenario);
 
   if (scenario.kind === "draft" || scenario.kind === "filelike-inline-draft") {
     const draft = await runDraftToolRequest(
       {
-        cwd: workdir,
+        cwd: toolCwd,
         taskInput: taskArgument,
         agent: scenario.agent,
         candidates: 1,
@@ -1124,7 +1183,7 @@ async function executeScenario(workdir, scenario) {
 
   const consult = await runConsultToolRequest(
     {
-      cwd: workdir,
+      cwd: toolCwd,
       taskInput: taskArgument,
       agent: scenario.agent,
       candidates: scenario.candidateCount,
@@ -1397,6 +1456,16 @@ async function executeScenario(workdir, scenario) {
     return;
   }
 
+  if (scenario.kind === "subdirectory-invocation") {
+    assertEqual(
+      run.recommendedWinner?.candidateId,
+      "cand-02",
+      `${scenario.id}: expected cand-02 to be recommended for the subdirectory invocation scenario.`,
+    );
+    await assertSubdirectoryInvocation(workdir, scenario, run, env);
+    return;
+  }
+
   if (scenario.kind === "migration-missing-capability") {
     assertEqual(
       run.recommendedWinner?.candidateId,
@@ -1494,9 +1563,10 @@ async function executeScenario(workdir, scenario) {
 
 async function assertHappyCrown(workdir, scenario, env, candidateId = "cand-02") {
   const branchName = buildBranchName(scenario, "winner");
+  const toolCwd = invocationCwdForScenario(workdir, scenario);
   const crown = await runCrownToolRequest(
     {
-      cwd: workdir,
+      cwd: toolCwd,
       ...(candidateId === "cand-02" ? {} : { candidateId }),
       ...(scenario.workspaceMode === "git" ? { branchName } : {}),
     },
@@ -1509,6 +1579,14 @@ async function assertHappyCrown(workdir, scenario, env, candidateId = "cand-02")
     const branch = runOrThrow("git", ["branch", "--show-current"], { cwd: workdir }).stdout.trim();
     assertEqual(branch, branchName, `${scenario.id}: expected crowned git branch.`);
   }
+}
+
+function invocationCwdForScenario(workdir, scenario) {
+  if (scenario.kind === "subdirectory-invocation") {
+    return join(workdir, "packages", "app");
+  }
+
+  return workdir;
 }
 
 function buildTaskArgument(scenario) {
@@ -1555,6 +1633,38 @@ function assertTaskInputEdge(workdir, scenario, run) {
     normalizedSourcePath.startsWith(workdir.replaceAll("\\", "/")),
     true,
     `${scenario.id}: edge task input should resolve inside the scenario workspace.`,
+  );
+}
+
+async function assertSubdirectoryInvocation(workdir, scenario, run, env) {
+  const toolCwd = invocationCwdForScenario(workdir, scenario);
+  const normalizedTaskPath = run.taskPath.replaceAll("\\", "/");
+  assertEqual(
+    normalizedTaskPath,
+    join(workdir, "tasks", `${scenario.repoKind}.md`).replaceAll("\\", "/"),
+    `${scenario.id}: nested invocation should fall back to the initialized root task file.`,
+  );
+  assertEqual(
+    existsSync(join(workdir, ".oraculum", "latest-run.json")),
+    true,
+    `${scenario.id}: latest run state should be written at the initialized root.`,
+  );
+  assertEqual(
+    existsSync(join(toolCwd, ".oraculum")),
+    false,
+    `${scenario.id}: nested invocation must not create a stray .oraculum directory.`,
+  );
+  const verdict = await runVerdictToolRequest({ cwd: toolCwd }, { env });
+  assertContains(
+    verdict.stdout,
+    "crown the recommended survivor",
+    `${scenario.id}: nested verdict should resolve the root latest run.`,
+  );
+  await assertHappyCrown(workdir, scenario, env);
+  assertEqual(
+    existsSync(join(toolCwd, ".oraculum")),
+    false,
+    `${scenario.id}: nested crown must not create a stray .oraculum directory.`,
   );
 }
 

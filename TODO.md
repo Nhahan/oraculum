@@ -246,7 +246,7 @@ Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace
 - [x] Keep the corpus fast by using fake local tools behind explicit repo-local commands; do not use the corpus to justify new named-tool inferred command recipes.
 - [ ] Add a separate `evidence:polyglot` script if the full corpus becomes too slow for normal beta checks.
 - [x] Extend `workflow-comparison` and `host-native` smoke evidence with at least one non-Node or package-json-free scenario before using them as generality evidence.
-- [ ] Add subdirectory-invocation evidence where Oraculum is invoked below the repository root and still records artifacts/checks in the intended root.
+- [x] Add subdirectory-invocation evidence where Oraculum is invoked below the repository root and still records artifacts/checks in the intended root.
 - [ ] Add timed-out oracle evidence that proves child processes do not survive after timeout.
 
 ## Phase 8: Documentation And Product Language
