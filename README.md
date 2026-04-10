@@ -35,11 +35,9 @@
 
 ## Overview
 
-Oraculum is an oracle-guided patch workflow for Claude Code and Codex.
+Oraculum turns AI patching into a tournament instead of a one-shot edit.
 
-The primary product surface is a shared in-chat command language across both hosts: `orc consult`, `orc verdict`, and `orc crown`.
-
-Under that surface, Oraculum turns patching into a repeatable workflow: run competing candidates in isolation, judge them with repo-local oracles, keep verdicts and witnesses, and crown only the survivor.
+Candidates run in isolation, repo-local checks act as oracles, evidence is recorded, and only the survivor is promoted.
 
 ## Installation
 
