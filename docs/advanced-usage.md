@@ -140,6 +140,16 @@ oraculum setup status --json
 oraculum mcp serve
 ```
 
+## Maintainer Validation
+
+For packaged validation during release work, run:
+
+```bash
+npm run evidence:smoke
+```
+
+This executes the installed-package smoke and the clean-install setup smoke together.
+
 ## Repo-Local Oracles
 
 Put repo-specific command checks in `.oraculum/advanced.json`.

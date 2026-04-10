@@ -204,7 +204,9 @@ Examples of follow-on work:
 - [x] Improve host-native UX polish, diagnostics, and packaging cleanup
 - [x] Add a clean-install release smoke that validates packaged setup for both hosts
 - [x] Expand the curated evidence corpus with a docs-heavy repository shape
-- [ ] Continue broader evidence collection, release hardening, and operational polish
+- [x] Continue broader evidence collection, release hardening, and operational polish
+  - added broader curated corpus coverage for service-style repos and non-pnpm monorepo package-manager variants
+  - wired packaged smoke checks into CI and the GitHub release workflow
 - [ ] Revisit future host/runtime expansion only if product direction changes
 
 ## Suggested Order
