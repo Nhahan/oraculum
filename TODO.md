@@ -234,7 +234,7 @@ Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace
 - [x] Add a `generic-no-package-json` evidence scenario where no `package.json` exists and Oraculum still consults/crowns without assuming npm.
 - [x] Add a Python-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred `pytest`/`ruff` commands.
 - [x] Add a Go-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred `go test` commands.
-- [ ] Add a Rust-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred `cargo` commands.
+- [x] Add a Rust-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred `cargo` commands.
 - [ ] Add a Java/Gradle-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred Gradle commands.
 - [ ] Add a Java/Maven-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred Maven commands.
 - [ ] Add a docs/static fixture that does not use Node scripts.

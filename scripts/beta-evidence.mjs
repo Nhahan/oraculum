@@ -25,6 +25,10 @@ const explicitMarkerOracleFixtures = {
     label: "Go",
     fileSegments: ["internal", "status", "status.go"],
   },
+  rust: {
+    label: "Rust",
+    fileSegments: ["src", "lib.rs"],
+  },
 };
 
 function resolveEvidenceMode() {
@@ -346,6 +350,14 @@ function buildCorpusScenarios() {
       workspaceMode: "copy",
       profileId: "generic",
       corpusName: "go-explicit-oracle",
+    }),
+    createScenario({
+      kind: "happy",
+      repoKind: "rust",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      corpusName: "rust-explicit-oracle",
     }),
     createScenario({
       kind: "happy",
@@ -1327,6 +1339,20 @@ process.stdout.write("turbo workspace ok");
     return;
   }
 
+  if (repoKind === "rust") {
+    await writeFile(
+      join(root, "Cargo.toml"),
+      '[package]\nname = "scenario-rust"\nversion = "0.1.0"\nedition = "2021"\n',
+      "utf8",
+    );
+    await writeFile(
+      join(root, "src", "lib.rs"),
+      "pub fn status() -> &" + 'static str {\n    "offline"\n}\n',
+      "utf8",
+    );
+    return;
+  }
+
   if (repoKind === "service") {
     await mkdir(join(root, "routes"), { recursive: true });
     await writeFile(
@@ -1516,6 +1542,7 @@ async function writeTaskInputs(root, repoKind) {
     plain: "# Plain patch\nUpdate the greeting text.\n",
     python: "# Python patch\nUpdate the service status text.\n",
     go: "# Go patch\nUpdate the service status text.\n",
+    rust: "# Rust patch\nUpdate the service status text.\n",
     docs: "# Docs patch\nRevise the report wording.\n",
     service: "# Service patch\nUpdate the service status response.\n",
     monorepo: "# Monorepo patch\nUpdate the workspace package greeting.\n",
@@ -1541,6 +1568,9 @@ function buildInlineTaskText(repoKind) {
   }
   if (repoKind === "go") {
     return "Update internal/status/status.go so Status() returns a winner-specific online status string.";
+  }
+  if (repoKind === "rust") {
+    return "Update src/lib.rs so status() returns a winner-specific online status string.";
   }
   if (repoKind === "service") {
     return "Update src/server.js so serviceStatus() returns a winner-specific online status string.";
@@ -1736,6 +1766,12 @@ function mutateWorkspace() {
   }
   if (scenario.repoKind === "go") {
     const file = path.join(process.cwd(), "internal", "status", "status.go");
+    const next = fs.readFileSync(file, "utf8").replace('"offline"', '"online-' + candidateId + '"');
+    fs.writeFileSync(file, next, "utf8");
+    return;
+  }
+  if (scenario.repoKind === "rust") {
+    const file = path.join(process.cwd(), "src", "lib.rs");
     const next = fs.readFileSync(file, "utf8").replace('"offline"', '"online-' + candidateId + '"');
     fs.writeFileSync(file, next, "utf8");
     return;
@@ -2072,9 +2108,11 @@ async function assertTargetFileContains(root, scenario, candidateId) {
               ? join(root, "src", "app.py")
               : scenario.repoKind === "go"
                 ? join(root, "internal", "status", "status.go")
-                : scenario.repoKind === "service"
-                  ? join(root, "src", "server.js")
-                  : join(root, "src", "index.js");
+                : scenario.repoKind === "rust"
+                  ? join(root, "src", "lib.rs")
+                  : scenario.repoKind === "service"
+                    ? join(root, "src", "server.js")
+                    : join(root, "src", "index.js");
   const contents = await readFile(file, "utf8");
   assertContains(contents, candidateId);
 }
