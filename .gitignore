@@ -3,6 +3,7 @@
 node_modules/
 dist/
 .oraculum/
+.omc/
 .idea/
 .vscode/
 .DS_Store
