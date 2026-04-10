@@ -12,6 +12,7 @@ interface SetupOptions {
 }
 
 interface SetupStatusOptions {
+  json?: boolean;
   runtime?: Adapter;
 }
 
@@ -21,14 +22,16 @@ export function registerSetupCommand(program: Command): void {
     .description("Register chat-native host integration and MCP wiring.")
     .option("-r, --runtime <runtime>", "target host runtime", parseRuntime)
     .option("--scope <scope>", "installation scope: user, project, or local", parseScope, "user")
-    .action(async (options: SetupOptions) => {
-      if (!options.runtime) {
+    .action(async (options: SetupOptions, command: Command) => {
+      const runtime = options.runtime ?? (command.optsWithGlobals().runtime as Adapter | undefined);
+
+      if (!runtime) {
         throw new OraculumError(
           'setup requires "--runtime <claude-code|codex>" unless a subcommand is used.',
         );
       }
 
-      if (options.runtime === "claude-code") {
+      if (runtime === "claude-code") {
         const result = await setupClaudeCodeHost({
           scope: options.scope,
         });
@@ -42,7 +45,7 @@ export function registerSetupCommand(program: Command): void {
         return;
       }
 
-      if (options.runtime === "codex") {
+      if (runtime === "codex") {
         const result = await setupCodexHost({
           scope: options.scope,
         });
@@ -57,17 +60,37 @@ export function registerSetupCommand(program: Command): void {
         return;
       }
 
-      throw new OraculumError(`Chat-native setup for "${options.runtime}" is not implemented yet.`);
+      throw new OraculumError(`Chat-native setup for "${runtime}" is not implemented yet.`);
     });
 
   setup
     .command("status")
     .description("Inspect host setup diagnostics for chat-native routing.")
+    .option("--json", "emit machine-readable setup diagnostics")
     .option("-r, --runtime <runtime>", "target host runtime", parseRuntime)
-    .action(async (options: SetupStatusOptions) => {
+    .action(async (options: SetupStatusOptions, command: Command) => {
       const diagnostics = await buildSetupDiagnosticsResponse(process.cwd());
+      const runtime = options.runtime ?? (command.optsWithGlobals().runtime as Adapter | undefined);
+      const hosts = runtime
+        ? diagnostics.hosts.filter((host) => host.host === runtime)
+        : diagnostics.hosts;
+
+      if (options.json) {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              ...diagnostics,
+              hosts,
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        return;
+      }
+
       process.stdout.write(`${diagnostics.summary}\n`);
-      for (const host of diagnostics.hosts) {
+      for (const host of hosts) {
         if (options.runtime && host.host !== options.runtime) {
           continue;
         }

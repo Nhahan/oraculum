@@ -30,6 +30,7 @@
     "evidence:beta:corpus": "npm run build && node scripts/beta-evidence.mjs --mode=corpus",
     "evidence:beta:matrix": "npm run build && node scripts/beta-evidence.mjs --mode=matrix",
     "evidence:published-smoke": "node scripts/published-smoke.mjs",
+    "evidence:release-smoke": "node scripts/release-smoke.mjs",
     "format": "biome check --write .",
     "lint": "biome check .",
     "test": "vitest run",

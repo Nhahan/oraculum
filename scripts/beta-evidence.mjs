@@ -313,6 +313,30 @@ function buildScenarioMatrix() {
 function buildCorpusScenarios() {
   return [
     createScenario({
+      kind: "happy",
+      repoKind: "docs",
+      agent: "codex",
+      workspaceMode: "git",
+      profileId: "library",
+      corpusName: "docs-git-codex",
+    }),
+    createScenario({
+      kind: "happy",
+      repoKind: "docs",
+      agent: "claude-code",
+      workspaceMode: "copy",
+      profileId: "library",
+      corpusName: "docs-copy-claude",
+    }),
+    createScenario({
+      kind: "no-finalist",
+      repoKind: "docs",
+      agent: "codex",
+      workspaceMode: "git",
+      profileId: "library",
+      corpusName: "docs-no-finalist-codex",
+    }),
+    createScenario({
       kind: "monorepo",
       repoKind: "monorepo",
       agent: "codex",
@@ -569,7 +593,10 @@ function createScenario({
     agent,
     workspaceMode,
     profileId:
-      profileId ?? (repoKind === "plain" || repoKind === "monorepo" ? "library" : repoKind),
+      profileId ??
+      (repoKind === "plain" || repoKind === "monorepo" || repoKind === "docs"
+        ? "library"
+        : repoKind),
     binaryMode,
     candidateCount: resolvedCandidateCount,
     packageManager,
@@ -1142,6 +1169,27 @@ process.stdout.write("turbo workspace ok");
     }
   }
 
+  if (repoKind === "docs") {
+    await mkdir(join(root, "docs"), { recursive: true });
+    await writeFile(
+      join(root, "docs", "report.md"),
+      "# Baseline report\n\nThe current report needs editorial cleanup.\n",
+      "utf8",
+    );
+    await writePackageJson(root, {
+      name: "scenario-docs",
+      version: "0.0.0",
+      type: "module",
+      scripts: {
+        lint: `${nodeEval("process.exit(0)")}`,
+        typecheck: `${nodeEval("process.exit(0)")}`,
+        test: `${nodeEval("process.exit(0)")}`,
+        build: `${nodeEval("process.exit(0)")}`,
+      },
+    });
+    return;
+  }
+
   if (repoKind === "frontend") {
     await writeFile(join(root, "src", "page.js"), 'export const TITLE = "Old Title";\n', "utf8");
     await writePackageJson(root, {
@@ -1278,6 +1326,7 @@ async function writeTaskInputs(root, repoKind) {
     frontend: "# Frontend patch\nUpdate the page title.\n",
     migration: "# Migration patch\nAdjust the schema comment.\n",
     plain: "# Plain patch\nUpdate the greeting text.\n",
+    docs: "# Docs patch\nRevise the report wording.\n",
     monorepo: "# Monorepo patch\nUpdate the workspace package greeting.\n",
   };
   await writeFile(join(root, "tasks", `${repoKind}.md`), taskBodies[repoKind], "utf8");
@@ -1292,6 +1341,9 @@ function buildInlineTaskText(repoKind) {
   }
   if (repoKind === "migration") {
     return "Update prisma/schema.prisma with a small marker comment for the winning candidate.";
+  }
+  if (repoKind === "docs") {
+    return "Update docs/report.md so the report reflects the winning candidate with a small editorial change.";
   }
   return "Update src/index.js so greet() returns a winner-specific hello string.";
 }
@@ -1467,6 +1519,12 @@ function mutateWorkspace() {
   if (scenario.repoKind === "migration") {
     const file = path.join(process.cwd(), "prisma", "schema.prisma");
     const next = fs.readFileSync(file, "utf8").replace("model User {", "// candidate " + candidateId + "\\nmodel User {");
+    fs.writeFileSync(file, next, "utf8");
+    return;
+  }
+  if (scenario.repoKind === "docs") {
+    const file = path.join(process.cwd(), "docs", "report.md");
+    const next = fs.readFileSync(file, "utf8").replace("Baseline report", "Report for " + candidateId);
     fs.writeFileSync(file, next, "utf8");
     return;
   }
@@ -1790,7 +1848,9 @@ async function assertTargetFileContains(root, scenario, candidateId) {
         ? join(root, "src", "page.js")
         : scenario.repoKind === "migration"
           ? join(root, "prisma", "schema.prisma")
-          : join(root, "src", "index.js");
+          : scenario.repoKind === "docs"
+            ? join(root, "docs", "report.md")
+            : join(root, "src", "index.js");
   const contents = await readFile(file, "utf8");
   assertContains(contents, candidateId);
 }
