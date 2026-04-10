@@ -19,7 +19,9 @@ If you want to inspect whether host-native wiring is complete, run:
 oraculum setup status
 ```
 
-Every `consult` also runs an automatic profile-selection step. Oraculum scans repo signals, asks the chosen runtime for a structured recommendation, and applies the resulting profile draft to that consultation only. Explicit quick-start and advanced settings still win over inferred defaults.
+The npm package is only Oraculum's distribution channel. It does not mean the target repository must be a Node project.
+
+Every `consult` also runs an automatic profile-selection step. Oraculum collects repo facts, asks the chosen runtime for a structured recommendation, validates the recommendation, and applies the resulting profile draft to that consultation only. Explicit quick-start and advanced settings still win over inferred defaults.
 
 ## Consult On A Task File
 
@@ -62,6 +64,8 @@ Each consultation now writes a profile-selection artifact under:
 That artifact records:
 
 - detected repo signals
+- capability signals and signal provenance
+- the command catalog offered to the runtime
 - the chosen profile id
 - confidence and rationale
 - missing capabilities
@@ -69,11 +73,26 @@ That artifact records:
 
 Today the built-in profile families are:
 
+- `generic`
 - `library`
 - `frontend`
 - `migration`
 
 The selected profile is consultation-scoped. It does not rewrite your saved quick-start config, and it does not overwrite explicit advanced operator settings.
+
+## Profile Boundary And Runtime Failures
+
+Oraculum assumes Claude Code or Codex is a frontier coding model. Deterministic code owns facts and safety: file signals, manifests, workspace roots, explicit config, command allowlists, timeouts, and artifact persistence. The model owns semantic judgment: profile choice, risk level, validation sufficiency, and which provided commands to select.
+
+The model cannot invent executable commands for Oraculum to run. It returns command ids from the catalog Oraculum provided, and Oraculum rejects unknown profile ids, strategy ids, and command ids. If runtime profile selection fails or is disabled, runtime-unavailable detection is conservative: zero-signal repositories use `generic`, ambiguous package managers do not silently become npm, and missing validation is recorded as `missingCapabilities`.
+
+Repo-local scripts and explicit `.oraculum/advanced.json` oracles are strongest. Oraculum should not grow a built-in encyclopedia of framework, ORM, migration-tool, test-runner, or language-specific command recipes. Named tools, including Prisma or Drizzle, are recorded as evidence unless a repo-local script or explicit oracle defines the command.
+
+## Project Roots And Task Paths
+
+If Oraculum finds an initialized `.oraculum/config.json` in an ancestor directory, nested invocations use that initialized project root for config, runs, reports, and workspaces. If no initialized root exists, Oraculum keeps the current directory local instead of guessing a repository root.
+
+Task paths are resolved from the invocation directory first, then from the initialized project root. Existing file-looking inputs such as `.html`, `.py`, `.go`, or `.rs` are loaded as task notes. Missing file-looking inputs fail fast instead of being treated as inline prose. Plain inline text is materialized under `.oraculum/tasks/`.
 
 ## Inspect A Specific Consultation
 
@@ -98,7 +117,7 @@ Use this when you want to reopen an older consultation without remembering the e
 orc crown fix/session-loss
 ```
 
-The shared host-native `crown` path expects the branch name as the first argument and crowns the latest recommended survivor automatically.
+The shared host-native `crown` path expects the target branch name or materialization label as the first argument and crowns the latest recommended survivor automatically.
 
 In a Git-backed project, `crown` creates the target branch and applies the recommended survivor there. In a non-Git project, it syncs the crowned workspace back into the project folder.
 

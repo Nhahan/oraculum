@@ -39,6 +39,8 @@ Oraculum turns AI patching into a tournament instead of a one-shot edit.
 
 Candidates run in isolation, repo-local checks act as oracles, evidence is recorded, and only the survivor is crowned.
 
+Claude Code or Codex remains the reasoning runtime; Oraculum supplies the deterministic harness around it: isolation, checks, witnesses, and the crowning gate.
+
 ## Installation
 
 Install from npm:

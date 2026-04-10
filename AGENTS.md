@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Build `Oraculum`: a `chat-native`, `TypeScript + Node.js` system for `Claude Code` and `Codex` that explores multiple patch candidates, judges them with repo-local oracles/invariants, and crowns only survivors. Do not generalize adapters beyond those two yet.
+Build `Oraculum`: a `chat-native`, `TypeScript + Node-distributed` system for `Claude Code` and `Codex` that explores multiple patch candidates, judges them with repo-local oracles/invariants, and crowns only survivors. Do not generalize adapters beyond those two yet.
 
 Target primary product surface:
 
@@ -11,7 +11,7 @@ Target primary product surface:
 - examples: `orc consult`, `orc verdict`, `orc crown`
 
 Host-native `orc` integration is now available for both Claude Code and Codex after setup. The `oraculum` shell binary still ships for setup, MCP serving, debugging, packaging, and local validation.
-The shell binary is now setup/MCP/debug-only. Workflow commands such as `consult`, `verdict`, `crown`, `draft`, and `init` belong to the host-native `orc` surface, not to the shell fallback.
+The shell binary is now setup/MCP/debug-only. Workflow commands such as `consult`, `verdict`, `crown`, `draft`, and `init` belong to the host-native `orc` surface, not to shell command routing.
 
 ## Read Order
 
@@ -64,6 +64,8 @@ Treat Oraculum first as a local installable, host-native workflow tool, not a CI
 The default consultation command may infer a consultation-scoped profile from repo signals and structured runtime selection, but explicit quick-start or advanced operator settings must win over inferred defaults.
 Use `/.oraculum/config.json` for quick-start defaults only. Put operator controls such as custom rounds, strategies, or repo-local oracles in `/.oraculum/advanced.json`.
 Auto-init and `init --force`, reached through host-native `orc` commands, must keep the quick-start path clean: stale or orphaned `advanced.json` must not leak operator settings into the default UX.
+For target-repository generalization, follow `TODO.md`'s Frontier Model Boundary Policy: assume a frontier, human-level coding model. Deterministic code owns raw fact collection, contracts, and safety enforcement; the model owns semantic profile/check selection. Tool-specific labels may be evidence, but do not add named framework, ORM, migration-tool, test-runner, or language-ecosystem command recipes by default. Prefer repo-local scripts, explicit `.oraculum/advanced.json` oracles, or missing-capability evidence.
+The npm/Node distribution model is an implementation and packaging fact for Oraculum itself; it must not imply that target repositories are Node projects.
 
 ## Working Bias
 
