@@ -5,6 +5,7 @@ import { runSubprocess } from "../core/subprocess.js";
 import {
   type AgentProfileRecommendation,
   agentProfileRecommendationSchema,
+  buildAgentProfileRecommendationJsonSchema,
 } from "../domain/profile.js";
 
 import { shouldUseWindowsShell } from "./platform.js";
@@ -178,7 +179,10 @@ export class CodexAdapter implements AgentAdapter {
     const startedAt = new Date().toISOString();
 
     await writeFile(promptPath, prompt, "utf8");
-    await writeFile(schemaPath, `${JSON.stringify(buildProfileRecommendationSchema(), null, 2)}\n`);
+    await writeFile(
+      schemaPath,
+      `${JSON.stringify(buildAgentProfileRecommendationJsonSchema(), null, 2)}\n`,
+    );
 
     const result = await runSubprocess({
       command: this.binaryPath,
@@ -332,51 +336,6 @@ function buildWinnerRecommendationSchema(): Record<string, unknown> {
         },
         required: ["decision", "confidence", "summary"],
       },
-    ],
-  };
-}
-
-function buildProfileRecommendationSchema(): Record<string, unknown> {
-  return {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      profileId: {
-        type: "string",
-        enum: ["library", "frontend", "migration"],
-      },
-      confidence: {
-        type: "string",
-        enum: ["low", "medium", "high"],
-      },
-      summary: { type: "string", minLength: 1 },
-      candidateCount: { type: "integer", minimum: 1, maximum: 16 },
-      strategyIds: {
-        type: "array",
-        minItems: 1,
-        maxItems: 4,
-        items: {
-          type: "string",
-          enum: ["minimal-change", "safety-first", "test-amplified", "structural-refactor"],
-        },
-      },
-      selectedCommandIds: {
-        type: "array",
-        items: { type: "string" },
-      },
-      missingCapabilities: {
-        type: "array",
-        items: { type: "string" },
-      },
-    },
-    required: [
-      "profileId",
-      "confidence",
-      "summary",
-      "candidateCount",
-      "strategyIds",
-      "selectedCommandIds",
-      "missingCapabilities",
     ],
   };
 }

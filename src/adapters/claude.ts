@@ -5,6 +5,7 @@ import { runSubprocess } from "../core/subprocess.js";
 import {
   type AgentProfileRecommendation,
   agentProfileRecommendationSchema,
+  buildAgentProfileRecommendationJsonSchema,
 } from "../domain/profile.js";
 
 import { shouldUseWindowsShell } from "./platform.js";
@@ -157,7 +158,7 @@ export class ClaudeAdapter implements AgentAdapter {
         "--permission-mode",
         "plan",
         "--json-schema",
-        JSON.stringify(buildProfileRecommendationSchema()),
+        JSON.stringify(buildAgentProfileRecommendationJsonSchema()),
       ],
       cwd: request.projectRoot,
       ...(this.env ? { env: this.env } : {}),
@@ -269,51 +270,6 @@ function extractProfileRecommendation(stdout: string): AgentProfileRecommendatio
   }
 
   return undefined;
-}
-
-function buildProfileRecommendationSchema(): Record<string, unknown> {
-  return {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      profileId: {
-        type: "string",
-        enum: ["library", "frontend", "migration"],
-      },
-      confidence: {
-        type: "string",
-        enum: ["low", "medium", "high"],
-      },
-      summary: { type: "string", minLength: 1 },
-      candidateCount: { type: "integer", minimum: 1, maximum: 16 },
-      strategyIds: {
-        type: "array",
-        minItems: 1,
-        maxItems: 4,
-        items: {
-          type: "string",
-          enum: ["minimal-change", "safety-first", "test-amplified", "structural-refactor"],
-        },
-      },
-      selectedCommandIds: {
-        type: "array",
-        items: { type: "string" },
-      },
-      missingCapabilities: {
-        type: "array",
-        items: { type: "string" },
-      },
-    },
-    required: [
-      "profileId",
-      "confidence",
-      "summary",
-      "candidateCount",
-      "strategyIds",
-      "selectedCommandIds",
-      "missingCapabilities",
-    ],
-  };
 }
 
 function buildWinnerRecommendationSchema(): Record<string, unknown> {

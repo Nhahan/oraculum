@@ -1,5 +1,3 @@
-import * as childProcess from "node:child_process";
-import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
@@ -19,10 +17,20 @@ import {
   consultationProfileSelectionSchema,
   type ProfileCommandCandidate,
   type ProfileRepoSignals,
+  type ProfileStrategyId,
   profileRepoSignalsSchema,
+  profileStrategyIds,
 } from "../domain/profile.js";
 import type { MaterializedTaskPacket } from "../domain/task.js";
 
+import { buildCommandCatalog } from "./profile-command-catalog.js";
+import {
+  buildCapabilitySignals,
+  buildLegacySignalTags,
+  buildSignalProvenance,
+  detectKnownFiles,
+  detectWorkspaceRoots,
+} from "./profile-signals.js";
 import { type ProjectConfigLayers, pathExists, writeJsonFile } from "./project.js";
 
 interface RecommendConsultationProfileOptions {
@@ -41,9 +49,9 @@ export interface RecommendedConsultationProfile {
   selection: ConsultationProfileSelection;
 }
 
-type ToolPathFinder = (tool: string) => string | undefined;
-
 const PROFILE_DESCRIPTIONS: Record<ConsultationProfileId, string> = {
+  generic:
+    "General-purpose work when repository signals are weak or ecosystem-specific checks are not safely detectable.",
   library:
     "Package or shared library work. Favor lint/typecheck, unit tests, and package/export evidence.",
   frontend:
@@ -52,13 +60,8 @@ const PROFILE_DESCRIPTIONS: Record<ConsultationProfileId, string> = {
     "Schema or migration work. Favor schema validation, migration dry-runs, rollback simulation, and conservative strategies.",
 };
 
-let toolPathFinder: ToolPathFinder = findToolOnPath;
-
-export function setToolPathFinderForTests(next: ToolPathFinder | undefined): void {
-  toolPathFinder = next ?? findToolOnPath;
-}
-
 const PROFILE_DEFAULT_CANDIDATES: Record<ConsultationProfileId, number> = {
+  generic: 3,
   library: 4,
   frontend: 4,
   migration: 3,
@@ -70,43 +73,24 @@ const GENERATED_ORACLE_TIMEOUT_MS = {
   deep: 10 * 60_000,
 } as const satisfies Record<ProfileCommandCandidate["roundId"], number>;
 
-const PROFILE_STRATEGIES: Record<ConsultationProfileId, string[]> = {
+const PROFILE_STRATEGIES: Record<ConsultationProfileId, ProfileStrategyId[]> = {
+  generic: ["minimal-change", "safety-first"],
   library: ["minimal-change", "test-amplified", "safety-first"],
   frontend: ["minimal-change", "safety-first", "test-amplified"],
   migration: ["safety-first", "structural-refactor", "minimal-change"],
 };
 
-const PROFILE_FALLBACK_PRIORITY: ConsultationProfileId[] = ["library", "frontend", "migration"];
-
-const FRONTEND_DEPENDENCIES = new Set([
-  "react",
-  "react-dom",
-  "next",
-  "vite",
-  "vue",
-  "nuxt",
-  "svelte",
-  "astro",
-  "@angular/core",
-]);
-const MIGRATION_DEPENDENCIES = new Set([
-  "prisma",
-  "@prisma/client",
-  "drizzle-orm",
-  "drizzle-kit",
-  "knex",
-  "sequelize",
-  "typeorm",
-  "alembic",
-]);
-const PLAYWRIGHT_DEPENDENCIES = new Set(["playwright", "@playwright/test"]);
-const CYPRESS_DEPENDENCIES = new Set(["cypress"]);
-const PRISMA_DEPENDENCIES = new Set(["prisma", "@prisma/client"]);
+const PROFILE_FALLBACK_PRIORITY: ConsultationProfileId[] = [
+  "library",
+  "frontend",
+  "migration",
+  "generic",
+];
 
 export async function recommendConsultationProfile(
   options: RecommendConsultationProfileOptions,
 ): Promise<RecommendedConsultationProfile> {
-  const signals = await collectProfileRepoSignals(options.projectRoot, options.taskPacket);
+  const signals = await collectProfileRepoSignals(options.projectRoot);
   const fallback = buildFallbackRecommendation(signals, options.taskPacket);
   let llmResult: Awaited<ReturnType<AgentAdapter["recommendProfile"]>> | undefined;
   let llmFailure: string | undefined;
@@ -213,10 +197,7 @@ function applyProfileSelection(options: {
   };
 }
 
-async function collectProfileRepoSignals(
-  projectRoot: string,
-  taskPacket: MaterializedTaskPacket,
-): Promise<ProfileRepoSignals> {
+async function collectProfileRepoSignals(projectRoot: string): Promise<ProfileRepoSignals> {
   const packageJsonPath = join(projectRoot, "package.json");
   const packageJson = (await pathExists(packageJsonPath))
     ? (JSON.parse(await readFile(packageJsonPath, "utf8")) as {
@@ -239,22 +220,29 @@ async function collectProfileRepoSignals(
     ...(packageJson?.devDependencies ?? {}),
   }).sort((left, right) => left.localeCompare(right));
 
-  const knownFiles = await detectKnownFiles(projectRoot);
-  const tags = buildSignalTags({
+  const workspaceRoots = await detectWorkspaceRoots(projectRoot);
+  const knownFiles = await detectKnownFiles(projectRoot, workspaceRoots);
+  const tags = buildLegacySignalTags({
     dependencies,
     files: knownFiles,
-    scripts,
-    taskPacket,
     packageJson,
+    scripts,
   });
   const commandCatalog = buildCommandCatalog({
+    packageJson,
+    packageManager,
+    scripts,
+  });
+  const capabilities = buildCapabilitySignals({
     dependencies,
     files: knownFiles,
     packageJson,
     packageManager,
-    projectRoot,
     scripts,
+    tags,
+    workspaceRoots,
   });
+  const provenance = buildSignalProvenance(tags, capabilities);
   const notes = buildSignalNotes(tags, commandCatalog, packageManager, packageJson);
 
   return profileRepoSignalsSchema.parse({
@@ -262,8 +250,11 @@ async function collectProfileRepoSignals(
     scripts,
     dependencies,
     files: knownFiles,
+    workspaceRoots,
     tags,
     notes,
+    capabilities,
+    provenance,
     commandCatalog,
   });
 }
@@ -303,172 +294,6 @@ async function detectPackageManager(
   return "unknown" as const;
 }
 
-async function detectKnownFiles(projectRoot: string): Promise<string[]> {
-  const candidates = [
-    "package.json",
-    "tsconfig.json",
-    "vite.config.ts",
-    "vite.config.js",
-    "vite.config.mjs",
-    "vite.config.cjs",
-    "next.config.js",
-    "next.config.mjs",
-    "next.config.ts",
-    "next.config.cjs",
-    "playwright.config.ts",
-    "playwright.config.js",
-    "playwright.config.mjs",
-    "playwright.config.cjs",
-    "cypress.config.ts",
-    "cypress.config.js",
-    "cypress.config.mjs",
-    "cypress.config.cjs",
-    ".storybook/main.ts",
-    ".storybook/main.js",
-    ".storybook/main.mjs",
-    ".storybook/main.cjs",
-    "storybook/main.ts",
-    "storybook/main.js",
-    "prisma/schema.prisma",
-    "schema.prisma",
-    "drizzle.config.ts",
-    "alembic.ini",
-    "migrations",
-    "db/migrate",
-    "prisma/migrations",
-  ];
-
-  const present: string[] = [];
-  for (const candidate of candidates) {
-    // eslint-disable-next-line no-await-in-loop
-    if (await pathExists(join(projectRoot, candidate))) {
-      present.push(candidate);
-    }
-  }
-
-  return present;
-}
-
-function buildSignalTags(options: {
-  dependencies: string[];
-  files: string[];
-  scripts: string[];
-  taskPacket: MaterializedTaskPacket;
-  packageJson:
-    | {
-        exports?: unknown;
-        main?: string;
-        module?: string;
-        types?: string;
-      }
-    | undefined;
-}): string[] {
-  const tags = new Set<string>();
-
-  if (options.dependencies.some((dependency) => FRONTEND_DEPENDENCIES.has(dependency))) {
-    tags.add("frontend-framework");
-  }
-  if (options.dependencies.some((dependency) => MIGRATION_DEPENDENCIES.has(dependency))) {
-    tags.add("migration-tooling");
-  }
-  if (
-    options.files.some((file) =>
-      [
-        "vite.config.ts",
-        "vite.config.js",
-        "vite.config.mjs",
-        "vite.config.cjs",
-        "next.config.js",
-        "next.config.mjs",
-        "next.config.ts",
-        "next.config.cjs",
-        ".storybook/main.ts",
-        ".storybook/main.js",
-        ".storybook/main.mjs",
-        ".storybook/main.cjs",
-        "storybook/main.ts",
-        "storybook/main.js",
-      ].includes(file),
-    )
-  ) {
-    tags.add("frontend-build");
-  }
-  if (
-    options.files.some((file) =>
-      [
-        "playwright.config.ts",
-        "playwright.config.js",
-        "playwright.config.mjs",
-        "playwright.config.cjs",
-        "cypress.config.ts",
-        "cypress.config.js",
-        "cypress.config.mjs",
-        "cypress.config.cjs",
-      ].includes(file),
-    )
-  ) {
-    tags.add("e2e-config");
-  }
-  if (
-    options.files.some((file) =>
-      [
-        "schema.prisma",
-        "prisma/schema.prisma",
-        "migrations",
-        "db/migrate",
-        "prisma/migrations",
-        "alembic.ini",
-      ].includes(file),
-    )
-  ) {
-    tags.add("migration-files");
-  }
-  if (
-    options.packageJson?.exports !== undefined ||
-    options.packageJson?.main ||
-    options.packageJson?.module ||
-    options.packageJson?.types
-  ) {
-    tags.add("package-export");
-  }
-  if (options.scripts.includes("lint")) {
-    tags.add("lint-script");
-  }
-  if (options.scripts.some((script) => ["typecheck", "check-types", "tsc"].includes(script))) {
-    tags.add("typecheck-script");
-  }
-  if (options.scripts.includes("build")) {
-    tags.add("build-script");
-  }
-  if (options.scripts.some((script) => script === "test" || script.includes("test:"))) {
-    tags.add("test-script");
-  }
-  if (
-    options.scripts.some((script) => /(migrate|migration|rollback|schema|db:|prisma)/u.test(script))
-  ) {
-    tags.add("migration-script");
-  }
-  if (/(migration|schema|rollback|database|prisma)/iu.test(taskText(options.taskPacket))) {
-    tags.add("task-migration");
-  }
-  if (
-    /(frontend|ui|component|page|screen|css|style|react|next|vite)/iu.test(
-      taskText(options.taskPacket),
-    )
-  ) {
-    tags.add("task-frontend");
-  }
-  if (
-    !tags.has("frontend-framework") &&
-    !tags.has("migration-tooling") &&
-    tags.has("package-export")
-  ) {
-    tags.add("library-signal");
-  }
-
-  return [...tags].sort((left, right) => left.localeCompare(right));
-}
-
 function buildSignalNotes(
   tags: string[],
   commandCatalog: ProfileCommandCandidate[],
@@ -495,447 +320,16 @@ function buildSignalNotes(
   }
   if (packageManager === "unknown") {
     notes.push(
-      "No lockfile or packageManager field was detected; npm-compatible script commands were assumed only when scripts exist.",
+      "No lockfile or packageManager field was detected; package scripts were not auto-generated because the package manager is ambiguous.",
     );
   }
   if (!packageJson) {
     notes.push(
-      "No package.json was found; the profile recommendation relies on files and task text only.",
+      "No package.json was found; repository facts are limited to files and task context.",
     );
   }
 
   return notes;
-}
-
-function buildCommandCatalog(options: {
-  dependencies: string[];
-  files: string[];
-  packageJson:
-    | {
-        scripts?: Record<string, string>;
-        exports?: unknown;
-        main?: string;
-        module?: string;
-        types?: string;
-      }
-    | undefined;
-  packageManager: ProfileRepoSignals["packageManager"];
-  projectRoot: string;
-  scripts: string[];
-}): ProfileCommandCandidate[] {
-  const scripts = new Set(options.scripts);
-  const dependencies = new Set(options.dependencies);
-  const files = new Set(options.files);
-  const catalog: ProfileCommandCandidate[] = [];
-
-  const addScriptCommand = (
-    id: string,
-    roundId: ProfileCommandCandidate["roundId"],
-    label: string,
-    script: string,
-    invariant: string,
-  ) => {
-    if (!scripts.has(script)) {
-      return;
-    }
-    const command = buildScriptCommand(options.packageManager, script);
-    if (!command) {
-      return;
-    }
-    catalog.push({
-      id,
-      roundId,
-      label,
-      command: command.command,
-      args: command.args,
-      invariant,
-    });
-  };
-
-  const addDirectToolCommand = (
-    id: string,
-    roundId: ProfileCommandCandidate["roundId"],
-    label: string,
-    invariant: string,
-    tool: string,
-    toolArgs: string[],
-  ) => {
-    if (catalog.some((command) => command.id === id)) {
-      return;
-    }
-    const command = buildToolExecCommand(options.projectRoot, tool, toolArgs);
-    if (!command) {
-      return;
-    }
-    catalog.push({
-      id,
-      roundId,
-      label,
-      command: command.command,
-      args: command.args,
-      invariant,
-    });
-  };
-
-  addScriptCommand("lint-fast", "fast", "Lint", "lint", "The codebase should satisfy lint checks.");
-  for (const script of ["typecheck", "check-types", "tsc"]) {
-    addScriptCommand(
-      "typecheck-fast",
-      "fast",
-      "Typecheck",
-      script,
-      "The codebase should satisfy type checking.",
-    );
-    if (catalog.some((command) => command.id === "typecheck-fast")) {
-      break;
-    }
-  }
-  for (const script of ["schema:check", "check:schema", "db:schema", "prisma:validate"]) {
-    addScriptCommand(
-      "schema-fast",
-      "fast",
-      "Schema validation",
-      script,
-      "Schema definitions should validate cleanly.",
-    );
-    if (catalog.some((command) => command.id === "schema-fast")) {
-      break;
-    }
-  }
-  if (
-    !catalog.some((command) => command.id === "schema-fast") &&
-    files.has("prisma/schema.prisma") &&
-    dependenciesIntersection(dependencies, PRISMA_DEPENDENCIES)
-  ) {
-    addDirectToolCommand(
-      "schema-fast",
-      "fast",
-      "Prisma schema validation",
-      "Prisma schema definitions should validate cleanly.",
-      "prisma",
-      ["validate", "--schema", "prisma/schema.prisma"],
-    );
-  }
-  if (
-    !catalog.some((command) => command.id === "schema-fast") &&
-    files.has("schema.prisma") &&
-    dependenciesIntersection(dependencies, PRISMA_DEPENDENCIES)
-  ) {
-    addDirectToolCommand(
-      "schema-fast",
-      "fast",
-      "Prisma schema validation",
-      "Prisma schema definitions should validate cleanly.",
-      "prisma",
-      ["validate", "--schema", "schema.prisma"],
-    );
-  }
-  for (const script of ["test:unit", "unit"]) {
-    addScriptCommand(
-      "unit-impact",
-      "impact",
-      "Unit tests",
-      script,
-      "Impacted unit tests should pass.",
-    );
-    if (catalog.some((command) => command.id === "unit-impact")) {
-      break;
-    }
-  }
-  for (const script of ["test:changed", "test:affected", "affected:test"]) {
-    addScriptCommand(
-      "changed-tests-impact",
-      "impact",
-      "Changed-area tests",
-      script,
-      "Changed-area tests should pass.",
-    );
-    if (catalog.some((command) => command.id === "changed-tests-impact")) {
-      break;
-    }
-  }
-  addScriptCommand(
-    "build-impact",
-    "impact",
-    "Build",
-    "build",
-    "The project should build successfully after the patch.",
-  );
-  for (const script of [
-    "migration:dry-run",
-    "migrate:dry-run",
-    "db:dry-run",
-    "migration:status",
-    "migrate:status",
-    "prisma:migrate:status",
-  ]) {
-    addScriptCommand(
-      "migration-impact",
-      "impact",
-      "Migration dry-run",
-      script,
-      "Migration planning or dry-run should succeed.",
-    );
-    if (catalog.some((command) => command.id === "migration-impact")) {
-      break;
-    }
-  }
-  if (
-    !catalog.some((command) => command.id === "migration-impact") &&
-    files.has("prisma/migrations") &&
-    dependenciesIntersection(dependencies, PRISMA_DEPENDENCIES)
-  ) {
-    const schemaPath = findPrismaSchemaPath(files);
-    if (schemaPath) {
-      addDirectToolCommand(
-        "migration-impact",
-        "impact",
-        "Prisma migration status",
-        "Migration planning or dry-run should succeed.",
-        "prisma",
-        ["migrate", "status", "--schema", schemaPath],
-      );
-    }
-  }
-  for (const script of [
-    "e2e",
-    "test:e2e",
-    "playwright",
-    "cypress",
-    "visual",
-    "test:visual",
-    "test:smoke",
-    "smoke",
-  ]) {
-    addScriptCommand(
-      "e2e-deep",
-      "deep",
-      "End-to-end or visual checks",
-      script,
-      "Deep end-to-end or visual validation should pass.",
-    );
-    if (catalog.some((command) => command.id === "e2e-deep")) {
-      break;
-    }
-  }
-  if (
-    !catalog.some((command) => command.id === "e2e-deep") &&
-    filesIntersection(files, [
-      "playwright.config.ts",
-      "playwright.config.js",
-      "playwright.config.mjs",
-      "playwright.config.cjs",
-    ]) &&
-    dependenciesIntersection(dependencies, PLAYWRIGHT_DEPENDENCIES)
-  ) {
-    addDirectToolCommand(
-      "e2e-deep",
-      "deep",
-      "Playwright end-to-end checks",
-      "Deep end-to-end or visual validation should pass.",
-      "playwright",
-      ["test"],
-    );
-  }
-  if (
-    !catalog.some((command) => command.id === "e2e-deep") &&
-    filesIntersection(files, [
-      "cypress.config.ts",
-      "cypress.config.js",
-      "cypress.config.mjs",
-      "cypress.config.cjs",
-    ]) &&
-    dependenciesIntersection(dependencies, CYPRESS_DEPENDENCIES)
-  ) {
-    addDirectToolCommand(
-      "e2e-deep",
-      "deep",
-      "Cypress end-to-end checks",
-      "Deep end-to-end or visual validation should pass.",
-      "cypress",
-      ["run"],
-    );
-  }
-  for (const script of ["test", "test:full", "test:ci", "ci:test", "verify", "check"]) {
-    addScriptCommand(
-      "full-suite-deep",
-      "deep",
-      "Full test suite",
-      script,
-      "The full test suite should pass before crowning.",
-    );
-    if (catalog.some((command) => command.id === "full-suite-deep")) {
-      break;
-    }
-  }
-  if (
-    !catalog.some((command) => command.id === "package-smoke-deep") &&
-    (options.packageJson?.exports !== undefined ||
-      options.packageJson?.main ||
-      options.packageJson?.module ||
-      options.packageJson?.types)
-  ) {
-    catalog.push({
-      id: "package-smoke-deep",
-      roundId: "deep",
-      label: "Package tarball smoke",
-      command: "node",
-      args: [
-        "-e",
-        [
-          "const { mkdtempSync, readdirSync, rmSync } = require('node:fs');",
-          "const { spawnSync } = require('node:child_process');",
-          "const { join } = require('node:path');",
-          "const { tmpdir } = require('node:os');",
-          "const npmBinary = process.platform === 'win32' ? 'npm.cmd' : 'npm';",
-          "const tempDir = mkdtempSync(join(tmpdir(), 'oraculum-pack-smoke-'));",
-          "let exitCode = 0;",
-          "try {",
-          "  const result = spawnSync(npmBinary, ['pack', '--pack-destination', tempDir], { encoding: 'utf8', stdio: 'pipe', shell: process.platform === 'win32' });",
-          "  process.stdout.write(result.stdout || '');",
-          "  process.stderr.write(result.stderr || '');",
-          "  if ((result.status ?? 1) !== 0) {",
-          "    exitCode = result.status ?? 1;",
-          "  } else {",
-          "    const tarballs = readdirSync(tempDir).filter((name) => name.endsWith('.tgz'));",
-          "    if (tarballs.length === 0) { console.error('npm pack did not produce a tarball.'); exitCode = 1; }",
-          "  }",
-          "} finally {",
-          "  rmSync(tempDir, { recursive: true, force: true });",
-          "}",
-          "if (exitCode !== 0) process.exit(exitCode);",
-        ].join(" "),
-      ],
-      invariant: "The package should produce a real tarball before crowning.",
-    });
-  }
-  for (const script of [
-    "migration:rollback",
-    "rollback:simulate",
-    "rollback:simulation",
-    "db:rollback:dry-run",
-  ]) {
-    addScriptCommand(
-      "rollback-deep",
-      "deep",
-      "Rollback simulation",
-      script,
-      "Rollback simulation should succeed.",
-    );
-    if (catalog.some((command) => command.id === "rollback-deep")) {
-      break;
-    }
-  }
-  if (
-    !catalog.some((command) => command.id === "migration-drift-deep") &&
-    files.has("prisma/migrations") &&
-    dependenciesIntersection(dependencies, PRISMA_DEPENDENCIES)
-  ) {
-    const schemaPath = findPrismaSchemaPath(files);
-    if (schemaPath) {
-      addDirectToolCommand(
-        "migration-drift-deep",
-        "deep",
-        "Prisma migration drift diff",
-        "Migration history and the schema should stay aligned before crowning.",
-        "prisma",
-        [
-          "migrate",
-          "diff",
-          "--from-migrations",
-          "prisma/migrations",
-          "--to-schema-datamodel",
-          schemaPath,
-          "--exit-code",
-        ],
-      );
-    }
-  }
-  if (
-    options.packageJson?.exports !== undefined ||
-    options.packageJson?.main ||
-    options.packageJson?.module ||
-    options.packageJson?.types
-  ) {
-    catalog.push({
-      id: "pack-impact",
-      roundId: "impact",
-      label: "Package export check",
-      command: "npm",
-      args: ["pack", "--dry-run"],
-      invariant: "The package should be packable for downstream consumers.",
-    });
-  }
-
-  return catalog;
-}
-
-function buildScriptCommand(
-  packageManager: ProfileRepoSignals["packageManager"],
-  script: string,
-): { command: string; args: string[] } | undefined {
-  if (packageManager === "pnpm") {
-    return { command: "pnpm", args: ["run", script] };
-  }
-  if (packageManager === "yarn") {
-    return { command: "yarn", args: [script] };
-  }
-  if (packageManager === "bun") {
-    return { command: "bun", args: ["run", script] };
-  }
-  if (packageManager === "npm" || packageManager === "unknown") {
-    return { command: "npm", args: ["run", script] };
-  }
-  return undefined;
-}
-
-function buildToolExecCommand(
-  projectRoot: string,
-  tool: string,
-  args: string[],
-): { command: string; args: string[] } | undefined {
-  const localTool = findProjectLocalTool(projectRoot, tool);
-  if (localTool) {
-    return { command: localTool, args };
-  }
-
-  const pathTool = toolPathFinder(tool);
-  if (pathTool) {
-    return { command: pathTool, args };
-  }
-  return undefined;
-}
-
-function findProjectLocalTool(projectRoot: string, tool: string): string | undefined {
-  const localBinDir = join(projectRoot, "node_modules", ".bin");
-  const candidates =
-    process.platform === "win32"
-      ? [
-          join(localBinDir, `${tool}.cmd`),
-          join(localBinDir, `${tool}.ps1`),
-          join(localBinDir, tool),
-        ]
-      : [join(localBinDir, tool)];
-  return candidates.find((candidate) => existsSync(candidate));
-}
-
-function findToolOnPath(tool: string): string | undefined {
-  const locator = process.platform === "win32" ? "where" : "which";
-  const result = childProcess.spawnSync(locator, [tool], {
-    encoding: "utf8",
-    stdio: "pipe",
-  });
-  if ((result.status ?? 1) !== 0) {
-    return undefined;
-  }
-  return result.stdout
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0);
-}
-
-function taskText(taskPacket: MaterializedTaskPacket): string {
-  return [taskPacket.title, taskPacket.intent, ...taskPacket.oracleHints].join("\n");
 }
 
 function buildFallbackRecommendation(
@@ -943,51 +337,31 @@ function buildFallbackRecommendation(
   taskPacket: MaterializedTaskPacket,
 ): AgentProfileRecommendation {
   const scores: Record<ConsultationProfileId, number> = {
+    generic: 0,
     library: 0,
     frontend: 0,
     migration: 0,
   };
+  const commandIds = new Set(signals.commandCatalog.map((command) => command.id));
 
-  if (signals.tags.includes("frontend-framework")) {
-    scores.frontend += 4;
+  if (commandIds.has("package-smoke-deep") || commandIds.has("pack-impact")) {
+    scores.library += 5;
   }
-  if (signals.tags.includes("frontend-build")) {
-    scores.frontend += 2;
-  }
-  if (signals.tags.includes("e2e-config")) {
-    scores.frontend += 1;
-  }
-  if (signals.tags.includes("task-frontend")) {
-    scores.frontend += 2;
-  }
-
-  if (signals.tags.includes("migration-tooling")) {
-    scores.migration += 4;
-  }
-  if (signals.tags.includes("migration-files")) {
-    scores.migration += 3;
-  }
-  if (signals.tags.includes("migration-script")) {
-    scores.migration += 2;
-  }
-  if (signals.tags.includes("task-migration")) {
-    scores.migration += 2;
-  }
-
-  if (signals.tags.includes("package-export")) {
-    scores.library += 3;
-  }
-  if (signals.tags.includes("library-signal")) {
-    scores.library += 2;
-  }
-  if (signals.tags.includes("lint-script")) {
+  if (commandIds.has("unit-impact") || commandIds.has("full-suite-deep")) {
     scores.library += 1;
   }
-  if (signals.tags.includes("typecheck-script")) {
-    scores.library += 1;
+  if (commandIds.has("e2e-deep")) {
+    scores.frontend += 5;
+  }
+  if (
+    commandIds.has("schema-fast") ||
+    commandIds.has("migration-impact") ||
+    commandIds.has("rollback-deep")
+  ) {
+    scores.migration += 5;
   }
 
-  const ranked = (Object.entries(scores) as Array<[ConsultationProfileId, number]>).sort(
+  const rankedProfiles = (Object.entries(scores) as Array<[ConsultationProfileId, number]>).sort(
     (left, right) => {
       if (left[1] !== right[1]) {
         return right[1] - left[1];
@@ -997,7 +371,11 @@ function buildFallbackRecommendation(
       );
     },
   );
-  const chosenProfile = ranked[0]?.[0] ?? "library";
+  const hasProfileSignal = scores.library > 0 || scores.frontend > 0 || scores.migration > 0;
+  const ranked: Array<[ConsultationProfileId, number]> = hasProfileSignal
+    ? rankedProfiles
+    : [["generic", 0]];
+  const chosenProfile = ranked[0]?.[0] ?? "generic";
   const chosenScore = ranked[0]?.[1] ?? 0;
   const runnerUpScore = ranked[1]?.[1] ?? 0;
   const confidence =
@@ -1031,12 +409,19 @@ function buildFallbackSummary(
   signals: ProfileRepoSignals,
   taskPacket: MaterializedTaskPacket,
 ): string {
-  const topSignals = signals.tags.slice(0, 4).join(", ") || "no strong repo signals";
-  const defaultedToLibrary =
-    profileId === "library" && Object.values(scores).every((score) => score === 0);
-  const rationale = defaultedToLibrary
-    ? "defaulted to the safest library profile because no repo-specific signals were detected"
-    : `detected ${profileId} consultation profile from repo/task signals (${topSignals})`;
+  const topCommandIds =
+    signals.commandCatalog
+      .map((command) => command.id)
+      .slice(0, 4)
+      .join(", ") || "no executable command evidence";
+  const defaultedToGeneric =
+    profileId === "generic" &&
+    scores.library === 0 &&
+    scores.frontend === 0 &&
+    scores.migration === 0;
+  const rationale = defaultedToGeneric
+    ? "defaulted to the generic profile because no executable profile-specific command evidence was detected"
+    : `detected ${profileId} consultation profile from executable command evidence (${topCommandIds})`;
   return `Fallback detection ${rationale}; confidence=${confidence}, scores=${JSON.stringify(scores)} for task "${basename(taskPacket.source.path)}".`;
 }
 
@@ -1046,6 +431,14 @@ function chooseFallbackCommandIds(
 ): string[] {
   const availableIds = new Set(catalog.map((candidate) => candidate.id));
   const desiredByProfile: Record<ConsultationProfileId, string[]> = {
+    generic: [
+      "lint-fast",
+      "typecheck-fast",
+      "changed-tests-impact",
+      "unit-impact",
+      "build-impact",
+      "full-suite-deep",
+    ],
     library: [
       "lint-fast",
       "typecheck-fast",
@@ -1075,6 +468,9 @@ function inferMissingCapabilities(
   const selected = new Set(selectedCommandIds);
   const missing: string[] = [];
 
+  if (profileId === "generic" && selected.size === 0) {
+    missing.push("No repo-local validation command was detected.");
+  }
   if (profileId === "library" && !selected.has("full-suite-deep")) {
     missing.push("No full-suite deep test command was detected.");
   }
@@ -1108,24 +504,6 @@ function inferMissingCapabilities(
   return missing;
 }
 
-function dependenciesIntersection(dependencies: Set<string>, expected: Set<string>): boolean {
-  return [...expected].some((dependency) => dependencies.has(dependency));
-}
-
-function filesIntersection(files: Set<string>, expected: string[]): boolean {
-  return expected.some((file) => files.has(file));
-}
-
-function findPrismaSchemaPath(files: Set<string>): string | undefined {
-  if (files.has("prisma/schema.prisma")) {
-    return "prisma/schema.prisma";
-  }
-  if (files.has("schema.prisma")) {
-    return "schema.prisma";
-  }
-  return undefined;
-}
-
 function sanitizeRecommendation(
   recommendation: AgentProfileRecommendation,
   signals: ProfileRepoSignals,
@@ -1140,12 +518,7 @@ function sanitizeRecommendation(
     signals.commandCatalog,
   );
   const selectedCommandIds = [...new Set([...baselineCommandIds, ...filteredCommandIds])];
-  const validStrategyIds = new Set([
-    "minimal-change",
-    "safety-first",
-    "test-amplified",
-    "structural-refactor",
-  ]);
+  const validStrategyIds = new Set(profileStrategyIds);
   const filteredStrategyIds = recommendation.strategyIds.filter((id) => validStrategyIds.has(id));
 
   return agentProfileRecommendationSchema.parse({

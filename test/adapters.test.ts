@@ -575,8 +575,11 @@ if (out) {
         scripts: ["lint", "typecheck", "test"],
         dependencies: ["typescript"],
         files: ["package.json", "tsconfig.json"],
+        workspaceRoots: [],
         tags: ["package-export", "lint-script", "typecheck-script"],
         notes: [],
+        capabilities: [],
+        provenance: [],
         commandCatalog: [
           {
             id: "lint-fast",
@@ -612,6 +615,9 @@ if (out) {
     );
     await expect(readFile(join(logDir, "profile-judge.stdout.jsonl"), "utf8")).resolves.toContain(
       '"--output-schema"',
+    );
+    await expect(readFile(join(logDir, "profile-judge.schema.json"), "utf8")).resolves.toContain(
+      '"generic"',
     );
   });
 
@@ -649,8 +655,11 @@ process.stdout.write(JSON.stringify({
         scripts: ["build", "e2e"],
         dependencies: ["react", "vite"],
         files: ["package.json", "vite.config.ts", "playwright.config.ts"],
+        workspaceRoots: [],
         tags: ["frontend-framework", "frontend-build", "e2e-config"],
         notes: [],
+        capabilities: [],
+        provenance: [],
         commandCatalog: [
           {
             id: "build-impact",
@@ -684,6 +693,9 @@ process.stdout.write(JSON.stringify({
     );
     await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toContain(
       '"--permission-mode","plan"',
+    );
+    await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toContain(
+      '\\"generic\\"',
     );
   }, 20_000);
 });

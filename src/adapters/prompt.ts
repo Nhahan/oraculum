@@ -1,3 +1,4 @@
+import { profileStrategyIds } from "../domain/profile.js";
 import type { AgentJudgeRequest, AgentProfileRequest, AgentRunRequest } from "./types.js";
 
 export function buildCandidatePrompt(request: AgentRunRequest): string {
@@ -183,11 +184,14 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
 }
 
 export function buildProfileSelectionPrompt(request: AgentProfileRequest): string {
+  const strategyList = profileStrategyIds.join(", ");
   const sections: string[] = [
     "You are selecting the best Oraculum consultation profile for the current repository.",
     "Choose exactly one profile option and synthesize the strongest default tournament settings for this consultation.",
     "Only choose command ids from the provided command catalog. Do not invent commands or command ids.",
-    'Return JSON only in this shape: {"profileId":"library","confidence":"high","summary":"short rationale","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast"],"missingCapabilities":["none or short notes"]}',
+    `Choose strategy IDs only from: ${strategyList}.`,
+    'Use profileId "generic" when the repository has no strong profile-specific signals.',
+    'Return JSON only in this shape: {"profileId":"generic","confidence":"low","summary":"short rationale","candidateCount":3,"strategyIds":["minimal-change","safety-first"],"selectedCommandIds":[],"missingCapabilities":["none or short notes"]}',
     "",
     `Task ID: ${request.taskPacket.id}`,
     `Task Title: ${request.taskPacket.title}`,
@@ -213,8 +217,25 @@ export function buildProfileSelectionPrompt(request: AgentProfileRequest): strin
     `Detected scripts: ${request.signals.scripts.join(", ") || "none"}`,
     `Detected tags: ${request.signals.tags.join(", ") || "none"}`,
     `Detected notable files: ${request.signals.files.join(", ") || "none"}`,
+    `Detected workspace roots: ${request.signals.workspaceRoots.join(", ") || "none"}`,
     `Detected dependencies: ${request.signals.dependencies.slice(0, 20).join(", ") || "none"}`,
   );
+
+  if (request.signals.capabilities.length > 0) {
+    sections.push(
+      "",
+      "Detected capabilities:",
+      ...request.signals.capabilities.map((capability) =>
+        [
+          `- ${capability.kind}:${capability.value}`,
+          `source=${capability.source}`,
+          `confidence=${capability.confidence}`,
+          ...(capability.path ? [`path=${capability.path}`] : []),
+          ...(capability.detail ? [`detail=${capability.detail}`] : []),
+        ].join(" "),
+      ),
+    );
+  }
 
   if (request.signals.notes.length > 0) {
     sections.push("", "Repository notes:", ...request.signals.notes.map((note) => `- ${note}`));
