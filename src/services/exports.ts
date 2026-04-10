@@ -1,5 +1,6 @@
 import {
   chmod,
+  cp,
   lstat,
   mkdir,
   mkdtemp,
@@ -38,6 +39,7 @@ import {
 } from "../domain/run.js";
 
 import { assertManagedProjectSnapshotUnchanged } from "./base-snapshots.js";
+import { fileContentsEqual } from "./file-content.js";
 import {
   copyManagedProjectTree,
   listManagedProjectEntries,
@@ -736,7 +738,9 @@ async function syncManagedPath(
   const destinationExists = await pathExists(destinationPath);
   const sourceStats = await lstat(sourcePath);
   const destinationMatches =
-    destinationExists && (await fileContentsEqual(sourcePath, sourceStats.mode, destinationPath));
+    destinationExists &&
+    getManagedMode(sourceStats.mode) === getManagedMode((await lstat(destinationPath)).mode) &&
+    (await fileContentsEqual(sourcePath, destinationPath));
   if (destinationMatches) {
     return false;
   }
@@ -754,23 +758,9 @@ async function syncManagedPath(
   }
 
   await mkdir(dirname(destinationPath), { recursive: true });
-  await writeFile(destinationPath, await readFile(sourcePath));
+  await cp(sourcePath, destinationPath, { force: true, recursive: false });
   await chmod(destinationPath, getManagedMode(sourceStats.mode));
   return true;
-}
-
-async function fileContentsEqual(
-  leftPath: string,
-  leftMode: number,
-  rightPath: string,
-): Promise<boolean> {
-  const rightStats = await lstat(rightPath);
-  if (!rightStats.isFile()) {
-    return false;
-  }
-
-  const [left, right] = await Promise.all([readFile(leftPath), readFile(rightPath)]);
-  return left.equals(right) && getManagedMode(leftMode) === getManagedMode(rightStats.mode);
 }
 
 async function syncManagedDirectory(sourcePath: string, destinationPath: string): Promise<boolean> {

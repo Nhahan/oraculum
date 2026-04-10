@@ -215,8 +215,8 @@ Assumption: Oraculum is designed around frontier, human-level coding models such
 - [x] Preserve current `node_modules` symlink/junction behavior.
 - [x] Add copy-mode e2e fixtures for Python `.venv`, Rust `target`, and Gradle `.gradle` so workspace sync does not accidentally copy or delete heavy dependency trees.
 - [x] Keep managed tree rules configurable if a repository intentionally tracks generated directories.
-- [ ] Add a large/binary file policy for non-git snapshot mode so hashing and copying do not make general repositories unexpectedly slow or memory-heavy.
-- [ ] Add configurable unmanaged/sensitive path rules for common IDE, cloud, infra, and credential directories without over-excluding legitimate source trees.
+- [x] Add a large/binary file policy for non-git snapshot mode so hashing and copying do not make general repositories unexpectedly slow or memory-heavy.
+- [x] Add configurable unmanaged/sensitive path rules for common IDE, cloud, infra, and credential directories without over-excluding legitimate source trees.
 
 ## Phase 6: Generalize Task Input And Crowning UX
 

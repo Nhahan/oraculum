@@ -83,6 +83,43 @@ describe("managed tree symlink semantics", () => {
     await expect(lstat(join(destinationRoot, "build"))).rejects.toThrow();
   });
 
+  it("keeps local state unmanaged while allowing explicit source-like overrides", () => {
+    const rules = {
+      includePaths: [".idea/codeStyles", ".terraform/modules", ".serverless/manifest.json"],
+      excludePaths: [],
+    };
+
+    expect(shouldManageProjectPath(".idea/workspace.xml")).toBe(false);
+    expect(shouldManageProjectPath(".terraform/providers/registry/example")).toBe(false);
+    expect(shouldManageProjectPath(".serverless/build.zip")).toBe(false);
+    expect(shouldManageProjectPath(".pulumi/stacks/dev.json")).toBe(false);
+    expect(shouldManageProjectPath(".vscode/settings.json")).toBe(true);
+    expect(shouldManageProjectPath(".devcontainer/devcontainer.json")).toBe(true);
+
+    expect(shouldManageProjectPath(".idea/codeStyles/Project.xml", rules)).toBe(true);
+    expect(shouldManageProjectPath(".terraform/modules/module.json", rules)).toBe(true);
+    expect(shouldManageProjectPath(".serverless/manifest.json", rules)).toBe(true);
+  });
+
+  it("keeps precise cloud credential paths protected without excluding whole source trees", () => {
+    const rules = {
+      includePaths: [".azure", ".config/gcloud", ".docker", ".config/gcloud/legacy_credentials"],
+      excludePaths: [],
+    };
+
+    expect(shouldManageProjectPath(".docker/Dockerfile", rules)).toBe(true);
+    expect(shouldManageProjectPath(".docker/config.json", rules)).toBe(false);
+    expect(shouldManageProjectPath(".azure/templates/main.bicep", rules)).toBe(true);
+    expect(shouldManageProjectPath(".azure/accessTokens.json", rules)).toBe(false);
+    expect(shouldManageProjectPath(".config/gcloud/project.yaml", rules)).toBe(true);
+    expect(
+      shouldManageProjectPath(".config/gcloud/application_default_credentials.json", rules),
+    ).toBe(false);
+    expect(
+      shouldManageProjectPath(".config/gcloud/legacy_credentials/user@example.com/adc.json", rules),
+    ).toBe(false);
+  });
+
   it("links only unmanaged dependency trees and respects explicit managed includes", () => {
     const rules = {
       includePaths: ["target/docs"],

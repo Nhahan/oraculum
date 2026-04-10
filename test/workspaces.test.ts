@@ -42,6 +42,16 @@ describe("candidate workspace preparation", () => {
     await writeFile(join(projectRoot, ".npmrc"), "//registry.example/\n", "utf8");
     await mkdir(join(projectRoot, ".aws"), { recursive: true });
     await writeFile(join(projectRoot, ".aws", "credentials"), "token\n", "utf8");
+    await mkdir(join(projectRoot, ".docker"), { recursive: true });
+    await writeFile(join(projectRoot, ".docker", "Dockerfile"), "FROM scratch\n", "utf8");
+    await writeFile(join(projectRoot, ".docker", "config.json"), '{"auths":{}}\n', "utf8");
+    await mkdir(join(projectRoot, ".config", "gcloud"), { recursive: true });
+    await writeFile(join(projectRoot, ".config", "gcloud", "project.yaml"), "project: local\n");
+    await writeFile(
+      join(projectRoot, ".config", "gcloud", "application_default_credentials.json"),
+      "{}\n",
+      "utf8",
+    );
 
     await prepareCandidateWorkspace({ projectRoot, workspaceDir });
 
@@ -49,6 +59,53 @@ describe("candidate workspace preparation", () => {
     await expect(stat(join(workspaceDir, ".env"))).rejects.toThrow();
     await expect(stat(join(workspaceDir, ".npmrc"))).rejects.toThrow();
     await expect(stat(join(workspaceDir, ".aws"))).rejects.toThrow();
+    await expect(readFile(join(workspaceDir, ".docker", "Dockerfile"), "utf8")).resolves.toBe(
+      "FROM scratch\n",
+    );
+    await expect(stat(join(workspaceDir, ".docker", "config.json"))).rejects.toThrow();
+    await expect(
+      readFile(join(workspaceDir, ".config", "gcloud", "project.yaml"), "utf8"),
+    ).resolves.toBe("project: local\n");
+    await expect(
+      stat(join(workspaceDir, ".config", "gcloud", "application_default_credentials.json")),
+    ).rejects.toThrow();
+  });
+
+  it("keeps local IDE and infra state unmanaged unless explicitly included", async () => {
+    const projectRoot = await createTempRoot();
+    const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");
+
+    await mkdir(join(projectRoot, ".idea", "codeStyles"), { recursive: true });
+    await writeFile(join(projectRoot, ".idea", "workspace.xml"), "workspace\n", "utf8");
+    await writeFile(join(projectRoot, ".idea", "codeStyles", "Project.xml"), "styles\n", "utf8");
+    await mkdir(join(projectRoot, ".terraform", "providers"), { recursive: true });
+    await writeFile(join(projectRoot, ".terraform", "providers", "state"), "provider\n", "utf8");
+    await mkdir(join(projectRoot, ".serverless"), { recursive: true });
+    await writeFile(join(projectRoot, ".serverless", "build.zip"), "zip\n", "utf8");
+    await mkdir(join(projectRoot, ".pulumi", "stacks"), { recursive: true });
+    await writeFile(join(projectRoot, ".pulumi", "stacks", "dev.json"), "{}\n", "utf8");
+    await mkdir(join(projectRoot, ".vscode"), { recursive: true });
+    await writeFile(join(projectRoot, ".vscode", "settings.json"), "{}\n", "utf8");
+
+    await prepareCandidateWorkspace({
+      managedTreeRules: {
+        includePaths: [".idea/codeStyles"],
+        excludePaths: [],
+      },
+      projectRoot,
+      workspaceDir,
+    });
+
+    await expect(stat(join(workspaceDir, ".idea", "workspace.xml"))).rejects.toThrow();
+    await expect(
+      readFile(join(workspaceDir, ".idea", "codeStyles", "Project.xml"), "utf8"),
+    ).resolves.toBe("styles\n");
+    await expect(stat(join(workspaceDir, ".terraform"))).rejects.toThrow();
+    await expect(stat(join(workspaceDir, ".serverless"))).rejects.toThrow();
+    await expect(stat(join(workspaceDir, ".pulumi"))).rejects.toThrow();
+    await expect(readFile(join(workspaceDir, ".vscode", "settings.json"), "utf8")).resolves.toBe(
+      "{}\n",
+    );
   });
 
   it("links common unmanaged dependency and cache trees into copied workspaces", async () => {

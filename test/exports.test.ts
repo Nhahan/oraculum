@@ -546,6 +546,71 @@ if (out) {
     expect(syncSummary.removedFiles).toEqual(["remove.txt"]);
   });
 
+  it("syncs binary files during non-git workspace-sync export", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "asset.bin"), Buffer.alloc(256 * 1024, 0x01));
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (prompt.includes("You are selecting the best Oraculum finalist.")) {
+  if (out) {
+    fs.writeFileSync(
+      out,
+      '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 updates binary content."}',
+      "utf8",
+    );
+  }
+  process.exit(0);
+}
+const binary = Buffer.alloc(256 * 1024, 0x02);
+binary[0] = 0x00;
+binary[1] = 0xff;
+binary[binary.length - 1] = 0x7f;
+fs.writeFileSync(path.join(process.cwd(), "asset.bin"), binary);
+if (out) {
+  fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
+}
+`,
+    );
+    const planned = await planRun({
+      cwd,
+      taskInput: "update the binary asset",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    const result = await materializeExport({
+      cwd,
+      withReport: false,
+    });
+
+    const binary = await readFile(join(cwd, "asset.bin"));
+    expect(result.plan.mode).toBe("workspace-sync");
+    expect(result.plan.appliedPathCount).toBe(1);
+    expect(binary).toHaveLength(256 * 1024);
+    expect(binary[0]).toBe(0x00);
+    expect(binary[1]).toBe(0xff);
+    expect(binary[binary.length - 1]).toBe(0x7f);
+  });
+
   it("syncs explicitly included ambiguous dist paths in non-git workspace mode", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });

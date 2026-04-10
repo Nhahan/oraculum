@@ -221,6 +221,12 @@ You can also tune bounded repair behavior in `.oraculum/advanced.json`:
 
 Copy-mode workspaces and non-Git crowning ignore dependency, cache, runtime-state, and sensitive paths by default. Copy-mode workspaces may link unmanaged local dependency/cache trees such as `node_modules`, `.venv`, `venv`, `.tox`, `target`, or `.gradle` instead of copying them. This preserves existing local tool behavior without treating those names as validation commands.
 
+Local state directories such as `.idea`, `.terraform`, `.serverless`, and `.pulumi` are unmanaged by default because they are commonly machine-local or generated. Source-like settings that are often intentionally checked in, such as `.vscode` and `.devcontainer`, are not excluded by default.
+
+Sensitive paths stay protected even if an include rule is present. Examples include `.env*`, `.aws`, `.ssh`, `.kube`, `.npmrc`, `.docker/config.json`, `.azure/accessTokens.json`, and gcloud credential files under `.config/gcloud`.
+
+Managed files are processed as bytes. Snapshots hash file content through streams, and workspace-sync copies files without text decoding, so large or binary source artifacts stay valid without being loaded as UTF-8 text.
+
 Some names are ambiguous across ecosystems: `dist` or `target` may be generated output in one repository and intentional source or published artifacts in another.
 
 Use `managedTree` only when the repository really intends to include or exclude such paths:
@@ -235,7 +241,7 @@ Use `managedTree` only when the repository really intends to include or exclude 
 }
 ```
 
-Paths must be safe relative paths inside the project root. `includePaths` can opt ambiguous generated directories back into workspace copy, snapshots, change detection, and non-Git crowning. Included paths are managed, so they are not dependency-tree linked. `includePaths` does not override protected paths such as `.git`, `.oraculum`, `.env*`, or credential directories.
+Paths must be safe relative paths inside the project root. `includePaths` can opt ambiguous generated or local-state directories back into workspace copy, snapshots, change detection, and non-Git crowning. Included paths are managed, so they are not dependency-tree linked. `includePaths` does not override protected paths such as `.git`, `.oraculum`, `.env*`, or credential paths.
 
 ## Where Advanced Settings Belong
 

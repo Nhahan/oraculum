@@ -33,7 +33,24 @@ const PROTECTED_UNMANAGED_ENTRY_NAMES = new Set([
   ".ssh",
 ]);
 
-const OVERRIDABLE_UNMANAGED_ENTRY_NAMES = new Set(["dist", "target"]);
+const PROTECTED_UNMANAGED_PATHS = new Set([
+  ".azure/accessTokens.json",
+  ".azure/azureProfile.json",
+  ".config/gcloud/application_default_credentials.json",
+  ".config/gcloud/credentials.db",
+  ".docker/config.json",
+]);
+
+const PROTECTED_UNMANAGED_PATH_PREFIXES = [".config/gcloud/legacy_credentials"];
+
+const OVERRIDABLE_UNMANAGED_ENTRY_NAMES = new Set([
+  ".idea",
+  ".pulumi",
+  ".serverless",
+  ".terraform",
+  "dist",
+  "target",
+]);
 
 const DEFAULT_UNMANAGED_ENTRY_NAMES = new Set([
   ...PROTECTED_UNMANAGED_ENTRY_NAMES,
@@ -231,7 +248,7 @@ export function shouldLinkProjectDependencyTree(
     return false;
   }
 
-  if (hasProtectedUnmanagedSegment(normalizedPath)) {
+  if (hasProtectedUnmanagedSegment(normalizedPath) || hasProtectedUnmanagedPath(normalizedPath)) {
     return false;
   }
 
@@ -246,7 +263,7 @@ export function shouldManageProjectPath(relativePath: string, rules?: ManagedTre
     return true;
   }
 
-  if (hasProtectedUnmanagedSegment(normalizedPath)) {
+  if (hasProtectedUnmanagedSegment(normalizedPath) || hasProtectedUnmanagedPath(normalizedPath)) {
     return false;
   }
 
@@ -279,6 +296,16 @@ function hasProtectedUnmanagedSegment(relativePath: string): boolean {
 
     return segment.startsWith(".env.");
   });
+}
+
+function hasProtectedUnmanagedPath(relativePath: string): boolean {
+  if (PROTECTED_UNMANAGED_PATHS.has(relativePath)) {
+    return true;
+  }
+
+  return PROTECTED_UNMANAGED_PATH_PREFIXES.some(
+    (prefix) => relativePath === prefix || relativePath.startsWith(`${prefix}/`),
+  );
 }
 
 function matchesManagedTreeRule(relativePath: string, rulePaths: string[] | undefined): boolean {

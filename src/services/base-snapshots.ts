@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { lstat, readFile, readlink } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -7,6 +6,7 @@ import { z } from "zod";
 import { OraculumError } from "../core/errors.js";
 import type { ManagedTreeRules } from "../domain/config.js";
 
+import { hashFileContent } from "./file-content.js";
 import {
   listManagedProjectEntries,
   type ManagedPathEntry,
@@ -18,6 +18,7 @@ const managedSnapshotEntrySchema = z.object({
   kind: z.enum(["dir", "file", "symlink"]),
   hash: z.string().min(1).optional(),
   mode: z.number().int().min(0).optional(),
+  size: z.number().int().min(0).optional(),
   target: z.string().min(1).optional(),
   targetType: z.enum(["file", "dir", "junction"]).optional(),
 });
@@ -95,14 +96,12 @@ async function captureManagedEntry(
     });
   }
 
-  const hash = createHash("sha256")
-    .update(await readFile(absolutePath))
-    .digest("hex");
   return managedSnapshotEntrySchema.parse({
     path: entry.path,
     kind: "file",
-    hash,
+    hash: await hashFileContent(absolutePath),
     mode: getManagedMode(stats.mode),
+    size: stats.size,
   });
 }
 
@@ -124,10 +123,16 @@ function diffSnapshots(
       continue;
     }
 
+    const sizeChanged =
+      expectedEntry.size !== undefined &&
+      currentEntry.size !== undefined &&
+      expectedEntry.size !== currentEntry.size;
+
     if (
       expectedEntry.kind !== currentEntry.kind ||
       expectedEntry.hash !== currentEntry.hash ||
       expectedEntry.mode !== currentEntry.mode ||
+      sizeChanged ||
       expectedEntry.target !== currentEntry.target ||
       expectedEntry.targetType !== currentEntry.targetType
     ) {
