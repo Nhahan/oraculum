@@ -450,6 +450,15 @@ function buildCorpusScenarios() {
       corpusName: "package-free-subdirectory-invocation",
     }),
     createScenario({
+      kind: "timed-out-oracle",
+      repoKind: "plain",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      candidateCount: 1,
+      corpusName: "timed-out-oracle-child-cleanup",
+    }),
+    createScenario({
       kind: "migration-missing-capability",
       repoKind: "alembic",
       agent: "codex",
@@ -1024,6 +1033,53 @@ async function prepareScenario(workdir, scenario) {
     });
   }
 
+  if (scenario.kind === "timed-out-oracle") {
+    await mkdir(join(workdir, "tools"), { recursive: true });
+    await writeFile(
+      join(workdir, "tools", "spawn-timeout-child.mjs"),
+      [
+        'import { spawn } from "node:child_process";',
+        'import { join } from "node:path";',
+        "",
+        "const projectRoot = process.env.ORACULUM_PROJECT_ROOT;",
+        "if (!projectRoot) {",
+        '  process.stderr.write("missing ORACULUM_PROJECT_ROOT");',
+        "  process.exit(1);",
+        "}",
+        'const markerPath = join(projectRoot, "oracle-timeout-child-survived.txt");',
+        "spawn(",
+        "  process.execPath,",
+        "  [",
+        '    "-e",',
+        "    [",
+        '      "setTimeout(() => require(\\"node:fs\\").writeFileSync(process.env.ORACULUM_TIMEOUT_MARKER_PATH, \\"alive\\\\n\\"), 700);",',
+        '      "setInterval(() => {}, 1000);",',
+        '    ].join("\\n"),',
+        "  ],",
+        '  { env: { ...process.env, ORACULUM_TIMEOUT_MARKER_PATH: markerPath }, stdio: "ignore" },',
+        ");",
+        "process.on('SIGTERM', () => {});",
+        "setInterval(() => {}, 1000);",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await writeAdvancedConfig(workdir, {
+      version: 1,
+      oracles: [
+        {
+          id: "timeout-child-cleanup",
+          roundId: "impact",
+          command: process.execPath,
+          args: [join("tools", "spawn-timeout-child.mjs")],
+          invariant: "Timed-out oracle subprocess trees must be cleaned up.",
+          enforcement: "signal",
+          timeoutMs: 100,
+        },
+      ],
+    });
+  }
+
   if (scenario.kind === "migration-explicit-oracle") {
     await mkdir(join(workdir, "tools"), { recursive: true });
     await writeFile(
@@ -1466,6 +1522,16 @@ async function executeScenario(workdir, scenario) {
     return;
   }
 
+  if (scenario.kind === "timed-out-oracle") {
+    assertEqual(
+      run.recommendedWinner?.candidateId,
+      "cand-01",
+      `${scenario.id}: expected cand-01 to survive the signal-only timed-out oracle.`,
+    );
+    await assertTimedOutOracleCleanup(workdir, scenario, run, env);
+    return;
+  }
+
   if (scenario.kind === "migration-missing-capability") {
     assertEqual(
       run.recommendedWinner?.candidateId,
@@ -1665,6 +1731,58 @@ async function assertSubdirectoryInvocation(workdir, scenario, run, env) {
     existsSync(join(toolCwd, ".oraculum")),
     false,
     `${scenario.id}: nested crown must not create a stray .oraculum directory.`,
+  );
+}
+
+async function assertTimedOutOracleCleanup(workdir, scenario, run, env) {
+  const markerPath = join(workdir, "oracle-timeout-child-survived.txt");
+  const verdict = JSON.parse(
+    await readFile(
+      join(
+        workdir,
+        ".oraculum",
+        "runs",
+        run.id,
+        "candidates",
+        "cand-01",
+        "verdicts",
+        "impact--timeout-child-cleanup.json",
+      ),
+      "utf8",
+    ),
+  );
+  assertEqual(
+    verdict.status,
+    "pass",
+    `${scenario.id}: signal-only timeout oracle should not eliminate the candidate.`,
+  );
+  assertEqual(
+    verdict.severity,
+    "warning",
+    `${scenario.id}: timed-out signal oracle should remain visible as a warning.`,
+  );
+  assertContains(
+    verdict.summary,
+    "timed out",
+    `${scenario.id}: timed-out oracle should explain the timeout in the verdict.`,
+  );
+  assertContains(
+    verdict.witnesses?.[0]?.detail ?? "",
+    "The command timed out.",
+    `${scenario.id}: timed-out oracle witness should record timeout detail.`,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 900));
+  assertEqual(
+    existsSync(markerPath),
+    false,
+    `${scenario.id}: timed-out oracle child process should not survive long enough to write its marker.`,
+  );
+  await assertHappyCrown(workdir, scenario, env, "cand-01");
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assertEqual(
+    existsSync(markerPath),
+    false,
+    `${scenario.id}: timed-out oracle child process should remain absent after crown.`,
   );
 }
 

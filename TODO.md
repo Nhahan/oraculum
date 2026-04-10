@@ -247,7 +247,7 @@ Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace
 - [ ] Add a separate `evidence:polyglot` script if the full corpus becomes too slow for normal beta checks.
 - [x] Extend `workflow-comparison` and `host-native` smoke evidence with at least one non-Node or package-json-free scenario before using them as generality evidence.
 - [x] Add subdirectory-invocation evidence where Oraculum is invoked below the repository root and still records artifacts/checks in the intended root.
-- [ ] Add timed-out oracle evidence that proves child processes do not survive after timeout.
+- [x] Add timed-out oracle evidence that proves child processes do not survive after timeout.
 
 ## Phase 8: Documentation And Product Language
 
@@ -283,7 +283,7 @@ Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace
 - [x] A nested workspace or monorepo can complete `orc consult -> orc crown` using the correct workspace-level checks rather than only root-level scripts.
 - [x] Zero-signal repositories get a generic/default profile result, not a misleading Node/library result.
 - [x] Non-English paths, spaces in paths, and source-file-looking task references are handled intentionally rather than accidentally treated as inline prose.
-- [ ] Nested cwd invocation, non-Git crowning, relative oracle cwd, and large-output/time-out subprocess behavior are covered by regression tests.
+- [x] Nested cwd invocation, non-Git crowning, relative oracle cwd, and large-output/time-out subprocess behavior are covered by regression tests.
 - [x] Node, Python, Go, Rust, Java, docs/static, and migration-style fixtures have explicit evidence coverage through raw facts, repo-local commands, or missing-capability outcomes.
 - [x] Named-tool inferred commands are not generated from frameworks, ORMs, migration tools, test runners, or language ecosystems.
 - [x] Generated Node package checks do not silently use `npm` when another package manager or no package-manager policy applies.
