@@ -92,7 +92,7 @@ Assumption: Oraculum is designed around frontier, human-level coding models such
 - [x] Add tests proving a zero-signal repo produces `generic`, low confidence, and visible missing-capability evidence rather than a weak guessed profile.
 - [x] Add tests proving duplicate expensive commands are deduplicated even if multiple collectors propose them under different labels.
 - [x] Add tests proving skipped command candidates are persisted in the profile-selection artifact and visible to `verdict`.
-- [ ] Add counterexample fixtures for polyglot repos where Node and non-Node signals coexist and neither ecosystem silently dominates profile choice.
+- [x] Add counterexample fixtures for polyglot repos where Node and non-Node signals coexist and neither ecosystem silently dominates profile choice.
 
 ### Code Review Gate
 
@@ -237,9 +237,9 @@ Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace
 - [x] Add a Rust-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred `cargo` commands.
 - [x] Add a Java/Gradle-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred Gradle commands.
 - [x] Add a Java/Maven-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred Maven commands.
-- [ ] Add a docs/static fixture that does not use Node scripts.
-- [ ] Add a mixed polyglot fixture where Node and non-Node raw facts coexist and neither ecosystem silently dominates profile choice.
-- [ ] Add a nested workspace fixture where the actionable code and checks live below the repository root.
+- [x] Add a docs/static fixture that does not use Node scripts.
+- [x] Add a mixed polyglot fixture where Node and non-Node raw facts coexist and neither ecosystem silently dominates profile choice.
+- [x] Add a nested workspace fixture where the actionable code and checks live below the repository root.
 - [ ] Add a migration fixture for Alembic or Django that records missing capability unless safe repo-local scripts exist.
 - [ ] Add task-input fixtures with non-English filenames, spaces in paths, and source-file-looking task references such as `.html`, `.py`, `.go`, and `.rs`.
 - [ ] Ensure each corpus fixture exercises `consult -> crown`, not just profile selection.
@@ -271,7 +271,7 @@ Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace
 - [x] After workspace copy/link changes: run `npm exec vitest run test/managed-tree.test.ts test/workspaces.test.ts test/exports.test.ts`.
 - [x] After project-root resolution or relative oracle cwd changes: run `npm exec vitest run test/project.test.ts test/execution.test.ts test/exports.test.ts`.
 - [x] After subprocess timeout/output changes: run `npm exec vitest run test/subprocess.test.ts test/execution.test.ts`.
-- [ ] After evidence corpus changes: run `npm run evidence:beta:corpus`.
+- [x] After evidence corpus changes: run `npm run evidence:beta:corpus`.
 - [ ] After polyglot evidence changes: run the new `npm run evidence:polyglot` script if added.
 - [ ] After workflow comparison changes: run `npm run evidence:workflow-comparison`.
 - [x] Before any commit touching this area: run `npm run check`.
@@ -280,7 +280,7 @@ Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace
 ## Definition Of Done
 
 - [x] A non-Node repository with no `package.json` can complete `orc consult -> orc crown` without npm assumptions.
-- [ ] A nested workspace or monorepo can complete `orc consult -> orc crown` using the correct workspace-level checks rather than only root-level scripts.
+- [x] A nested workspace or monorepo can complete `orc consult -> orc crown` using the correct workspace-level checks rather than only root-level scripts.
 - [x] Zero-signal repositories get a generic/default profile result, not a misleading Node/library result.
 - [x] Non-English paths, spaces in paths, and source-file-looking task references are handled intentionally rather than accidentally treated as inline prose.
 - [ ] Nested cwd invocation, non-Git crowning, relative oracle cwd, and large-output/time-out subprocess behavior are covered by regression tests.

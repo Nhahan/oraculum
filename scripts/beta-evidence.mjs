@@ -15,8 +15,14 @@ const repoKinds = ["library", "frontend", "migration", "plain"];
 const agents = ["codex", "claude-code"];
 const workspaceModes = ["git", "copy"];
 const packageManagers = ["pnpm", "yarn", "bun"];
-const scenarioSpecificAdvancedConfigKinds = new Set(["no-finalist", "repair", "advanced-override"]);
+const scenarioSpecificAdvancedConfigKinds = new Set([
+  "no-finalist",
+  "repair",
+  "advanced-override",
+  "nested-workspace",
+]);
 const javaStatusFileSegments = ["src", "main", "java", "example", "Status.java"];
+const nestedWorkspaceStatusFileSegments = ["workspaces", "review-app", "src", "status.txt"];
 const explicitMarkerOracleFixtures = {
   python: {
     label: "Python",
@@ -37,6 +43,10 @@ const explicitMarkerOracleFixtures = {
   "java-maven": {
     label: "Java/Maven",
     fileSegments: javaStatusFileSegments,
+  },
+  polyglot: {
+    label: "Polyglot",
+    fileSegments: ["services", "worker", "app.py"],
   },
 };
 
@@ -383,6 +393,31 @@ function buildCorpusScenarios() {
       workspaceMode: "copy",
       profileId: "generic",
       corpusName: "java-maven-explicit-oracle",
+    }),
+    createScenario({
+      kind: "happy",
+      repoKind: "docs-static",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      corpusName: "docs-static-no-node-scripts",
+    }),
+    createScenario({
+      kind: "happy",
+      repoKind: "polyglot",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      corpusName: "mixed-polyglot-explicit-oracle",
+    }),
+    createScenario({
+      kind: "nested-workspace",
+      repoKind: "nested-workspace",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      taskInputMode: "inline",
+      corpusName: "nested-workspace-explicit-oracle",
     }),
     createScenario({
       kind: "happy",
@@ -823,6 +858,22 @@ async function prepareScenario(workdir, scenario) {
     });
   }
 
+  if (scenario.kind === "nested-workspace") {
+    await writeAdvancedConfig(workdir, {
+      version: 1,
+      oracles: [
+        {
+          id: "nested-workspace-impact",
+          roundId: "impact",
+          command: process.execPath,
+          args: [join("workspaces", "review-app", "tools", "check-status.mjs")],
+          invariant: "The nested workspace check must validate the nested target file.",
+          enforcement: "hard",
+        },
+      ],
+    });
+  }
+
   const explicitMarkerOracle = buildExplicitMarkerOracle(scenario.repoKind);
   if (explicitMarkerOracle && !scenarioSpecificAdvancedConfigKinds.has(scenario.kind)) {
     await writeAdvancedConfig(workdir, {
@@ -872,6 +923,20 @@ function buildExplicitMarkerOracle(repoKind) {
     invariant: `The ${fixture.label}-shaped fixture must pass only the explicit repo-local Oraculum oracle.`,
     enforcement: "hard",
   };
+}
+
+function markerFileSegmentsForScenario(repoKind) {
+  const explicitMarkerFixture = explicitMarkerOracleFixtures[repoKind];
+  if (explicitMarkerFixture) {
+    return explicitMarkerFixture.fileSegments;
+  }
+  if (repoKind === "docs-static") {
+    return ["site", "index.html"];
+  }
+  if (repoKind === "nested-workspace") {
+    return nestedWorkspaceStatusFileSegments;
+  }
+  return undefined;
 }
 
 async function executeScenario(workdir, scenario) {
@@ -1193,6 +1258,16 @@ async function executeScenario(workdir, scenario) {
     return;
   }
 
+  if (scenario.kind === "nested-workspace") {
+    assertEqual(
+      run.recommendedWinner?.candidateId,
+      "cand-02",
+      `${scenario.id}: expected cand-02 to be recommended for the nested workspace scenario.`,
+    );
+    await assertHappyCrown(workdir, scenario, env);
+    return;
+  }
+
   if (scenario.kind === "large-diff") {
     assertEqual(
       run.recommendedWinner?.candidateId,
@@ -1347,6 +1422,27 @@ process.stdout.write("turbo workspace ok");
     return;
   }
 
+  if (repoKind === "docs-static") {
+    await mkdir(join(root, "site"), { recursive: true });
+    await writeFile(
+      join(root, "site", "index.html"),
+      [
+        "<!doctype html>",
+        '<html lang="en">',
+        "  <head>",
+        "    <title>Scenario Docs</title>",
+        "  </head>",
+        "  <body>",
+        '    <p data-status="offline">offline</p>',
+        "  </body>",
+        "</html>",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    return;
+  }
+
   if (repoKind === "python") {
     await writeFile(join(root, "src", "app.py"), 'def status():\n    return "offline"\n', "utf8");
     await writeFile(join(root, "pyproject.toml"), '[project]\nname = "scenario-python"\n');
@@ -1405,6 +1501,49 @@ process.stdout.write("turbo workspace ok");
       "utf8",
     );
     await writeJavaStatusSource(root);
+    return;
+  }
+
+  if (repoKind === "polyglot") {
+    await mkdir(join(root, "services", "worker"), { recursive: true });
+    await writePackageJson(root, {
+      name: "scenario-polyglot",
+      version: "0.0.0",
+      type: "module",
+    });
+    await writeFile(join(root, "src", "index.js"), 'export const status = "offline";\n', "utf8");
+    await writeFile(join(root, "pyproject.toml"), '[project]\nname = "scenario-polyglot"\n');
+    await writeFile(join(root, "go.mod"), "module example.com/polyglot\n\ngo 1.22\n", "utf8");
+    await writeFile(join(root, "services", "worker", "app.py"), 'STATUS = "offline"\n', "utf8");
+    return;
+  }
+
+  if (repoKind === "nested-workspace") {
+    await mkdir(join(root, "workspaces", "review-app", "tools"), { recursive: true });
+    await mkdir(join(root, "workspaces", "review-app", "src"), { recursive: true });
+    await writeFile(join(root, ...nestedWorkspaceStatusFileSegments), 'status="offline"\n', "utf8");
+    await writeFile(
+      join(root, "workspaces", "review-app", "tools", "check-status.mjs"),
+      [
+        'import { readFileSync } from "node:fs";',
+        'import { join } from "node:path";',
+        "",
+        "const workspace = process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR;",
+        "if (!workspace) {",
+        '  process.stderr.write("missing ORACULUM_CANDIDATE_WORKSPACE_DIR");',
+        "  process.exit(1);",
+        "}",
+        'const file = join(workspace, "workspaces", "review-app", "src", "status.txt");',
+        'const text = readFileSync(file, "utf8");',
+        'if (!text.includes("cand-")) {',
+        '  process.stderr.write("candidate marker missing");',
+        "  process.exit(1);",
+        "}",
+        'process.stdout.write("nested workspace oracle ok");',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
     return;
   }
 
@@ -1620,6 +1759,9 @@ async function writeTaskInputs(root, repoKind) {
     rust: "# Rust patch\nUpdate the service status text.\n",
     "java-gradle": "# Java/Gradle patch\nUpdate the service status text.\n",
     "java-maven": "# Java/Maven patch\nUpdate the service status text.\n",
+    "docs-static": "# Static docs patch\nUpdate the page status text.\n",
+    polyglot: "# Polyglot patch\nUpdate the worker status text.\n",
+    "nested-workspace": "# Nested workspace patch\nUpdate the nested status text.\n",
     docs: "# Docs patch\nRevise the report wording.\n",
     service: "# Service patch\nUpdate the service status response.\n",
     monorepo: "# Monorepo patch\nUpdate the workspace package greeting.\n",
@@ -1640,6 +1782,9 @@ function buildInlineTaskText(repoKind) {
   if (repoKind === "docs") {
     return "Update docs/report.md so the report reflects the winning candidate with a small editorial change.";
   }
+  if (repoKind === "docs-static") {
+    return "Update site/index.html so the status reflects the winning candidate without adding package scripts.";
+  }
   if (repoKind === "python") {
     return "Update src/app.py so status() returns a winner-specific online status string.";
   }
@@ -1654,6 +1799,12 @@ function buildInlineTaskText(repoKind) {
   }
   if (repoKind === "java-maven") {
     return "Update src/main/java/example/Status.java so status() returns a winner-specific online status string.";
+  }
+  if (repoKind === "polyglot") {
+    return "Update services/worker/app.py so STATUS returns a winner-specific online status string.";
+  }
+  if (repoKind === "nested-workspace") {
+    return "Update workspaces/review-app/src/status.txt so the nested workspace status includes the winning candidate.";
   }
   if (repoKind === "service") {
     return "Update src/server.js so serviceStatus() returns a winner-specific online status string.";
@@ -1801,7 +1952,7 @@ const scenario = ${JSON.stringify({
     agent: scenario.agent,
   })};
 const explicitMarkerFileSegments = ${JSON.stringify(
-    explicitMarkerOracleFixtures[scenario.repoKind]?.fileSegments ?? null,
+    markerFileSegmentsForScenario(scenario.repoKind),
   )};
 
 function mutateWorkspace() {
@@ -2175,9 +2326,9 @@ async function assertTargetFileContains(root, scenario, candidateId) {
 }
 
 function targetFileForScenario(root, scenario) {
-  const explicitMarkerFixture = explicitMarkerOracleFixtures[scenario.repoKind];
-  if (explicitMarkerFixture) {
-    return join(root, ...explicitMarkerFixture.fileSegments);
+  const markerFileSegments = markerFileSegmentsForScenario(scenario.repoKind);
+  if (markerFileSegments) {
+    return join(root, ...markerFileSegments);
   }
   if (scenario.repoKind === "monorepo") {
     return join(root, "packages", "app", "src", "index.js");
