@@ -231,7 +231,7 @@ Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace
 
 ## Phase 7: Expand Evidence Corpus Beyond Node
 
-- [ ] Add a `generic-no-package-json` evidence scenario where no `package.json` exists and Oraculum still consults/crowns without assuming npm.
+- [x] Add a `generic-no-package-json` evidence scenario where no `package.json` exists and Oraculum still consults/crowns without assuming npm.
 - [ ] Add a Python-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred `pytest`/`ruff` commands.
 - [ ] Add a Go-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred `go test` commands.
 - [ ] Add a Rust-shaped fixture that uses explicit repo-local scripts or `.oraculum/advanced.json` oracles, not inferred `cargo` commands.
@@ -279,7 +279,7 @@ Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace
 
 ## Definition Of Done
 
-- [ ] A non-Node repository with no `package.json` can complete `orc consult -> orc crown` without npm assumptions.
+- [x] A non-Node repository with no `package.json` can complete `orc consult -> orc crown` without npm assumptions.
 - [ ] A nested workspace or monorepo can complete `orc consult -> orc crown` using the correct workspace-level checks rather than only root-level scripts.
 - [x] Zero-signal repositories get a generic/default profile result, not a misleading Node/library result.
 - [x] Non-English paths, spaces in paths, and source-file-looking task references are handled intentionally rather than accidentally treated as inline prose.

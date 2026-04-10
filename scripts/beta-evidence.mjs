@@ -314,6 +314,14 @@ function buildCorpusScenarios() {
   return [
     createScenario({
       kind: "happy",
+      repoKind: "plain",
+      agent: "codex",
+      workspaceMode: "copy",
+      profileId: "generic",
+      corpusName: "generic-no-package-json",
+    }),
+    createScenario({
+      kind: "happy",
       repoKind: "docs",
       agent: "codex",
       workspaceMode: "git",
@@ -636,12 +644,14 @@ function createScenario({
     workspaceMode,
     profileId:
       profileId ??
-      (repoKind === "plain" ||
-      repoKind === "monorepo" ||
-      repoKind === "docs" ||
-      repoKind === "service"
-        ? "library"
-        : repoKind),
+      (kind === "runtime-missing" || kind === "hung-runtime"
+        ? "generic"
+        : repoKind === "plain" ||
+            repoKind === "monorepo" ||
+            repoKind === "docs" ||
+            repoKind === "service"
+          ? "library"
+          : repoKind),
     binaryMode,
     candidateCount: resolvedCandidateCount,
     packageManager,
@@ -1124,7 +1134,7 @@ async function assertHappyCrown(workdir, scenario, env, candidateId = "cand-02")
     {
       cwd: workdir,
       ...(candidateId === "cand-02" ? {} : { candidateId }),
-      branchName,
+      ...(scenario.workspaceMode === "git" ? { branchName } : {}),
     },
     { env },
   );
