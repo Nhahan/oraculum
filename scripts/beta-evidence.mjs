@@ -145,6 +145,9 @@ async function main() {
 }
 
 function buildScenarioSet(mode) {
+  if (mode === "polyglot") {
+    return buildPolyglotScenarios();
+  }
   if (mode === "corpus") {
     return buildCorpusScenarios();
   }
@@ -366,7 +369,7 @@ function buildScenarioMatrix() {
   return scenarios;
 }
 
-function buildCorpusScenarios() {
+function buildPolyglotScenarios() {
   return [
     createScenario({
       kind: "happy",
@@ -474,6 +477,12 @@ function buildCorpusScenarios() {
       profileId: "migration",
       corpusName: "alembic-explicit-oracle",
     }),
+  ];
+}
+
+function buildCorpusScenarios() {
+  return [
+    ...buildPolyglotScenarios(),
     createScenario({
       kind: "task-input-edge",
       repoKind: "library",

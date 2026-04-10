@@ -244,7 +244,7 @@ Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace
 - [x] Add task-input fixtures with non-English filenames, spaces in paths, and source-file-looking task references such as `.html`, `.py`, `.go`, and `.rs`.
 - [x] Ensure each Phase 7 generalized corpus fixture exercises `consult -> crown`, not just profile selection. Draft-only regression scenarios remain explicitly scoped exceptions.
 - [x] Keep the corpus fast by using fake local tools behind explicit repo-local commands; do not use the corpus to justify new named-tool inferred command recipes.
-- [ ] Add a separate `evidence:polyglot` script if the full corpus becomes too slow for normal beta checks.
+- [x] Add a separate `evidence:polyglot` script if the full corpus becomes too slow for normal beta checks.
 - [x] Extend `workflow-comparison` and `host-native` smoke evidence with at least one non-Node or package-json-free scenario before using them as generality evidence.
 - [x] Add subdirectory-invocation evidence where Oraculum is invoked below the repository root and still records artifacts/checks in the intended root.
 - [x] Add timed-out oracle evidence that proves child processes do not survive after timeout.
@@ -272,7 +272,7 @@ Decision: Git-backed crowning keeps `orc crown <branch-name>`. Non-Git workspace
 - [x] After project-root resolution or relative oracle cwd changes: run `npm exec vitest run test/project.test.ts test/execution.test.ts test/exports.test.ts`.
 - [x] After subprocess timeout/output changes: run `npm exec vitest run test/subprocess.test.ts test/execution.test.ts`.
 - [x] After evidence corpus changes: run `npm run evidence:beta:corpus`.
-- [ ] After polyglot evidence changes: run the new `npm run evidence:polyglot` script if added.
+- [x] After polyglot evidence changes: run the new `npm run evidence:polyglot` script if added.
 - [x] After workflow comparison changes: run `npm run evidence:workflow-comparison`.
 - [x] Before any commit touching this area: run `npm run check`.
 - [ ] Before beta publish after this work: run `npm run evidence:release-smoke`, `npm run evidence:host-native`, and installed-package smoke.
