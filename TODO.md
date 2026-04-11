@@ -67,7 +67,7 @@ These items matter, but they are not the beta gate by themselves unless they are
 - [x] Retire or version legacy compatibility tags and fields that exist only for artifact or prompt continuity once downstream readers no longer depend on them.
 - [x] Re-review `PROFILE_COMMAND_SLOTS`, fallback profile scoring, and similar product-policy tables; either keep them as explicit product policy with stable documentation, or reduce them further into prompt-only guidance where deterministic code is not required.
 - [x] Add a lightweight review rule so new deterministic boundaries must be justified at the code/test/doc boundary directly, instead of growing the local deterministic-boundary inventory again.
-- [ ] After at least two consecutive release cycles without material boundary-policy changes, remove the local deterministic-boundary inventory and keep only the stable boundary policy summary in `TODO.md`, tests, and architecture docs.
+- [ ] After at least two consecutive release cycles without material boundary-policy changes, remove the local deterministic-boundary inventory and keep only the stable boundary policy summary in `TODO.md`, tests, and [docs/frontier-boundary-policy.md](docs/frontier-boundary-policy.md).
 
 ### Completed Milestones
 

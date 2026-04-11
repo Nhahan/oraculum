@@ -85,6 +85,8 @@ The selected profile is consultation-scoped. It does not rewrite your saved quic
 
 Oraculum assumes Claude Code or Codex is a frontier coding model. Deterministic code owns facts and safety: file signals, manifests, workspace roots, explicit config, command allowlists, timeouts, and artifact persistence. The model owns semantic judgment: profile choice, risk level, validation sufficiency, and which provided commands to select.
 
+If you want the stable maintainer-facing boundary definition, see [Frontier Boundary Policy](./frontier-boundary-policy.md).
+
 The model cannot invent executable commands for Oraculum to run. It returns command ids from the catalog Oraculum provided, and Oraculum rejects unknown profile ids, strategy ids, and command ids. Catalog commands include source, capability, dedupe key, path policy, safety, and provenance metadata. If a plausible command is not safe to generate, Oraculum records it under `skippedCommandCandidates` with a reason instead of running it. If runtime profile selection fails or is disabled, runtime-unavailable detection is conservative: zero-signal repositories use `generic`, ambiguous package managers do not silently become npm, and missing validation is recorded as `missingCapabilities`.
 
 Repo-local scripts and explicit `.oraculum/advanced.json` oracles are strongest. Oraculum should not grow a built-in encyclopedia of framework, ORM, migration-tool, test-runner, or language-specific command recipes. Named tools, including Prisma or Drizzle, are recorded as evidence unless a repo-local script or explicit oracle defines the command.
