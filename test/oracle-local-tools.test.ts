@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   collectOracleLocalToolPaths,
   listRelativeLocalToolDirs,
+  resolveRepoLocalEntrypointCommand,
   resolveRepoLocalWrapperCommand,
 } from "../src/services/oracle-local-tools.js";
 
@@ -81,6 +82,38 @@ describe("oracle local tools", () => {
     });
   });
 
+  it("resolves repo-local Windows entrypoints from logical command paths", () => {
+    const existing = new Set(["C:/repo/packages/app/bin/lint.cmd"]);
+
+    const resolved = resolveRepoLocalEntrypointCommand({
+      command: "bin/lint",
+      cwd: "C:/repo/packages/app",
+      exists: (path) => existing.has(path),
+      platform: "win32",
+    });
+
+    expect(resolved).toEqual({
+      resolvedCommand: "C:/repo/packages/app/bin/lint.cmd",
+      resolution: "local-entrypoint",
+    });
+  });
+
+  it("resolves repo-local POSIX shell entrypoints from logical command paths", () => {
+    const existing = new Set(["/repo/packages/app/scripts/test.sh"]);
+
+    const resolved = resolveRepoLocalEntrypointCommand({
+      command: "scripts/test",
+      cwd: "/repo/packages/app",
+      exists: (path) => existing.has(path),
+      platform: "linux",
+    });
+
+    expect(resolved).toEqual({
+      resolvedCommand: "/repo/packages/app/scripts/test.sh",
+      resolution: "local-entrypoint",
+    });
+  });
+
   it("does not rewrite explicit paths or unrelated commands", () => {
     const existing = new Set<string>();
 
@@ -106,6 +139,17 @@ describe("oracle local tools", () => {
       }),
     ).toEqual({
       resolvedCommand: "pytest",
+      resolution: "unresolved",
+    });
+    expect(
+      resolveRepoLocalEntrypointCommand({
+        command: "./bin/lint",
+        cwd: "/repo/packages/app",
+        exists: (path) => existing.has(path),
+        platform: "linux",
+      }),
+    ).toEqual({
+      resolvedCommand: "./bin/lint",
       resolution: "unresolved",
     });
   });

@@ -21,6 +21,7 @@ import type { CandidateManifest } from "../domain/run.js";
 import { collectCandidateChangeInsight } from "./change-insights.js";
 import {
   collectOracleLocalToolPaths,
+  resolveRepoLocalEntrypointCommand,
   resolveRepoLocalWrapperCommand,
 } from "./oracle-local-tools.js";
 
@@ -268,12 +269,20 @@ async function evaluateRepoOracle(
     const oracleCwd = resolveOracleCwd(options, oracle);
     const scopeRoot =
       oracle.cwd === "project" ? options.projectRoot : options.candidate.workspaceDir;
-    const resolvedCommand = resolveRepoLocalWrapperCommand({
+    const resolvedEntrypoint = resolveRepoLocalEntrypointCommand({
       command: oracle.command,
+      cwd: oracleCwd,
       exists: existsSync,
-      projectRoot: options.projectRoot,
-      scopeRoot,
     });
+    const resolvedCommand =
+      resolvedEntrypoint.resolution !== "unresolved"
+        ? resolvedEntrypoint
+        : resolveRepoLocalWrapperCommand({
+            command: oracle.command,
+            exists: existsSync,
+            projectRoot: options.projectRoot,
+            scopeRoot,
+          });
     const shell =
       oracle.shell ?? inferRepoOracleShell(resolvedCommand.resolvedCommand, oracle.args);
     const commandResult = await runSubprocess({
@@ -480,7 +489,7 @@ function buildOracleWitnessDetail(
   oracleCwd: string,
   resolvedCommand: {
     resolvedCommand: string;
-    resolution: "project-wrapper" | "workspace-wrapper" | "unresolved";
+    resolution: "local-entrypoint" | "project-wrapper" | "workspace-wrapper" | "unresolved";
   },
   exitCode: number,
   timedOut: boolean,

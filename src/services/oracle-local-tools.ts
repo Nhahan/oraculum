@@ -1,4 +1,4 @@
-import { basename, join } from "node:path";
+import { posix } from "node:path";
 
 export function collectOracleLocalToolPaths(options: {
   exists: (path: string) => boolean;
@@ -13,7 +13,7 @@ export function collectOracleLocalToolPaths(options: {
 
   for (const root of roots) {
     for (const relativeDir of relativeToolDirs) {
-      const absolutePath = join(root, relativeDir);
+      const absolutePath = joinPortablePath(root, relativeDir);
       if (!seen.has(absolutePath) && options.exists(absolutePath)) {
         seen.add(absolutePath);
         paths.push(absolutePath);
@@ -26,11 +26,49 @@ export function collectOracleLocalToolPaths(options: {
 
 export function listRelativeLocalToolDirs(platform: NodeJS.Platform = process.platform): string[] {
   return [
-    join("node_modules", ".bin"),
-    join(".venv", platform === "win32" ? "Scripts" : "bin"),
-    join("venv", platform === "win32" ? "Scripts" : "bin"),
+    "node_modules/.bin",
+    platform === "win32" ? ".venv/Scripts" : ".venv/bin",
+    platform === "win32" ? "venv/Scripts" : "venv/bin",
     "bin",
   ];
+}
+
+export function resolveRepoLocalEntrypointCommand(options: {
+  command: string;
+  cwd: string;
+  exists: (path: string) => boolean;
+  platform?: NodeJS.Platform;
+}): {
+  resolvedCommand: string;
+  resolution: "local-entrypoint" | "unresolved";
+} {
+  const normalizedCommand = normalizePortablePath(options.command);
+  if (
+    !normalizedCommand.includes("/") ||
+    normalizedCommand.startsWith("./") ||
+    normalizedCommand.startsWith("../") ||
+    isPortableAbsolutePath(normalizedCommand)
+  ) {
+    return {
+      resolvedCommand: options.command,
+      resolution: "unresolved",
+    };
+  }
+
+  for (const candidate of listRepoLocalEntrypointCandidates(normalizedCommand, options.platform)) {
+    const resolved = joinPortablePath(options.cwd, candidate);
+    if (options.exists(resolved)) {
+      return {
+        resolvedCommand: resolved,
+        resolution: "local-entrypoint",
+      };
+    }
+  }
+
+  return {
+    resolvedCommand: options.command,
+    resolution: "unresolved",
+  };
 }
 
 export function resolveRepoLocalWrapperCommand(options: {
@@ -60,7 +98,7 @@ export function resolveRepoLocalWrapperCommand(options: {
         ];
   for (const candidate of roots) {
     for (const wrapperName of wrapperNames) {
-      const resolved = join(candidate.root, wrapperName);
+      const resolved = joinPortablePath(candidate.root, wrapperName);
       if (options.exists(resolved)) {
         return {
           resolvedCommand: resolved,
@@ -80,8 +118,9 @@ export function listRepoLocalWrapperCandidates(
   command: string,
   platform: NodeJS.Platform = process.platform,
 ): string[] {
-  const base = basename(command).toLowerCase();
-  if (base !== command.toLowerCase()) {
+  const normalizedCommand = normalizePortablePath(command);
+  const base = posix.basename(normalizedCommand).toLowerCase();
+  if (base !== normalizedCommand.toLowerCase()) {
     return [];
   }
 
@@ -102,4 +141,33 @@ export function listRepoLocalWrapperCandidates(
     return ["mvnw"];
   }
   return [];
+}
+
+function listRepoLocalEntrypointCandidates(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  if (posix.extname(command)) {
+    return [command];
+  }
+
+  if (platform === "win32") {
+    return [`${command}.cmd`, `${command}.bat`, `${command}.ps1`, command];
+  }
+
+  return [command, `${command}.sh`];
+}
+
+function isPortableAbsolutePath(path: string): boolean {
+  return path.startsWith("/") || /^[A-Za-z]:\//u.test(path);
+}
+
+function joinPortablePath(root: string, relativePath: string): string {
+  const normalizedRoot = normalizePortablePath(root).replace(/\/+$/u, "");
+  const normalizedRelative = normalizePortablePath(relativePath).replace(/^\/+/u, "");
+  return normalizedRelative.length > 0 ? `${normalizedRoot}/${normalizedRelative}` : normalizedRoot;
+}
+
+function normalizePortablePath(path: string): string {
+  return path.replace(/\\/gu, "/");
 }

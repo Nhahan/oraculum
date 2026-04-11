@@ -1,6 +1,6 @@
 import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { extname, join, posix } from "node:path";
 
 import type { ManagedTreeRules } from "../domain/config.js";
 
@@ -118,7 +118,7 @@ async function collectScopeLocalEntrypointSurfaces(
       continue;
     }
 
-    const grouped = new Map<string, string[]>();
+    const grouped = new Map<string, Array<{ baseName: string; fileName: string }>>();
     for (const entry of entries) {
       if (!entry.isFile()) {
         continue;
@@ -128,21 +128,21 @@ async function collectScopeLocalEntrypointSurfaces(
         continue;
       }
       const key = normalizeCommandName(candidate.baseName);
-      grouped.set(key, [...(grouped.get(key) ?? []), candidate.fileName]);
+      grouped.set(key, [...(grouped.get(key) ?? []), candidate]);
     }
 
     for (const [normalizedName, fileNames] of [...grouped.entries()].sort((left, right) =>
       left[0].localeCompare(right[0]),
     )) {
-      const selectedFile = selectPlatformEntrypoint(fileNames);
-      if (!selectedFile) {
+      const selectedEntrypoint = selectPlatformEntrypoint(fileNames);
+      if (!selectedEntrypoint) {
         continue;
       }
-      const scopedRelativePath = join(scopedDir, selectedFile);
+      const scopedRelativePath = posix.join(scopedDir, selectedEntrypoint.fileName);
       if (!shouldManageProjectPath(scopedRelativePath, rules)) {
         continue;
       }
-      const commandPath = join(relativeDir, selectedFile);
+      const commandPath = posix.join(relativeDir, selectedEntrypoint.baseName);
       surfaces.push({
         kind: "local-entrypoint",
         name: normalizedName,
@@ -246,10 +246,14 @@ function selectLocalEntrypointName(
   return { baseName, fileName };
 }
 
-function selectPlatformEntrypoint(fileNames: string[]): string | undefined {
+function selectPlatformEntrypoint(
+  fileNames: Array<{ baseName: string; fileName: string }>,
+): { baseName: string; fileName: string } | undefined {
   const preferredOrder = process.platform === "win32" ? [".cmd", ".bat", ".ps1"] : ["", ".sh"];
   for (const extension of preferredOrder) {
-    const match = fileNames.find((fileName) => extname(fileName).toLowerCase() === extension);
+    const match = fileNames.find(
+      (fileName) => extname(fileName.fileName).toLowerCase() === extension,
+    );
     if (match) {
       return match;
     }
