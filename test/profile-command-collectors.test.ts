@@ -575,7 +575,7 @@ describe("profile explicit command collector", () => {
     expect(result.commandCatalog).toEqual([]);
   });
 
-  it("lets different explicit collectors contribute without duplicating the same expensive command", async () => {
+  it("records ambiguous explicit command surfaces instead of relying on collector order", async () => {
     const cwd = await createTempRoot();
     await writeFile(join(cwd, "Makefile"), "test:\n\t@echo make-test\n", "utf8");
     await writeFile(join(cwd, "justfile"), "typecheck:\n  echo just-typecheck\n", "utf8");
@@ -588,15 +588,8 @@ describe("profile explicit command collector", () => {
     const facts = await collectProfileRepoFacts(cwd);
     const result = await collectExplicitCommandCatalog({ facts, projectRoot: cwd });
 
-    const fullSuiteCommands = result.commandCatalog.filter(
-      (command) => command.id === "full-suite-deep",
-    );
-    expect(fullSuiteCommands).toHaveLength(1);
-    expect(fullSuiteCommands[0]).toEqual(
-      expect.objectContaining({
-        command: "make",
-        args: ["test"],
-      }),
+    expect(result.commandCatalog).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "full-suite-deep" })]),
     );
     expect(result.commandCatalog).toEqual(
       expect.arrayContaining([
@@ -604,6 +597,14 @@ describe("profile explicit command collector", () => {
           id: "typecheck-fast",
           command: "just",
           args: ["typecheck"],
+        }),
+      ]),
+    );
+    expect(result.skippedCommandCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "full-suite-deep",
+          reason: "ambiguous-explicit-command",
         }),
       ]),
     );

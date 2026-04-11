@@ -38,8 +38,13 @@ export async function collectExplicitCommandCatalog(options: {
   );
 
   for (const definition of EXPLICIT_COMMAND_DEFINITIONS) {
-    const match = surfaces.find((surface) => definition.aliases.includes(surface.normalizedName));
-    if (match) {
+    const surfaceSelection = selectExplicitCommandSurface(
+      definition.aliases,
+      definition.capability,
+      surfaces,
+    );
+    if (surfaceSelection.kind === "selected") {
+      const match = surfaceSelection.surface;
       commandCatalog.push({
         id: definition.id,
         roundId: definition.roundId,
@@ -65,6 +70,14 @@ export async function collectExplicitCommandCatalog(options: {
       });
       continue;
     }
+    if (surfaceSelection.kind === "ambiguous") {
+      recordAmbiguousExplicitSurfaceSkip({
+        definition,
+        skippedCommandCandidates,
+        surfaces: surfaceSelection.surfaces,
+      });
+      continue;
+    }
 
     recordAmbiguousPackageScriptSkip({
       definition,
@@ -80,6 +93,58 @@ export async function collectExplicitCommandCatalog(options: {
   }
 
   return { commandCatalog, skippedCommandCandidates };
+}
+
+function selectExplicitCommandSurface(
+  aliases: readonly string[],
+  capability: string,
+  surfaces: ExplicitCommandSurface[],
+):
+  | { kind: "none" }
+  | { kind: "selected"; surface: ExplicitCommandSurface }
+  | { kind: "ambiguous"; surfaces: ExplicitCommandSurface[] } {
+  const matches = surfaces.filter((surface) => aliases.includes(surface.normalizedName));
+  if (matches.length === 0) {
+    return { kind: "none" };
+  }
+
+  const byExecutionKey = new Map<string, ExplicitCommandSurface>();
+  for (const surface of matches) {
+    const key = buildSurfaceSelectionKey(surface, capability);
+    if (!byExecutionKey.has(key)) {
+      byExecutionKey.set(key, surface);
+    }
+  }
+
+  const distinctMatches = [...byExecutionKey.values()];
+  if (distinctMatches.length === 1) {
+    const [surface] = distinctMatches;
+    if (!surface) {
+      return { kind: "none" };
+    }
+    return { kind: "selected", surface };
+  }
+
+  return { kind: "ambiguous", surfaces: distinctMatches };
+}
+
+function buildSurfaceSelectionKey(surface: ExplicitCommandSurface, capability: string): string {
+  if (
+    surface.kind === "package-script" &&
+    surface.scriptBody &&
+    DEDUPED_PACKAGE_SCRIPT_CAPABILITIES.has(capability)
+  ) {
+    return surface.relativeCwd
+      ? `package-script:${surface.relativeCwd}:${normalizeScriptBody(surface.scriptBody)}`
+      : `package-script:${normalizeScriptBody(surface.scriptBody)}`;
+  }
+
+  return JSON.stringify([
+    surface.command,
+    surface.args,
+    surface.relativeCwd ?? "",
+    surface.pathPolicy,
+  ]);
 }
 
 async function collectExplicitCommandSurfaces(
@@ -165,6 +230,25 @@ function recordAmbiguousLocalEntrypointSkip(options: {
   recordSkippedCandidate(options.skippedCommandCandidates, candidate);
 }
 
+function recordAmbiguousExplicitSurfaceSkip(options: {
+  definition: {
+    capability: string;
+    id: string;
+    label: string;
+  };
+  skippedCommandCandidates: ProfileSkippedCommandCandidate[];
+  surfaces: ExplicitCommandSurface[];
+}): void {
+  const candidate: ProfileSkippedCommandCandidate = {
+    id: options.definition.id,
+    label: options.definition.label,
+    capability: options.definition.capability,
+    reason: "ambiguous-explicit-command",
+    detail: `Multiple explicit command surfaces match this command (${options.surfaces.map(formatExplicitSurface).join(", ")}); Oraculum will not guess which one to run.`,
+  };
+  recordSkippedCandidate(options.skippedCommandCandidates, candidate);
+}
+
 function recordSkippedCandidate(
   skippedCommandCandidates: ProfileSkippedCommandCandidate[],
   candidate: ProfileSkippedCommandCandidate,
@@ -189,4 +273,13 @@ function recordSkippedCandidate(
   if (!alreadyRecorded) {
     skippedCommandCandidates.push(candidate);
   }
+}
+
+function formatExplicitSurface(surface: ExplicitCommandSurface): string {
+  const command = [surface.command, ...surface.args].join(" ");
+  const origin = surface.provenance.path ?? command;
+  if (!surface.relativeCwd) {
+    return origin;
+  }
+  return `${origin} (cwd=${surface.relativeCwd})`;
 }

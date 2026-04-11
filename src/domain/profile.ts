@@ -47,6 +47,7 @@ export const profileCommandSafetySchema = z.enum([
   "requires-explicit-opt-in",
 ]);
 export const profileSkippedCommandReasonSchema = z.enum([
+  "ambiguous-explicit-command",
   "ambiguous-local-command",
   "ambiguous-package-manager",
   "ambiguous-workspace-command",

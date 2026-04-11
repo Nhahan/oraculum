@@ -1315,6 +1315,58 @@ if (out) {
     );
   });
 
+  it("records ambiguous explicit command surfaces instead of inventing collector precedence", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep checks honest.\n", "utf8");
+    await writeFile(join(cwd, "Makefile"), "test:\n\t@echo make-test\n", "utf8");
+    await writeFile(join(cwd, "justfile"), "typecheck:\n  echo typecheck\n", "utf8");
+    await writeFile(
+      join(cwd, "Taskfile.yml"),
+      "version: '3'\n\ntasks:\n  test:\n    cmds:\n      - echo task-test\n",
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_ambiguous_explicit_collectors"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_ambiguous_explicit_collectors"),
+      runId: "run_ambiguous_explicit_collectors",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    const artifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_ambiguous_explicit_collectors"), "utf8"),
+    ) as {
+      signals: {
+        commandCatalog: Array<{ id: string }>;
+        skippedCommandCandidates: Array<{
+          detail: string;
+          id: string;
+          reason: string;
+        }>;
+      };
+    };
+
+    expect(recommendation.selection.oracleIds).not.toContain("full-suite-deep");
+    expect(artifact.signals.commandCatalog).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "full-suite-deep" })]),
+    );
+    expect(artifact.signals.commandCatalog).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "typecheck-fast" })]),
+    );
+    expect(artifact.signals.skippedCommandCandidates).toContainEqual(
+      expect.objectContaining({
+        id: "full-suite-deep",
+        reason: "ambiguous-explicit-command",
+        detail: expect.stringContaining("Makefile"),
+      }),
+    );
+  });
   it("uses nested workspace migration files as profile signals without inventing unsafe commands", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
