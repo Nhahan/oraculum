@@ -56,9 +56,18 @@ These items matter, but they are not the beta gate by themselves unless they are
 
 ### Open Follow-Up Engineering Work
 
-- [ ] Inventory every hardcoded tool, framework, file, and script list in `src/services/consultation-profile.ts`, `src/services/profile-signals.ts`, `src/services/managed-tree.ts`, `src/services/oracles.ts`, and tests.
-- [ ] Classify each hardcoded item as one of: raw fact collector, explicit-command bridge, safety boundary, compatibility field, or removable semantic shortcut.
-- [ ] Add a short `why this is safe` note or metadata field for every remaining generated command.
+- [x] Inventory every hardcoded tool, framework, file, and script list in `src/services/consultation-profile.ts`, `src/services/profile-signals.ts`, `src/services/managed-tree.ts`, `src/services/oracles.ts`, and tests.
+- [x] Classify each hardcoded item as one of: raw fact collector, explicit-command bridge, safety boundary, compatibility field, or removable semantic shortcut.
+  - Recorded in a local deterministic-boundary inventory document during the audit pass.
+- [x] Add a short `why this is safe` note or metadata field for every remaining generated command.
+
+### Deterministic Boundary Inventory Retirement Path
+
+- [ ] Shrink the local deterministic-boundary inventory so it only tracks still-contested or still-changing deterministic boundaries; move settled rules into stable code comments, tests, or architecture docs instead of keeping them in the ledger forever.
+- [ ] Retire or version legacy compatibility tags and fields that exist only for artifact or prompt continuity once downstream readers no longer depend on them.
+- [ ] Re-review `PROFILE_COMMAND_SLOTS`, fallback profile scoring, and similar product-policy tables; either keep them as explicit product policy with stable documentation, or reduce them further into prompt-only guidance where deterministic code is not required.
+- [ ] Add a lightweight review rule so new deterministic boundaries must be justified at the code/test/doc boundary directly, instead of growing the local deterministic-boundary inventory again.
+- [ ] After at least two consecutive release cycles without material boundary-policy changes, remove the local deterministic-boundary inventory and keep only the stable boundary policy summary in `TODO.md`, tests, and architecture docs.
 
 ### Completed Milestones
 
