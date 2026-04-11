@@ -109,7 +109,6 @@ export const profileRepoSignalsSchema = z.object({
   files: z.array(z.string().min(1)).default([]),
   workspaceRoots: z.array(z.string().min(1)).default([]),
   workspaceMetadata: z.array(profileWorkspaceMetadataSchema).default([]),
-  tags: z.array(z.string().min(1)).default([]),
   notes: z.array(z.string().min(1)).default([]),
   capabilities: z.array(profileCapabilitySignalSchema).default([]),
   provenance: z.array(profileSignalProvenanceSchema).default([]),

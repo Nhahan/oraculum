@@ -578,7 +578,6 @@ if (out) {
         files: ["package.json", "tsconfig.json"],
         workspaceRoots: [],
         workspaceMetadata: [],
-        tags: ["package-export", "lint-script", "typecheck-script"],
         notes: [],
         capabilities: [],
         provenance: [],
@@ -660,7 +659,6 @@ process.stdout.write(JSON.stringify({
         files: ["package.json", "vite.config.ts", "playwright.config.ts"],
         workspaceRoots: [],
         workspaceMetadata: [],
-        tags: ["frontend-framework", "frontend-build", "e2e-config"],
         notes: [],
         capabilities: [],
         provenance: [],
@@ -723,9 +721,17 @@ process.stdout.write(JSON.stringify({
             manifests: ["packages/app/package.json"],
           },
         ],
-        tags: ["workspace-config", "lint-script"],
         notes: [],
-        capabilities: [],
+        capabilities: [
+          {
+            kind: "command",
+            value: "lint",
+            source: "workspace-config",
+            path: "packages/app/package.json",
+            confidence: "high",
+            detail: "Workspace package.json lint script is present.",
+          },
+        ],
         provenance: [],
         skippedCommandCandidates: [],
         commandCatalog: [
@@ -756,6 +762,8 @@ process.stdout.write(JSON.stringify({
       ],
     });
 
+    expect(prompt).toContain("Detected capabilities:");
+    expect(prompt).not.toContain("Detected tags:");
     expect(prompt).toContain("Relative cwd: packages/app");
     expect(prompt).toContain(
       'Provenance: signal=script:lint source=workspace-config path=packages/app/package.json detail=Workspace script "lint".',

@@ -306,15 +306,13 @@ if (out) {
       taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
     });
 
-    expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([
       "lint-fast",
       "typecheck-fast",
       "full-suite-deep",
     ]);
-    expect(recommendation.selection.missingCapabilities).toEqual([
-      "No package packaging smoke check was detected.",
-    ]);
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
     const artifact = JSON.parse(
       await readFile(getProfileSelectionPath(cwd, "run_explicit_targets"), "utf8"),
     ) as {
@@ -372,9 +370,7 @@ if (out) {
     });
 
     expect(recommendation.selection.profileId).toBe("generic");
-    expect(recommendation.selection.signals).not.toEqual(
-      expect.arrayContaining(["task-frontend", "task-migration"]),
-    );
+    expect(recommendation.selection.signals).toEqual(["intent:unknown"]);
   });
 
   it("does not let a frontend dependency alone force the frontend profile", async () => {
@@ -466,13 +462,11 @@ if (out) {
         }>;
         dependencies: string[];
         notes: string[];
-        tags: string[];
       };
     };
     expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([]);
     expect(artifact.signals.dependencies).toEqual(expect.arrayContaining(["react", "vite"]));
-    expect(artifact.signals.tags).not.toContain("frontend-framework");
     expect(artifact.signals.capabilities).not.toContainEqual(
       expect.objectContaining({
         kind: "build-system",
@@ -541,12 +535,9 @@ if (out) {
           provenance?: { path?: string; source: string };
           reason: string;
         }>;
-        tags: string[];
       };
     };
     expect(recommendation.selection.profileId).toBe("generic");
-    expect(artifact.signals.tags).toEqual(expect.arrayContaining(["package-export"]));
-    expect(artifact.signals.tags).not.toContain("library-signal");
     expect(artifact.signals.capabilities).toContainEqual(
       expect.objectContaining({
         kind: "intent",
@@ -831,6 +822,63 @@ if (out) {
     expect(artifact.signals.skippedCommandCandidates).toEqual([]);
   });
 
+  it("defaults to the generic profile when fallback anchors conflict across product-specific profiles", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(
+      join(cwd, "tasks", "fix.md"),
+      "# Fix\nKeep release and UI checks healthy.\n",
+      "utf8",
+    );
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "conflicting-fallback-anchors",
+          packageManager: "npm@10.0.0",
+          type: "module",
+          exports: "./dist/index.js",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+            typecheck: 'node -e "process.exit(0)"',
+            test: 'node -e "process.exit(0)"',
+            e2e: "node -e \"console.log('e2e')\"",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(join(cwd, "playwright.config.ts"), "export default {};\n", "utf8");
+    await mkdir(getReportsDir(cwd, "run_conflicting_fallback_anchors"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_conflicting_fallback_anchors"),
+      runId: "run_conflicting_fallback_anchors",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.summary).toContain("profile-specific anchors conflicted");
+    expect(recommendation.selection.oracleIds).toEqual(
+      expect.arrayContaining([
+        "lint-fast",
+        "typecheck-fast",
+        "full-suite-deep",
+        "pack-impact",
+        "package-smoke-deep",
+        "e2e-deep",
+      ]),
+    );
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
+  });
+
   it("deduplicates aliased expensive package scripts under a single command candidate", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
@@ -922,12 +970,10 @@ if (out) {
         oracle.command === "npm" &&
         (oracle.args.join(" ") === "run unit" || oracle.args.join(" ") === "run test"),
     );
-    expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toContain("unit-impact");
     expect(recommendation.selection.oracleIds).not.toContain("full-suite-deep");
-    expect(recommendation.selection.missingCapabilities).toEqual([
-      "No package packaging smoke check was detected.",
-    ]);
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
     expect(testOracles).toHaveLength(1);
   });
 
@@ -1069,7 +1115,7 @@ if (out) {
       };
     };
 
-    expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
     expect(recommendation.config.oracles).toEqual(
       expect.arrayContaining([
@@ -1158,7 +1204,7 @@ if (out) {
       };
     };
 
-    expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
     expect(recommendation.config.oracles).toEqual(
       expect.arrayContaining([
@@ -1239,7 +1285,6 @@ if (out) {
         commandCatalog: Array<{ command: string }>;
         capabilities: Array<{ kind: string; path?: string; source: string; value: string }>;
         provenance: Array<{ path?: string; signal: string; source: string }>;
-        tags: string[];
       };
     };
     expect(recommendation.selection.profileId).toBe("generic");
@@ -1247,7 +1292,6 @@ if (out) {
     expect(recommendation.selection.missingCapabilities).toContain(
       "No repo-local validation command was detected.",
     );
-    expect(artifact.signals.tags).toEqual(expect.arrayContaining(["frontend-build", "e2e-config"]));
     expect(artifact.signals.capabilities).not.toContainEqual(
       expect.objectContaining({ kind: "intent", value: "frontend" }),
     );
@@ -1262,14 +1306,14 @@ if (out) {
     expect(artifact.signals.provenance).toContainEqual(
       expect.objectContaining({
         path: "packages/app/playwright.config.ts",
-        signal: "tag:e2e-config",
+        signal: "test-runner:playwright",
         source: "workspace-config",
       }),
     );
     expect(artifact.signals.provenance).toContainEqual(
       expect.objectContaining({
         path: "packages/app/vite.config.ts",
-        signal: "tag:frontend-build",
+        signal: "build-system:frontend-config",
         source: "workspace-config",
       }),
     );
@@ -1408,7 +1452,6 @@ if (out) {
         commandCatalog: Array<{ command: string }>;
         capabilities: Array<{ kind: string; path?: string; source: string; value: string }>;
         provenance: Array<{ path?: string; signal: string; source: string }>;
-        tags: string[];
       };
     };
     expect(recommendation.selection.profileId).toBe("generic");
@@ -1416,7 +1459,6 @@ if (out) {
     expect(recommendation.selection.missingCapabilities).toContain(
       "No repo-local validation command was detected.",
     );
-    expect(artifact.signals.tags).toContain("migration-files");
     expect(artifact.signals.capabilities).not.toContainEqual(
       expect.objectContaining({ kind: "intent", value: "migration" }),
     );
@@ -1431,7 +1473,7 @@ if (out) {
     expect(artifact.signals.provenance).toContainEqual(
       expect.objectContaining({
         path: "services/api/alembic.ini",
-        signal: "tag:migration-files",
+        signal: "migration-tool:alembic",
         source: "workspace-config",
       }),
     );
@@ -1494,7 +1536,7 @@ if (out) {
     expect(artifact.signals.provenance).toContainEqual(
       expect.objectContaining({
         path: "drizzle.config.ts",
-        signal: "tag:migration-files",
+        signal: "migration-tool:drizzle",
         source: "root-config",
       }),
     );
@@ -1558,7 +1600,7 @@ if (out) {
     );
     expect(artifact.signals.provenance).not.toContainEqual(
       expect.objectContaining({
-        signal: "tag:migration-tooling",
+        signal: "migration-tool:knex",
       }),
     );
     expect(artifact.signals.commandCatalog).toEqual([]);
@@ -1869,9 +1911,7 @@ if (out) {
       ]),
     );
     expect(recommendation.selection.oracleIds).not.toContain("package-smoke-deep");
-    expect(recommendation.selection.missingCapabilities).toContain(
-      "No package packaging smoke check was detected.",
-    );
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
   });
 
   it("keeps Playwright signals as evidence without inventing deep checks", async () => {
@@ -1957,7 +1997,7 @@ if (out) {
 
     expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.signals).toEqual(
-      expect.arrayContaining(["frontend-build", "e2e-config"]),
+      expect.arrayContaining(["build-system:frontend-config", "test-runner:playwright"]),
     );
     expect(recommendation.selection.oracleIds).not.toContain("e2e-deep");
     const e2eOracle = recommendation.config.oracles.find((oracle) => oracle.id === "e2e-deep");

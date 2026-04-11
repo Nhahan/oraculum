@@ -11,12 +11,9 @@ import type {
 import { shouldManageProjectPath } from "./managed-tree.js";
 import {
   CYPRESS_CONFIG_PATHS,
-  E2E_CONFIG_PATHS,
   FRONTEND_BUILD_CONFIG_PATHS,
   KNOWN_SIGNAL_PATHS,
-  MIGRATION_SIGNAL_PATHS,
   MIGRATION_TOOL_SIGNALS,
-  MIGRATION_TOOL_VALUES,
   PLAYWRIGHT_CONFIG_PATHS,
   WORKSPACE_MARKER_FILES,
   WORKSPACE_PARENT_DIRS,
@@ -98,54 +95,6 @@ export async function detectKnownFiles(
   }
 
   return [...present].sort((left, right) => left.localeCompare(right));
-}
-
-export function buildLegacySignalTags(options: {
-  files: string[];
-  packageJson:
-    | {
-        exports?: unknown;
-        main?: string;
-        module?: string;
-        types?: string;
-      }
-    | undefined;
-  scripts: string[];
-  workspacePackageJsons: WorkspacePackageJsonManifest[];
-}): string[] {
-  const tags = new Set<string>();
-
-  if (hasSignalPath(options.files, FRONTEND_BUILD_CONFIG_PATHS)) {
-    tags.add("frontend-build");
-  }
-  if (hasSignalPath(options.files, E2E_CONFIG_PATHS)) {
-    tags.add("e2e-config");
-  }
-  if (hasSignalPath(options.files, MIGRATION_SIGNAL_PATHS)) {
-    tags.add("migration-files");
-  }
-  if (
-    hasPackageExportMetadata(options.packageJson) ||
-    options.workspacePackageJsons.some((workspaceManifest) =>
-      hasPackageExportMetadata(workspaceManifest.packageJson),
-    )
-  ) {
-    tags.add("package-export");
-  }
-  if (options.scripts.includes("lint")) {
-    tags.add("lint-script");
-  }
-  if (options.scripts.some((script) => ["typecheck", "check-types", "tsc"].includes(script))) {
-    tags.add("typecheck-script");
-  }
-  if (options.scripts.includes("build")) {
-    tags.add("build-script");
-  }
-  if (options.scripts.some((script) => script === "test" || script.includes("test:"))) {
-    tags.add("test-script");
-  }
-
-  return [...tags].sort((left, right) => left.localeCompare(right));
 }
 
 export function buildCapabilitySignals(options: {
@@ -409,75 +358,14 @@ export function buildCapabilitySignals(options: {
 }
 
 export function buildSignalProvenance(
-  tags: string[],
   capabilities: ProfileCapabilitySignal[],
 ): ProfileSignalProvenance[] {
-  return [
-    ...capabilities.map((capability) => ({
-      signal: `${capability.kind}:${capability.value}`,
-      source: capability.source,
-      ...(capability.path ? { path: capability.path } : {}),
-      ...(capability.detail ? { detail: capability.detail } : {}),
-    })),
-    ...tags.map((tag) => {
-      const relatedCapability = findLegacyTagCapability(tag, capabilities);
-      return {
-        signal: `tag:${tag}`,
-        source: relatedCapability?.source ?? profileSignalSourceForLegacyTag(tag),
-        ...(relatedCapability?.path ? { path: relatedCapability.path } : {}),
-        detail: relatedCapability
-          ? `Legacy compatibility tag derived from ${relatedCapability.kind}:${relatedCapability.value}.`
-          : "Legacy compatibility tag derived from repository signals.",
-      };
-    }),
-  ];
-}
-
-function profileSignalSourceForLegacyTag(tag: string): ProfileSignalProvenance["source"] {
-  if (tag.startsWith("task-")) {
-    return "task-text";
-  }
-  if (
-    tag.endsWith("-script") ||
-    ["e2e-config", "frontend-build", "migration-files", "package-export"].includes(tag)
-  ) {
-    return "root-config";
-  }
-  return "fallback-inference";
-}
-
-function findLegacyTagCapability(
-  tag: string,
-  capabilities: ProfileCapabilitySignal[],
-): ProfileCapabilitySignal | undefined {
-  const capabilityMatches: Record<string, Array<Partial<ProfileCapabilitySignal>>> = {
-    "build-script": [{ kind: "command", value: "build" }],
-    "e2e-config": [
-      { kind: "test-runner", value: "playwright" },
-      { kind: "test-runner", value: "cypress" },
-    ],
-    "frontend-build": [{ kind: "build-system", value: "frontend-config" }],
-    "lint-script": [{ kind: "command", value: "lint" }],
-    "migration-files": [
-      ...MIGRATION_TOOL_VALUES.map((value) => ({ kind: "migration-tool" as const, value })),
-    ],
-    "package-export": [{ kind: "intent", value: "library" }],
-    "test-script": [{ kind: "test-runner", value: "package-script" }],
-    "typecheck-script": [{ kind: "command", value: "typecheck" }],
-  };
-  const matches = capabilityMatches[tag] ?? [];
-  for (const match of matches) {
-    const capability = capabilities.find((candidate) =>
-      Object.entries(match).every(
-        ([key, value]) => candidate[key as keyof ProfileCapabilitySignal] === value,
-      ),
-    );
-    if (capability) {
-      return capability;
-    }
-  }
-
-  return undefined;
+  return capabilities.map((capability) => ({
+    signal: `${capability.kind}:${capability.value}`,
+    source: capability.source,
+    ...(capability.path ? { path: capability.path } : {}),
+    ...(capability.detail ? { detail: capability.detail } : {}),
+  }));
 }
 
 function collectManifestDependencies(
@@ -506,14 +394,6 @@ function hasPackageExportMetadata(
 ): boolean {
   return (
     manifest?.exports !== undefined || !!manifest?.main || !!manifest?.module || !!manifest?.types
-  );
-}
-
-function hasSignalPath(files: string[], expectedPaths: string[]): boolean {
-  return files.some((file) =>
-    expectedPaths.some(
-      (expectedPath) => file === expectedPath || file.endsWith(`/${expectedPath}`),
-    ),
   );
 }
 

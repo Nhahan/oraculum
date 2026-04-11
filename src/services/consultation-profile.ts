@@ -26,11 +26,7 @@ import type { MaterializedTaskPacket } from "../domain/task.js";
 import { buildCommandCatalog } from "./profile-command-catalog.js";
 import { collectExplicitCommandCatalog } from "./profile-explicit-command-collector.js";
 import { collectProfileRepoFacts } from "./profile-repo-facts.js";
-import {
-  buildCapabilitySignals,
-  buildLegacySignalTags,
-  buildSignalProvenance,
-} from "./profile-signals.js";
+import { buildCapabilitySignals, buildSignalProvenance } from "./profile-signals.js";
 import { type ProjectConfigLayers, writeJsonFile } from "./project.js";
 
 interface RecommendConsultationProfileOptions {
@@ -80,18 +76,35 @@ const PROFILE_STRATEGIES: Record<ConsultationProfileId, ProfileStrategyId[]> = {
   migration: ["safety-first", "structural-refactor", "minimal-change"],
 };
 
-const PROFILE_FALLBACK_PRIORITY: ConsultationProfileId[] = [
-  "library",
-  "frontend",
-  "migration",
-  "generic",
-];
-
 interface ProfileCommandSlot {
   capability: string;
   roundId: ProfileCommandCandidate["roundId"];
 }
 
+// Fallback detection is intentionally conservative. A non-generic profile should only be
+// auto-selected when a single profile has explicit, profile-specific anchor commands.
+// Generic validation commands such as lint/typecheck/test should not silently masquerade as a
+// library/frontend/migration intent when runtime profile selection is unavailable.
+const PROFILE_FALLBACK_ANCHORS: Record<
+  Exclude<ConsultationProfileId, "generic">,
+  ProfileCommandSlot[]
+> = {
+  library: [
+    { roundId: "impact", capability: "package-export-smoke" },
+    { roundId: "deep", capability: "package-export-smoke" },
+  ],
+  frontend: [{ roundId: "deep", capability: "e2e-or-visual" }],
+  migration: [
+    { roundId: "fast", capability: "schema-validation" },
+    { roundId: "impact", capability: "migration-dry-run" },
+    { roundId: "deep", capability: "rollback-simulation" },
+    { roundId: "deep", capability: "migration-drift" },
+  ],
+};
+
+// These slot bundles are explicit product policy for generated oracle coverage after a profile is
+// chosen. They are intentionally capability-level only; repository semantics still come from raw
+// facts plus runtime profile selection rather than dependency-name heuristics.
 const PROFILE_COMMAND_SLOTS: Record<ConsultationProfileId, ProfileCommandSlot[]> = {
   generic: [
     { roundId: "fast", capability: "lint" },
@@ -233,7 +246,7 @@ function applyProfileSelection(options: {
       strategyIds: effectiveStrategies.map((strategy) => strategy.id),
       oracleIds: effectiveOracles.map((oracle) => oracle.id),
       missingCapabilities: explicitOracles ? [] : options.recommendation.missingCapabilities,
-      signals: options.signals.tags,
+      signals: buildSelectionSignalSummary(options.signals.capabilities),
     }),
   };
 }
@@ -244,12 +257,6 @@ async function collectProfileRepoSignals(
 ): Promise<ProfileRepoSignals> {
   const facts = await collectProfileRepoFacts(projectRoot, {
     rules: options.rules,
-  });
-  const tags = buildLegacySignalTags({
-    files: facts.files,
-    packageJson: facts.packageJson,
-    scripts: facts.scripts,
-    workspacePackageJsons: facts.workspacePackageJsons,
   });
   const capabilities = buildCapabilitySignals({
     files: facts.files,
@@ -274,9 +281,9 @@ async function collectProfileRepoSignals(
     packageManager: facts.packageManager,
     workspacePackageJsons: facts.workspacePackageJsons,
   });
-  const provenance = buildSignalProvenance(tags, capabilities);
+  const provenance = buildSignalProvenance(capabilities);
   const notes = buildSignalNotes(
-    tags,
+    capabilities,
     commandCatalog,
     facts.packageManager,
     facts.packageJson,
@@ -290,7 +297,6 @@ async function collectProfileRepoSignals(
     files: facts.files,
     workspaceRoots: facts.workspaceRoots,
     workspaceMetadata: facts.workspaceMetadata,
-    tags,
     notes,
     capabilities,
     provenance,
@@ -300,7 +306,7 @@ async function collectProfileRepoSignals(
 }
 
 function buildSignalNotes(
-  tags: string[],
+  capabilities: ProfileRepoSignals["capabilities"],
   commandCatalog: ProfileCommandCandidate[],
   packageManager: ProfileRepoSignals["packageManager"],
   packageJson:
@@ -315,7 +321,9 @@ function buildSignalNotes(
 ): string[] {
   const notes: string[] = [];
   if (
-    tags.includes("package-export") &&
+    capabilities.some(
+      (capability) => capability.kind === "intent" && capability.value === "library",
+    ) &&
     commandCatalog.every(
       (command) => command.id !== "pack-impact" && command.id !== "package-smoke-deep",
     )
@@ -342,66 +350,36 @@ function buildSignalNotes(
   return notes;
 }
 
+function buildSelectionSignalSummary(
+  capabilities: ProfileRepoSignals["capabilities"],
+): ConsultationProfileSelection["signals"] {
+  return capabilities.map((capability) => `${capability.kind}:${capability.value}`);
+}
+
 function buildFallbackRecommendation(
   signals: ProfileRepoSignals,
   taskPacket: MaterializedTaskPacket,
 ): AgentProfileRecommendation {
-  const scores: Record<ConsultationProfileId, number> = {
-    generic: 0,
-    library: 0,
-    frontend: 0,
-    migration: 0,
-  };
   const commandSlots = new Set(signals.commandCatalog.map(commandSlotKey));
-
-  if (
-    commandSlots.has(commandSlotKey({ roundId: "deep", capability: "package-export-smoke" })) ||
-    commandSlots.has(commandSlotKey({ roundId: "impact", capability: "package-export-smoke" }))
-  ) {
-    scores.library += 5;
-  }
-  if (
-    commandSlots.has(commandSlotKey({ roundId: "impact", capability: "unit-test" })) ||
-    commandSlots.has(commandSlotKey({ roundId: "deep", capability: "full-suite-test" }))
-  ) {
-    scores.library += 1;
-  }
-  if (commandSlots.has(commandSlotKey({ roundId: "deep", capability: "e2e-or-visual" }))) {
-    scores.frontend += 5;
-  }
-  if (
-    commandSlots.has(commandSlotKey({ roundId: "fast", capability: "schema-validation" })) ||
-    commandSlots.has(commandSlotKey({ roundId: "impact", capability: "migration-dry-run" })) ||
-    commandSlots.has(commandSlotKey({ roundId: "deep", capability: "rollback-simulation" }))
-  ) {
-    scores.migration += 5;
-  }
-
-  const rankedProfiles = (Object.entries(scores) as Array<[ConsultationProfileId, number]>).sort(
-    (left, right) => {
-      if (left[1] !== right[1]) {
-        return right[1] - left[1];
-      }
-      return (
-        PROFILE_FALLBACK_PRIORITY.indexOf(left[0]) - PROFILE_FALLBACK_PRIORITY.indexOf(right[0])
-      );
-    },
-  );
-  const hasProfileSignal = scores.library > 0 || scores.frontend > 0 || scores.migration > 0;
-  const ranked: Array<[ConsultationProfileId, number]> = hasProfileSignal
-    ? rankedProfiles
-    : [["generic", 0]];
-  const chosenProfile = ranked[0]?.[0] ?? "generic";
-  const chosenScore = ranked[0]?.[1] ?? 0;
-  const runnerUpScore = ranked[1]?.[1] ?? 0;
+  const anchoredProfiles = (
+    Object.entries(PROFILE_FALLBACK_ANCHORS) as Array<
+      [Exclude<ConsultationProfileId, "generic">, ProfileCommandSlot[]]
+    >
+  )
+    .filter(([, anchors]) => anchors.some((anchor) => commandSlots.has(commandSlotKey(anchor))))
+    .map(([profileId]) => profileId);
+  const [anchoredProfile] = anchoredProfiles;
+  const chosenProfile: ConsultationProfileId =
+    anchoredProfiles.length === 1 && anchoredProfile ? anchoredProfile : "generic";
   const confidence =
-    chosenScore >= 5 && chosenScore >= runnerUpScore + 2
-      ? "high"
-      : chosenScore >= 3
-        ? "medium"
-        : "low";
+    anchoredProfiles.length === 1 ? "high" : commandSlots.size > 0 ? "medium" : "low";
 
-  const selectedCommandIds = chooseFallbackCommandIds(chosenProfile, signals.commandCatalog);
+  const selectedCommandIds = chooseFallbackCommandIds(
+    chosenProfile === "generic" && anchoredProfiles.length > 1
+      ? ["generic", ...anchoredProfiles]
+      : [chosenProfile],
+    signals.commandCatalog,
+  );
   const missingCapabilities = inferMissingCapabilities(
     chosenProfile,
     selectedCommandIds,
@@ -411,7 +389,7 @@ function buildFallbackRecommendation(
   return agentProfileRecommendationSchema.parse({
     profileId: chosenProfile,
     confidence,
-    summary: buildFallbackSummary(chosenProfile, confidence, scores, signals, taskPacket),
+    summary: buildFallbackSummary(chosenProfile, confidence, anchoredProfiles, signals, taskPacket),
     candidateCount:
       confidence === "low"
         ? Math.min(3, PROFILE_DEFAULT_CANDIDATES[chosenProfile])
@@ -425,7 +403,7 @@ function buildFallbackRecommendation(
 function buildFallbackSummary(
   profileId: ConsultationProfileId,
   confidence: AgentProfileRecommendation["confidence"],
-  scores: Record<ConsultationProfileId, number>,
+  anchoredProfiles: Array<Exclude<ConsultationProfileId, "generic">>,
   signals: ProfileRepoSignals,
   taskPacket: MaterializedTaskPacket,
 ): string {
@@ -434,39 +412,39 @@ function buildFallbackSummary(
       .map((command) => command.id)
       .slice(0, 4)
       .join(", ") || "no executable command evidence";
-  const defaultedToGeneric =
-    profileId === "generic" &&
-    scores.library === 0 &&
-    scores.frontend === 0 &&
-    scores.migration === 0;
-  const rationale = defaultedToGeneric
-    ? "defaulted to the generic profile because no executable profile-specific command evidence was detected"
-    : `detected ${profileId} consultation profile from executable command evidence (${topCommandIds})`;
-  return `Fallback detection ${rationale}; confidence=${confidence}, scores=${JSON.stringify(scores)} for task "${basename(taskPacket.source.path)}".`;
+  const rationale =
+    profileId !== "generic"
+      ? `detected a unique ${profileId} profile anchor from executable command evidence (${topCommandIds})`
+      : anchoredProfiles.length > 1
+        ? `defaulted to the generic profile because profile-specific anchors conflicted (${anchoredProfiles.join(", ")})`
+        : "defaulted to the generic profile because no executable profile-specific anchor was detected";
+  return `Fallback detection ${rationale}; confidence=${confidence} for task "${basename(taskPacket.source.path)}".`;
 }
 
 function chooseFallbackCommandIds(
-  profileId: ConsultationProfileId,
+  profileIds: ConsultationProfileId[],
   catalog: ProfileCommandCandidate[],
 ): string[] {
   const selectedCommandIds: string[] = [];
   const usedExecutionKeys = new Set<string>();
 
-  for (const desiredSlot of PROFILE_COMMAND_SLOTS[profileId]) {
-    const candidate = catalog.find((command) => {
-      const executionKey = commandExecutionKey(command);
-      return (
-        command.roundId === desiredSlot.roundId &&
-        command.capability === desiredSlot.capability &&
-        !usedExecutionKeys.has(executionKey)
-      );
-    });
-    if (!candidate) {
-      continue;
-    }
+  for (const profileId of profileIds) {
+    for (const desiredSlot of PROFILE_COMMAND_SLOTS[profileId]) {
+      const candidate = catalog.find((command) => {
+        const executionKey = commandExecutionKey(command);
+        return (
+          command.roundId === desiredSlot.roundId &&
+          command.capability === desiredSlot.capability &&
+          !usedExecutionKeys.has(executionKey)
+        );
+      });
+      if (!candidate) {
+        continue;
+      }
 
-    selectedCommandIds.push(candidate.id);
-    usedExecutionKeys.add(commandExecutionKey(candidate));
+      selectedCommandIds.push(candidate.id);
+      usedExecutionKeys.add(commandExecutionKey(candidate));
+    }
   }
 
   return selectedCommandIds;
@@ -556,7 +534,7 @@ function sanitizeRecommendation(
     validCommandIds.has(id),
   );
   const baselineCommandIds = chooseFallbackCommandIds(
-    recommendation.profileId,
+    [recommendation.profileId],
     signals.commandCatalog,
   );
   const selectedCommandIds = [...new Set([...baselineCommandIds, ...filteredCommandIds])];

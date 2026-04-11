@@ -216,7 +216,6 @@ export function buildProfileSelectionPrompt(request: AgentProfileRequest): strin
     "",
     `Detected package manager: ${request.signals.packageManager}`,
     `Detected scripts: ${request.signals.scripts.join(", ") || "none"}`,
-    `Detected tags: ${request.signals.tags.join(", ") || "none"}`,
     `Detected notable files: ${request.signals.files.join(", ") || "none"}`,
     `Detected workspace roots: ${request.signals.workspaceRoots.join(", ") || "none"}`,
     `Detected workspace metadata: ${request.signals.workspaceMetadata.map((workspace) => `${workspace.label} (${workspace.root})`).join(", ") || "none"}`,
