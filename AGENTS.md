@@ -65,6 +65,7 @@ The default consultation command may infer a consultation-scoped profile from re
 Use `/.oraculum/config.json` for quick-start defaults only. Put operator controls such as custom rounds, strategies, or repo-local oracles in `/.oraculum/advanced.json`.
 Auto-init and `init --force`, reached through host-native `orc` commands, must keep the quick-start path clean: stale or orphaned `advanced.json` must not leak operator settings into the default UX.
 For target-repository generalization, follow `TODO.md`'s Frontier Model Boundary Policy: assume a frontier, human-level coding model. Deterministic code owns raw fact collection, contracts, and safety enforcement; the model owns semantic profile/check selection. Tool-specific labels may be evidence, but do not add named framework, ORM, migration-tool, test-runner, or language-ecosystem command recipes by default. Prefer repo-local scripts, explicit `.oraculum/advanced.json` oracles, or missing-capability evidence.
+If a new deterministic boundary is still necessary, justify it at the code/test/doc boundary directly: keep the rule narrow, explain why the model cannot safely own it, add a regression test, and document product-policy tables in stable repo docs or code comments instead of growing temporary audit ledgers by default.
 The npm/Node distribution model is an implementation and packaging fact for Oraculum itself; it must not imply that target repositories are Node projects.
 
 ## Working Bias
