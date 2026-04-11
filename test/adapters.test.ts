@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { ClaudeAdapter } from "../src/adapters/claude.js";
 import { CodexAdapter } from "../src/adapters/codex.js";
+import { buildProfileSelectionPrompt } from "../src/adapters/prompt.js";
 import { materializedTaskPacketSchema } from "../src/domain/task.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
 
@@ -576,6 +577,7 @@ if (out) {
         dependencies: ["typescript"],
         files: ["package.json", "tsconfig.json"],
         workspaceRoots: [],
+        workspaceMetadata: [],
         tags: ["package-export", "lint-script", "typecheck-script"],
         notes: [],
         capabilities: [],
@@ -657,6 +659,7 @@ process.stdout.write(JSON.stringify({
         dependencies: ["react", "vite"],
         files: ["package.json", "vite.config.ts", "playwright.config.ts"],
         workspaceRoots: [],
+        workspaceMetadata: [],
         tags: ["frontend-framework", "frontend-build", "e2e-config"],
         notes: [],
         capabilities: [],
@@ -700,6 +703,64 @@ process.stdout.write(JSON.stringify({
       '\\"generic\\"',
     );
   }, 20_000);
+
+  it("includes workspace command execution context in the profile selection prompt", () => {
+    const prompt = buildProfileSelectionPrompt({
+      runId: "run_1",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/logs",
+      taskPacket: createTaskPacket(),
+      signals: {
+        packageManager: "pnpm",
+        scripts: ["lint"],
+        dependencies: ["typescript"],
+        files: ["pnpm-workspace.yaml", "packages/app/package.json"],
+        workspaceRoots: ["packages/*"],
+        workspaceMetadata: [
+          {
+            label: "app",
+            root: "packages/app",
+            manifests: ["packages/app/package.json"],
+          },
+        ],
+        tags: ["workspace-config", "lint-script"],
+        notes: [],
+        capabilities: [],
+        provenance: [],
+        skippedCommandCandidates: [],
+        commandCatalog: [
+          {
+            id: "lint-fast",
+            roundId: "fast",
+            label: "Lint",
+            command: "pnpm",
+            args: ["run", "lint"],
+            relativeCwd: "packages/app",
+            source: "repo-local-script",
+            capability: "lint-fast",
+            provenance: {
+              signal: "script:lint",
+              source: "workspace-config",
+              path: "packages/app/package.json",
+              detail: 'Workspace script "lint".',
+            },
+            invariant: "The app workspace should satisfy lint checks.",
+          },
+        ],
+      },
+      profileOptions: [
+        { id: "generic", description: "Generic work." },
+        { id: "library", description: "Library work." },
+        { id: "frontend", description: "Frontend work." },
+        { id: "migration", description: "Migration work." },
+      ],
+    });
+
+    expect(prompt).toContain("Relative cwd: packages/app");
+    expect(prompt).toContain(
+      'Provenance: signal=script:lint source=workspace-config path=packages/app/package.json detail=Workspace script "lint".',
+    );
+  });
 });
 
 function createTaskPacket() {

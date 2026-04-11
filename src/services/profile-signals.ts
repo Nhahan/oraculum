@@ -2,11 +2,13 @@ import type { Dirent } from "node:fs";
 import { lstat, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import type { ManagedTreeRules } from "../domain/config.js";
 import type {
   ProfileCapabilitySignal,
   ProfileRepoSignals,
   ProfileSignalProvenance,
 } from "../domain/profile.js";
+import { shouldManageProjectPath } from "./managed-tree.js";
 import {
   CYPRESS_CONFIG_PATHS,
   E2E_CONFIG_PATHS,
@@ -21,8 +23,15 @@ import {
   WORKSPACE_MARKER_FILES,
   WORKSPACE_PARENT_DIRS,
 } from "./profile-detector-data.js";
+import type {
+  ProfilePackageJsonManifest,
+  WorkspacePackageJsonManifest,
+} from "./profile-repo-facts.js";
 
-export async function detectWorkspaceRoots(projectRoot: string): Promise<string[]> {
+export async function detectWorkspaceRoots(
+  projectRoot: string,
+  rules?: ManagedTreeRules,
+): Promise<string[]> {
   const workspaceRoots = new Set<string>();
 
   for (const parentDir of WORKSPACE_PARENT_DIRS) {
@@ -42,7 +51,13 @@ export async function detectWorkspaceRoots(projectRoot: string): Promise<string[
         continue;
       }
       const relativeRoot = `${parentDir}/${entry.name}`;
+      if (!shouldManageProjectPath(relativeRoot, rules)) {
+        continue;
+      }
       for (const marker of WORKSPACE_MARKER_FILES) {
+        if (!shouldManageProjectPath(`${relativeRoot}/${marker}`, rules)) {
+          continue;
+        }
         // eslint-disable-next-line no-await-in-loop
         if (await pathExists(join(projectRoot, relativeRoot, marker))) {
           workspaceRoots.add(relativeRoot);
@@ -58,9 +73,13 @@ export async function detectWorkspaceRoots(projectRoot: string): Promise<string[
 export async function detectKnownFiles(
   projectRoot: string,
   workspaceRoots: string[] = [],
+  rules?: ManagedTreeRules,
 ): Promise<string[]> {
   const present = new Set<string>();
   for (const candidate of KNOWN_SIGNAL_PATHS) {
+    if (!shouldManageProjectPath(candidate, rules)) {
+      continue;
+    }
     // eslint-disable-next-line no-await-in-loop
     if (await pathExists(join(projectRoot, candidate))) {
       present.add(candidate);
@@ -70,6 +89,9 @@ export async function detectKnownFiles(
   for (const workspaceRoot of workspaceRoots) {
     for (const candidate of KNOWN_SIGNAL_PATHS) {
       const relativePath = `${workspaceRoot}/${candidate}`;
+      if (!shouldManageProjectPath(relativePath, rules)) {
+        continue;
+      }
       // eslint-disable-next-line no-await-in-loop
       if (await pathExists(join(projectRoot, relativePath))) {
         present.add(relativePath);
@@ -92,6 +114,7 @@ export function buildLegacySignalTags(options: {
       }
     | undefined;
   scripts: string[];
+  workspacePackageJsons: WorkspacePackageJsonManifest[];
 }): string[] {
   const tags = new Set<string>();
 
@@ -111,10 +134,10 @@ export function buildLegacySignalTags(options: {
     tags.add("migration-files");
   }
   if (
-    options.packageJson?.exports !== undefined ||
-    options.packageJson?.main ||
-    options.packageJson?.module ||
-    options.packageJson?.types
+    hasPackageExportMetadata(options.packageJson) ||
+    options.workspacePackageJsons.some((workspaceManifest) =>
+      hasPackageExportMetadata(workspaceManifest.packageJson),
+    )
   ) {
     tags.add("package-export");
   }
@@ -149,22 +172,23 @@ export function buildLegacySignalTags(options: {
 export function buildCapabilitySignals(options: {
   dependencies: string[];
   files: string[];
-  packageJson:
+  packageManagerEvidence?:
     | {
-        exports?: unknown;
-        main?: string;
-        module?: string;
-        types?: string;
+        detail: string;
+        path?: string;
+        source: ProfileSignalProvenance["source"];
       }
     | undefined;
+  packageJson: ProfilePackageJsonManifest | undefined;
   packageManager: ProfileRepoSignals["packageManager"];
   scripts: string[];
   tags: string[];
+  workspacePackageJsons: WorkspacePackageJsonManifest[];
   workspaceRoots: string[];
 }): ProfileCapabilitySignal[] {
-  const dependencies = new Set(options.dependencies);
   const files = new Set(options.files);
-  const scripts = new Set(options.scripts);
+  const rootDependencies = new Set(collectManifestDependencies(options.packageJson));
+  const rootScripts = new Set(Object.keys(options.packageJson?.scripts ?? {}));
   const playwrightConfigPath = findSignalPath(files, PLAYWRIGHT_CONFIG_PATHS);
   const cypressConfigPath = findSignalPath(files, CYPRESS_CONFIG_PATHS);
   const frontendBuildConfigPath = findSignalPath(files, FRONTEND_BUILD_CONFIG_PATHS);
@@ -215,13 +239,22 @@ export function buildCapabilitySignals(options: {
       detail: `Detected workspace roots: ${options.workspaceRoots.join(", ")}.`,
     });
   }
-  if (files.has("tsconfig.json") || dependencies.has("typescript")) {
+  if (files.has("tsconfig.json") || rootDependencies.has("typescript")) {
     add({
       kind: "language",
       value: "typescript",
       source: "root-config",
-      path: files.has("tsconfig.json") ? "tsconfig.json" : "package.json",
+      path: files.has("tsconfig.json")
+        ? "tsconfig.json"
+        : rootDependencies.has("typescript")
+          ? "package.json"
+          : undefined,
       confidence: "high",
+      ...(files.has("tsconfig.json")
+        ? {}
+        : rootDependencies.has("typescript")
+          ? { detail: "TypeScript dependency is declared in package metadata." }
+          : {}),
     });
   }
   for (const workspaceTsconfig of options.files.filter((file) => file.endsWith("/tsconfig.json"))) {
@@ -234,16 +267,36 @@ export function buildCapabilitySignals(options: {
       detail: "Nested tsconfig.json is present.",
     });
   }
+  for (const workspaceManifest of options.workspacePackageJsons) {
+    const workspaceDependencies = new Set(
+      collectManifestDependencies(workspaceManifest.packageJson),
+    );
+    if (!workspaceDependencies.has("typescript")) {
+      continue;
+    }
+    add({
+      kind: "language",
+      value: "typescript",
+      source: "workspace-config",
+      path: workspaceManifest.manifestPath,
+      confidence: "high",
+      detail: "TypeScript dependency is declared in workspace package metadata.",
+    });
+  }
   if (options.packageManager !== "unknown") {
     add({
       kind: "build-system",
       value: options.packageManager,
-      source: "root-config",
-      ...(options.packageJson ? { path: "package.json" } : {}),
+      source: options.packageManagerEvidence?.source ?? "root-config",
+      ...(options.packageManagerEvidence?.path
+        ? { path: options.packageManagerEvidence.path }
+        : {}),
       confidence: "high",
-      detail: options.packageJson
-        ? "Package manager detected from package metadata."
-        : "Package manager detected from a lockfile.",
+      detail:
+        options.packageManagerEvidence?.detail ??
+        (options.packageJson
+          ? "Package manager detected from package metadata."
+          : "Package manager detected from a lockfile."),
     });
   }
   if (frontendBuildConfigPath) {
@@ -255,31 +308,110 @@ export function buildCapabilitySignals(options: {
       detail: "Frontend build configuration file is present.",
     });
   }
-  if (options.tags.includes("package-export") || options.tags.includes("library-signal")) {
+  if (dependenciesIntersection(rootDependencies, FRONTEND_DEPENDENCIES)) {
+    add({
+      kind: "build-system",
+      value: "frontend-framework",
+      source: "root-config",
+      path: "package.json",
+      detail: "Frontend framework dependency is declared in package metadata.",
+    });
+  }
+  for (const workspaceManifest of options.workspacePackageJsons) {
+    const workspaceDependencies = new Set(
+      collectManifestDependencies(workspaceManifest.packageJson),
+    );
+    if (!dependenciesIntersection(workspaceDependencies, FRONTEND_DEPENDENCIES)) {
+      continue;
+    }
+    add({
+      kind: "build-system",
+      value: "frontend-framework",
+      source: "workspace-config",
+      path: workspaceManifest.manifestPath,
+      detail: "Frontend framework dependency is declared in workspace package metadata.",
+    });
+  }
+  if (hasPackageExportMetadata(options.packageJson)) {
     add({
       kind: "intent",
       value: "library",
       source: "root-config",
       path: "package.json",
       confidence: "high",
+      detail: "Package export metadata is present.",
     });
   }
-  if (scripts.has("lint")) {
+  for (const workspaceManifest of options.workspacePackageJsons) {
+    if (!hasPackageExportMetadata(workspaceManifest.packageJson)) {
+      continue;
+    }
+    add({
+      kind: "intent",
+      value: "library",
+      source: "workspace-config",
+      path: workspaceManifest.manifestPath,
+      confidence: "high",
+      detail: "Workspace package export metadata is present.",
+    });
+  }
+  if (rootScripts.has("lint")) {
     add({ kind: "command", value: "lint", source: "root-config", path: "package.json" });
   }
-  if ([...scripts].some((script) => ["typecheck", "check-types", "tsc"].includes(script))) {
+  if ([...rootScripts].some((script) => ["typecheck", "check-types", "tsc"].includes(script))) {
     add({ kind: "command", value: "typecheck", source: "root-config", path: "package.json" });
   }
-  if (scripts.has("build")) {
+  if (rootScripts.has("build")) {
     add({ kind: "command", value: "build", source: "root-config", path: "package.json" });
   }
-  if ([...scripts].some((script) => script === "test" || script.includes("test:"))) {
+  if ([...rootScripts].some((script) => script === "test" || script.includes("test:"))) {
     add({
       kind: "test-runner",
       value: "package-script",
       source: "root-config",
       path: "package.json",
     });
+  }
+  for (const workspaceManifest of options.workspacePackageJsons) {
+    const workspaceScripts = new Set(Object.keys(workspaceManifest.packageJson.scripts ?? {}));
+    if (workspaceScripts.has("lint")) {
+      add({
+        kind: "command",
+        value: "lint",
+        source: "workspace-config",
+        path: workspaceManifest.manifestPath,
+        detail: "Workspace package.json lint script is present.",
+      });
+    }
+    if (
+      [...workspaceScripts].some((script) => ["typecheck", "check-types", "tsc"].includes(script))
+    ) {
+      add({
+        kind: "command",
+        value: "typecheck",
+        source: "workspace-config",
+        path: workspaceManifest.manifestPath,
+        detail: "Workspace package.json typecheck script is present.",
+      });
+    }
+    if (workspaceScripts.has("build")) {
+      add({
+        kind: "command",
+        value: "build",
+        source: "workspace-config",
+        path: workspaceManifest.manifestPath,
+        detail: "Workspace package.json build script is present.",
+      });
+    }
+    if ([...workspaceScripts].some((script) => script === "test" || script.includes("test:"))) {
+      add({
+        kind: "test-runner",
+        value: "package-script",
+        source: "workspace-config",
+        path: workspaceManifest.manifestPath,
+        detail: "Workspace package.json test script is present.",
+      });
+    }
   }
   if (playwrightConfigPath) {
     add({
@@ -299,18 +431,42 @@ export function buildCapabilitySignals(options: {
   }
   for (const toolSignal of MIGRATION_TOOL_SIGNALS) {
     const configPath = findSignalPath(files, [...toolSignal.configPaths]);
-    if (!configPath && !dependenciesIntersection(dependencies, toolSignal.dependencies)) {
+    if (configPath) {
+      add({
+        kind: "migration-tool",
+        value: toolSignal.value,
+        source: signalSourceForPath(configPath, [...toolSignal.configPaths]),
+        path: configPath,
+        confidence: "high",
+      });
       continue;
     }
-    add({
-      kind: "migration-tool",
-      value: toolSignal.value,
-      source: configPath
-        ? signalSourceForPath(configPath, [...toolSignal.configPaths])
-        : "root-config",
-      ...(configPath ? { path: configPath } : options.packageJson ? { path: "package.json" } : {}),
-      confidence: "high",
-    });
+
+    if (dependenciesIntersection(rootDependencies, toolSignal.dependencies)) {
+      add({
+        kind: "migration-tool",
+        value: toolSignal.value,
+        source: "root-config",
+        path: "package.json",
+        confidence: "high",
+      });
+    }
+
+    for (const workspaceManifest of options.workspacePackageJsons) {
+      const workspaceDependencies = new Set(
+        collectManifestDependencies(workspaceManifest.packageJson),
+      );
+      if (!dependenciesIntersection(workspaceDependencies, toolSignal.dependencies)) {
+        continue;
+      }
+      add({
+        kind: "migration-tool",
+        value: toolSignal.value,
+        source: "workspace-config",
+        path: workspaceManifest.manifestPath,
+        confidence: "high",
+      });
+    }
   }
   if (capabilities.every((capability) => capability.kind !== "intent")) {
     add({
@@ -382,6 +538,7 @@ function findLegacyTagCapability(
       { kind: "test-runner", value: "cypress" },
     ],
     "frontend-build": [{ kind: "build-system", value: "frontend-config" }],
+    "frontend-framework": [{ kind: "build-system", value: "frontend-framework" }],
     "library-signal": [{ kind: "intent", value: "library" }],
     "lint-script": [{ kind: "command", value: "lint" }],
     "migration-files": [
@@ -408,6 +565,35 @@ function findLegacyTagCapability(
   }
 
   return undefined;
+}
+
+function collectManifestDependencies(
+  manifest:
+    | {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      }
+    | undefined,
+): string[] {
+  return Object.keys({
+    ...(manifest?.dependencies ?? {}),
+    ...(manifest?.devDependencies ?? {}),
+  });
+}
+
+function hasPackageExportMetadata(
+  manifest:
+    | {
+        exports?: unknown;
+        main?: string;
+        module?: string;
+        types?: string;
+      }
+    | undefined,
+): boolean {
+  return (
+    manifest?.exports !== undefined || !!manifest?.main || !!manifest?.module || !!manifest?.types
+  );
 }
 
 function dependenciesIntersection(dependencies: Set<string>, expected: Set<string>): boolean {

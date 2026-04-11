@@ -14,41 +14,41 @@ The next beta must not be published until every checkbox in this section is chec
 
 ### Publish-Path Verification
 
-- [ ] Run `npm run evidence:release-smoke`.
-- [ ] Run `npm run evidence:host-native`.
-- [ ] Run installed-package smoke in a fresh temporary project.
+- [x] Run `npm run evidence:release-smoke`.
+- [x] Run `npm run evidence:host-native`.
+- [x] Run installed-package smoke in a fresh temporary project.
 
 ### Raw Facts / Commands Split
 
-- [ ] Extract package and repository manifest reading from `src/services/consultation-profile.ts` into a raw fact collector that records manifests, lockfiles, scripts, exports, and config paths without turning tool names into commands.
-- [ ] Add a generic explicit-command collector for repo-local command surfaces.
-- [ ] Support package-manager scripts only when a package manager is explicitly known.
-- [ ] Support Make, Just, and Taskfile targets only when they are explicitly present and safely enumerable.
-- [ ] Support repo-local `scripts/` or `bin/` entry points only when they are explicitly configured or unambiguous.
-- [ ] Keep each collector small and independently tested; do not turn `consultation-profile.ts` or `profile-command-catalog.ts` into a larger hardcoded switchboard.
-- [ ] Resolve the remaining Node-centric hotspot in `src/services/consultation-profile.ts` after the split lands.
+- [x] Extract package and repository manifest reading from `src/services/consultation-profile.ts` into a raw fact collector that records manifests, lockfiles, scripts, exports, and config paths without turning tool names into commands.
+- [x] Add a generic explicit-command collector for repo-local command surfaces.
+- [x] Support package-manager scripts only when a package manager is explicitly known.
+- [x] Support Make, Just, and Taskfile targets only when they are explicitly present and safely enumerable.
+- [x] Support repo-local `scripts/` or `bin/` entry points only when they are explicitly configured or unambiguous.
+- [x] Keep each collector small and independently tested; do not turn `consultation-profile.ts` or `profile-command-catalog.ts` into a larger hardcoded switchboard.
+- [x] Resolve the remaining Node-centric hotspot in `src/services/consultation-profile.ts` after the split lands.
 
 ### Explicit Oracles And Command Precedence
 
-- [ ] Keep explicit `.oraculum/advanced.json` oracles as the highest-priority execution source.
-- [ ] Add tests proving two different explicit command collectors can contribute commands without duplicate command execution.
+- [x] Keep explicit `.oraculum/advanced.json` oracles as the highest-priority execution source.
+- [x] Add tests proving two different explicit command collectors can contribute commands without duplicate command execution.
 
 ### Execution Environment Generalization
 
-- [ ] Prefer candidate-workspace local tool paths when the workspace owns or links dependencies; only fall back to project-root tool paths when that is intentional and recorded.
-- [ ] Add local tool path support for `.venv/bin` and `.venv/Scripts`.
-- [ ] Add local tool path support for `venv/bin` and `venv/Scripts`.
-- [ ] Add local tool path support for repo-local `bin/`.
-- [ ] Add local tool path support for Gradle and Maven wrappers.
-- [ ] Keep Windows behavior explicit for shell wrappers and executable suffixes.
-- [ ] Ensure repo-local oracle env remains deterministic and does not accidentally expose extra host-specific state.
+- [x] Prefer candidate-workspace local tool paths when the workspace owns or links dependencies; only fall back to project-root tool paths when that is intentional and recorded.
+- [x] Add local tool path support for `.venv/bin` and `.venv/Scripts`.
+- [x] Add local tool path support for `venv/bin` and `venv/Scripts`.
+- [x] Add local tool path support for repo-local `bin/`.
+- [x] Add local tool path support for Gradle and Maven wrappers.
+- [x] Keep Windows behavior explicit for shell wrappers and executable suffixes.
+- [x] Ensure repo-local oracle env remains deterministic and does not accidentally expose extra host-specific state.
 
 ### Evidence And Artifact Integrity
 
-- [ ] Preserve backward compatibility for existing run artifacts where possible; if schema changes are required, add a versioned migration or tolerant reader.
-- [ ] Align the bounded repository signal walker with the managed-tree exclusion policy once raw signal output drives workspace copy and linking.
-- [ ] Add workspace and monorepo fact collection for explicit workspace metadata. It may record workspace roots and labels, but must not imply root-level commands.
-- [ ] Reduce Node bias in `scripts/beta-evidence.mjs`; `docs`, `service`, and `monorepo` scenarios should not rely on `package.json` scripts when they are being used as generality evidence.
+- [x] Preserve backward compatibility for existing run artifacts where possible; if schema changes are required, add a versioned migration or tolerant reader.
+- [x] Align the bounded repository signal walker with the managed-tree exclusion policy once raw signal output drives workspace copy and linking.
+- [x] Add workspace and monorepo fact collection for explicit workspace metadata. It may record workspace roots and labels, but must not imply root-level commands.
+- [x] Reduce Node bias in `scripts/beta-evidence.mjs`; `docs`, `service`, and `monorepo` scenarios should not rely on `package.json` scripts when they are being used as generality evidence.
 
 ## Roadmap
 

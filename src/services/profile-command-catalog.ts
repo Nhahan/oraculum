@@ -5,16 +5,7 @@ import type {
   ProfileSignalProvenance,
   ProfileSkippedCommandCandidate,
 } from "../domain/profile.js";
-
-const DEDUPED_PACKAGE_SCRIPT_CAPABILITIES = new Set([
-  "build",
-  "changed-area-test",
-  "e2e-or-visual",
-  "full-suite-test",
-  "migration-dry-run",
-  "rollback-simulation",
-  "unit-test",
-]);
+import type { WorkspacePackageJsonManifest } from "./profile-repo-facts.js";
 
 export interface ProfileCommandCatalogResult {
   commandCatalog: ProfileCommandCandidate[];
@@ -23,9 +14,10 @@ export interface ProfileCommandCatalogResult {
 
 export function buildCommandCatalog(options: {
   capabilities: ProfileCapabilitySignal[];
+  explicitCommandCatalog: ProfileCommandCandidate[];
+  explicitSkippedCommandCandidates: ProfileSkippedCommandCandidate[];
   packageJson:
     | {
-        scripts?: Record<string, string>;
         exports?: unknown;
         main?: string;
         module?: string;
@@ -33,16 +25,14 @@ export function buildCommandCatalog(options: {
       }
     | undefined;
   packageManager: ProfileRepoSignals["packageManager"];
-  scripts: string[];
+  workspacePackageJsons: WorkspacePackageJsonManifest[];
 }): ProfileCommandCatalogResult {
-  const scripts = new Set(options.scripts);
-  const commandCatalog: ProfileCommandCandidate[] = [];
-  const skippedCommandCandidates: ProfileSkippedCommandCandidate[] = [];
-  const hasPackageExport =
-    options.packageJson?.exports !== undefined ||
-    options.packageJson?.main ||
-    options.packageJson?.module ||
-    options.packageJson?.types;
+  const commandCatalog = [...options.explicitCommandCatalog];
+  const skippedCommandCandidates = [...options.explicitSkippedCommandCandidates];
+  const packageExportTargets = collectPackageExportTargets(
+    options.packageJson,
+    options.workspacePackageJsons,
+  );
 
   const addSkipped = (candidate: ProfileSkippedCommandCandidate) => {
     const key = [
@@ -67,184 +57,11 @@ export function buildCommandCatalog(options: {
     }
   };
 
-  const addScriptCommand = (
-    id: string,
-    roundId: ProfileCommandCandidate["roundId"],
-    label: string,
-    script: string,
-    capability: string,
-    invariant: string,
-  ): boolean => {
-    if (!scripts.has(script)) {
-      return false;
+  if (packageExportTargets.length === 1 && options.packageManager === "npm") {
+    const [target] = packageExportTargets;
+    if (!target) {
+      return { commandCatalog, skippedCommandCandidates };
     }
-    const provenance = packageScriptProvenance(script);
-    const scriptBody = options.packageJson?.scripts?.[script];
-    const command = buildScriptCommand(options.packageManager, script);
-    if (!command) {
-      addSkipped({
-        id,
-        label,
-        capability,
-        reason: "ambiguous-package-manager",
-        detail: `package.json script "${script}" exists, but no package manager was detected; Oraculum will not guess npm.`,
-        provenance,
-      });
-      return true;
-    }
-    commandCatalog.push({
-      id,
-      roundId,
-      label,
-      command: command.command,
-      args: command.args,
-      invariant,
-      ...(scriptBody && DEDUPED_PACKAGE_SCRIPT_CAPABILITIES.has(capability)
-        ? { dedupeKey: `package-script:${normalizeScriptBody(scriptBody)}` }
-        : {}),
-      pathPolicy: "inherit",
-      source: "repo-local-script",
-      capability,
-      safety: "repo-local-declared",
-      requiresExplicitOptIn: false,
-      provenance,
-      safetyRationale:
-        "Uses a repo-local package.json script selected by command id; Oraculum does not infer a tool-specific command.",
-    });
-    return true;
-  };
-
-  addScriptCommand(
-    "lint-fast",
-    "fast",
-    "Lint",
-    "lint",
-    "lint",
-    "The codebase should satisfy lint checks.",
-  );
-  for (const script of ["typecheck", "check-types", "tsc"]) {
-    if (
-      addScriptCommand(
-        "typecheck-fast",
-        "fast",
-        "Typecheck",
-        script,
-        "typecheck",
-        "The codebase should satisfy type checking.",
-      )
-    ) {
-      break;
-    }
-  }
-  for (const script of ["schema:check", "check:schema", "db:schema", "prisma:validate"]) {
-    if (
-      addScriptCommand(
-        "schema-fast",
-        "fast",
-        "Schema validation",
-        script,
-        "schema-validation",
-        "Schema definitions should validate cleanly.",
-      )
-    ) {
-      break;
-    }
-  }
-  for (const script of ["test:unit", "unit"]) {
-    if (
-      addScriptCommand(
-        "unit-impact",
-        "impact",
-        "Unit tests",
-        script,
-        "unit-test",
-        "Impacted unit tests should pass.",
-      )
-    ) {
-      break;
-    }
-  }
-  for (const script of ["test:changed", "test:affected", "affected:test"]) {
-    if (
-      addScriptCommand(
-        "changed-tests-impact",
-        "impact",
-        "Changed-area tests",
-        script,
-        "changed-area-test",
-        "Changed-area tests should pass.",
-      )
-    ) {
-      break;
-    }
-  }
-  addScriptCommand(
-    "build-impact",
-    "impact",
-    "Build",
-    "build",
-    "build",
-    "The project should build successfully after the patch.",
-  );
-  for (const script of [
-    "migration:dry-run",
-    "migrate:dry-run",
-    "db:dry-run",
-    "migration:status",
-    "migrate:status",
-    "prisma:migrate:status",
-  ]) {
-    if (
-      addScriptCommand(
-        "migration-impact",
-        "impact",
-        "Migration dry-run",
-        script,
-        "migration-dry-run",
-        "Migration planning or dry-run should succeed.",
-      )
-    ) {
-      break;
-    }
-  }
-  for (const script of [
-    "e2e",
-    "test:e2e",
-    "playwright",
-    "cypress",
-    "visual",
-    "test:visual",
-    "test:smoke",
-    "smoke",
-  ]) {
-    if (
-      addScriptCommand(
-        "e2e-deep",
-        "deep",
-        "End-to-end or visual checks",
-        script,
-        "e2e-or-visual",
-        "Deep end-to-end or visual validation should pass.",
-      )
-    ) {
-      break;
-    }
-  }
-  for (const script of ["test", "test:full", "test:ci", "ci:test", "verify", "check"]) {
-    if (
-      addScriptCommand(
-        "full-suite-deep",
-        "deep",
-        "Full test suite",
-        script,
-        "full-suite-test",
-        "The full test suite should pass before crowning.",
-      )
-    ) {
-      break;
-    }
-  }
-  if (hasPackageExport && options.packageManager === "npm") {
     commandCatalog.push({
       id: "package-smoke-deep",
       roundId: "deep",
@@ -280,11 +97,13 @@ export function buildCommandCatalog(options: {
       pathPolicy: "inherit",
       source: "product-owned",
       capability: "package-export-smoke",
+      ...(target.relativeCwd ? { relativeCwd: target.relativeCwd } : {}),
       safety: "product-owned-temporary",
       requiresExplicitOptIn: false,
-      provenance: packageMetadataProvenance("package-export"),
-      safetyRationale:
-        "Uses npm only when packageManager is explicitly npm and writes the tarball into a temporary directory that is removed before exit.",
+      provenance: packageMetadataProvenance(target),
+      safetyRationale: target.relativeCwd
+        ? "Uses npm only when packageManager is explicitly npm and runs inside the selected workspace package before cleaning up the temporary tarball directory."
+        : "Uses npm only when packageManager is explicitly npm and writes the tarball into a temporary directory that is removed before exit.",
     });
     commandCatalog.push({
       id: "pack-impact",
@@ -296,21 +115,27 @@ export function buildCommandCatalog(options: {
       pathPolicy: "inherit",
       source: "product-owned",
       capability: "package-export-smoke",
+      ...(target.relativeCwd ? { relativeCwd: target.relativeCwd } : {}),
       safety: "product-owned-read-only",
       requiresExplicitOptIn: false,
-      provenance: packageMetadataProvenance("package-export"),
-      safetyRationale:
-        "Uses npm pack --dry-run only when packageManager is explicitly npm and package export metadata exists.",
+      provenance: packageMetadataProvenance(target),
+      safetyRationale: target.relativeCwd
+        ? "Uses npm pack --dry-run only when packageManager is explicitly npm and package export metadata exists in the selected workspace package."
+        : "Uses npm pack --dry-run only when packageManager is explicitly npm and package export metadata exists.",
     });
-  } else if (hasPackageExport) {
+  } else if (packageExportTargets.length === 1) {
+    const [target] = packageExportTargets;
+    if (!target) {
+      return { commandCatalog, skippedCommandCandidates };
+    }
     const reason =
       options.packageManager === "unknown"
         ? "ambiguous-package-manager"
         : "unsupported-package-manager";
     const detail =
       options.packageManager === "unknown"
-        ? "Package export metadata exists, but no package manager was detected; Oraculum will not guess npm."
-        : `Package export metadata exists, but built-in package smoke checks are limited to explicit npm projects; detected ${options.packageManager}.`;
+        ? `${target.label} declares package export metadata, but no package manager was detected; Oraculum will not guess npm.`
+        : `${target.label} declares package export metadata, but built-in package smoke checks are limited to explicit npm projects; detected ${options.packageManager}.`;
     for (const id of ["pack-impact", "package-smoke-deep"]) {
       addSkipped({
         id,
@@ -318,27 +143,26 @@ export function buildCommandCatalog(options: {
         capability: "package-export-smoke",
         reason,
         detail,
-        provenance: packageMetadataProvenance("package-export"),
+        provenance: packageMetadataProvenance(target),
       });
     }
-  }
-  for (const script of [
-    "migration:rollback",
-    "rollback:simulate",
-    "rollback:simulation",
-    "db:rollback:dry-run",
-  ]) {
-    if (
-      addScriptCommand(
-        "rollback-deep",
-        "deep",
-        "Rollback simulation",
-        script,
-        "rollback-simulation",
-        "Rollback simulation should succeed.",
-      )
-    ) {
-      break;
+  } else if (packageExportTargets.length > 1) {
+    const detail = `Package export metadata was detected in multiple package manifests (${packageExportTargets.map((target) => target.path).join(", ")}); Oraculum will not guess which package to pack.`;
+    for (const id of ["pack-impact", "package-smoke-deep"]) {
+      addSkipped({
+        id,
+        label: id === "pack-impact" ? "Package export check" : "Package tarball smoke",
+        capability: "package-export-smoke",
+        reason: "ambiguous-workspace-command",
+        detail,
+        provenance: {
+          signal: "package-export",
+          source: packageExportTargets.some((target) => target.source === "workspace-config")
+            ? "workspace-config"
+            : "root-config",
+          detail: "Multiple package manifests declare export metadata.",
+        },
+      });
     }
   }
 
@@ -395,44 +219,18 @@ function recordCapabilitySkips(options: {
   }
 }
 
-function normalizeScriptBody(scriptBody: string): string {
-  return scriptBody.trim().replace(/\s+/gu, " ");
-}
-
-function buildScriptCommand(
-  packageManager: ProfileRepoSignals["packageManager"],
-  script: string,
-): { command: string; args: string[] } | undefined {
-  if (packageManager === "pnpm") {
-    return { command: "pnpm", args: ["run", script] };
-  }
-  if (packageManager === "yarn") {
-    return { command: "yarn", args: [script] };
-  }
-  if (packageManager === "bun") {
-    return { command: "bun", args: ["run", script] };
-  }
-  if (packageManager === "npm") {
-    return { command: "npm", args: ["run", script] };
-  }
-  return undefined;
-}
-
-function packageScriptProvenance(script: string): ProfileSignalProvenance {
+function packageMetadataProvenance(target: {
+  path: string;
+  source: ProfileSignalProvenance["source"];
+}): ProfileSignalProvenance {
   return {
-    signal: `script:${script}`,
-    source: "root-config",
-    path: "package.json",
-    detail: "Repo-local package.json script.",
-  };
-}
-
-function packageMetadataProvenance(signal: string): ProfileSignalProvenance {
-  return {
-    signal,
-    source: "root-config",
-    path: "package.json",
-    detail: "Package export metadata.",
+    signal: "package-export",
+    source: target.source,
+    path: target.path,
+    detail:
+      target.source === "workspace-config"
+        ? "Workspace package export metadata."
+        : "Package export metadata.",
   };
 }
 
@@ -443,4 +241,62 @@ function capabilityProvenance(capability: ProfileCapabilitySignal): ProfileSigna
     ...(capability.path ? { path: capability.path } : {}),
     ...(capability.detail ? { detail: capability.detail } : {}),
   };
+}
+
+function collectPackageExportTargets(
+  packageJson:
+    | {
+        exports?: unknown;
+        main?: string;
+        module?: string;
+        types?: string;
+      }
+    | undefined,
+  workspacePackageJsons: WorkspacePackageJsonManifest[],
+): Array<{
+  label: string;
+  path: string;
+  relativeCwd?: string;
+  source: ProfileSignalProvenance["source"];
+}> {
+  const targets: Array<{
+    label: string;
+    path: string;
+    relativeCwd?: string;
+    source: ProfileSignalProvenance["source"];
+  }> = [];
+  if (hasPackageExportMetadata(packageJson)) {
+    targets.push({
+      label: "The root package",
+      path: "package.json",
+      source: "root-config",
+    });
+  }
+  for (const workspaceManifest of workspacePackageJsons) {
+    if (!hasPackageExportMetadata(workspaceManifest.packageJson)) {
+      continue;
+    }
+    targets.push({
+      label: `Workspace package ${workspaceManifest.root}`,
+      path: workspaceManifest.manifestPath,
+      relativeCwd: workspaceManifest.root,
+      source: "workspace-config",
+    });
+  }
+  return targets;
+}
+
+function hasPackageExportMetadata(
+  manifest:
+    | {
+        exports?: unknown;
+        main?: string;
+        module?: string;
+        types?: string;
+      }
+    | undefined,
+): boolean {
+  return (
+    manifest?.exports !== undefined || !!manifest?.main || !!manifest?.module || !!manifest?.types
+  );
 }

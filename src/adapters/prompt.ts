@@ -1,3 +1,4 @@
+import type { ProfileCommandCandidate } from "../domain/profile.js";
 import { profileStrategyIds } from "../domain/profile.js";
 import type { AgentJudgeRequest, AgentProfileRequest, AgentRunRequest } from "./types.js";
 
@@ -218,6 +219,7 @@ export function buildProfileSelectionPrompt(request: AgentProfileRequest): strin
     `Detected tags: ${request.signals.tags.join(", ") || "none"}`,
     `Detected notable files: ${request.signals.files.join(", ") || "none"}`,
     `Detected workspace roots: ${request.signals.workspaceRoots.join(", ") || "none"}`,
+    `Detected workspace metadata: ${request.signals.workspaceMetadata.map((workspace) => `${workspace.label} (${workspace.root})`).join(", ") || "none"}`,
     `Detected dependencies: ${request.signals.dependencies.slice(0, 20).join(", ") || "none"}`,
   );
 
@@ -243,19 +245,7 @@ export function buildProfileSelectionPrompt(request: AgentProfileRequest): strin
 
   sections.push("", "Command catalog:");
   for (const candidate of request.signals.commandCatalog) {
-    sections.push(
-      `- ${candidate.id}`,
-      `  Round: ${candidate.roundId}`,
-      `  Label: ${candidate.label}`,
-      `  Command: ${[candidate.command, ...candidate.args].join(" ")}`,
-      ...(candidate.source ? [`  Source: ${candidate.source}`] : []),
-      ...(candidate.capability ? [`  Capability: ${candidate.capability}`] : []),
-      ...(candidate.dedupeKey ? [`  Dedupe key: ${candidate.dedupeKey}`] : []),
-      ...(candidate.pathPolicy ? [`  Path policy: ${candidate.pathPolicy}`] : []),
-      ...(candidate.safety ? [`  Safety: ${candidate.safety}`] : []),
-      ...(candidate.safetyRationale ? [`  Safety rationale: ${candidate.safetyRationale}`] : []),
-      `  Invariant: ${candidate.invariant}`,
-    );
+    sections.push(...formatProfileCommandCandidate(candidate));
   }
 
   if (request.signals.skippedCommandCandidates.length > 0) {
@@ -282,4 +272,34 @@ export function buildProfileSelectionPrompt(request: AgentProfileRequest): strin
   );
 
   return `${sections.join("\n")}\n`;
+}
+
+function formatProfileCommandCandidate(candidate: ProfileCommandCandidate): string[] {
+  return [
+    `- ${candidate.id}`,
+    `  Round: ${candidate.roundId}`,
+    `  Label: ${candidate.label}`,
+    `  Command: ${[candidate.command, ...candidate.args].join(" ")}`,
+    ...(candidate.relativeCwd ? [`  Relative cwd: ${candidate.relativeCwd}`] : []),
+    ...(candidate.source ? [`  Source: ${candidate.source}`] : []),
+    ...(candidate.capability ? [`  Capability: ${candidate.capability}`] : []),
+    ...(candidate.provenance ? [formatProfileCommandProvenance(candidate.provenance)] : []),
+    ...(candidate.dedupeKey ? [`  Dedupe key: ${candidate.dedupeKey}`] : []),
+    ...(candidate.pathPolicy ? [`  Path policy: ${candidate.pathPolicy}`] : []),
+    ...(candidate.safety ? [`  Safety: ${candidate.safety}`] : []),
+    ...(candidate.safetyRationale ? [`  Safety rationale: ${candidate.safetyRationale}`] : []),
+    `  Invariant: ${candidate.invariant}`,
+  ];
+}
+
+function formatProfileCommandProvenance(
+  provenance: NonNullable<ProfileCommandCandidate["provenance"]>,
+): string {
+  const tokens = [
+    `signal=${provenance.signal}`,
+    `source=${provenance.source}`,
+    ...(provenance.path ? [`path=${provenance.path}`] : []),
+    ...(provenance.detail ? [`detail=${provenance.detail}`] : []),
+  ];
+  return `  Provenance: ${tokens.join(" ")}`;
 }

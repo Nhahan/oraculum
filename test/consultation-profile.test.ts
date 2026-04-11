@@ -275,6 +275,74 @@ if (out) {
     );
   });
 
+  it("uses explicit Make, just, and Taskfile commands during fallback detection without package.json", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep repo checks healthy.\n", "utf8");
+    await writeFile(join(cwd, "Makefile"), "lint:\n\t@echo lint\n", "utf8");
+    await writeFile(join(cwd, "justfile"), "typecheck:\n  echo typecheck\n", "utf8");
+    await writeFile(
+      join(cwd, "Taskfile.yml"),
+      "version: '3'\n\ntasks:\n  test:\n    cmds:\n      - echo test\n",
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_explicit_targets"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_explicit_targets"),
+      runId: "run_explicit_targets",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.oracleIds).toEqual([
+      "lint-fast",
+      "typecheck-fast",
+      "full-suite-deep",
+    ]);
+    expect(recommendation.selection.missingCapabilities).toEqual([
+      "No package packaging smoke check was detected.",
+    ]);
+    const artifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_explicit_targets"), "utf8"),
+    ) as {
+      signals: {
+        commandCatalog: Array<{ args: string[]; command: string; id: string; pathPolicy?: string }>;
+        notes: string[];
+      };
+    };
+    expect(artifact.signals.notes).toContain(
+      "No package.json was found; repository facts are limited to files and task context.",
+    );
+    expect(artifact.signals.commandCatalog).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lint-fast",
+          command: "make",
+          args: ["lint"],
+          pathPolicy: "inherit",
+        }),
+        expect.objectContaining({
+          id: "typecheck-fast",
+          command: "just",
+          args: ["typecheck"],
+          pathPolicy: "inherit",
+        }),
+        expect.objectContaining({
+          id: "full-suite-deep",
+          command: "task",
+          args: ["test"],
+          pathPolicy: "inherit",
+        }),
+      ]),
+    );
+  });
+
   it("does not let English task keywords choose a profile without repo evidence", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
@@ -336,6 +404,349 @@ if (out) {
 
     expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([]);
+  });
+
+  it("surfaces workspace-only frontend dependency signals without forcing the frontend profile", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nChange copy.\n", "utf8");
+    await mkdir(join(cwd, "packages", "app"), { recursive: true });
+    await writeFile(
+      join(cwd, "packages", "app", "package.json"),
+      `${JSON.stringify(
+        {
+          name: "workspace-frontend",
+          packageManager: "pnpm@10.0.0",
+          dependencies: {
+            react: "^19.0.0",
+            typescript: "^5.8.0",
+            vite: "^7.0.0",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_workspace_frontend_dependency_only"), {
+      recursive: true,
+    });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_workspace_frontend_dependency_only"),
+      runId: "run_workspace_frontend_dependency_only",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    const artifact = JSON.parse(
+      await readFile(
+        getProfileSelectionPath(cwd, "run_workspace_frontend_dependency_only"),
+        "utf8",
+      ),
+    ) as {
+      signals: {
+        capabilities: Array<{
+          detail?: string;
+          kind: string;
+          path?: string;
+          source: string;
+          value: string;
+        }>;
+        dependencies: string[];
+        notes: string[];
+        tags: string[];
+      };
+    };
+    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.oracleIds).toEqual([]);
+    expect(artifact.signals.dependencies).toEqual(expect.arrayContaining(["react", "vite"]));
+    expect(artifact.signals.tags).toContain("frontend-framework");
+    expect(artifact.signals.capabilities).toContainEqual(
+      expect.objectContaining({
+        kind: "build-system",
+        value: "frontend-framework",
+        source: "workspace-config",
+        path: "packages/app/package.json",
+        detail: "Frontend framework dependency is declared in workspace package metadata.",
+      }),
+    );
+    expect(artifact.signals.capabilities).toContainEqual(
+      expect.objectContaining({
+        kind: "language",
+        value: "typescript",
+        source: "workspace-config",
+        path: "packages/app/package.json",
+        detail: "TypeScript dependency is declared in workspace package metadata.",
+      }),
+    );
+    expect(artifact.signals.notes).toContain(
+      "No root package.json was found; repository facts come from workspace manifests, files, and task context.",
+    );
+  });
+
+  it("surfaces workspace-only package export signals as library intent evidence", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep exports healthy.\n", "utf8");
+    await mkdir(join(cwd, "packages", "lib"), { recursive: true });
+    await writeFile(
+      join(cwd, "packages", "lib", "package.json"),
+      `${JSON.stringify(
+        {
+          name: "workspace-lib",
+          packageManager: "pnpm@10.0.0",
+          exports: "./dist/index.js",
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_workspace_library_export"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_workspace_library_export"),
+      runId: "run_workspace_library_export",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    const artifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_workspace_library_export"), "utf8"),
+    ) as {
+      signals: {
+        capabilities: Array<{
+          detail?: string;
+          kind: string;
+          path?: string;
+          source: string;
+          value: string;
+        }>;
+        skippedCommandCandidates: Array<{
+          detail: string;
+          id: string;
+          provenance?: { path?: string; source: string };
+          reason: string;
+        }>;
+        tags: string[];
+      };
+    };
+    expect(recommendation.selection.profileId).toBe("generic");
+    expect(artifact.signals.tags).toEqual(
+      expect.arrayContaining(["package-export", "library-signal"]),
+    );
+    expect(artifact.signals.capabilities).toContainEqual(
+      expect.objectContaining({
+        kind: "intent",
+        value: "library",
+        source: "workspace-config",
+        path: "packages/lib/package.json",
+        detail: "Workspace package export metadata is present.",
+      }),
+    );
+    expect(artifact.signals.skippedCommandCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "pack-impact",
+          reason: "unsupported-package-manager",
+          provenance: expect.objectContaining({
+            path: "packages/lib/package.json",
+            source: "workspace-config",
+          }),
+        }),
+        expect.objectContaining({
+          id: "package-smoke-deep",
+          reason: "unsupported-package-manager",
+        }),
+      ]),
+    );
+  });
+
+  it("adds workspace-scoped package tarball checks for a single exportable workspace npm package", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(
+      join(cwd, "tasks", "fix.md"),
+      "# Fix\nKeep workspace exports healthy.\n",
+      "utf8",
+    );
+    await mkdir(join(cwd, "packages", "lib"), { recursive: true });
+    await writeFile(
+      join(cwd, "packages", "lib", "package.json"),
+      `${JSON.stringify(
+        {
+          name: "workspace-lib",
+          version: "1.0.0",
+          packageManager: "npm@10.0.0",
+          exports: "./dist/index.js",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+            test: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_workspace_library_pack"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_workspace_library_pack"),
+      runId: "run_workspace_library_pack",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    const artifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_workspace_library_pack"), "utf8"),
+    ) as {
+      signals: {
+        commandCatalog: Array<{
+          capability?: string;
+          id: string;
+          provenance?: { path?: string; source: string };
+          relativeCwd?: string;
+        }>;
+        notes: string[];
+        skippedCommandCandidates: Array<{ id: string }>;
+      };
+    };
+
+    expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.oracleIds).toEqual([
+      "lint-fast",
+      "pack-impact",
+      "full-suite-deep",
+      "package-smoke-deep",
+    ]);
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.config.oracles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lint-fast",
+          command: "npm",
+          args: ["run", "lint"],
+          relativeCwd: "packages/lib",
+        }),
+        expect.objectContaining({
+          id: "pack-impact",
+          command: "npm",
+          args: ["pack", "--dry-run"],
+          relativeCwd: "packages/lib",
+        }),
+        expect.objectContaining({
+          id: "package-smoke-deep",
+          command: "node",
+          relativeCwd: "packages/lib",
+        }),
+      ]),
+    );
+    expect(artifact.signals.commandCatalog).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          capability: "package-export-smoke",
+          id: "pack-impact",
+          relativeCwd: "packages/lib",
+          provenance: expect.objectContaining({
+            path: "packages/lib/package.json",
+            source: "workspace-config",
+          }),
+        }),
+        expect.objectContaining({
+          capability: "package-export-smoke",
+          id: "package-smoke-deep",
+          relativeCwd: "packages/lib",
+          provenance: expect.objectContaining({
+            path: "packages/lib/package.json",
+            source: "workspace-config",
+          }),
+        }),
+      ]),
+    );
+    expect(artifact.signals.skippedCommandCandidates).toEqual([]);
+    expect(artifact.signals.notes).not.toContain(
+      "Package export signals were detected, but no packaging verification command was auto-generated.",
+    );
+  });
+
+  it("records ambiguous package export smoke evidence instead of guessing among multiple exportable packages", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep exports healthy.\n", "utf8");
+    await writeFile(join(cwd, "package.json"), '{ "packageManager": "npm@10.0.0" }\n', "utf8");
+    for (const workspaceRoot of ["packages/lib-a", "packages/lib-b"]) {
+      await mkdir(join(cwd, workspaceRoot), { recursive: true });
+      await writeFile(
+        join(cwd, workspaceRoot, "package.json"),
+        `${JSON.stringify(
+          {
+            name: workspaceRoot,
+            version: "1.0.0",
+            exports: "./dist/index.js",
+          },
+          null,
+          2,
+        )}\n`,
+        "utf8",
+      );
+    }
+    await mkdir(getReportsDir(cwd, "run_workspace_library_ambiguous"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_workspace_library_ambiguous"),
+      runId: "run_workspace_library_ambiguous",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    const artifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_workspace_library_ambiguous"), "utf8"),
+    ) as {
+      signals: {
+        commandCatalog: Array<{ id: string }>;
+        skippedCommandCandidates: Array<{ detail: string; id: string; reason: string }>;
+      };
+    };
+
+    expect(recommendation.selection.profileId).toBe("generic");
+    expect(artifact.signals.commandCatalog).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "pack-impact" }),
+        expect.objectContaining({ id: "package-smoke-deep" }),
+      ]),
+    );
+    expect(artifact.signals.skippedCommandCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "pack-impact",
+          reason: "ambiguous-workspace-command",
+          detail: expect.stringContaining("packages/lib-a/package.json"),
+        }),
+        expect.objectContaining({
+          id: "package-smoke-deep",
+          reason: "ambiguous-workspace-command",
+          detail: expect.stringContaining("packages/lib-b/package.json"),
+        }),
+      ]),
+    );
   });
 
   it("adds a package tarball deep check for exportable libraries during fallback detection", async () => {
@@ -549,10 +960,18 @@ if (out) {
       signals: {
         commandCatalog: Array<{ command: string }>;
         capabilities: Array<{ kind: string; source: string; value: string }>;
+        workspaceMetadata: Array<{ label: string; manifests: string[]; root: string }>;
         workspaceRoots: string[];
       };
     };
     expect(artifact.signals.workspaceRoots).toEqual(["packages/app"]);
+    expect(artifact.signals.workspaceMetadata).toEqual([
+      {
+        label: "app",
+        manifests: ["packages/app/package.json"],
+        root: "packages/app",
+      },
+    ]);
     expect(artifact.signals.capabilities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -575,6 +994,108 @@ if (out) {
     );
     expect(artifact.signals.commandCatalog).toEqual([]);
     expect(recommendation.selection.profileId).toBe("generic");
+  });
+
+  it("uses an unambiguous workspace package script as executable evidence with a relative cwd", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(
+      join(cwd, "tasks", "fix.md"),
+      "# Fix\nKeep workspace checks healthy.\n",
+      "utf8",
+    );
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "workspace-root",
+          packageManager: "pnpm@10.0.0",
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(join(cwd, "packages", "app"), { recursive: true });
+    await writeFile(
+      join(cwd, "packages", "app", "package.json"),
+      `${JSON.stringify(
+        {
+          name: "nested-app",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+            test: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_workspace_scripts"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_workspace_scripts"),
+      runId: "run_workspace_scripts",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    const artifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_workspace_scripts"), "utf8"),
+    ) as {
+      signals: {
+        commandCatalog: Array<{
+          args: string[];
+          command: string;
+          id: string;
+          relativeCwd?: string;
+        }>;
+        notes: string[];
+      };
+    };
+
+    expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
+    expect(recommendation.config.oracles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lint-fast",
+          command: "pnpm",
+          args: ["run", "lint"],
+          relativeCwd: "packages/app",
+        }),
+        expect.objectContaining({
+          id: "full-suite-deep",
+          command: "pnpm",
+          args: ["run", "test"],
+          relativeCwd: "packages/app",
+        }),
+      ]),
+    );
+    expect(artifact.signals.commandCatalog).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lint-fast",
+          command: "pnpm",
+          args: ["run", "lint"],
+          relativeCwd: "packages/app",
+        }),
+        expect.objectContaining({
+          id: "full-suite-deep",
+          command: "pnpm",
+          args: ["run", "test"],
+          relativeCwd: "packages/app",
+        }),
+      ]),
+    );
+    expect(artifact.signals.notes).not.toContain(
+      "No package.json was found; repository facts are limited to files and task context.",
+    );
   });
 
   it("uses nested workspace config files as profile signals without inventing root-level commands", async () => {
@@ -886,6 +1407,81 @@ if (out) {
     );
   });
 
+  it("records workspace package-manager signals when only a workspace manifest declares them", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep checks honest.\n", "utf8");
+    await mkdir(join(cwd, "packages", "app"), { recursive: true });
+    await writeFile(
+      join(cwd, "packages", "app", "package.json"),
+      `${JSON.stringify(
+        {
+          name: "app",
+          type: "module",
+          packageManager: "pnpm@10.0.0",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_workspace_package_manager"), { recursive: true });
+
+    await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_workspace_package_manager"),
+      runId: "run_workspace_package_manager",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    const artifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_workspace_package_manager"), "utf8"),
+    ) as {
+      signals: {
+        capabilities: Array<{
+          detail?: string;
+          kind: string;
+          path?: string;
+          source: string;
+          value: string;
+        }>;
+        commandCatalog: Array<{ id: string; relativeCwd?: string }>;
+        notes: string[];
+      };
+    };
+    const packageManagerCapability = artifact.signals.capabilities.find(
+      (capability) => capability.kind === "build-system" && capability.value === "pnpm",
+    );
+    expect(packageManagerCapability).toEqual(
+      expect.objectContaining({
+        detail: "Package manager detected from workspace package metadata.",
+        path: "packages/app/package.json",
+        source: "workspace-config",
+      }),
+    );
+    expect(artifact.signals.commandCatalog).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lint-fast",
+          relativeCwd: "packages/app",
+        }),
+      ]),
+    );
+    expect(artifact.signals.notes).not.toContain(
+      "No unambiguous lockfile or packageManager metadata was detected; package scripts were not auto-generated because the package manager is ambiguous.",
+    );
+    expect(artifact.signals.notes).toContain(
+      "No root package.json was found; repository facts come from workspace manifests, files, and task context.",
+    );
+  });
+
   it("does not invent npm script commands when the package manager is unknown", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
@@ -934,7 +1530,7 @@ if (out) {
     };
     expect(artifact.signals.commandCatalog).toEqual([]);
     expect(artifact.signals.notes).toContain(
-      "No lockfile or packageManager field was detected; package scripts were not auto-generated because the package manager is ambiguous.",
+      "No unambiguous lockfile or packageManager metadata was detected; package scripts were not auto-generated because the package manager is ambiguous.",
     );
     expect(artifact.signals.skippedCommandCandidates).toEqual(
       expect.arrayContaining([
@@ -950,6 +1546,74 @@ if (out) {
         expect.objectContaining({
           id: "full-suite-deep",
           reason: "ambiguous-package-manager",
+        }),
+      ]),
+    );
+  });
+
+  it("records workspace package-script ambiguity when no package manager is detected", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep checks honest.\n", "utf8");
+    await mkdir(join(cwd, "packages", "app"), { recursive: true });
+    await writeFile(
+      join(cwd, "packages", "app", "package.json"),
+      `${JSON.stringify(
+        {
+          name: "app",
+          type: "module",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_unknown_workspace_package_manager"), { recursive: true });
+
+    await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_unknown_workspace_package_manager"),
+      runId: "run_unknown_workspace_package_manager",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    const artifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_unknown_workspace_package_manager"), "utf8"),
+    ) as {
+      signals: {
+        commandCatalog: Array<{ command: string }>;
+        notes: string[];
+        skippedCommandCandidates: Array<{
+          id: string;
+          provenance?: { path?: string; signal: string; source: string };
+          reason: string;
+        }>;
+      };
+    };
+    expect(artifact.signals.commandCatalog).toEqual([]);
+    expect(artifact.signals.notes).toContain(
+      "No unambiguous lockfile or packageManager metadata was detected; package scripts were not auto-generated because the package manager is ambiguous.",
+    );
+    expect(artifact.signals.notes).toContain(
+      "No root package.json was found; repository facts come from workspace manifests, files, and task context.",
+    );
+    expect(artifact.signals.skippedCommandCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lint-fast",
+          reason: "ambiguous-package-manager",
+          provenance: expect.objectContaining({
+            path: "packages/app/package.json",
+            signal: "script:lint",
+            source: "workspace-config",
+          }),
         }),
       ]),
     );

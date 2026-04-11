@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { oraclePathPolicySchema, roundIdSchema } from "./config.js";
+import { oraclePathPolicySchema, oracleRelativeCwdSchema, roundIdSchema } from "./config.js";
 
 export const decisionConfidenceLevels = ["low", "medium", "high"] as const;
 export const consultationProfileIds = ["generic", "library", "frontend", "migration"] as const;
@@ -48,6 +48,7 @@ export const profileCommandSafetySchema = z.enum([
 ]);
 export const profileSkippedCommandReasonSchema = z.enum([
   "ambiguous-package-manager",
+  "ambiguous-workspace-command",
   "duplicate-expensive-command",
   "global-tool-not-explicit",
   "missing-config",
@@ -65,6 +66,7 @@ export const profileCommandCandidateSchema = z.object({
   args: z.array(z.string()).default([]),
   invariant: z.string().min(1),
   dedupeKey: z.string().min(1).optional(),
+  relativeCwd: oracleRelativeCwdSchema.optional(),
   pathPolicy: oraclePathPolicySchema.optional(),
   source: profileCommandSourceSchema.optional(),
   capability: z.string().min(1).optional(),
@@ -92,12 +94,19 @@ export const profileSkippedCommandCandidateSchema = z.object({
   provenance: profileSignalProvenanceSchema.optional(),
 });
 
+export const profileWorkspaceMetadataSchema = z.object({
+  root: z.string().min(1),
+  label: z.string().min(1),
+  manifests: z.array(z.string().min(1)).default([]),
+});
+
 export const profileRepoSignalsSchema = z.object({
   packageManager: packageManagerSchema,
   scripts: z.array(z.string().min(1)).default([]),
   dependencies: z.array(z.string().min(1)).default([]),
   files: z.array(z.string().min(1)).default([]),
   workspaceRoots: z.array(z.string().min(1)).default([]),
+  workspaceMetadata: z.array(profileWorkspaceMetadataSchema).default([]),
   tags: z.array(z.string().min(1)).default([]),
   notes: z.array(z.string().min(1)).default([]),
   capabilities: z.array(profileCapabilitySignalSchema).default([]),

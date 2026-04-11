@@ -1,5 +1,5 @@
-import { mkdir, readFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { basename, dirname } from "node:path";
 
 import type { AgentAdapter } from "../adapters/types.js";
 import { getProfileSelectionPath } from "../core/paths.js";
@@ -24,14 +24,14 @@ import {
 import type { MaterializedTaskPacket } from "../domain/task.js";
 
 import { buildCommandCatalog } from "./profile-command-catalog.js";
+import { collectExplicitCommandCatalog } from "./profile-explicit-command-collector.js";
+import { collectProfileRepoFacts } from "./profile-repo-facts.js";
 import {
   buildCapabilitySignals,
   buildLegacySignalTags,
   buildSignalProvenance,
-  detectKnownFiles,
-  detectWorkspaceRoots,
 } from "./profile-signals.js";
-import { type ProjectConfigLayers, pathExists, writeJsonFile } from "./project.js";
+import { type ProjectConfigLayers, writeJsonFile } from "./project.js";
 
 interface RecommendConsultationProfileOptions {
   adapter: AgentAdapter;
@@ -129,7 +129,9 @@ const PROFILE_COMMAND_SLOTS: Record<ConsultationProfileId, ProfileCommandSlot[]>
 export async function recommendConsultationProfile(
   options: RecommendConsultationProfileOptions,
 ): Promise<RecommendedConsultationProfile> {
-  const signals = await collectProfileRepoSignals(options.projectRoot);
+  const signals = await collectProfileRepoSignals(options.projectRoot, {
+    rules: options.baseConfig.managedTree,
+  });
   const fallback = buildFallbackRecommendation(signals, options.taskPacket);
   let llmResult: Awaited<ReturnType<AgentAdapter["recommendProfile"]>> | undefined;
   let llmFailure: string | undefined;
@@ -236,61 +238,61 @@ function applyProfileSelection(options: {
   };
 }
 
-async function collectProfileRepoSignals(projectRoot: string): Promise<ProfileRepoSignals> {
-  const packageJsonPath = join(projectRoot, "package.json");
-  const packageJson = (await pathExists(packageJsonPath))
-    ? (JSON.parse(await readFile(packageJsonPath, "utf8")) as {
-        packageManager?: string;
-        scripts?: Record<string, string>;
-        dependencies?: Record<string, string>;
-        devDependencies?: Record<string, string>;
-        exports?: unknown;
-        main?: string;
-        module?: string;
-        types?: string;
-      })
-    : undefined;
-  const packageManager = await detectPackageManager(projectRoot, packageJson?.packageManager);
-  const scripts = Object.keys(packageJson?.scripts ?? {}).sort((left, right) =>
-    left.localeCompare(right),
-  );
-  const dependencies = Object.keys({
-    ...(packageJson?.dependencies ?? {}),
-    ...(packageJson?.devDependencies ?? {}),
-  }).sort((left, right) => left.localeCompare(right));
-
-  const workspaceRoots = await detectWorkspaceRoots(projectRoot);
-  const knownFiles = await detectKnownFiles(projectRoot, workspaceRoots);
+async function collectProfileRepoSignals(
+  projectRoot: string,
+  options: { rules: ProjectConfig["managedTree"] },
+): Promise<ProfileRepoSignals> {
+  const facts = await collectProfileRepoFacts(projectRoot, {
+    rules: options.rules,
+  });
   const tags = buildLegacySignalTags({
-    dependencies,
-    files: knownFiles,
-    packageJson,
-    scripts,
+    dependencies: facts.dependencies,
+    files: facts.files,
+    packageJson: facts.packageJson,
+    scripts: facts.scripts,
+    workspacePackageJsons: facts.workspacePackageJsons,
   });
   const capabilities = buildCapabilitySignals({
-    dependencies,
-    files: knownFiles,
-    packageJson,
-    packageManager,
-    scripts,
+    dependencies: facts.dependencies,
+    files: facts.files,
+    packageManagerEvidence: facts.packageManagerEvidence,
+    packageJson: facts.packageJson,
+    packageManager: facts.packageManager,
+    scripts: facts.scripts,
     tags,
-    workspaceRoots,
+    workspacePackageJsons: facts.workspacePackageJsons,
+    workspaceRoots: facts.workspaceRoots,
   });
+  const { commandCatalog: explicitCommandCatalog, skippedCommandCandidates: explicitSkipped } =
+    await collectExplicitCommandCatalog({
+      facts,
+      projectRoot,
+      rules: options.rules,
+    });
   const { commandCatalog, skippedCommandCandidates } = buildCommandCatalog({
     capabilities,
-    packageJson,
-    packageManager,
-    scripts,
+    explicitCommandCatalog,
+    explicitSkippedCommandCandidates: explicitSkipped,
+    packageJson: facts.packageJson,
+    packageManager: facts.packageManager,
+    workspacePackageJsons: facts.workspacePackageJsons,
   });
   const provenance = buildSignalProvenance(tags, capabilities);
-  const notes = buildSignalNotes(tags, commandCatalog, packageManager, packageJson);
+  const notes = buildSignalNotes(
+    tags,
+    commandCatalog,
+    facts.packageManager,
+    facts.packageJson,
+    facts.workspaceMetadata,
+  );
 
   return profileRepoSignalsSchema.parse({
-    packageManager,
-    scripts,
-    dependencies,
-    files: knownFiles,
-    workspaceRoots,
+    packageManager: facts.packageManager,
+    scripts: facts.scripts,
+    dependencies: facts.dependencies,
+    files: facts.files,
+    workspaceRoots: facts.workspaceRoots,
+    workspaceMetadata: facts.workspaceMetadata,
     tags,
     notes,
     capabilities,
@@ -298,41 +300,6 @@ async function collectProfileRepoSignals(projectRoot: string): Promise<ProfileRe
     commandCatalog,
     skippedCommandCandidates,
   });
-}
-
-async function detectPackageManager(
-  projectRoot: string,
-  packageManagerField: string | undefined,
-): Promise<ProfileRepoSignals["packageManager"]> {
-  if (packageManagerField?.startsWith("pnpm")) {
-    return "pnpm" as const;
-  }
-  if (packageManagerField?.startsWith("yarn")) {
-    return "yarn" as const;
-  }
-  if (packageManagerField?.startsWith("bun")) {
-    return "bun" as const;
-  }
-  if (packageManagerField?.startsWith("npm")) {
-    return "npm" as const;
-  }
-
-  const lockfiles: Array<[string, ProfileRepoSignals["packageManager"]]> = [
-    ["pnpm-lock.yaml", "pnpm"],
-    ["yarn.lock", "yarn"],
-    ["bun.lock", "bun"],
-    ["bun.lockb", "bun"],
-    ["package-lock.json", "npm"],
-  ];
-
-  for (const [filename, manager] of lockfiles) {
-    // eslint-disable-next-line no-await-in-loop
-    if (await pathExists(join(projectRoot, filename))) {
-      return manager;
-    }
-  }
-
-  return "unknown" as const;
 }
 
 function buildSignalNotes(
@@ -347,6 +314,7 @@ function buildSignalNotes(
         types?: string;
       }
     | undefined,
+  workspaceMetadata: ProfileRepoSignals["workspaceMetadata"],
 ): string[] {
   const notes: string[] = [];
   if (
@@ -361,12 +329,16 @@ function buildSignalNotes(
   }
   if (packageManager === "unknown") {
     notes.push(
-      "No lockfile or packageManager field was detected; package scripts were not auto-generated because the package manager is ambiguous.",
+      "No unambiguous lockfile or packageManager metadata was detected; package scripts were not auto-generated because the package manager is ambiguous.",
     );
   }
   if (!packageJson) {
     notes.push(
-      "No package.json was found; repository facts are limited to files and task context.",
+      workspaceMetadata.some((workspace) =>
+        workspace.manifests.some((manifestPath) => manifestPath.endsWith("/package.json")),
+      )
+        ? "No root package.json was found; repository facts come from workspace manifests, files, and task context."
+        : "No package.json was found; repository facts are limited to files and task context.",
     );
   }
 
@@ -644,6 +616,7 @@ function buildGeneratedOracles(
       args: candidate.args,
       invariant: candidate.invariant,
       cwd: "workspace",
+      ...(candidate.relativeCwd ? { relativeCwd: candidate.relativeCwd } : {}),
       pathPolicy: candidate.pathPolicy ?? "local-only",
       enforcement: "hard",
       confidence: candidate.roundId === "deep" ? "medium" : "high",
@@ -665,6 +638,11 @@ function commandSlotKey(slot: {
 function commandExecutionKey(candidate: ProfileCommandCandidate): string {
   return (
     candidate.dedupeKey ??
-    JSON.stringify([candidate.command, candidate.args, candidate.pathPolicy ?? "local-only"])
+    JSON.stringify([
+      candidate.command,
+      candidate.args,
+      candidate.relativeCwd ?? "",
+      candidate.pathPolicy ?? "local-only",
+    ])
   );
 }

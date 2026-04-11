@@ -1821,12 +1821,6 @@ async function writeRepositoryTemplate(root, scenario) {
       type: "module",
       ...(packageManager ? { packageManager: `${packageManager}@0.0.0` } : {}),
       workspaces: ["packages/*"],
-      scripts: {
-        lint: "turbo run lint --filter @acme/app",
-        typecheck: "turbo run typecheck --filter @acme/app",
-        test: "turbo run test --filter @acme/app",
-        build: "turbo run build --filter @acme/app",
-      },
     });
     await writePackageJson(join(root, "packages", "app"), {
       name: "@acme/app",
@@ -1847,9 +1841,30 @@ if (!fs.existsSync(file)) {
   process.stderr.write("missing monorepo app entry");
   process.exit(1);
 }
-process.stdout.write("turbo workspace ok");
-`,
+	process.stdout.write("turbo workspace ok");
+	`,
     );
+    for (const [dir, name] of [
+      ["bin", "lint"],
+      ["scripts", "typecheck"],
+      ["scripts", "test"],
+      ["bin", "build"],
+    ]) {
+      await writeRepoEntrypoint(
+        root,
+        dir,
+        name,
+        `const fs = require("node:fs");
+const path = require("node:path");
+const file = path.join(process.cwd(), "packages", "app", "src", "index.js");
+if (!fs.existsSync(file)) {
+  process.stderr.write("missing monorepo app entry");
+  process.exit(1);
+}
+process.stdout.write(${JSON.stringify(`${name} workspace ok`)});
+`,
+      );
+    }
     return;
   }
 
@@ -2074,16 +2089,31 @@ process.stdout.write("turbo workspace ok");
       exports: {
         ".": "./src/server.js",
       },
-      scripts: {
-        lint: `${nodeEval("process.exit(0)")}`,
-        typecheck: `${nodeEval("process.exit(0)")}`,
-        test: `${nodeEval("process.exit(0)")}`,
-        build: `${nodeEval("process.exit(0)")}`,
-      },
       dependencies: {
         fastify: "0.0.0",
       },
     });
+    for (const [dir, name] of [
+      ["bin", "lint"],
+      ["scripts", "typecheck"],
+      ["scripts", "test"],
+      ["bin", "build"],
+    ]) {
+      await writeRepoEntrypoint(
+        root,
+        dir,
+        name,
+        `const fs = require("node:fs");
+const path = require("node:path");
+const file = path.join(process.cwd(), "src", "server.js");
+if (!fs.existsSync(file)) {
+  process.stderr.write("missing service entry");
+  process.exit(1);
+}
+process.stdout.write(${JSON.stringify(`${name} service ok`)});
+`,
+      );
+    }
     return;
   }
 
@@ -2326,6 +2356,12 @@ async function writeProjectLocalTool(root, name, source) {
   const binDir = join(root, "node_modules", ".bin");
   await mkdir(binDir, { recursive: true });
   await writeNodeBinary(binDir, name, source);
+}
+
+async function writeRepoEntrypoint(root, relativeDir, name, source) {
+  const dir = join(root, relativeDir);
+  await mkdir(dir, { recursive: true });
+  await writeNodeBinary(dir, name, source);
 }
 
 async function writePackageManagerShim(root, packageManager) {
