@@ -1628,6 +1628,131 @@ if (out) {
     ).resolves.toContain('"status": "pass"');
   }, 20_000);
 
+  it("runs consultation-scoped workspace-local entrypoint oracles inside the selected workspace cwd", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(
+      join(cwd, "tasks", "fix-workspace-entrypoints.md"),
+      "# Fix\nUpdate the workspace output.\n",
+    );
+    await writeWorkspaceLocalEntrypointProfileProject(cwd);
+
+    const fakeProfileCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex-workspace-entrypoint-profile",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"profileId":"library","confidence":"high","summary":"Workspace-local entrypoints are present.","candidateCount":3,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","full-suite-deep"],"missingCapabilities":["No package packaging smoke check was detected."]}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const fakeCandidateCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex-workspace-entrypoint-candidate",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
+  fs.writeFileSync(
+    path.join(process.cwd(), "packages", "app", "src", "index.js"),
+    'export function greet() {\\n  return "Hello";\\n}\\n',
+    "utf8",
+  );
+}
+if (out) {
+  const body = prompt.includes("You are selecting the best Oraculum finalist.")
+    ? '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 is the only surviving finalist."}'
+    : "Codex finished candidate patch";
+  fs.writeFileSync(out, body, "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/fix-workspace-entrypoints.md",
+      agent: "codex",
+      candidates: 1,
+      autoProfile: {
+        codexBinaryPath: fakeProfileCodex,
+        timeoutMs: 5_000,
+      },
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCandidateCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.profileSelection?.profileId).toBe("library");
+    expect(executed.manifest.profileSelection?.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
+    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+
+    const configPath = executed.manifest.configPath;
+    expect(configPath).toBeDefined();
+    if (!configPath) {
+      throw new Error("expected consultation config path to be recorded");
+    }
+    const configRaw = JSON.parse(await readFile(configPath, "utf8")) as {
+      oracles?: Array<{ id: string; relativeCwd?: string }>;
+    };
+    expect(configRaw.oracles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "lint-fast", relativeCwd: "packages/app" }),
+        expect.objectContaining({ id: "full-suite-deep", relativeCwd: "packages/app" }),
+      ]),
+    );
+    await expect(
+      readFile(
+        join(
+          cwd,
+          ".oraculum",
+          "workspaces",
+          planned.id,
+          "cand-01",
+          "packages",
+          "app",
+          "lint-marker.txt",
+        ),
+        "utf8",
+      ),
+    ).resolves.toBe("lint");
+    await expect(
+      readFile(
+        join(
+          cwd,
+          ".oraculum",
+          "workspaces",
+          planned.id,
+          "cand-01",
+          "packages",
+          "app",
+          "test-marker.txt",
+        ),
+        "utf8",
+      ),
+    ).resolves.toBe("test");
+  }, 20_000);
+
   it("runs workspace package export smoke oracles inside the selected workspace cwd", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
@@ -1902,6 +2027,40 @@ async function writeWorkspaceLibraryProfileProject(cwd: string): Promise<void> {
       "});",
       "",
     ].join("\n"),
+    "utf8",
+  );
+}
+
+async function writeWorkspaceLocalEntrypointProfileProject(cwd: string): Promise<void> {
+  await mkdir(join(cwd, "packages", "app", "src"), { recursive: true });
+  await writeFile(
+    join(cwd, "packages", "app", "pyproject.toml"),
+    "[project]\nname='app'\n",
+    "utf8",
+  );
+  await mkdir(join(cwd, "packages", "app", "bin"), { recursive: true });
+  await mkdir(join(cwd, "packages", "app", "scripts"), { recursive: true });
+  await writeNodeBinary(
+    join(cwd, "packages", "app", "bin"),
+    "lint",
+    [
+      "const fs = require('node:fs');",
+      "const path = require('node:path');",
+      "fs.writeFileSync(path.join(process.cwd(), 'lint-marker.txt'), 'lint', 'utf8');",
+    ].join("\n"),
+  );
+  await writeNodeBinary(
+    join(cwd, "packages", "app", "scripts"),
+    "test",
+    [
+      "const fs = require('node:fs');",
+      "const path = require('node:path');",
+      "fs.writeFileSync(path.join(process.cwd(), 'test-marker.txt'), 'test', 'utf8');",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(cwd, "packages", "app", "src", "index.js"),
+    'export function greet() {\n  return "Bye";\n}\n',
     "utf8",
   );
 }

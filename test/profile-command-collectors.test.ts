@@ -422,6 +422,33 @@ describe("profile explicit command collector", () => {
     );
   });
 
+  it("records ambiguous root-local entrypoints instead of guessing between bin and scripts", async () => {
+    const cwd = await createTempRoot();
+    await mkdir(join(cwd, "bin"), { recursive: true });
+    await mkdir(join(cwd, "scripts"), { recursive: true });
+    await writeNodeBinary(join(cwd, "bin"), "lint", 'process.stdout.write("bin\\n");');
+    await writeNodeBinary(join(cwd, "scripts"), "lint", 'process.stdout.write("scripts\\n");');
+
+    const facts = await collectProfileRepoFacts(cwd);
+    const result = await collectExplicitCommandCatalog({ facts, projectRoot: cwd });
+
+    expect(result.commandCatalog).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "lint-fast" })]),
+    );
+    expect(result.skippedCommandCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lint-fast",
+          reason: "ambiguous-local-command",
+          provenance: expect.objectContaining({
+            signal: "root-entrypoint:lint",
+            source: "local-tool",
+          }),
+        }),
+      ]),
+    );
+  });
+
   it("does not surface repo-local entrypoints that the managed tree excludes", async () => {
     const cwd = await createTempRoot();
     await mkdir(join(cwd, "scripts"), { recursive: true });
@@ -435,6 +462,79 @@ describe("profile explicit command collector", () => {
     });
 
     expect(result).toEqual([]);
+  });
+
+  it("collects unambiguous workspace-local entrypoints with a workspace-relative cwd", async () => {
+    const cwd = await createTempRoot();
+    await mkdir(join(cwd, "packages", "app"), { recursive: true });
+    await writeFile(join(cwd, "packages", "app", "pyproject.toml"), "[project]\nname='app'\n");
+    await mkdir(join(cwd, "packages", "app", "bin"), { recursive: true });
+    await mkdir(join(cwd, "packages", "app", "scripts"), { recursive: true });
+    const expectedLintPath = await writeNodeBinary(
+      join(cwd, "packages", "app", "bin"),
+      "lint",
+      'process.stdout.write("lint\\n");',
+    );
+    const expectedTestPath = await writeNodeBinary(
+      join(cwd, "packages", "app", "scripts"),
+      "test",
+      'process.stdout.write("test\\n");',
+    );
+
+    const facts = await collectProfileRepoFacts(cwd);
+    const result = await collectExplicitCommandCatalog({ facts, projectRoot: cwd });
+
+    expect(result.commandCatalog).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lint-fast",
+          command: join("bin", expectedLintPath.split(/[/\\\\]/u).pop() ?? "lint"),
+          args: [],
+          relativeCwd: "packages/app",
+          pathPolicy: "local-only",
+        }),
+        expect.objectContaining({
+          id: "full-suite-deep",
+          command: join("scripts", expectedTestPath.split(/[/\\\\]/u).pop() ?? "test"),
+          args: [],
+          relativeCwd: "packages/app",
+          pathPolicy: "local-only",
+        }),
+      ]),
+    );
+  });
+
+  it("records ambiguous workspace-local entrypoints instead of guessing a workspace", async () => {
+    const cwd = await createTempRoot();
+    for (const workspaceRoot of ["packages/app", "packages/web"]) {
+      await mkdir(join(cwd, workspaceRoot), { recursive: true });
+      await writeFile(join(cwd, workspaceRoot, "pyproject.toml"), "[project]\nname='app'\n");
+      await mkdir(join(cwd, workspaceRoot, "bin"), { recursive: true });
+      await writeNodeBinary(
+        join(cwd, workspaceRoot, "bin"),
+        "lint",
+        'process.stdout.write("lint\\n");',
+      );
+    }
+
+    const facts = await collectProfileRepoFacts(cwd);
+    const result = await collectExplicitCommandCatalog({ facts, projectRoot: cwd });
+
+    expect(result.commandCatalog).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "lint-fast" })]),
+    );
+    expect(result.skippedCommandCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lint-fast",
+          reason: "ambiguous-workspace-command",
+          provenance: expect.objectContaining({
+            signal: "workspace-entrypoint:lint",
+            source: "local-tool",
+          }),
+        }),
+      ]),
+    );
   });
 
   it("does not surface Make targets that the managed tree excludes", async () => {

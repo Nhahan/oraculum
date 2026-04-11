@@ -7,7 +7,7 @@ import {
   type ExplicitCommandSurface,
   normalizeScriptBody,
 } from "./profile-explicit-command-common.js";
-import { collectLocalEntrypointSurfaces } from "./profile-explicit-command-entrypoints.js";
+import { collectLocalEntrypointSurfaceReport } from "./profile-explicit-command-entrypoints.js";
 import {
   collectPackageScriptSurfaces,
   recordAmbiguousPackageScriptSkip,
@@ -31,7 +31,7 @@ export async function collectExplicitCommandCatalog(options: {
 }): Promise<ExplicitCommandCatalogResult> {
   const commandCatalog: ProfileCommandCandidate[] = [];
   const skippedCommandCandidates: ProfileSkippedCommandCandidate[] = [];
-  const surfaces = await collectExplicitCommandSurfaces(
+  const { localEntrypointReport, surfaces } = await collectExplicitCommandSurfaces(
     options.facts,
     options.projectRoot,
     options.rules,
@@ -71,6 +71,12 @@ export async function collectExplicitCommandCatalog(options: {
       facts: options.facts,
       skippedCommandCandidates,
     });
+    recordAmbiguousLocalEntrypointSkip({
+      ambiguousRootEntrypoints: localEntrypointReport.ambiguousRootEntrypoints,
+      ambiguousWorkspaceEntrypoints: localEntrypointReport.ambiguousWorkspaceEntrypoints,
+      definition,
+      skippedCommandCandidates,
+    });
   }
 
   return { commandCatalog, skippedCommandCandidates };
@@ -80,12 +86,107 @@ async function collectExplicitCommandSurfaces(
   facts: ProfileRepoFacts,
   projectRoot: string,
   rules?: ManagedTreeRules,
-): Promise<ExplicitCommandSurface[]> {
-  return [
-    ...collectPackageScriptSurfaces(facts),
-    ...(await collectMakeTargetSurfaces(projectRoot, ...(rules ? [{ rules }] : []))),
-    ...(await collectJustTargetSurfaces(projectRoot, ...(rules ? [{ rules }] : []))),
-    ...(await collectTaskfileTargetSurfaces(projectRoot, ...(rules ? [{ rules }] : []))),
-    ...(await collectLocalEntrypointSurfaces(projectRoot, ...(rules ? [{ rules }] : []))),
-  ];
+): Promise<{
+  localEntrypointReport: Awaited<ReturnType<typeof collectLocalEntrypointSurfaceReport>>;
+  surfaces: ExplicitCommandSurface[];
+}> {
+  const localEntrypointReport = await collectLocalEntrypointSurfaceReport(projectRoot, {
+    ...(rules ? { rules } : {}),
+    workspaceRoots: facts.workspaceRoots,
+  });
+  return {
+    localEntrypointReport,
+    surfaces: [
+      ...collectPackageScriptSurfaces(facts),
+      ...(await collectMakeTargetSurfaces(projectRoot, ...(rules ? [{ rules }] : []))),
+      ...(await collectJustTargetSurfaces(projectRoot, ...(rules ? [{ rules }] : []))),
+      ...(await collectTaskfileTargetSurfaces(projectRoot, ...(rules ? [{ rules }] : []))),
+      ...localEntrypointReport.surfaces,
+    ],
+  };
+}
+
+function recordAmbiguousLocalEntrypointSkip(options: {
+  ambiguousRootEntrypoints: Array<{
+    entrypointPaths: string[];
+    normalizedName: string;
+  }>;
+  ambiguousWorkspaceEntrypoints: Array<{
+    entrypointPaths: string[];
+    normalizedName: string;
+  }>;
+  definition: {
+    aliases: string[];
+    capability: string;
+    id: string;
+    label: string;
+  };
+  skippedCommandCandidates: ProfileSkippedCommandCandidate[];
+}): void {
+  const rootMatch = options.ambiguousRootEntrypoints.find((entrypoint) =>
+    options.definition.aliases.includes(entrypoint.normalizedName),
+  );
+  if (rootMatch) {
+    const candidate: ProfileSkippedCommandCandidate = {
+      id: options.definition.id,
+      label: options.definition.label,
+      capability: options.definition.capability,
+      reason: "ambiguous-local-command",
+      detail: `Multiple repo-local entry points match this command (${rootMatch.entrypointPaths.join(", ")}); Oraculum will not guess which one to run.`,
+      provenance: {
+        signal: `root-entrypoint:${rootMatch.normalizedName}`,
+        source: "local-tool",
+        detail: "Multiple repo-local entry points matched the same command alias.",
+      },
+    };
+    recordSkippedCandidate(options.skippedCommandCandidates, candidate);
+    return;
+  }
+
+  const match = options.ambiguousWorkspaceEntrypoints.find((entrypoint) =>
+    options.definition.aliases.includes(entrypoint.normalizedName),
+  );
+  if (!match) {
+    return;
+  }
+
+  const candidate: ProfileSkippedCommandCandidate = {
+    id: options.definition.id,
+    label: options.definition.label,
+    capability: options.definition.capability,
+    reason: "ambiguous-workspace-command",
+    detail: `Multiple workspace-local entry points match this command (${match.entrypointPaths.join(", ")}); Oraculum will not guess which workspace to run.`,
+    provenance: {
+      signal: `workspace-entrypoint:${match.normalizedName}`,
+      source: "local-tool",
+      detail: "Multiple workspace-local entry points matched the same command alias.",
+    },
+  };
+  recordSkippedCandidate(options.skippedCommandCandidates, candidate);
+}
+
+function recordSkippedCandidate(
+  skippedCommandCandidates: ProfileSkippedCommandCandidate[],
+  candidate: ProfileSkippedCommandCandidate,
+): void {
+  const key = [
+    candidate.id,
+    candidate.reason,
+    candidate.capability,
+    candidate.provenance?.signal ?? "",
+    candidate.provenance?.path ?? "",
+  ].join("\0");
+  const alreadyRecorded = skippedCommandCandidates.some(
+    (existing) =>
+      [
+        existing.id,
+        existing.reason,
+        existing.capability,
+        existing.provenance?.signal ?? "",
+        existing.provenance?.path ?? "",
+      ].join("\0") === key,
+  );
+  if (!alreadyRecorded) {
+    skippedCommandCandidates.push(candidate);
+  }
 }

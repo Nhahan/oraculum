@@ -1098,6 +1098,101 @@ if (out) {
     );
   });
 
+  it("uses an unambiguous workspace-local entrypoint as executable evidence with a relative cwd", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(
+      join(cwd, "tasks", "fix.md"),
+      "# Fix\nKeep workspace entrypoints healthy.\n",
+      "utf8",
+    );
+    await mkdir(join(cwd, "packages", "app"), { recursive: true });
+    await writeFile(join(cwd, "packages", "app", "pyproject.toml"), "[project]\nname='app'\n");
+    await mkdir(join(cwd, "packages", "app", "bin"), { recursive: true });
+    await mkdir(join(cwd, "packages", "app", "scripts"), { recursive: true });
+    await writeNodeBinary(
+      join(cwd, "packages", "app", "bin"),
+      "lint",
+      'process.stdout.write("lint\\n");',
+    );
+    await writeNodeBinary(
+      join(cwd, "packages", "app", "scripts"),
+      "test",
+      'process.stdout.write("test\\n");',
+    );
+    await mkdir(getReportsDir(cwd, "run_workspace_entrypoints"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_workspace_entrypoints"),
+      runId: "run_workspace_entrypoints",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    const artifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_workspace_entrypoints"), "utf8"),
+    ) as {
+      signals: {
+        commandCatalog: Array<{
+          command: string;
+          id: string;
+          pathPolicy?: string;
+          provenance?: { path?: string; source: string };
+          relativeCwd?: string;
+        }>;
+        notes: string[];
+      };
+    };
+
+    expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
+    expect(recommendation.config.oracles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lint-fast",
+          command: "bin/lint",
+          relativeCwd: "packages/app",
+          pathPolicy: "local-only",
+        }),
+        expect.objectContaining({
+          id: "full-suite-deep",
+          command: "scripts/test",
+          relativeCwd: "packages/app",
+          pathPolicy: "local-only",
+        }),
+      ]),
+    );
+    expect(artifact.signals.commandCatalog).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lint-fast",
+          command: "bin/lint",
+          relativeCwd: "packages/app",
+          provenance: expect.objectContaining({
+            path: "packages/app/bin/lint",
+            source: "local-tool",
+          }),
+        }),
+        expect.objectContaining({
+          id: "full-suite-deep",
+          command: "scripts/test",
+          relativeCwd: "packages/app",
+          provenance: expect.objectContaining({
+            path: "packages/app/scripts/test",
+            source: "local-tool",
+          }),
+        }),
+      ]),
+    );
+    expect(artifact.signals.notes).toContain(
+      "No package.json was found; repository facts are limited to files and task context.",
+    );
+  });
+
   it("uses nested workspace config files as profile signals without inventing root-level commands", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
@@ -1169,6 +1264,55 @@ if (out) {
       }),
     );
     expect(artifact.signals.commandCatalog).toEqual([]);
+  });
+
+  it("records ambiguous root-local entrypoints instead of inventing a root command", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep linting honest.\n", "utf8");
+    await mkdir(join(cwd, "bin"), { recursive: true });
+    await mkdir(join(cwd, "scripts"), { recursive: true });
+    await writeNodeBinary(join(cwd, "bin"), "lint", 'process.stdout.write("bin\\n");');
+    await writeNodeBinary(join(cwd, "scripts"), "lint", 'process.stdout.write("scripts\\n");');
+    await mkdir(getReportsDir(cwd, "run_ambiguous_root_entrypoint"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_ambiguous_root_entrypoint"),
+      runId: "run_ambiguous_root_entrypoint",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    const artifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_ambiguous_root_entrypoint"), "utf8"),
+    ) as {
+      signals: {
+        commandCatalog: Array<{ id: string }>;
+        skippedCommandCandidates: Array<{
+          id: string;
+          provenance?: { signal: string; source: string };
+          reason: string;
+        }>;
+      };
+    };
+    expect(recommendation.selection.oracleIds).not.toContain("lint-fast");
+    expect(artifact.signals.commandCatalog).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "lint-fast" })]),
+    );
+    expect(artifact.signals.skippedCommandCandidates).toContainEqual(
+      expect.objectContaining({
+        id: "lint-fast",
+        reason: "ambiguous-local-command",
+        provenance: expect.objectContaining({
+          signal: "root-entrypoint:lint",
+          source: "local-tool",
+        }),
+      }),
+    );
   });
 
   it("uses nested workspace migration files as profile signals without inventing unsafe commands", async () => {
