@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = process.cwd();
-const ROOT_DOCS = ["README.md", "README.ko.md", "AGENTS.md", "TODO.md"];
+const ROOT_DOCS = ["README.md", "README.ko.md", "AGENTS.md"];
 const LOCAL_LINK_PATTERN = /\[[^\]]+\]\(([^)]+)\)|href="([^"]+)"/gu;
 
 describe("tracked docs", () => {

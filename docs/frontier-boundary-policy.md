@@ -72,3 +72,5 @@ These tables are explicit product policy, not repository inference:
 - `PROFILE_COMMAND_SLOTS`
 
 They are acceptable because they operate on validated command/capability evidence after fact collection, rather than on dependency-name heuristics.
+
+This document is now the stable summary for deterministic-boundary policy. The temporary local deterministic-boundary inventory has been retired; future boundary changes should update this document, the relevant code comments, and regression tests directly.
