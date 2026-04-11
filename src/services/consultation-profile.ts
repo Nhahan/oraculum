@@ -246,20 +246,17 @@ async function collectProfileRepoSignals(
     rules: options.rules,
   });
   const tags = buildLegacySignalTags({
-    dependencies: facts.dependencies,
     files: facts.files,
     packageJson: facts.packageJson,
     scripts: facts.scripts,
     workspacePackageJsons: facts.workspacePackageJsons,
   });
   const capabilities = buildCapabilitySignals({
-    dependencies: facts.dependencies,
     files: facts.files,
     packageManagerEvidence: facts.packageManagerEvidence,
     packageJson: facts.packageJson,
     packageManager: facts.packageManager,
     scripts: facts.scripts,
-    tags,
     workspacePackageJsons: facts.workspacePackageJsons,
     workspaceRoots: facts.workspaceRoots,
   });
@@ -621,6 +618,7 @@ function buildGeneratedOracles(
       enforcement: "hard",
       confidence: candidate.roundId === "deep" ? "medium" : "high",
       timeoutMs: GENERATED_ORACLE_TIMEOUT_MS[candidate.roundId],
+      ...(candidate.safetyRationale ? { safetyRationale: candidate.safetyRationale } : {}),
       env: {},
     });
   }

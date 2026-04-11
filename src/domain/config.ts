@@ -88,6 +88,7 @@ export const repoOracleSchema = z.object({
   passSummary: z.string().min(1).optional(),
   failureSummary: z.string().min(1).optional(),
   repairHint: z.string().min(1).optional(),
+  safetyRationale: z.string().min(1).optional(),
   env: z.record(z.string(), z.string()).default({}),
 });
 

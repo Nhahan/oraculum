@@ -13,9 +13,7 @@ import {
   CYPRESS_CONFIG_PATHS,
   E2E_CONFIG_PATHS,
   FRONTEND_BUILD_CONFIG_PATHS,
-  FRONTEND_DEPENDENCIES,
   KNOWN_SIGNAL_PATHS,
-  MIGRATION_DEPENDENCIES,
   MIGRATION_SIGNAL_PATHS,
   MIGRATION_TOOL_SIGNALS,
   MIGRATION_TOOL_VALUES,
@@ -103,7 +101,6 @@ export async function detectKnownFiles(
 }
 
 export function buildLegacySignalTags(options: {
-  dependencies: string[];
   files: string[];
   packageJson:
     | {
@@ -118,12 +115,6 @@ export function buildLegacySignalTags(options: {
 }): string[] {
   const tags = new Set<string>();
 
-  if (options.dependencies.some((dependency) => FRONTEND_DEPENDENCIES.has(dependency))) {
-    tags.add("frontend-framework");
-  }
-  if (options.dependencies.some((dependency) => MIGRATION_DEPENDENCIES.has(dependency))) {
-    tags.add("migration-tooling");
-  }
   if (hasSignalPath(options.files, FRONTEND_BUILD_CONFIG_PATHS)) {
     tags.add("frontend-build");
   }
@@ -153,24 +144,11 @@ export function buildLegacySignalTags(options: {
   if (options.scripts.some((script) => script === "test" || script.includes("test:"))) {
     tags.add("test-script");
   }
-  if (
-    options.scripts.some((script) => /(migrate|migration|rollback|schema|db:|prisma)/u.test(script))
-  ) {
-    tags.add("migration-script");
-  }
-  if (
-    !tags.has("frontend-framework") &&
-    !tags.has("migration-tooling") &&
-    tags.has("package-export")
-  ) {
-    tags.add("library-signal");
-  }
 
   return [...tags].sort((left, right) => left.localeCompare(right));
 }
 
 export function buildCapabilitySignals(options: {
-  dependencies: string[];
   files: string[];
   packageManagerEvidence?:
     | {
@@ -182,7 +160,6 @@ export function buildCapabilitySignals(options: {
   packageJson: ProfilePackageJsonManifest | undefined;
   packageManager: ProfileRepoSignals["packageManager"];
   scripts: string[];
-  tags: string[];
   workspacePackageJsons: WorkspacePackageJsonManifest[];
   workspaceRoots: string[];
 }): ProfileCapabilitySignal[] {
@@ -308,30 +285,6 @@ export function buildCapabilitySignals(options: {
       detail: "Frontend build configuration file is present.",
     });
   }
-  if (dependenciesIntersection(rootDependencies, FRONTEND_DEPENDENCIES)) {
-    add({
-      kind: "build-system",
-      value: "frontend-framework",
-      source: "root-config",
-      path: "package.json",
-      detail: "Frontend framework dependency is declared in package metadata.",
-    });
-  }
-  for (const workspaceManifest of options.workspacePackageJsons) {
-    const workspaceDependencies = new Set(
-      collectManifestDependencies(workspaceManifest.packageJson),
-    );
-    if (!dependenciesIntersection(workspaceDependencies, FRONTEND_DEPENDENCIES)) {
-      continue;
-    }
-    add({
-      kind: "build-system",
-      value: "frontend-framework",
-      source: "workspace-config",
-      path: workspaceManifest.manifestPath,
-      detail: "Frontend framework dependency is declared in workspace package metadata.",
-    });
-  }
   if (hasPackageExportMetadata(options.packageJson)) {
     add({
       kind: "intent",
@@ -438,33 +391,7 @@ export function buildCapabilitySignals(options: {
         source: signalSourceForPath(configPath, [...toolSignal.configPaths]),
         path: configPath,
         confidence: "high",
-      });
-      continue;
-    }
-
-    if (dependenciesIntersection(rootDependencies, toolSignal.dependencies)) {
-      add({
-        kind: "migration-tool",
-        value: toolSignal.value,
-        source: "root-config",
-        path: "package.json",
-        confidence: "high",
-      });
-    }
-
-    for (const workspaceManifest of options.workspacePackageJsons) {
-      const workspaceDependencies = new Set(
-        collectManifestDependencies(workspaceManifest.packageJson),
-      );
-      if (!dependenciesIntersection(workspaceDependencies, toolSignal.dependencies)) {
-        continue;
-      }
-      add({
-        kind: "migration-tool",
-        value: toolSignal.value,
-        source: "workspace-config",
-        path: workspaceManifest.manifestPath,
-        confidence: "high",
+        detail: "Migration tool configuration file is present.",
       });
     }
   }
@@ -512,15 +439,7 @@ function profileSignalSourceForLegacyTag(tag: string): ProfileSignalProvenance["
   }
   if (
     tag.endsWith("-script") ||
-    [
-      "e2e-config",
-      "frontend-build",
-      "frontend-framework",
-      "library-signal",
-      "migration-files",
-      "migration-tooling",
-      "package-export",
-    ].includes(tag)
+    ["e2e-config", "frontend-build", "migration-files", "package-export"].includes(tag)
   ) {
     return "root-config";
   }
@@ -538,14 +457,8 @@ function findLegacyTagCapability(
       { kind: "test-runner", value: "cypress" },
     ],
     "frontend-build": [{ kind: "build-system", value: "frontend-config" }],
-    "frontend-framework": [{ kind: "build-system", value: "frontend-framework" }],
-    "library-signal": [{ kind: "intent", value: "library" }],
     "lint-script": [{ kind: "command", value: "lint" }],
     "migration-files": [
-      ...MIGRATION_TOOL_VALUES.map((value) => ({ kind: "migration-tool" as const, value })),
-    ],
-    "migration-script": [],
-    "migration-tooling": [
       ...MIGRATION_TOOL_VALUES.map((value) => ({ kind: "migration-tool" as const, value })),
     ],
     "package-export": [{ kind: "intent", value: "library" }],
@@ -594,10 +507,6 @@ function hasPackageExportMetadata(
   return (
     manifest?.exports !== undefined || !!manifest?.main || !!manifest?.module || !!manifest?.types
   );
-}
-
-function dependenciesIntersection(dependencies: Set<string>, expected: Set<string>): boolean {
-  return [...expected].some((dependency) => dependencies.has(dependency));
 }
 
 function hasSignalPath(files: string[], expectedPaths: string[]): boolean {

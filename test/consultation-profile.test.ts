@@ -91,7 +91,13 @@ if (out) {
       throw new Error("expected consultation config path to be recorded");
     }
     const savedConfig = JSON.parse(await readFile(configPath, "utf8")) as {
-      oracles?: Array<{ id: string; args?: string[]; command?: string; timeoutMs?: number }>;
+      oracles?: Array<{
+        id: string;
+        args?: string[];
+        command?: string;
+        timeoutMs?: number;
+        safetyRationale?: string;
+      }>;
     };
     expect(
       savedConfig.oracles?.filter(
@@ -106,6 +112,7 @@ if (out) {
       "process.platform === 'win32' ? 'npm.cmd' : 'npm'",
     );
     expect(packageSmokeDeep?.args?.join(" ")).toContain("shell: process.platform === 'win32'");
+    expect(packageSmokeDeep?.safetyRationale).toContain("temporary directory");
     await expect(readFile(getProfileSelectionPath(cwd, manifest.id), "utf8")).resolves.toContain(
       '"profileId": "library"',
     );
@@ -406,7 +413,7 @@ if (out) {
     expect(recommendation.selection.oracleIds).toEqual([]);
   });
 
-  it("surfaces workspace-only frontend dependency signals without forcing the frontend profile", async () => {
+  it("keeps workspace-only frontend dependencies as raw facts without semantic frontend shortcuts", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
     await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nChange copy.\n", "utf8");
@@ -465,14 +472,11 @@ if (out) {
     expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([]);
     expect(artifact.signals.dependencies).toEqual(expect.arrayContaining(["react", "vite"]));
-    expect(artifact.signals.tags).toContain("frontend-framework");
-    expect(artifact.signals.capabilities).toContainEqual(
+    expect(artifact.signals.tags).not.toContain("frontend-framework");
+    expect(artifact.signals.capabilities).not.toContainEqual(
       expect.objectContaining({
         kind: "build-system",
         value: "frontend-framework",
-        source: "workspace-config",
-        path: "packages/app/package.json",
-        detail: "Frontend framework dependency is declared in workspace package metadata.",
       }),
     );
     expect(artifact.signals.capabilities).toContainEqual(
@@ -541,9 +545,8 @@ if (out) {
       };
     };
     expect(recommendation.selection.profileId).toBe("generic");
-    expect(artifact.signals.tags).toEqual(
-      expect.arrayContaining(["package-export", "library-signal"]),
-    );
+    expect(artifact.signals.tags).toEqual(expect.arrayContaining(["package-export"]));
+    expect(artifact.signals.tags).not.toContain("library-signal");
     expect(artifact.signals.capabilities).toContainEqual(
       expect.objectContaining({
         kind: "intent",
@@ -634,27 +637,34 @@ if (out) {
       "package-smoke-deep",
     ]);
     expect(recommendation.selection.missingCapabilities).toEqual([]);
-    expect(recommendation.config.oracles).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "lint-fast",
-          command: "npm",
-          args: ["run", "lint"],
-          relativeCwd: "packages/lib",
-        }),
-        expect.objectContaining({
-          id: "pack-impact",
-          command: "npm",
-          args: ["pack", "--dry-run"],
-          relativeCwd: "packages/lib",
-        }),
-        expect.objectContaining({
-          id: "package-smoke-deep",
-          command: "node",
-          relativeCwd: "packages/lib",
-        }),
-      ]),
+    const lintOracle = recommendation.config.oracles.find((oracle) => oracle.id === "lint-fast");
+    const packOracle = recommendation.config.oracles.find((oracle) => oracle.id === "pack-impact");
+    const packageSmokeOracle = recommendation.config.oracles.find(
+      (oracle) => oracle.id === "package-smoke-deep",
     );
+    expect(lintOracle).toEqual(
+      expect.objectContaining({
+        command: "npm",
+        args: ["run", "lint"],
+        relativeCwd: "packages/lib",
+      }),
+    );
+    expect(lintOracle?.safetyRationale).toContain("workspace package.json script");
+    expect(packOracle).toEqual(
+      expect.objectContaining({
+        command: "npm",
+        args: ["pack", "--dry-run"],
+        relativeCwd: "packages/lib",
+      }),
+    );
+    expect(packOracle?.safetyRationale).toContain("selected workspace package");
+    expect(packageSmokeOracle).toEqual(
+      expect.objectContaining({
+        command: "node",
+        relativeCwd: "packages/lib",
+      }),
+    );
+    expect(packageSmokeOracle?.safetyRationale).toContain("temporary tarball directory");
     expect(artifact.signals.commandCatalog).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1491,7 +1501,7 @@ if (out) {
     expect(artifact.signals.commandCatalog).toEqual([]);
   });
 
-  it("detects dependency-only non-Prisma migration tools without inventing commands", async () => {
+  it("keeps dependency-only migration packages as raw dependencies without semantic migration shortcuts", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
     await writeFile(
@@ -1531,6 +1541,7 @@ if (out) {
       await readFile(getProfileSelectionPath(cwd, "run_knex_migration"), "utf8"),
     ) as {
       signals: {
+        dependencies: string[];
         capabilities: Array<{ kind: string; path?: string; source: string; value: string }>;
         commandCatalog: Array<{ command: string }>;
         provenance: Array<{ path?: string; signal: string; source: string }>;
@@ -1538,19 +1549,16 @@ if (out) {
     };
     expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([]);
-    expect(artifact.signals.capabilities).toContainEqual(
+    expect(artifact.signals.dependencies).toEqual(expect.arrayContaining(["knex"]));
+    expect(artifact.signals.capabilities).not.toContainEqual(
       expect.objectContaining({
         kind: "migration-tool",
-        path: "package.json",
-        source: "root-config",
         value: "knex",
       }),
     );
-    expect(artifact.signals.provenance).toContainEqual(
+    expect(artifact.signals.provenance).not.toContainEqual(
       expect.objectContaining({
-        path: "package.json",
         signal: "tag:migration-tooling",
-        source: "root-config",
       }),
     );
     expect(artifact.signals.commandCatalog).toEqual([]);

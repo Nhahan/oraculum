@@ -503,6 +503,7 @@ function buildOracleWitnessDetail(
       ? `ResolvedCommand=${resolvedCommand.resolvedCommand} (${resolvedCommand.resolution}).`
       : undefined,
     `PathPolicy=${oracle.pathPolicy}.`,
+    oracle.safetyRationale ? `Safety=${oracle.safetyRationale}` : undefined,
     `OracleCwd=${oracleCwd}.`,
     `Workspace=${options.candidate.workspaceDir}.`,
   ]

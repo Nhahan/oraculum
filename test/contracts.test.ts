@@ -177,12 +177,16 @@ describe("oracle and adapter contracts", () => {
         command: "npm run lint",
         invariant: "The candidate must satisfy lint checks.",
         enforcement: "hard",
+        safetyRationale: "The repository declares this lint command explicitly.",
       }),
     );
 
     expect(config.oracles[0]?.cwd).toBe("workspace");
     expect(config.oracles[0]?.confidence).toBe("medium");
     expect(config.oracles[0]?.pathPolicy).toBe("local-only");
+    expect(config.oracles[0]?.safetyRationale).toBe(
+      "The repository declares this lint command explicitly.",
+    );
     expect(config.repair.maxAttemptsPerRound).toBe(1);
   });
 

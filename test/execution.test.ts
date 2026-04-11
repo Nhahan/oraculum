@@ -1609,14 +1609,14 @@ if (out) {
       throw new Error("expected consultation config path to be recorded");
     }
     const configRaw = JSON.parse(await readFile(configPath, "utf8")) as {
-      oracles?: Array<{ id: string; relativeCwd?: string }>;
+      oracles?: Array<{ id: string; relativeCwd?: string; safetyRationale?: string }>;
     };
-    expect(configRaw.oracles).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: "lint-fast", relativeCwd: "packages/app" }),
-        expect.objectContaining({ id: "full-suite-deep", relativeCwd: "packages/app" }),
-      ]),
-    );
+    const lintOracle = configRaw.oracles?.find((oracle) => oracle.id === "lint-fast");
+    const fullSuiteOracle = configRaw.oracles?.find((oracle) => oracle.id === "full-suite-deep");
+    expect(lintOracle?.relativeCwd).toBe("packages/app");
+    expect(lintOracle?.safetyRationale).toContain("workspace package.json script");
+    expect(fullSuiteOracle?.relativeCwd).toBe("packages/app");
+    expect(fullSuiteOracle?.safetyRationale).toContain("workspace package.json script");
     await expect(
       readFile(getCandidateVerdictPath(cwd, planned.id, "cand-01", "fast", "lint-fast"), "utf8"),
     ).resolves.toContain('"status": "pass"');
@@ -1626,6 +1626,12 @@ if (out) {
         "utf8",
       ),
     ).resolves.toContain('"status": "pass"');
+    await expect(
+      readFile(
+        getCandidateWitnessPath(cwd, planned.id, "cand-01", "fast", "cand-01-lint-fast"),
+        "utf8",
+      ),
+    ).resolves.toContain("Safety=Uses a workspace package.json script");
   }, 20_000);
 
   it("runs consultation-scoped workspace-local entrypoint oracles inside the selected workspace cwd", async () => {
