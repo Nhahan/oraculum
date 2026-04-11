@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -391,16 +391,8 @@ describe("profile explicit command collector", () => {
     const cwd = await createTempRoot();
     await mkdir(join(cwd, "bin"), { recursive: true });
     await mkdir(join(cwd, "scripts"), { recursive: true });
-    const expectedBuildPath = await writeNodeBinary(
-      join(cwd, "bin"),
-      "build",
-      'process.stdout.write("build\\n");',
-    );
-    const expectedLintPath = await writeNodeBinary(
-      join(cwd, "scripts"),
-      "lint",
-      'process.stdout.write("lint\\n");',
-    );
+    await writeNodeBinary(join(cwd, "bin"), "build", 'process.stdout.write("build\\n");');
+    await writeNodeBinary(join(cwd, "scripts"), "lint", 'process.stdout.write("lint\\n");');
 
     const result = await collectLocalEntrypointSurfaces(cwd);
 
@@ -408,13 +400,13 @@ describe("profile explicit command collector", () => {
       expect.arrayContaining([
         expect.objectContaining({
           normalizedName: "build",
-          command: join("bin", expectedBuildPath.split(/[/\\\\]/u).pop() ?? "build"),
+          command: posix.join("bin", "build"),
           args: [],
           pathPolicy: "local-only",
         }),
         expect.objectContaining({
           normalizedName: "lint",
-          command: join("scripts", expectedLintPath.split(/[/\\\\]/u).pop() ?? "lint"),
+          command: posix.join("scripts", "lint"),
           args: [],
           pathPolicy: "local-only",
         }),
@@ -470,12 +462,12 @@ describe("profile explicit command collector", () => {
     await writeFile(join(cwd, "packages", "app", "pyproject.toml"), "[project]\nname='app'\n");
     await mkdir(join(cwd, "packages", "app", "bin"), { recursive: true });
     await mkdir(join(cwd, "packages", "app", "scripts"), { recursive: true });
-    const expectedLintPath = await writeNodeBinary(
+    await writeNodeBinary(
       join(cwd, "packages", "app", "bin"),
       "lint",
       'process.stdout.write("lint\\n");',
     );
-    const expectedTestPath = await writeNodeBinary(
+    await writeNodeBinary(
       join(cwd, "packages", "app", "scripts"),
       "test",
       'process.stdout.write("test\\n");',
@@ -488,14 +480,14 @@ describe("profile explicit command collector", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "lint-fast",
-          command: join("bin", expectedLintPath.split(/[/\\\\]/u).pop() ?? "lint"),
+          command: posix.join("bin", "lint"),
           args: [],
           relativeCwd: "packages/app",
           pathPolicy: "local-only",
         }),
         expect.objectContaining({
           id: "full-suite-deep",
-          command: join("scripts", expectedTestPath.split(/[/\\\\]/u).pop() ?? "test"),
+          command: posix.join("scripts", "test"),
           args: [],
           relativeCwd: "packages/app",
           pathPolicy: "local-only",

@@ -39,6 +39,29 @@ describe("oracle local tools", () => {
     ]);
   });
 
+  it("materializes Windows local tool directories with native absolute paths", () => {
+    const existing = new Set([
+      "C:\\repo\\.oraculum\\workspaces\\run-1\\cand-01\\node_modules\\.bin",
+      "C:\\repo\\.oraculum\\workspaces\\run-1\\cand-01\\.venv\\Scripts",
+      "C:\\repo\\node_modules\\.bin",
+      "C:\\repo\\bin",
+    ]);
+
+    const paths = collectOracleLocalToolPaths({
+      exists: (path) => existing.has(path),
+      platform: "win32",
+      projectRoot: "C:/repo",
+      workspaceDir: "C:/repo/.oraculum/workspaces/run-1/cand-01",
+    });
+
+    expect(paths).toEqual([
+      "C:\\repo\\.oraculum\\workspaces\\run-1\\cand-01\\node_modules\\.bin",
+      "C:\\repo\\.oraculum\\workspaces\\run-1\\cand-01\\.venv\\Scripts",
+      "C:\\repo\\node_modules\\.bin",
+      "C:\\repo\\bin",
+    ]);
+  });
+
   it("uses Windows-specific executable directories", () => {
     expect(listRelativeLocalToolDirs("win32")).toEqual([
       "node_modules/.bin",
@@ -66,7 +89,7 @@ describe("oracle local tools", () => {
   });
 
   it("resolves Windows Maven wrapper suffixes from the project root", () => {
-    const existing = new Set(["C:/repo/mvnw.cmd"]);
+    const existing = new Set(["C:\\repo\\mvnw.cmd"]);
 
     const resolved = resolveRepoLocalWrapperCommand({
       command: "mvnw",
@@ -77,13 +100,13 @@ describe("oracle local tools", () => {
     });
 
     expect(resolved).toEqual({
-      resolvedCommand: "C:/repo/mvnw.cmd",
+      resolvedCommand: "C:\\repo\\mvnw.cmd",
       resolution: "project-wrapper",
     });
   });
 
   it("resolves repo-local Windows entrypoints from logical command paths", () => {
-    const existing = new Set(["C:/repo/packages/app/bin/lint.cmd"]);
+    const existing = new Set(["C:\\repo\\packages\\app\\bin\\lint.cmd"]);
 
     const resolved = resolveRepoLocalEntrypointCommand({
       command: "bin/lint",
@@ -93,7 +116,7 @@ describe("oracle local tools", () => {
     });
 
     expect(resolved).toEqual({
-      resolvedCommand: "C:/repo/packages/app/bin/lint.cmd",
+      resolvedCommand: "C:\\repo\\packages\\app\\bin\\lint.cmd",
       resolution: "local-entrypoint",
     });
   });

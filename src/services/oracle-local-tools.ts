@@ -1,4 +1,4 @@
-import { posix } from "node:path";
+import { posix, win32 } from "node:path";
 
 export function collectOracleLocalToolPaths(options: {
   exists: (path: string) => boolean;
@@ -13,7 +13,7 @@ export function collectOracleLocalToolPaths(options: {
 
   for (const root of roots) {
     for (const relativeDir of relativeToolDirs) {
-      const absolutePath = joinPortablePath(root, relativeDir);
+      const absolutePath = joinPlatformPath(root, relativeDir, options.platform);
       if (!seen.has(absolutePath) && options.exists(absolutePath)) {
         seen.add(absolutePath);
         paths.push(absolutePath);
@@ -56,7 +56,7 @@ export function resolveRepoLocalEntrypointCommand(options: {
   }
 
   for (const candidate of listRepoLocalEntrypointCandidates(normalizedCommand, options.platform)) {
-    const resolved = joinPortablePath(options.cwd, candidate);
+    const resolved = joinPlatformPath(options.cwd, candidate, options.platform);
     if (options.exists(resolved)) {
       return {
         resolvedCommand: resolved,
@@ -98,7 +98,7 @@ export function resolveRepoLocalWrapperCommand(options: {
         ];
   for (const candidate of roots) {
     for (const wrapperName of wrapperNames) {
-      const resolved = joinPortablePath(candidate.root, wrapperName);
+      const resolved = joinPlatformPath(candidate.root, wrapperName, options.platform);
       if (options.exists(resolved)) {
         return {
           resolvedCommand: resolved,
@@ -162,10 +162,17 @@ function isPortableAbsolutePath(path: string): boolean {
   return path.startsWith("/") || /^[A-Za-z]:\//u.test(path);
 }
 
-function joinPortablePath(root: string, relativePath: string): string {
+function joinPlatformPath(
+  root: string,
+  relativePath: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const pathImpl = platform === "win32" ? win32 : posix;
   const normalizedRoot = normalizePortablePath(root).replace(/\/+$/u, "");
   const normalizedRelative = normalizePortablePath(relativePath).replace(/^\/+/u, "");
-  return normalizedRelative.length > 0 ? `${normalizedRoot}/${normalizedRelative}` : normalizedRoot;
+  return normalizedRelative.length > 0
+    ? pathImpl.join(normalizedRoot, normalizedRelative)
+    : pathImpl.normalize(normalizedRoot);
 }
 
 function normalizePortablePath(path: string): string {
