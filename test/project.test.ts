@@ -34,6 +34,7 @@ import {
   planRun,
   readLatestExportableRunId,
   readLatestRunId,
+  readRunManifest,
 } from "../src/services/runs.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
 import { normalizePathForAssertion } from "./helpers/platform.js";
@@ -854,6 +855,69 @@ if (out) {
         withReport: false,
       }),
     ).rejects.toThrow("older consultation artifact");
+  });
+
+  it("reads legacy run manifests that do not record candidateCount", async () => {
+    const cwd = await createInitializedProject();
+    const runId = "run_legacy_manifest";
+    const createdAt = "2026-04-06T00:00:00.000Z";
+    await mkdir(dirname(getRunManifestPath(cwd, runId)), { recursive: true });
+
+    await writeFile(
+      getRunManifestPath(cwd, runId),
+      `${JSON.stringify(
+        {
+          id: runId,
+          status: "planned",
+          taskPath: join(cwd, "tasks", "legacy-task.md"),
+          taskPacket: {
+            id: "task_legacy",
+            title: "Legacy task",
+            sourceKind: "task-note",
+            sourcePath: join(cwd, "tasks", "legacy-task.md"),
+          },
+          agent: "codex",
+          createdAt,
+          rounds: [
+            {
+              id: "fast",
+              label: "Fast",
+              status: "pending",
+              verdictCount: 0,
+              survivorCount: 0,
+              eliminatedCount: 0,
+            },
+          ],
+          candidates: [
+            {
+              id: "cand-01",
+              strategyId: "minimal-change",
+              strategyLabel: "Minimal Change",
+              status: "planned",
+              workspaceDir: join(cwd, ".oraculum", "workspaces", runId, "cand-01"),
+              taskPacketPath: join(
+                cwd,
+                ".oraculum",
+                "runs",
+                runId,
+                "candidates",
+                "cand-01",
+                "task-packet.json",
+              ),
+              createdAt,
+            },
+          ],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const manifest = await readRunManifest(cwd, runId);
+
+    expect(manifest.candidateCount).toBe(1);
+    expect(manifest.candidates).toHaveLength(1);
   });
 });
 

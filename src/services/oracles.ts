@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { basename, delimiter, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, delimiter, isAbsolute, relative, resolve } from "node:path";
 
 import type { AgentRunResult } from "../adapters/types.js";
 import {
@@ -19,6 +19,10 @@ import {
 } from "../domain/oracle.js";
 import type { CandidateManifest } from "../domain/run.js";
 import { collectCandidateChangeInsight } from "./change-insights.js";
+import {
+  collectOracleLocalToolPaths,
+  resolveRepoLocalWrapperCommand,
+} from "./oracle-local-tools.js";
 
 interface EvaluateCandidateRoundOptions {
   candidate: CandidateManifest;
@@ -261,13 +265,23 @@ async function evaluateRepoOracle(
   await mkdir(logDir, { recursive: true });
 
   try {
-    const shell = oracle.shell ?? inferRepoOracleShell(oracle.command, oracle.args);
     const oracleCwd = resolveOracleCwd(options, oracle);
-    const commandResult = await runSubprocess({
+    const scopeRoot =
+      oracle.cwd === "project" ? options.projectRoot : options.candidate.workspaceDir;
+    const resolvedCommand = resolveRepoLocalWrapperCommand({
       command: oracle.command,
+      exists: existsSync,
+      projectRoot: options.projectRoot,
+      scopeRoot,
+    });
+    const shell =
+      oracle.shell ?? inferRepoOracleShell(resolvedCommand.resolvedCommand, oracle.args);
+    const commandResult = await runSubprocess({
+      command: resolvedCommand.resolvedCommand,
       args: oracle.args,
       cwd: oracleCwd,
       env: buildOracleEnvironment(options, oracle, oracleCwd),
+      inheritEnv: false,
       ...(shell !== undefined ? { shell } : {}),
       ...(oracle.timeoutMs !== undefined ? { timeoutMs: oracle.timeoutMs } : {}),
     });
@@ -291,6 +305,7 @@ async function evaluateRepoOracle(
         options,
         oracle,
         oracleCwd,
+        resolvedCommand,
         commandResult.exitCode,
         commandResult.timedOut,
       ),
@@ -365,7 +380,11 @@ function buildOracleEnvironment(
     Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ??
     "PATH";
   const inheritedPath = explicitPathEntry ? explicitPathEntry[1] : process.env[pathKey];
-  const localToolPaths = collectLocalToolPaths(options);
+  const localToolPaths = collectOracleLocalToolPaths({
+    exists: existsSync,
+    projectRoot: options.projectRoot,
+    workspaceDir: options.candidate.workspaceDir,
+  });
   const oraclePath =
     explicitPathEntry !== undefined
       ? inheritedPath
@@ -430,31 +449,6 @@ function isContainedRelativePath(relativePath: string): boolean {
   return firstSegment !== ".." && !isAbsolute(relativePath);
 }
 
-function collectLocalToolPaths(options: EvaluateCandidateRoundOptions): string[] {
-  const candidateWorkspaceDir = options.candidate.workspaceDir;
-  const roots = [candidateWorkspaceDir, options.projectRoot];
-  const relativeToolDirs = [
-    join("node_modules", ".bin"),
-    join(".venv", process.platform === "win32" ? "Scripts" : "bin"),
-    join("venv", process.platform === "win32" ? "Scripts" : "bin"),
-    "bin",
-  ];
-  const seen = new Set<string>();
-  const paths: string[] = [];
-
-  for (const root of roots) {
-    for (const relativeDir of relativeToolDirs) {
-      const absolutePath = join(root, relativeDir);
-      if (!seen.has(absolutePath) && existsSync(absolutePath)) {
-        seen.add(absolutePath);
-        paths.push(absolutePath);
-      }
-    }
-  }
-
-  return paths;
-}
-
 function inferRepoOracleShell(command: string, args: string[]): boolean | undefined {
   if (args.length === 0) {
     return true;
@@ -484,6 +478,10 @@ function buildOracleWitnessDetail(
   options: EvaluateCandidateRoundOptions,
   oracle: RepoOracle,
   oracleCwd: string,
+  resolvedCommand: {
+    resolvedCommand: string;
+    resolution: "project-wrapper" | "workspace-wrapper" | "unresolved";
+  },
   exitCode: number,
   timedOut: boolean,
 ): string {
@@ -492,6 +490,9 @@ function buildOracleWitnessDetail(
     timedOut ? "The command timed out." : undefined,
     `Scope=${oracle.cwd === "project" ? "project" : "workspace"}.`,
     oracle.relativeCwd ? `RelativeCwd=${oracle.relativeCwd}.` : undefined,
+    resolvedCommand.resolution !== "unresolved"
+      ? `ResolvedCommand=${resolvedCommand.resolvedCommand} (${resolvedCommand.resolution}).`
+      : undefined,
     `PathPolicy=${oracle.pathPolicy}.`,
     `OracleCwd=${oracleCwd}.`,
     `Workspace=${options.candidate.workspaceDir}.`,

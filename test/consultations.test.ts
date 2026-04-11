@@ -242,6 +242,25 @@ describe("consultation workflow summaries", () => {
     expect(archive).toContain("orc verdict run_newer");
   });
 
+  it("keeps legacy manifests without candidateCount visible in recent consultation listings", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_legacy",
+      createdAt: "2026-04-05T00:00:00.000Z",
+    });
+    const { candidateCount: _candidateCount, ...legacyManifest } = manifest;
+    await writeRawManifest(cwd, manifest.id, legacyManifest);
+
+    const manifests = await listRecentConsultations(cwd, 10);
+
+    expect(manifests).toEqual([
+      expect.objectContaining({
+        id: "run_legacy",
+        candidateCount: 1,
+      }),
+    ]);
+  });
+
   it("renders chat-native next steps with the orc prefix", async () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {
@@ -319,6 +338,12 @@ async function writeManifest(cwd: string, manifest: RunManifest): Promise<void> 
     `${JSON.stringify(manifest, null, 2)}\n`,
     "utf8",
   );
+}
+
+async function writeRawManifest(cwd: string, runId: string, manifest: unknown): Promise<void> {
+  await mkdir(join(cwd, ".oraculum", "runs", runId), { recursive: true });
+  await mkdir(join(cwd, ".oraculum", "runs", runId, "reports"), { recursive: true });
+  await writeFile(getRunManifestPath(cwd, runId), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 }
 
 function createManifest(

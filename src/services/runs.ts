@@ -40,6 +40,7 @@ import {
 } from "../domain/run.js";
 import { recommendConsultationProfile } from "./consultation-profile.js";
 import { loadProjectConfigLayers, pathExists, writeJsonFile } from "./project.js";
+import { parseRunManifestArtifact } from "./run-manifest-artifact.js";
 import { loadTaskPacket } from "./task-packets.js";
 
 interface PlanRunOptions {
@@ -222,7 +223,7 @@ export async function readRunManifest(cwd: string, runId: string): Promise<RunMa
   }
 
   const raw = await readFile(manifestPath, "utf8");
-  return runManifestSchema.parse(JSON.parse(raw) as unknown);
+  return parseRunManifestArtifact(JSON.parse(raw) as unknown);
 }
 
 export async function buildExportPlan(

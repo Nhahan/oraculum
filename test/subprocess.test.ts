@@ -63,6 +63,41 @@ process.stderr.write("y".repeat(32));
     expect(result.stderrTruncated).toBe(true);
   });
 
+  it("does not inherit host env when inheritEnv is false", async () => {
+    const root = await createTempRoot();
+    const scriptPath = await writeNodeBinary(
+      root,
+      "env-isolation",
+      [
+        "if (process.env.ORACULUM_SUBPROCESS_SECRET) {",
+        "  process.stderr.write('leaked');",
+        "  process.exit(2);",
+        "}",
+      ].join("\n"),
+    );
+
+    const originalSecret = process.env.ORACULUM_SUBPROCESS_SECRET;
+    process.env.ORACULUM_SUBPROCESS_SECRET = "should-not-leak";
+    try {
+      const result = await runSubprocess({
+        command: scriptPath,
+        args: [],
+        cwd: root,
+        env: {},
+        inheritEnv: false,
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe("");
+    } finally {
+      if (originalSecret === undefined) {
+        delete process.env.ORACULUM_SUBPROCESS_SECRET;
+      } else {
+        process.env.ORACULUM_SUBPROCESS_SECRET = originalSecret;
+      }
+    }
+  });
+
   const posixIt = process.platform === "win32" ? it.skip : it;
 
   posixIt("terminates the subprocess process group on timeout", async () => {

@@ -1067,6 +1067,148 @@ if (out) {
     }
   }, 20_000);
 
+  it("does not leak unrelated host environment variables into repo-local oracles", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await configureProjectOracles(cwd, [
+      {
+        id: "host-env-isolation",
+        roundId: "impact",
+        command: process.execPath,
+        args: [
+          "-e",
+          [
+            "if (process.env.ORACULUM_TEST_HOST_SECRET) {",
+            "  console.error('unexpected leaked env');",
+            "  process.exit(2);",
+            "}",
+          ].join(" "),
+        ],
+        invariant:
+          "Repo-local oracles should only receive deterministic Oraculum env plus explicit overrides.",
+        enforcement: "hard",
+      },
+    ]);
+    await writeFile(
+      join(cwd, "tasks", "host-env-isolation.md"),
+      "# Host env isolation\nCheck env.\n",
+    );
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const path = require("node:path");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
+if (out) {
+  fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/host-env-isolation.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    const originalSecret = process.env.ORACULUM_TEST_HOST_SECRET;
+    process.env.ORACULUM_TEST_HOST_SECRET = "should-not-leak";
+    try {
+      const executed = await executeRun({
+        cwd,
+        runId: planned.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: 5_000,
+      });
+
+      expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+    } finally {
+      if (originalSecret === undefined) {
+        delete process.env.ORACULUM_TEST_HOST_SECRET;
+      } else {
+        process.env.ORACULUM_TEST_HOST_SECRET = originalSecret;
+      }
+    }
+  }, 20_000);
+
+  it("resolves bare repo-local Gradle wrappers without inheriting the global PATH", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeNodeBinary(
+      cwd,
+      "gradlew",
+      `const fs = require("node:fs");
+const path = require("node:path");
+fs.writeFileSync(path.join(process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR, "gradle-wrapper-marker.txt"), process.argv.slice(2).join(" "), "utf8");
+`,
+    );
+    await configureProjectOracles(cwd, [
+      {
+        id: "gradle-wrapper",
+        roundId: "impact",
+        command: "gradlew",
+        args: ["test"],
+        invariant: "Repo-local Gradle wrappers should resolve from the repository checkout.",
+        enforcement: "hard",
+      },
+    ]);
+    await writeFile(join(cwd, "tasks", "gradle-wrapper.md"), "# Gradle wrapper\nRun wrapper.\n");
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+const path = require("node:path");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
+if (out) {
+  fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/gradle-wrapper.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+    await expect(
+      readFile(
+        join(cwd, ".oraculum", "workspaces", planned.id, "cand-01", "gradle-wrapper-marker.txt"),
+        "utf8",
+      ),
+    ).resolves.toBe("test");
+    await expect(
+      readFile(
+        getCandidateWitnessPath(cwd, planned.id, "cand-01", "impact", "cand-01-gradle-wrapper"),
+        "utf8",
+      ),
+    ).resolves.toContain("ResolvedCommand=");
+  }, 20_000);
+
   it("falls back to deterministic winner selection when the judge exits non-zero", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
@@ -1382,6 +1524,233 @@ if (out) {
     ).resolves.toContain('"status": "pass"');
   }, 20_000);
 
+  it("runs consultation-scoped workspace package script oracles inside the selected workspace cwd", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(
+      join(cwd, "tasks", "fix-workspace-library.md"),
+      "# Fix\nUpdate the workspace output.\n",
+    );
+    await writeWorkspaceLibraryProfileProject(cwd);
+
+    const fakeProfileCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex-workspace-profile",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"profileId":"library","confidence":"high","summary":"Workspace package scripts are present.","candidateCount":3,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","full-suite-deep"],"missingCapabilities":["No package packaging smoke check was detected."]}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const fakeCandidateCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex-workspace-candidate",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
+  fs.writeFileSync(
+    path.join(process.cwd(), "packages", "app", "src", "index.js"),
+    'export function greet() {\\n  return "Hello";\\n}\\n',
+    "utf8",
+  );
+}
+if (out) {
+  const body = prompt.includes("You are selecting the best Oraculum finalist.")
+    ? '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 is the only surviving finalist."}'
+    : "Codex finished candidate patch";
+  fs.writeFileSync(out, body, "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/fix-workspace-library.md",
+      agent: "codex",
+      candidates: 1,
+      autoProfile: {
+        codexBinaryPath: fakeProfileCodex,
+        timeoutMs: 5_000,
+      },
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCandidateCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.profileSelection?.profileId).toBe("library");
+    expect(executed.manifest.profileSelection?.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
+    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+
+    const configPath = executed.manifest.configPath;
+    expect(configPath).toBeDefined();
+    if (!configPath) {
+      throw new Error("expected consultation config path to be recorded");
+    }
+    const configRaw = JSON.parse(await readFile(configPath, "utf8")) as {
+      oracles?: Array<{ id: string; relativeCwd?: string }>;
+    };
+    expect(configRaw.oracles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "lint-fast", relativeCwd: "packages/app" }),
+        expect.objectContaining({ id: "full-suite-deep", relativeCwd: "packages/app" }),
+      ]),
+    );
+    await expect(
+      readFile(getCandidateVerdictPath(cwd, planned.id, "cand-01", "fast", "lint-fast"), "utf8"),
+    ).resolves.toContain('"status": "pass"');
+    await expect(
+      readFile(
+        getCandidateVerdictPath(cwd, planned.id, "cand-01", "deep", "full-suite-deep"),
+        "utf8",
+      ),
+    ).resolves.toContain('"status": "pass"');
+  }, 20_000);
+
+  it("runs workspace package export smoke oracles inside the selected workspace cwd", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(
+      join(cwd, "tasks", "fix-workspace-pack.md"),
+      "# Fix\nUpdate the workspace package output.\n",
+    );
+    await writeWorkspaceExportableNpmLibraryProfileProject(cwd);
+
+    const fakeProfileCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex-workspace-pack-profile",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"profileId":"library","confidence":"high","summary":"Workspace package scripts and export metadata are present.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","pack-impact","full-suite-deep","package-smoke-deep"],"missingCapabilities":[]}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const fakeCandidateCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex-workspace-pack-candidate",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
+  fs.writeFileSync(
+    path.join(process.cwd(), "packages", "lib", "src", "index.js"),
+    'export function greet() {\\n  return "Hello";\\n}\\n',
+    "utf8",
+  );
+}
+if (out) {
+  const body = prompt.includes("You are selecting the best Oraculum finalist.")
+    ? '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 is the only surviving finalist."}'
+    : "Codex finished candidate patch";
+  fs.writeFileSync(out, body, "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/fix-workspace-pack.md",
+      agent: "codex",
+      candidates: 1,
+      autoProfile: {
+        codexBinaryPath: fakeProfileCodex,
+        timeoutMs: 5_000,
+      },
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCandidateCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.profileSelection?.profileId).toBe("library");
+    expect(executed.manifest.profileSelection?.oracleIds).toEqual([
+      "lint-fast",
+      "pack-impact",
+      "full-suite-deep",
+      "package-smoke-deep",
+    ]);
+    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+
+    const configPath = executed.manifest.configPath;
+    expect(configPath).toBeDefined();
+    if (!configPath) {
+      throw new Error("expected consultation config path to be recorded");
+    }
+    const configRaw = JSON.parse(await readFile(configPath, "utf8")) as {
+      oracles?: Array<{ id: string; relativeCwd?: string }>;
+    };
+    expect(configRaw.oracles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "lint-fast", relativeCwd: "packages/lib" }),
+        expect.objectContaining({ id: "pack-impact", relativeCwd: "packages/lib" }),
+        expect.objectContaining({ id: "full-suite-deep", relativeCwd: "packages/lib" }),
+        expect.objectContaining({ id: "package-smoke-deep", relativeCwd: "packages/lib" }),
+      ]),
+    );
+    await expect(
+      readFile(getCandidateVerdictPath(cwd, planned.id, "cand-01", "fast", "lint-fast"), "utf8"),
+    ).resolves.toContain('"status": "pass"');
+    await expect(
+      readFile(
+        getCandidateVerdictPath(cwd, planned.id, "cand-01", "impact", "pack-impact"),
+        "utf8",
+      ),
+    ).resolves.toContain('"status": "pass"');
+    await expect(
+      readFile(
+        getCandidateVerdictPath(cwd, planned.id, "cand-01", "deep", "full-suite-deep"),
+        "utf8",
+      ),
+    ).resolves.toContain('"status": "pass"');
+    await expect(
+      readFile(
+        getCandidateVerdictPath(cwd, planned.id, "cand-01", "deep", "package-smoke-deep"),
+        "utf8",
+      ),
+    ).resolves.toContain('"status": "pass"');
+  }, 20_000);
+
   it("does not advance latest consultation pointers when comparison reporting fails", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
@@ -1471,6 +1840,100 @@ async function writeLibraryProfileProject(cwd: string): Promise<void> {
   await writeFile(join(cwd, "src", "index.js"), 'export function greet() {\n  return "Bye";\n}\n');
   await writeFile(
     join(cwd, "greet.test.js"),
+    [
+      "import test from 'node:test';",
+      "import assert from 'node:assert/strict';",
+      "import { greet } from './src/index.js';",
+      "",
+      "test('greet returns Hello', () => {",
+      "  assert.equal(greet(), 'Hello');",
+      "});",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+async function writeWorkspaceLibraryProfileProject(cwd: string): Promise<void> {
+  await mkdir(join(cwd, "packages", "app", "src"), { recursive: true });
+  await writeFile(
+    join(cwd, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "execution-workspace-root",
+        packageManager: "pnpm@10.0.0",
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  await writeFile(
+    join(cwd, "packages", "app", "package.json"),
+    `${JSON.stringify(
+      {
+        name: "@acme/app",
+        version: "1.0.0",
+        type: "module",
+        scripts: {
+          lint: 'node -e "process.exit(0)"',
+          test: "node --test",
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  await writeFile(
+    join(cwd, "packages", "app", "src", "index.js"),
+    'export function greet() {\n  return "Bye";\n}\n',
+    "utf8",
+  );
+  await writeFile(
+    join(cwd, "packages", "app", "greet.test.js"),
+    [
+      "import test from 'node:test';",
+      "import assert from 'node:assert/strict';",
+      "import { greet } from './src/index.js';",
+      "",
+      "test('greet returns Hello', () => {",
+      "  assert.equal(greet(), 'Hello');",
+      "});",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+async function writeWorkspaceExportableNpmLibraryProfileProject(cwd: string): Promise<void> {
+  await mkdir(join(cwd, "packages", "lib", "src"), { recursive: true });
+  await writeFile(
+    join(cwd, "packages", "lib", "package.json"),
+    `${JSON.stringify(
+      {
+        name: "@acme/lib",
+        version: "1.0.0",
+        packageManager: "npm@10.0.0",
+        type: "module",
+        exports: "./src/index.js",
+        scripts: {
+          lint: 'node -e "process.exit(0)"',
+          test: "node --test",
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  await writeFile(
+    join(cwd, "packages", "lib", "src", "index.js"),
+    'export function greet() {\n  return "Bye";\n}\n',
+    "utf8",
+  );
+  await writeFile(
+    join(cwd, "packages", "lib", "greet.test.js"),
     [
       "import test from 'node:test';",
       "import assert from 'node:assert/strict';",

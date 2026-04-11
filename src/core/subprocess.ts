@@ -18,6 +18,7 @@ interface RunSubprocessOptions {
   command: string;
   cwd: string;
   env?: NodeJS.ProcessEnv;
+  inheritEnv?: boolean;
   maxOutputBytes?: number;
   shell?: boolean | string;
   stdin?: string;
@@ -42,10 +43,13 @@ export async function runSubprocess(options: RunSubprocessOptions): Promise<Subp
 
     const child = spawn(options.command, options.args, {
       cwd: options.cwd,
-      env: {
-        ...process.env,
-        ...options.env,
-      },
+      env:
+        options.inheritEnv === false
+          ? (options.env ?? {})
+          : {
+              ...process.env,
+              ...options.env,
+            },
       detached: process.platform !== "win32",
       ...(shell !== undefined ? { shell } : {}),
       stdio: ["pipe", "pipe", "pipe"],

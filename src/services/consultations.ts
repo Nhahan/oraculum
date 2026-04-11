@@ -15,9 +15,10 @@ import {
   type ProfileSkippedCommandCandidate,
   profileRepoSignalsSchema,
 } from "../domain/profile.js";
-import { type RunManifest, runManifestSchema } from "../domain/run.js";
+import type { RunManifest } from "../domain/run.js";
 
 import { pathExists } from "./project.js";
+import { parseRunManifestArtifact } from "./run-manifest-artifact.js";
 
 type ConsultationSurface = "chat-native";
 
@@ -40,7 +41,7 @@ export async function listRecentConsultations(cwd: string, limit = 10): Promise<
         }
 
         try {
-          return runManifestSchema.parse(
+          return parseRunManifestArtifact(
             JSON.parse(await readFile(manifestPath, "utf8")) as unknown,
           );
         } catch {
