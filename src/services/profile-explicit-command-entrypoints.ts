@@ -101,11 +101,11 @@ async function collectScopeLocalEntrypointSurfaces(
 ): Promise<ExplicitCommandSurface[]> {
   const surfaces: ExplicitCommandSurface[] = [];
   for (const relativeDir of ["bin", "scripts"]) {
-    const scopedDir = relativeCwd ? join(relativeCwd, relativeDir) : relativeDir;
+    const scopedDir = relativeCwd ? posix.join(relativeCwd, relativeDir) : relativeDir;
     if (!shouldManageProjectPath(scopedDir, rules)) {
       continue;
     }
-    const dirPath = join(projectRoot, scopedDir);
+    const dirPath = join(projectRoot, ...scopedDir.split("/"));
     if (!(await pathExists(dirPath))) {
       continue;
     }
@@ -138,11 +138,12 @@ async function collectScopeLocalEntrypointSurfaces(
       if (!selectedEntrypoint) {
         continue;
       }
-      const scopedRelativePath = posix.join(scopedDir, selectedEntrypoint.fileName);
-      if (!shouldManageProjectPath(scopedRelativePath, rules)) {
+      const actualScopedRelativePath = posix.join(scopedDir, selectedEntrypoint.fileName);
+      if (!shouldManageProjectPath(actualScopedRelativePath, rules)) {
         continue;
       }
       const commandPath = posix.join(relativeDir, selectedEntrypoint.baseName);
+      const logicalScopedRelativePath = posix.join(scopedDir, selectedEntrypoint.baseName);
       surfaces.push({
         kind: "local-entrypoint",
         name: normalizedName,
@@ -152,9 +153,9 @@ async function collectScopeLocalEntrypointSurfaces(
         pathPolicy: "local-only",
         ...(relativeCwd ? { relativeCwd } : {}),
         provenance: {
-          signal: `entrypoint:${scopedRelativePath}`,
+          signal: `entrypoint:${logicalScopedRelativePath}`,
           source: "local-tool",
-          path: scopedRelativePath,
+          path: logicalScopedRelativePath,
           detail: relativeCwd
             ? "Workspace-local executable entry point."
             : "Repo-local executable entry point.",

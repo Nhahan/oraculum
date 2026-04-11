@@ -496,6 +496,40 @@ describe("profile explicit command collector", () => {
     );
   });
 
+  it("records portable logical provenance for Windows workspace-local entrypoints", async () => {
+    const cwd = await createTempRoot();
+
+    await withProcessPlatform("win32", async () => {
+      await mkdir(join(cwd, "packages", "app"), { recursive: true });
+      await writeFile(join(cwd, "packages", "app", "pyproject.toml"), "[project]\nname='app'\n");
+      await mkdir(join(cwd, "packages", "app", "bin"), { recursive: true });
+      await writeNodeBinary(
+        join(cwd, "packages", "app", "bin"),
+        "lint",
+        'process.stdout.write("lint\\n");',
+      );
+
+      const result = await collectLocalEntrypointSurfaces(cwd, {
+        workspaceRoots: ["packages/app"],
+      });
+
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            normalizedName: "lint",
+            command: "bin/lint",
+            relativeCwd: "packages/app",
+            provenance: expect.objectContaining({
+              path: "packages/app/bin/lint",
+              signal: "entrypoint:packages/app/bin/lint",
+              source: "local-tool",
+            }),
+          }),
+        ]),
+      );
+    });
+  });
+
   it("records ambiguous workspace-local entrypoints instead of guessing a workspace", async () => {
     const cwd = await createTempRoot();
     for (const workspaceRoot of ["packages/app", "packages/web"]) {
@@ -607,4 +641,23 @@ async function createTempRoot(): Promise<string> {
   const path = await mkdtemp(join(tmpdir(), "oraculum-profile-collectors-"));
   tempRoots.push(path);
   return path;
+}
+
+async function withProcessPlatform<T>(
+  platform: NodeJS.Platform,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    value: platform,
+  });
+
+  try {
+    return await callback();
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(process, "platform", descriptor);
+    }
+  }
 }

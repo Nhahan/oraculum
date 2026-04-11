@@ -105,6 +105,23 @@ describe("oracle local tools", () => {
     });
   });
 
+  it("resolves Windows Gradle cmd wrappers from the project root", () => {
+    const existing = new Set(["C:\\repo\\gradlew.cmd"]);
+
+    const resolved = resolveRepoLocalWrapperCommand({
+      command: "gradlew",
+      exists: (path) => existing.has(path),
+      platform: "win32",
+      projectRoot: "C:/repo",
+      scopeRoot: "C:/repo/.oraculum/workspaces/run-1/cand-01",
+    });
+
+    expect(resolved).toEqual({
+      resolvedCommand: "C:\\repo\\gradlew.cmd",
+      resolution: "project-wrapper",
+    });
+  });
+
   it("resolves repo-local Windows entrypoints from logical command paths", () => {
     const existing = new Set(["C:\\repo\\packages\\app\\bin\\lint.cmd"]);
 

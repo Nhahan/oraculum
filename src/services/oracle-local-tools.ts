@@ -125,11 +125,11 @@ export function listRepoLocalWrapperCandidates(
   }
 
   if (platform === "win32") {
-    if (base === "gradlew" || base === "gradlew.bat") {
-      return ["gradlew.bat", "gradlew"];
+    if (base === "gradlew" || base === "gradlew.bat" || base === "gradlew.cmd") {
+      return ["gradlew.cmd", "gradlew.bat", "gradlew"];
     }
-    if (base === "mvnw" || base === "mvnw.cmd") {
-      return ["mvnw.cmd", "mvnw"];
+    if (base === "mvnw" || base === "mvnw.cmd" || base === "mvnw.bat") {
+      return ["mvnw.cmd", "mvnw.bat", "mvnw"];
     }
     return [];
   }
