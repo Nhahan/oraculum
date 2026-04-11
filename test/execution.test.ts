@@ -1986,7 +1986,7 @@ async function writeWorkspaceLibraryProfileProject(cwd: string): Promise<void> {
     `${JSON.stringify(
       {
         name: "execution-workspace-root",
-        packageManager: "pnpm@10.0.0",
+        packageManager: "npm@10.0.0",
       },
       null,
       2,

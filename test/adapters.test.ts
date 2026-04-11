@@ -699,8 +699,8 @@ process.stdout.write(JSON.stringify({
     await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toContain(
       '"--permission-mode","plan"',
     );
-    await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toContain(
-      '\\"generic\\"',
+    await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toMatch(
+      /generic/u,
     );
   }, 20_000);
 

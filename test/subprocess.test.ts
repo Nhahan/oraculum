@@ -20,20 +20,12 @@ afterEach(async () => {
 describe("subprocess execution", () => {
   it("escalates to SIGKILL after the timeout when the child ignores SIGTERM", async () => {
     const root = await createTempRoot();
-    const scriptPath = await writeNodeBinary(
-      root,
-      "ignore-term",
-      `process.on("SIGTERM", () => {});
-setInterval(() => {}, 1_000);
-`,
-    );
-
     const startedAt = Date.now();
     const result = await runSubprocess({
-      command: scriptPath,
-      args: [],
+      command: process.execPath,
+      args: ["-e", ["process.on('SIGTERM', () => {});", "setInterval(() => {}, 1_000);"].join(" ")],
       cwd: root,
-      timeoutMs: 100,
+      timeoutMs: 200,
     });
 
     expect(result.timedOut).toBe(true);
@@ -103,26 +95,26 @@ process.stderr.write("y".repeat(32));
   posixIt("terminates the subprocess process group on timeout", async () => {
     const root = await createTempRoot();
     const markerPath = join(root, "grandchild-survived.txt");
-    const scriptPath = await writeNodeBinary(
-      root,
-      "spawn-grandchild",
-      `const { spawn } = require("node:child_process");
-spawn(process.execPath, [
-  "-e",
-  "setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(markerPath)}, 'alive'), 700); setInterval(() => {}, 1000);",
-], { stdio: "ignore" });
-process.on("SIGTERM", () => {});
-setInterval(() => {}, 1_000);
-`,
-    );
-
     const result = await runSubprocess({
-      command: scriptPath,
-      args: [],
+      command: process.execPath,
+      args: [
+        "-e",
+        [
+          "const { spawn } = require('node:child_process');",
+          `spawn(process.execPath, ["-e", ${JSON.stringify(
+            [
+              `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(markerPath)}, 'alive'), 1_000);`,
+              "setInterval(() => {}, 1_000);",
+            ].join(" "),
+          )}], { stdio: 'ignore' });`,
+          "process.on('SIGTERM', () => {});",
+          "setInterval(() => {}, 1_000);",
+        ].join(" "),
+      ],
       cwd: root,
-      timeoutMs: 100,
+      timeoutMs: 200,
     });
-    await new Promise((resolve) => setTimeout(resolve, 900));
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
 
     expect(result.timedOut).toBe(true);
     await expect(readFile(markerPath)).rejects.toThrow();
