@@ -1,6 +1,6 @@
 {
   "name": "oraculum",
-  "version": "0.1.0-beta.6",
+  "version": "0.1.0-beta.7",
   "description": "Oracle-guided patch consultation for Claude Code and Codex.",
   "license": "MIT",
   "type": "module",
