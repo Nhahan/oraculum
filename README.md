@@ -27,7 +27,6 @@
   <a href="#overview">Overview</a> ·
   <a href="#installation">Installation</a> ·
   <a href="#quick-start">Quick Start</a> ·
-  <a href="#non-node-repositories">Non-Node Repositories</a> ·
   <a href="#how-it-works">How It Works</a> ·
   <a href="#advanced-usage">Advanced Usage</a>
 </p>
@@ -79,17 +78,6 @@ That flow initializes Oraculum on first use, runs the tournament, and prints the
 In a Git-backed project, `crown` creates the named branch and applies the survivor there. In a non-Git project, use bare `orc crown`; it syncs the survivor back into the project folder without requiring a fake branch name.
 
 If you want to reopen the latest consultation later, inspect an older one, browse consultation history, or use setup/MCP/debug commands from the shell binary, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md).
-
-## Non-Node Repositories
-
-Oraculum can be used in Python, Go, Rust, Java, docs-only, and package-json-free repositories. The chat command stays the same:
-
-```text
-orc consult "update src/app.py so status() returns the new value"
-orc crown fix-python-status
-```
-
-Use bare `orc crown` for non-Git projects as described above. Oraculum uses repo-local oracles and explicit commands when they exist. If no safe validation command is available, it records that missing capability instead of inventing a framework- or tool-specific command.
 
 ## How It Works
 

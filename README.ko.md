@@ -27,7 +27,6 @@
   <a href="#개요">개요</a> ·
   <a href="#설치">설치</a> ·
   <a href="#빠른-시작">빠른 시작</a> ·
-  <a href="#비-node-레포지토리">비 Node 레포지토리</a> ·
   <a href="#동작-방식">동작 방식</a> ·
   <a href="#고급-사용법">고급 사용법</a>
 </p>
@@ -79,17 +78,6 @@ orc crown fix/session-loss
 Git 프로젝트에서는 `crown`이 지정한 브랜치를 만들고 선택된 후보를 그 브랜치에 적용합니다. Git이 아닌 프로젝트에서는 `orc crown`만 사용하면 되고, 가짜 브랜치 이름 없이 해당 작업 공간 내용을 프로젝트 폴더에 그대로 동기화합니다.
 
 가장 최근 실행 결과를 나중에 다시 열어보거나, 예전 실행을 조회하거나, 기록 보관함을 살펴보거나, setup/MCP/디버깅용 셸 명령이 필요하다면 [고급 사용법](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md)을 참고하세요.
-
-## 비 Node 레포지토리
-
-Oraculum은 Python, Go, Rust, Java, 문서 전용, 또는 `package.json`이 없는 레포지토리에서도 사용할 수 있습니다. 채팅 명령은 동일합니다.
-
-```text
-orc consult "update src/app.py so status() returns the new value"
-orc crown fix-python-status
-```
-
-Git이 아닌 프로젝트에서는 위에서 설명한 것처럼 `orc crown`만 사용하면 됩니다. Oraculum은 레포지토리 로컬 오라클이나 명시적 명령이 있으면 그것을 사용합니다. 안전한 검증 명령이 없으면 프레임워크나 도구 이름만 보고 명령을 만들어 실행하지 않고, 검증 역량이 비어 있다는 근거를 기록합니다.
 
 ## 동작 방식
 
