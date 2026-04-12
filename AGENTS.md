@@ -10,8 +10,7 @@ Target primary product surface:
 - preferred short prefix: `orc`
 - examples: `orc consult`, `orc verdict`, `orc crown`
 
-Host-native `orc` integration is now available for both Claude Code and Codex after setup. The `oraculum` shell binary still ships for setup, MCP serving, debugging, packaging, and local validation.
-The shell binary is now setup/MCP/debug-only. Workflow commands such as `consult`, `verdict`, `crown`, `draft`, and `init` belong to the host-native `orc` surface, not to shell command routing.
+After global host setup, host-native `orc` is available for both Claude Code and Codex. Keep the `oraculum` shell binary for setup, uninstall, MCP serving, debugging, packaging, and local validation; workflow commands such as `consult`, `verdict`, `crown`, `draft`, and `init` belong to the host-native `orc` surface, not to shell command routing.
 
 ## Read Order
 
@@ -21,7 +20,7 @@ The shell binary is now setup/MCP/debug-only. Workflow commands such as `consult
 - `internal/HARNESS_RESEARCH.md`: local/internal harness reference synthesis, if present
 - `internal/RELEASING.md`: local/internal npm release runbook, if package publishing or dist-tags are involved
 
-This file is a pointer, not a spec. Keep durable detail in repo docs, not here. If docs and the current working tree diverge, trust the current code, tests, and artifacts first.
+This file is a pointer, not a spec. Keep durable detail in repo docs. If docs and the working tree diverge, trust code, tests, and artifacts first.
 
 ## Harness Engineering
 
@@ -56,14 +55,10 @@ Default loop:
 - compare finalists
 - crown the recommended survivor
 
-Optimize for falsification and selection of patches, not maximum agent freedom.
-`orc consult` is the default end-to-end tournament command: one user command should cover candidate generation, execution, judging, elimination/crowning, and artifactization. Planning-only flows belong under structured advanced subcommands and must not become the default UX.
-Protect the quick-start path as a product contract: first success should stay one-command and near-zero-config. Keep advanced controls available, but move operator complexity into optional flags, profiles, or advanced config rather than the default path.
-The default end-to-end command is host-native `orc consult`, and it must print the latest result summary immediately. `verdict` is for reopening an earlier or latest consultation later, not for completing the default path.
-Treat Oraculum first as a local installable, host-native workflow tool, not a CI-first gate. CI/PR paths may exist, but they are secondary to the default local `consult -> crown` workflow.
-The default consultation command may infer a consultation-scoped profile from repo signals and structured runtime selection, but explicit quick-start or advanced operator settings must win over inferred defaults.
-Use `/.oraculum/config.json` for quick-start defaults only. Put operator controls such as custom rounds, strategies, or repo-local oracles in `/.oraculum/advanced.json`.
-Auto-init and `init --force`, reached through host-native `orc` commands, must keep the quick-start path clean: stale or orphaned `advanced.json` must not leak operator settings into the default UX.
+Optimize for falsification and patch selection, not maximum agent freedom.
+`orc consult` is the default end-to-end tournament command: one user command should cover candidate generation, execution, judging, elimination/crowning, artifactization, and immediate latest-result output. Planning-only flows belong under advanced subcommands, and `verdict` is for reopening a consultation later, not for completing the default path.
+Protect quick-start as a product contract: first success should stay one-command and near-zero-config. Keep operator complexity in optional flags, profiles, or advanced config; explicit quick-start or advanced settings must beat inferred defaults.
+Treat Oraculum first as a local installable, host-native workflow tool, not a CI-first gate. Use `/.oraculum/config.json` for quick-start defaults, `/.oraculum/advanced.json` for operator controls, and keep auto-init / `init --force` from leaking stale `advanced.json` settings into the default UX.
 For target-repository generalization, follow [`docs/frontier-boundary-policy.md`](docs/frontier-boundary-policy.md): assume a frontier, human-level coding model. Deterministic code owns raw fact collection, contracts, and safety enforcement; the model owns semantic profile/check selection. Tool-specific labels may be evidence, but do not add named framework, ORM, migration-tool, test-runner, or language-ecosystem command recipes by default. Prefer repo-local scripts, explicit `.oraculum/advanced.json` oracles, or missing-capability evidence.
 If a new deterministic boundary is still necessary, justify it at the code/test/doc boundary directly: keep the rule narrow, explain why the model cannot safely own it, add a regression test, and document product-policy tables in stable repo docs or code comments instead of growing temporary audit ledgers by default.
 The npm/Node distribution model is an implementation and packaging fact for Oraculum itself; it must not imply that target repositories are Node projects.
@@ -71,22 +66,20 @@ The npm/Node distribution model is an implementation and packaging fact for Orac
 ## Working Bias
 
 - Humans set intent and judge tradeoffs; agents execute loops.
-- Prevent errors early: before editing, read the full affected files plus the immediate contracts, call sites, and tests; do not patch from partial context.
-- Any new field, state, path, flag, or schema must be traced through read path, write path, CLI/API boundary, persistence, and tests; wire it fully or do not add it.
-- Validate at boundaries first: parse and reject bad CLI input early, normalize external inputs, and turn host/process/workspace failures into explicit terminal states.
+- Before editing, read the full affected files plus the immediate contracts, call sites, and tests; do not patch from partial context.
+- Any new field, state, path, flag, or schema must be wired through read/write paths, CLI/API boundaries, persistence, and tests, with boundary validation and explicit terminal states for host/process/workspace failures.
 - For execution, state, isolation, subprocess, or artifact changes, add or update failure-path tests, not just happy-path tests.
 - Cross-platform support is mandatory: avoid POSIX-only shell, signal, or path assumptions in user-facing flows; prefer Node APIs or explicit `command + args` execution and keep CI coverage across supported operating systems.
 - Prefer mechanized enforcement over prose; if a behavior must survive runs, encode it as command, mode, skill, hook, state transition, config, test, oracle, or evaluator.
 - Prefer small, legible, in-repo abstractions over cleverness.
-- Keep context lean; link outward instead of bloating root instructions.
-- Prefer replayable, machine-readable outputs.
+- Keep context lean, link outward, and prefer replayable, machine-readable outputs.
 - Use an opinionated workflow, not ad-hoc chatting; force clarification before coding when intent is vague.
-- Build harness surfaces before polish: one product workflow across hosts, thin adapters at the edge, stable orchestration operations, state flow, isolation, evaluators, artifacts.
+- Build harness surfaces before polish: one product workflow across hosts, thin adapters at the edge, stable orchestration/state flow, isolation, evaluators, and artifacts.
 - Prefer shared command manifests plus host-specific generated skills/rules/plugins over hand-maintained per-host drift.
 - Keep target state and current shipped state explicit in docs and setup flows; do not let future command names masquerade as already-available host features.
 - Pass artifacts forward: `spec -> plan -> implementation -> review -> test -> release`.
-- Review is iterative, not one-shot: after substantial implementation or after fixing review findings, re-read the affected files in full and rerun validation before claiming the tree is clean.
-- A full code review means reviewing the current working tree line-by-line; do not rely on earlier review conclusions once code has changed.
+- Before committing or pushing, run `npm run check` and `git diff --check`, plus targeted validation for any touched flow.
+- Review is iterative, not one-shot: after substantial implementation or after fixing findings, re-read the affected files in full and rerun validation before claiming the tree is clean. A full code review means reviewing the current working tree line-by-line, not relying on earlier conclusions once code has changed.
 - Use fresh-context review/QA when independent judgment matters.
 - Parallel workers require isolated workspaces and explicit coordination.
 - Borrow the references' command/hook/state-machine discipline, but adapt it to `candidate -> oracle -> witness -> crowning`, not generic team orchestration.
