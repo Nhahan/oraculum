@@ -3,16 +3,21 @@ import { type Command, InvalidArgumentError } from "commander";
 import { OraculumError } from "../core/errors.js";
 import type { Adapter } from "../domain/config.js";
 import { buildSetupDiagnosticsResponse } from "../services/chat-native.js";
-import { type ChatNativeSetupScope, setupClaudeCodeHost } from "../services/claude-chat-native.js";
+import { setupClaudeCodeHost } from "../services/claude-chat-native.js";
 import { setupCodexHost } from "../services/codex-chat-native.js";
+import { uninstallClaudeCodeHost } from "../services/claude-chat-native.js";
+import { uninstallCodexHost } from "../services/codex-chat-native.js";
 
 interface SetupOptions {
   runtime: Adapter;
-  scope: ChatNativeSetupScope;
 }
 
 interface SetupStatusOptions {
   json?: boolean;
+  runtime?: Adapter;
+}
+
+interface UninstallOptions {
   runtime?: Adapter;
 }
 
@@ -21,7 +26,6 @@ export function registerSetupCommand(program: Command): void {
     .command("setup")
     .description("Register chat-native host integration and MCP wiring.")
     .option("-r, --runtime <runtime>", "target host runtime", parseRuntime)
-    .option("--scope <scope>", "installation scope: user, project, or local", parseScope, "user")
     .action(async (options: SetupOptions, command: Command) => {
       const runtime = options.runtime ?? (command.optsWithGlobals().runtime as Adapter | undefined);
 
@@ -32,12 +36,9 @@ export function registerSetupCommand(program: Command): void {
       }
 
       if (runtime === "claude-code") {
-        const result = await setupClaudeCodeHost({
-          scope: options.scope,
-        });
+        const result = await setupClaudeCodeHost();
 
         process.stdout.write("Configured Claude Code chat-native integration.\n");
-        process.stdout.write(`Scope: ${result.scope}\n`);
         process.stdout.write(`Packaged root: ${result.packagedRoot}\n`);
         process.stdout.write(`Plugin root: ${result.pluginRoot}\n`);
         process.stdout.write(`Marketplace: ${result.marketplacePath}\n`);
@@ -46,12 +47,9 @@ export function registerSetupCommand(program: Command): void {
       }
 
       if (runtime === "codex") {
-        const result = await setupCodexHost({
-          scope: options.scope,
-        });
+        const result = await setupCodexHost();
 
         process.stdout.write("Configured Codex chat-native integration.\n");
-        process.stdout.write(`Scope: ${result.scope}\n`);
         process.stdout.write(`Packaged root: ${result.packagedRoot}\n`);
         process.stdout.write(`Install root: ${result.installRoot}\n`);
         process.stdout.write(`Skills root: ${result.skillsRoot}\n`);
@@ -104,19 +102,40 @@ export function registerSetupCommand(program: Command): void {
         }
       }
     });
+
+  program
+    .command("uninstall")
+    .description("Remove Oraculum chat-native host integration and installed host artifacts.")
+    .option("-r, --runtime <runtime>", "target host runtime", parseRuntime)
+    .action(async (options: UninstallOptions) => {
+      const runtimes: Adapter[] = options.runtime ? [options.runtime] : ["claude-code", "codex"];
+
+      for (const runtime of runtimes) {
+        if (runtime === "claude-code") {
+          const result = await uninstallClaudeCodeHost();
+          process.stdout.write("Removed Claude Code chat-native integration.\n");
+          process.stdout.write(`Install root: ${result.installRoot}\n`);
+          process.stdout.write(`MCP config: ${result.mcpConfigPath}\n`);
+          continue;
+        }
+
+        if (runtime === "codex") {
+          const result = await uninstallCodexHost();
+          process.stdout.write("Removed Codex chat-native integration.\n");
+          process.stdout.write(`Install root: ${result.installRoot}\n`);
+          process.stdout.write(`Skills root: ${result.skillsRoot}\n`);
+          process.stdout.write(`Rules root: ${result.rulesRoot}\n`);
+          continue;
+        }
+
+        throw new OraculumError(`Chat-native uninstall for "${runtime}" is not implemented yet.`);
+      }
+    });
 }
 
 function parseRuntime(value: string): Adapter {
   if (value !== "claude-code" && value !== "codex") {
     throw new InvalidArgumentError('runtime must be one of: "claude-code", "codex".');
-  }
-
-  return value;
-}
-
-function parseScope(value: string): ChatNativeSetupScope {
-  if (value !== "user" && value !== "project" && value !== "local") {
-    throw new InvalidArgumentError('scope must be one of: "user", "project", "local".');
   }
 
   return value;

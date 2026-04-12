@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,9 +8,6 @@ import { APP_VERSION } from "../core/constants.js";
 import { OraculumError } from "../core/errors.js";
 import { runSubprocess } from "../core/subprocess.js";
 import type { CommandManifestEntry } from "../domain/chat-native.js";
-
-export type ChatNativeSetupScope = "user" | "project" | "local";
-export type ClaudeSetupScope = ChatNativeSetupScope;
 
 interface ClaudeSetupOptions {
   claudeArgs?: string[];
@@ -22,18 +19,30 @@ interface ClaudeSetupOptions {
     command: string;
   };
   packagedRoot?: string;
-  scope: ClaudeSetupScope;
 }
 
 interface ClaudeSetupResult {
   effectiveMcpConfigPath: string;
   installRoot: string;
-  scope: ClaudeSetupScope;
   packagedRoot: string;
   pluginRoot: string;
   marketplacePath: string;
   mcpConfigPath: string;
   pluginInstalled: boolean;
+}
+
+interface ClaudeUninstallOptions {
+  claudeArgs?: string[];
+  claudeBinaryPath?: string;
+  env?: NodeJS.ProcessEnv;
+  homeDir?: string;
+}
+
+interface ClaudeUninstallResult {
+  installRoot: string;
+  marketplaceRemoved: boolean;
+  mcpConfigPath: string;
+  pluginRemoved: boolean;
 }
 
 interface ClaudeMarketplaceEntry {
@@ -166,7 +175,9 @@ export function buildClaudeSkillFiles(
     }));
 }
 
-export async function setupClaudeCodeHost(options: ClaudeSetupOptions): Promise<ClaudeSetupResult> {
+export async function setupClaudeCodeHost(
+  options: ClaudeSetupOptions = {},
+): Promise<ClaudeSetupResult> {
   const homeDir = options.homeDir ?? homedir();
   const claudeBinaryPath = options.claudeBinaryPath ?? "claude";
   const claudeArgs = options.claudeArgs ?? [];
@@ -215,29 +226,63 @@ export async function setupClaudeCodeHost(options: ClaudeSetupOptions): Promise<
     if (installedMarketplace) {
       await removeClaudeMarketplace(claudeBinaryPath, claudeArgs, env);
     }
-    await addClaudeMarketplace(claudeBinaryPath, claudeArgs, env, installRoot, options.scope);
+    await addClaudeMarketplace(claudeBinaryPath, claudeArgs, env, installRoot);
   }
 
   const installedPlugins = await listClaudePlugins(claudeBinaryPath, claudeArgs, env);
-  const targetPlugin = installedPlugins.find(
-    (entry) => entry.name === CLAUDE_PLUGIN_NAME && entry.scope === options.scope,
-  );
+  const targetPlugin = installedPlugins.find((entry) => entry.name === CLAUDE_PLUGIN_NAME);
   if (!isClaudePluginAligned(targetPlugin)) {
     if (targetPlugin) {
-      await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env, options.scope);
+      await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env);
     }
-    await installClaudePlugin(claudeBinaryPath, claudeArgs, env, options.scope);
+    await installClaudePlugin(claudeBinaryPath, claudeArgs, env);
   }
 
   return {
     effectiveMcpConfigPath: join(pluginRoot, ".mcp.json"),
     installRoot,
-    scope: options.scope,
     packagedRoot,
     pluginRoot,
     marketplacePath,
     mcpConfigPath,
     pluginInstalled: true,
+  };
+}
+
+export async function uninstallClaudeCodeHost(
+  options: ClaudeUninstallOptions = {},
+): Promise<ClaudeUninstallResult> {
+  const homeDir = options.homeDir ?? homedir();
+  const claudeBinaryPath = options.claudeBinaryPath ?? "claude";
+  const claudeArgs = options.claudeArgs ?? [];
+  const env = {
+    ...process.env,
+    ...options.env,
+    HOME: homeDir,
+  };
+  const installRoot = join(homeDir, ".oraculum", "chat-native", "claude-code");
+  const mcpConfigPath = join(homeDir, ".claude", "mcp.json");
+
+  const marketList = await listClaudeMarketplaces(claudeBinaryPath, claudeArgs, env);
+  const installedMarketplace = marketList.find((entry) => entry.name === CLAUDE_MARKETPLACE_NAME);
+  if (installedMarketplace) {
+    await removeClaudeMarketplace(claudeBinaryPath, claudeArgs, env);
+  }
+
+  const installedPlugins = await listClaudePlugins(claudeBinaryPath, claudeArgs, env);
+  const targetPlugin = installedPlugins.find((entry) => entry.name === CLAUDE_PLUGIN_NAME);
+  if (targetPlugin) {
+    await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env);
+  }
+
+  await removeClaudeMcpConfigEntry(mcpConfigPath);
+  await rm(installRoot, { force: true, recursive: true });
+
+  return {
+    installRoot,
+    marketplaceRemoved: installedMarketplace !== undefined,
+    mcpConfigPath,
+    pluginRemoved: targetPlugin !== undefined,
   };
 }
 
@@ -257,6 +302,29 @@ async function mergeClaudeMcpConfig(
       oraculum: (effectiveConfig as { mcpServers: Record<string, unknown> }).mcpServers.oraculum,
     },
   };
+  await mkdir(dirname(mcpConfigPath), { recursive: true });
+  await writeFile(mcpConfigPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+}
+
+async function removeClaudeMcpConfigEntry(mcpConfigPath: string): Promise<void> {
+  if (!existsSync(mcpConfigPath)) {
+    return;
+  }
+
+  const existing = JSON.parse(await readFile(mcpConfigPath, "utf8")) as {
+    mcpServers?: Record<string, unknown>;
+  };
+  const nextServers = { ...(existing.mcpServers ?? {}) };
+  delete nextServers.oraculum;
+  const next =
+    Object.keys(nextServers).length > 0
+      ? {
+          ...existing,
+          mcpServers: nextServers,
+        }
+      : Object.fromEntries(
+          Object.entries(existing).filter(([key]) => key !== "mcpServers"),
+        );
   await mkdir(dirname(mcpConfigPath), { recursive: true });
   await writeFile(mcpConfigPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
 }
@@ -498,11 +566,10 @@ async function addClaudeMarketplace(
   claudeArgs: string[],
   env: NodeJS.ProcessEnv,
   installRoot: string,
-  scope: ClaudeSetupScope,
 ): Promise<void> {
   const addMarketplace = await runSubprocess({
     command: claudeBinaryPath,
-    args: [...claudeArgs, "plugin", "marketplace", "add", installRoot, "--scope", scope],
+    args: [...claudeArgs, "plugin", "marketplace", "add", installRoot],
     cwd: process.cwd(),
     env,
     timeoutMs: 30_000,
@@ -537,18 +604,10 @@ async function installClaudePlugin(
   claudeBinaryPath: string,
   claudeArgs: string[],
   env: NodeJS.ProcessEnv,
-  scope: ClaudeSetupScope,
 ): Promise<void> {
   const install = await runSubprocess({
     command: claudeBinaryPath,
-    args: [
-      ...claudeArgs,
-      "plugin",
-      "install",
-      `${CLAUDE_PLUGIN_NAME}@${CLAUDE_MARKETPLACE_NAME}`,
-      "--scope",
-      scope,
-    ],
+    args: [...claudeArgs, "plugin", "install", `${CLAUDE_PLUGIN_NAME}@${CLAUDE_MARKETPLACE_NAME}`],
     cwd: process.cwd(),
     env,
     timeoutMs: 30_000,
@@ -564,11 +623,10 @@ async function uninstallClaudePlugin(
   claudeBinaryPath: string,
   claudeArgs: string[],
   env: NodeJS.ProcessEnv,
-  scope: ClaudeSetupScope,
 ): Promise<void> {
   const uninstall = await runSubprocess({
     command: claudeBinaryPath,
-    args: [...claudeArgs, "plugin", "uninstall", CLAUDE_PLUGIN_NAME, "--scope", scope],
+    args: [...claudeArgs, "plugin", "uninstall", CLAUDE_PLUGIN_NAME],
     cwd: process.cwd(),
     env,
     timeoutMs: 30_000,

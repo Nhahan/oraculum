@@ -56,11 +56,11 @@ async function main() {
     assertHostStatus(before, "claude-code", "needs-setup");
     assertHostStatus(before, "codex", "needs-setup");
 
-    runOrThrow(oraculumBinary, ["setup", "--runtime", "claude-code", "--scope", "user"], {
+    runOrThrow(oraculumBinary, ["setup", "--runtime", "claude-code"], {
       cwd: tempRoot,
       env,
     });
-    runOrThrow(oraculumBinary, ["setup", "--runtime", "codex", "--scope", "user"], {
+    runOrThrow(oraculumBinary, ["setup", "--runtime", "codex"], {
       cwd: tempRoot,
       env,
     });

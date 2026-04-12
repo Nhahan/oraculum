@@ -13,6 +13,7 @@ import {
   buildClaudeSkillFiles,
   getPackagedClaudeCodeRoot,
   setupClaudeCodeHost,
+  uninstallClaudeCodeHost,
 } from "../src/services/claude-chat-native.js";
 
 const tempRoots: string[] = [];
@@ -36,7 +37,6 @@ interface FakeClaudeState {
     id: string;
     installPath?: string;
     name?: string;
-    scope?: string;
     version?: string;
   }>;
 }
@@ -97,15 +97,13 @@ async function createFakeClaudeSetupFixture(initialState?: Partial<FakeClaudeSta
       "const state = readState();",
       "state.ops ??= [];",
       "const save = () => writeState(state);",
-      "const scopeIndex = args.indexOf('--scope');",
-      "const scope = scopeIndex === -1 ? 'user' : args[scopeIndex + 1];",
       "if (args[0] === 'plugin' && args[1] === 'validate') { state.ops.push('plugin validate'); save(); process.stdout.write('ok\\n'); process.exit(0); }",
       "if (args[0] === 'plugin' && args[1] === 'marketplace' && args[2] === 'list' && args[3] === '--json') { process.stdout.write(JSON.stringify(state.marketplaces)); process.exit(0); }",
-      "if (args[0] === 'plugin' && args[1] === 'marketplace' && args[2] === 'add') { const source = args[3]; state.marketplaces = state.marketplaces.filter((entry) => entry.name !== 'oraculum'); state.marketplaces.push({ name: 'oraculum', source: 'directory', path: source, installLocation: source }); state.ops.push('marketplace add ' + source + ' ' + scope); save(); process.exit(0); }",
+      "if (args[0] === 'plugin' && args[1] === 'marketplace' && args[2] === 'add') { const source = args[3]; state.marketplaces = state.marketplaces.filter((entry) => entry.name !== 'oraculum'); state.marketplaces.push({ name: 'oraculum', source: 'directory', path: source, installLocation: source }); state.ops.push('marketplace add ' + source); save(); process.exit(0); }",
       "if (args[0] === 'plugin' && args[1] === 'marketplace' && args[2] === 'remove') { const name = args[3]; state.marketplaces = state.marketplaces.filter((entry) => entry.name !== name); state.ops.push('marketplace remove ' + name); save(); process.exit(0); }",
       "if (args[0] === 'plugin' && args[1] === 'list' && args[2] === '--json') { process.stdout.write(JSON.stringify(state.plugins)); process.exit(0); }",
-      "if (args[0] === 'plugin' && args[1] === 'install') { const pluginRef = args[2]; const [name, marketplaceName = 'default'] = pluginRef.split('@'); state.plugins = state.plugins.filter((entry) => (entry.name ?? entry.id.split('@')[0]) !== name || entry.scope !== scope); state.plugins.push({ id: name + '@' + marketplaceName, name, version: pluginVersion, scope, installPath: join('/fake-cache', marketplaceName, name, pluginVersion) }); state.ops.push('plugin install ' + name + ' ' + scope); save(); process.exit(0); }",
-      "if (args[0] === 'plugin' && args[1] === 'uninstall') { const name = args[2]; state.plugins = state.plugins.filter((entry) => (entry.name ?? entry.id.split('@')[0]) !== name || entry.scope !== scope); state.ops.push('plugin uninstall ' + name + ' ' + scope); save(); process.exit(0); }",
+      "if (args[0] === 'plugin' && args[1] === 'install') { const pluginRef = args[2]; const [name, marketplaceName = 'default'] = pluginRef.split('@'); state.plugins = state.plugins.filter((entry) => (entry.name ?? entry.id.split('@')[0]) !== name); state.plugins.push({ id: name + '@' + marketplaceName, name, version: pluginVersion, installPath: join('/fake-cache', marketplaceName, name, pluginVersion) }); state.ops.push('plugin install ' + name); save(); process.exit(0); }",
+      "if (args[0] === 'plugin' && args[1] === 'uninstall') { const name = args[2]; state.plugins = state.plugins.filter((entry) => (entry.name ?? entry.id.split('@')[0]) !== name); state.ops.push('plugin uninstall ' + name); save(); process.exit(0); }",
       "process.stderr.write('unexpected args: ' + args.join(' ')); process.exit(9);",
     ].join("\n"),
     "utf8",
@@ -192,7 +190,6 @@ describe("Claude Code setup", () => {
       },
       homeDir,
       packagedRoot,
-      scope: "local",
     });
 
     const mcpConfig = JSON.parse(await readFile(result.mcpConfigPath, "utf8")) as {
@@ -211,7 +208,7 @@ describe("Claude Code setup", () => {
         source?: string;
       }>;
       ops: string[];
-      plugins: Array<{ id: string; name?: string; scope?: string; version?: string }>;
+      plugins: Array<{ id: string; name?: string; version?: string }>;
     };
 
     expect(mcpConfig.mcpServers.oraculum?.command).toBe(process.execPath);
@@ -237,14 +234,13 @@ describe("Claude Code setup", () => {
         id: "oraculum@oraculum",
         installPath: `/fake-cache/oraculum/oraculum/${APP_VERSION}`,
         name: "oraculum",
-        scope: "local",
         version: APP_VERSION,
       },
     ]);
     expect(state.ops).toEqual([
       "plugin validate",
-      `marketplace add ${result.installRoot} local`,
-      "plugin install oraculum local",
+      `marketplace add ${result.installRoot}`,
+      "plugin install oraculum",
     ]);
     expect(result.pluginInstalled).toBe(true);
   });
@@ -266,7 +262,6 @@ describe("Claude Code setup", () => {
           id: "oraculum@oraculum",
           installPath: "/fake-cache/oraculum/oraculum/0.1.0-beta.5",
           name: "oraculum",
-          scope: "local",
           version: "0.1.0-beta.5",
         },
       ],
@@ -282,7 +277,6 @@ describe("Claude Code setup", () => {
       },
       homeDir,
       packagedRoot,
-      scope: "local",
     });
 
     const state = JSON.parse(await readFile(statePath, "utf8")) as FakeClaudeState;
@@ -300,16 +294,15 @@ describe("Claude Code setup", () => {
         id: "oraculum@oraculum",
         installPath: `/fake-cache/oraculum/oraculum/${APP_VERSION}`,
         name: "oraculum",
-        scope: "local",
         version: APP_VERSION,
       },
     ]);
     expect(state.ops).toEqual([
       "plugin validate",
       "marketplace remove oraculum",
-      `marketplace add ${result.installRoot} local`,
-      "plugin uninstall oraculum local",
-      "plugin install oraculum local",
+      `marketplace add ${result.installRoot}`,
+      "plugin uninstall oraculum",
+      "plugin install oraculum",
     ]);
   });
 
@@ -330,7 +323,6 @@ describe("Claude Code setup", () => {
           id: "oraculum@oraculum",
           installPath: `/fake-cache/oraculum/oraculum/${APP_VERSION}`,
           name: "oraculum",
-          scope: "local",
           version: APP_VERSION,
         },
       ],
@@ -346,10 +338,62 @@ describe("Claude Code setup", () => {
       },
       homeDir,
       packagedRoot,
-      scope: "local",
     });
 
     const state = JSON.parse(await readFile(statePath, "utf8")) as FakeClaudeState;
     expect(state.ops).toEqual(["plugin validate"]);
+  });
+
+  it("uninstalls Claude marketplace/plugin wiring and removes the MCP entry", async () => {
+    const { cliPath, homeDir, packagedRoot, statePath } = await createFakeClaudeSetupFixture();
+    await setupClaudeCodeHost({
+      claudeBinaryPath: process.execPath,
+      claudeArgs: [cliPath],
+      env: {
+        ORACULUM_FAKE_CLAUDE_STATE: statePath,
+        ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
+      },
+      homeDir,
+      packagedRoot,
+    });
+    await writeFile(
+      join(homeDir, ".claude", "mcp.json"),
+      `${JSON.stringify(
+        {
+          mcpServers: {
+            other: { command: "echo", args: ["ok"] },
+            oraculum: { command: "node", args: ["cli.js", "mcp", "serve"] },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const result = await uninstallClaudeCodeHost({
+      claudeBinaryPath: process.execPath,
+      claudeArgs: [cliPath],
+      env: {
+        ORACULUM_FAKE_CLAUDE_STATE: statePath,
+        ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
+      },
+      homeDir,
+    });
+
+    const state = JSON.parse(await readFile(statePath, "utf8")) as FakeClaudeState;
+    const mcpConfig = JSON.parse(await readFile(result.mcpConfigPath, "utf8")) as {
+      mcpServers?: Record<string, unknown>;
+    };
+
+    expect(result.marketplaceRemoved).toBe(true);
+    expect(result.pluginRemoved).toBe(true);
+    expect(state.marketplaces).toEqual([]);
+    expect(state.plugins).toEqual([]);
+    expect(state.ops.at(-2)).toBe("marketplace remove oraculum");
+    expect(state.ops.at(-1)).toBe("plugin uninstall oraculum");
+    expect(mcpConfig.mcpServers).toEqual({
+      other: { command: "echo", args: ["ok"] },
+    });
   });
 });

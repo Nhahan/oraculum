@@ -7,9 +7,6 @@ import { APP_VERSION } from "../core/constants.js";
 import { OraculumError } from "../core/errors.js";
 import { runSubprocess } from "../core/subprocess.js";
 import type { CommandManifestEntry } from "../domain/chat-native.js";
-import type { ChatNativeSetupScope } from "./claude-chat-native.js";
-
-export type CodexSetupScope = ChatNativeSetupScope;
 
 interface CodexSetupOptions {
   codexArgs?: string[];
@@ -21,7 +18,6 @@ interface CodexSetupOptions {
     command: string;
   };
   packagedRoot?: string;
-  scope: CodexSetupScope;
 }
 
 interface CodexSetupResult {
@@ -30,7 +26,21 @@ interface CodexSetupResult {
   packagedRoot: string;
   registered: boolean;
   rulesRoot: string;
-  scope: CodexSetupScope;
+  skillsRoot: string;
+}
+
+interface CodexUninstallOptions {
+  codexArgs?: string[];
+  codexBinaryPath?: string;
+  env?: NodeJS.ProcessEnv;
+  homeDir?: string;
+}
+
+interface CodexUninstallResult {
+  configPath: string;
+  installRoot: string;
+  registered: boolean;
+  rulesRoot: string;
   skillsRoot: string;
 }
 
@@ -62,7 +72,7 @@ export function buildCodexSkillFiles(
   }));
 }
 
-export async function setupCodexHost(options: CodexSetupOptions): Promise<CodexSetupResult> {
+export async function setupCodexHost(options: CodexSetupOptions = {}): Promise<CodexSetupResult> {
   const homeDir = options.homeDir ?? homedir();
   const codexBinaryPath = options.codexBinaryPath ?? "codex";
   const codexArgs = options.codexArgs ?? [];
@@ -100,7 +110,41 @@ export async function setupCodexHost(options: CodexSetupOptions): Promise<CodexS
     packagedRoot,
     registered: true,
     rulesRoot,
-    scope: options.scope,
+    skillsRoot,
+  };
+}
+
+export async function uninstallCodexHost(
+  options: CodexUninstallOptions = {},
+): Promise<CodexUninstallResult> {
+  const homeDir = options.homeDir ?? homedir();
+  const codexBinaryPath = options.codexBinaryPath ?? "codex";
+  const codexArgs = options.codexArgs ?? [];
+  const env = {
+    ...process.env,
+    ...options.env,
+    HOME: homeDir,
+  };
+  const codexDir = join(homeDir, ".codex");
+  const skillsRoot = join(codexDir, "skills");
+  const rulesRoot = join(codexDir, "rules");
+  const configPath = join(codexDir, "config.toml");
+  const installRoot = join(homeDir, ".oraculum", "chat-native", "codex");
+
+  await unregisterCodexMcpServer({
+    codexArgs,
+    codexBinaryPath,
+    env,
+  });
+  await pruneManagedCodexSkills(skillsRoot, new Set());
+  await pruneManagedCodexRules(rulesRoot, new Set());
+  await rm(installRoot, { force: true, recursive: true });
+
+  return {
+    configPath,
+    installRoot,
+    registered: false,
+    rulesRoot,
     skillsRoot,
   };
 }
@@ -282,6 +326,12 @@ async function installCodexArtifacts(options: {
 }
 
 async function pruneManagedCodexSkills(skillsRoot: string, desired: Set<string>): Promise<void> {
+  try {
+    await readdir(skillsRoot);
+  } catch {
+    return;
+  }
+
   for (const entry of await readdir(skillsRoot, { withFileTypes: true })) {
     if (!entry.name.startsWith(CODEX_SKILL_PREFIX) || desired.has(entry.name)) {
       continue;
@@ -295,6 +345,12 @@ async function pruneManagedCodexSkills(skillsRoot: string, desired: Set<string>)
 }
 
 async function pruneManagedCodexRules(rulesRoot: string, desired: Set<string>): Promise<void> {
+  try {
+    await readdir(rulesRoot);
+  } catch {
+    return;
+  }
+
   for (const entry of await readdir(rulesRoot, { withFileTypes: true })) {
     if (
       !entry.isFile() ||
@@ -367,6 +423,20 @@ async function registerCodexMcpServer(options: {
       `Failed to verify the Oraculum Codex MCP server: ${extractSubprocessError(verifyResult)}`,
     );
   }
+}
+
+async function unregisterCodexMcpServer(options: {
+  codexArgs: string[];
+  codexBinaryPath: string;
+  env: NodeJS.ProcessEnv;
+}): Promise<void> {
+  await runSubprocess({
+    command: options.codexBinaryPath,
+    args: [...options.codexArgs, "mcp", "remove", "oraculum"],
+    cwd: process.cwd(),
+    env: options.env,
+    timeoutMs: 30_000,
+  }).catch(() => undefined);
 }
 
 function resolveNodeCliInvocation(): { args: string[]; command: string } {

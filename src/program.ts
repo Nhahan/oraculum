@@ -9,7 +9,7 @@ export function buildProgram(): Command {
 
   program
     .name(APP_NAME)
-    .description("Set up Oraculum host integration and run internal MCP services.")
+    .description("Set up or remove Oraculum host integration and run internal MCP services.")
     .version(APP_VERSION);
 
   registerSetupCommand(program);

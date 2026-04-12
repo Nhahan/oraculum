@@ -15,7 +15,17 @@ describe("CLI argument parsing", () => {
     });
   });
 
-  it("rejects unsupported setup scopes before executing the command", async () => {
+  it("rejects unsupported uninstall runtimes before executing the command", async () => {
+    const program = createProgram();
+
+    await expect(
+      program.parseAsync(["uninstall", "--runtime", "aider"], { from: "user" }),
+    ).rejects.toMatchObject({
+      code: "commander.invalidArgument",
+    });
+  });
+
+  it("rejects legacy setup scope flags", async () => {
     const program = createProgram();
 
     await expect(
@@ -23,7 +33,7 @@ describe("CLI argument parsing", () => {
         from: "user",
       }),
     ).rejects.toMatchObject({
-      code: "commander.invalidArgument",
+      code: "commander.unknownOption",
     });
   });
 

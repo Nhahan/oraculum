@@ -75,7 +75,7 @@ async function main() {
 async function setupRuntime(runtime) {
   await runCommand(
     process.execPath,
-    [join(repoRoot, "dist", "cli.js"), "setup", "--runtime", runtime, "--scope", "user"],
+    [join(repoRoot, "dist", "cli.js"), "setup", "--runtime", runtime],
     {
       cwd: repoRoot,
       label: `setup ${runtime}`,
