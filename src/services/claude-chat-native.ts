@@ -322,9 +322,7 @@ async function removeClaudeMcpConfigEntry(mcpConfigPath: string): Promise<void> 
           ...existing,
           mcpServers: nextServers,
         }
-      : Object.fromEntries(
-          Object.entries(existing).filter(([key]) => key !== "mcpServers"),
-        );
+      : Object.fromEntries(Object.entries(existing).filter(([key]) => key !== "mcpServers"));
   await mkdir(dirname(mcpConfigPath), { recursive: true });
   await writeFile(mcpConfigPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
 }

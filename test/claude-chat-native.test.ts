@@ -51,7 +51,7 @@ function normalizePluginInstallPaths(
   return plugins.map((plugin) => {
     const normalized: FakeClaudeState["plugins"][number] = { ...plugin };
     if (plugin.installPath) {
-      normalized.installPath = normalizePathValue(plugin.installPath)!;
+      normalized.installPath = normalizePathValue(plugin.installPath) ?? plugin.installPath;
     }
     return normalized;
   });

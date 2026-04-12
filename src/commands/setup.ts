@@ -3,10 +3,8 @@ import { type Command, InvalidArgumentError } from "commander";
 import { OraculumError } from "../core/errors.js";
 import type { Adapter } from "../domain/config.js";
 import { buildSetupDiagnosticsResponse } from "../services/chat-native.js";
-import { setupClaudeCodeHost } from "../services/claude-chat-native.js";
-import { setupCodexHost } from "../services/codex-chat-native.js";
-import { uninstallClaudeCodeHost } from "../services/claude-chat-native.js";
-import { uninstallCodexHost } from "../services/codex-chat-native.js";
+import { setupClaudeCodeHost, uninstallClaudeCodeHost } from "../services/claude-chat-native.js";
+import { setupCodexHost, uninstallCodexHost } from "../services/codex-chat-native.js";
 
 interface SetupOptions {
   runtime: Adapter;

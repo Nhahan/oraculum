@@ -244,6 +244,8 @@ describe("Codex setup", () => {
     await expect(
       readFile(join(uninstallResult.skillsRoot, "oraculum-consult", "SKILL.md"), "utf8"),
     ).rejects.toThrow();
-    await expect(readFile(join(uninstallResult.rulesRoot, "oraculum.md"), "utf8")).rejects.toThrow();
+    await expect(
+      readFile(join(uninstallResult.rulesRoot, "oraculum.md"), "utf8"),
+    ).rejects.toThrow();
   });
 });
