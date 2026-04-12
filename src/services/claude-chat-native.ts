@@ -36,6 +36,22 @@ interface ClaudeSetupResult {
   pluginInstalled: boolean;
 }
 
+interface ClaudeMarketplaceEntry {
+  installLocation?: string;
+  name: string;
+  path?: string;
+  source?: string;
+}
+
+interface ClaudePluginEntry {
+  enabled?: boolean;
+  id?: string;
+  installPath?: string;
+  name: string;
+  scope?: string;
+  version?: string;
+}
+
 const CLAUDE_MARKETPLACE_NAME = "oraculum";
 const CLAUDE_PLUGIN_NAME = "oraculum";
 
@@ -194,42 +210,23 @@ export async function setupClaudeCodeHost(options: ClaudeSetupOptions): Promise<
   }
 
   const marketList = await listClaudeMarketplaces(claudeBinaryPath, claudeArgs, env);
-  if (!marketList.some((entry) => entry.name === CLAUDE_MARKETPLACE_NAME)) {
-    const addMarketplace = await runSubprocess({
-      command: claudeBinaryPath,
-      args: [...claudeArgs, "plugin", "marketplace", "add", installRoot, "--scope", options.scope],
-      cwd: process.cwd(),
-      env,
-      timeoutMs: 30_000,
-    });
-    if (addMarketplace.exitCode !== 0) {
-      throw new OraculumError(
-        `Failed to register the Oraculum Claude marketplace: ${extractSubprocessError(addMarketplace)}`,
-      );
+  const installedMarketplace = marketList.find((entry) => entry.name === CLAUDE_MARKETPLACE_NAME);
+  if (!isClaudeMarketplaceAligned(installedMarketplace, installRoot)) {
+    if (installedMarketplace) {
+      await removeClaudeMarketplace(claudeBinaryPath, claudeArgs, env);
     }
+    await addClaudeMarketplace(claudeBinaryPath, claudeArgs, env, installRoot, options.scope);
   }
 
   const installedPlugins = await listClaudePlugins(claudeBinaryPath, claudeArgs, env);
-  if (!installedPlugins.some((entry) => entry.name === CLAUDE_PLUGIN_NAME)) {
-    const install = await runSubprocess({
-      command: claudeBinaryPath,
-      args: [
-        ...claudeArgs,
-        "plugin",
-        "install",
-        `${CLAUDE_PLUGIN_NAME}@${CLAUDE_MARKETPLACE_NAME}`,
-        "--scope",
-        options.scope,
-      ],
-      cwd: process.cwd(),
-      env,
-      timeoutMs: 30_000,
-    });
-    if (install.exitCode !== 0) {
-      throw new OraculumError(
-        `Failed to install the Oraculum Claude plugin: ${extractSubprocessError(install)}`,
-      );
+  const targetPlugin = installedPlugins.find(
+    (entry) => entry.name === CLAUDE_PLUGIN_NAME && entry.scope === options.scope,
+  );
+  if (!isClaudePluginAligned(targetPlugin)) {
+    if (targetPlugin) {
+      await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env, options.scope);
     }
+    await installClaudePlugin(claudeBinaryPath, claudeArgs, env, options.scope);
   }
 
   return {
@@ -317,7 +314,7 @@ async function listClaudePlugins(
   claudeBinaryPath: string,
   claudeArgs: string[],
   env: NodeJS.ProcessEnv,
-): Promise<Array<{ name: string }>> {
+): Promise<ClaudePluginEntry[]> {
   const result = await runSubprocess({
     command: claudeBinaryPath,
     args: [...claudeArgs, "plugin", "list", "--json"],
@@ -329,14 +326,14 @@ async function listClaudePlugins(
     return [];
   }
 
-  return normalizeNamedEntries(result.stdout);
+  return normalizeClaudePluginEntries(result.stdout);
 }
 
 async function listClaudeMarketplaces(
   claudeBinaryPath: string,
   claudeArgs: string[],
   env: NodeJS.ProcessEnv,
-): Promise<Array<{ name: string }>> {
+): Promise<ClaudeMarketplaceEntry[]> {
   const result = await runSubprocess({
     command: claudeBinaryPath,
     args: [...claudeArgs, "plugin", "marketplace", "list", "--json"],
@@ -348,27 +345,238 @@ async function listClaudeMarketplaces(
     return [];
   }
 
-  return normalizeNamedEntries(result.stdout);
+  return normalizeClaudeMarketplaceEntries(result.stdout);
 }
 
-function normalizeNamedEntries(stdout: string): Array<{ name: string }> {
+function normalizeClaudeMarketplaceEntries(stdout: string): ClaudeMarketplaceEntry[] {
   try {
     const parsed = JSON.parse(stdout) as unknown;
     if (!Array.isArray(parsed)) {
       return [];
     }
 
-    return parsed
-      .filter(
-        (entry): entry is { name: string } =>
-          typeof entry === "object" &&
-          entry !== null &&
-          "name" in entry &&
-          typeof (entry as { name?: unknown }).name === "string",
-      )
-      .map((entry) => ({ name: entry.name }));
+    return parsed.flatMap((entry) => {
+      if (
+        typeof entry !== "object" ||
+        entry === null ||
+        !("name" in entry) ||
+        typeof (entry as { name?: unknown }).name !== "string"
+      ) {
+        return [];
+      }
+
+      const normalized: ClaudeMarketplaceEntry = {
+        name: (entry as { name: string }).name,
+      };
+      const source = readOptionalString(entry, "source");
+      const path = readOptionalString(entry, "path");
+      const installLocation = readOptionalString(entry, "installLocation");
+
+      if (source) {
+        normalized.source = source;
+      }
+      if (path) {
+        normalized.path = path;
+      }
+      if (installLocation) {
+        normalized.installLocation = installLocation;
+      }
+
+      return [normalized];
+    });
   } catch {
     return [];
+  }
+}
+
+function normalizeClaudePluginEntries(stdout: string): ClaudePluginEntry[] {
+  try {
+    const parsed = JSON.parse(stdout) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.flatMap((entry) => {
+      if (typeof entry !== "object" || entry === null) {
+        return [];
+      }
+
+      const id = readOptionalString(entry, "id");
+      const explicitName = readOptionalString(entry, "name");
+      const name = explicitName ?? id?.split("@")[0];
+      if (!name) {
+        return [];
+      }
+
+      const normalized: ClaudePluginEntry = {
+        name,
+      };
+      if (id) {
+        normalized.id = id;
+      }
+      const version = readOptionalString(entry, "version");
+      const scope = readOptionalString(entry, "scope");
+      const installPath = readOptionalString(entry, "installPath");
+      const enabled = readOptionalBoolean(entry, "enabled");
+
+      if (version) {
+        normalized.version = version;
+      }
+      if (scope) {
+        normalized.scope = scope;
+      }
+      if (installPath) {
+        normalized.installPath = installPath;
+      }
+      if (typeof enabled === "boolean") {
+        normalized.enabled = enabled;
+      }
+
+      return [normalized];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function isClaudeMarketplaceAligned(
+  entry: ClaudeMarketplaceEntry | undefined,
+  installRoot: string,
+): boolean {
+  if (!entry) {
+    return false;
+  }
+
+  const marketplacePath = entry.path ?? entry.installLocation;
+  if (!marketplacePath) {
+    return false;
+  }
+
+  if (entry.source && entry.source !== "directory") {
+    return false;
+  }
+
+  return normalizePortablePath(marketplacePath) === normalizePortablePath(installRoot);
+}
+
+function isClaudePluginAligned(entry: ClaudePluginEntry | undefined): boolean {
+  if (!entry || entry.version !== APP_VERSION) {
+    return false;
+  }
+
+  if (!entry.installPath) {
+    return true;
+  }
+
+  return normalizePortablePath(entry.installPath).endsWith(`/${APP_VERSION}`);
+}
+
+function normalizePortablePath(value: string): string {
+  return value.replaceAll("\\", "/");
+}
+
+function readOptionalBoolean(entry: object, key: string): boolean | undefined {
+  if (!(key in entry)) {
+    return undefined;
+  }
+
+  const value = (entry as Record<string, unknown>)[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function readOptionalString(entry: object, key: string): string | undefined {
+  if (!(key in entry)) {
+    return undefined;
+  }
+
+  const value = (entry as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+async function addClaudeMarketplace(
+  claudeBinaryPath: string,
+  claudeArgs: string[],
+  env: NodeJS.ProcessEnv,
+  installRoot: string,
+  scope: ClaudeSetupScope,
+): Promise<void> {
+  const addMarketplace = await runSubprocess({
+    command: claudeBinaryPath,
+    args: [...claudeArgs, "plugin", "marketplace", "add", installRoot, "--scope", scope],
+    cwd: process.cwd(),
+    env,
+    timeoutMs: 30_000,
+  });
+  if (addMarketplace.exitCode !== 0) {
+    throw new OraculumError(
+      `Failed to register the Oraculum Claude marketplace: ${extractSubprocessError(addMarketplace)}`,
+    );
+  }
+}
+
+async function removeClaudeMarketplace(
+  claudeBinaryPath: string,
+  claudeArgs: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  const removeMarketplace = await runSubprocess({
+    command: claudeBinaryPath,
+    args: [...claudeArgs, "plugin", "marketplace", "remove", CLAUDE_MARKETPLACE_NAME],
+    cwd: process.cwd(),
+    env,
+    timeoutMs: 30_000,
+  });
+  if (removeMarketplace.exitCode !== 0) {
+    throw new OraculumError(
+      `Failed to remove the stale Oraculum Claude marketplace: ${extractSubprocessError(removeMarketplace)}`,
+    );
+  }
+}
+
+async function installClaudePlugin(
+  claudeBinaryPath: string,
+  claudeArgs: string[],
+  env: NodeJS.ProcessEnv,
+  scope: ClaudeSetupScope,
+): Promise<void> {
+  const install = await runSubprocess({
+    command: claudeBinaryPath,
+    args: [
+      ...claudeArgs,
+      "plugin",
+      "install",
+      `${CLAUDE_PLUGIN_NAME}@${CLAUDE_MARKETPLACE_NAME}`,
+      "--scope",
+      scope,
+    ],
+    cwd: process.cwd(),
+    env,
+    timeoutMs: 30_000,
+  });
+  if (install.exitCode !== 0) {
+    throw new OraculumError(
+      `Failed to install the Oraculum Claude plugin: ${extractSubprocessError(install)}`,
+    );
+  }
+}
+
+async function uninstallClaudePlugin(
+  claudeBinaryPath: string,
+  claudeArgs: string[],
+  env: NodeJS.ProcessEnv,
+  scope: ClaudeSetupScope,
+): Promise<void> {
+  const uninstall = await runSubprocess({
+    command: claudeBinaryPath,
+    args: [...claudeArgs, "plugin", "uninstall", CLAUDE_PLUGIN_NAME, "--scope", scope],
+    cwd: process.cwd(),
+    env,
+    timeoutMs: 30_000,
+  });
+  if (uninstall.exitCode !== 0) {
+    throw new OraculumError(
+      `Failed to replace the stale Oraculum Claude plugin: ${extractSubprocessError(uninstall)}`,
+    );
   }
 }
 
