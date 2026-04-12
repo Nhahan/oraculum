@@ -53,8 +53,15 @@ npm install -g oraculum
 
 그 다음 사용하는 호스트에 맞게 Oraculum을 등록합니다.
 
+Claude Code:
+
 ```bash
 oraculum setup --runtime claude-code
+```
+
+Codex:
+
+```bash
 oraculum setup --runtime codex
 ```
 

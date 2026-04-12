@@ -53,8 +53,15 @@ npm install -g oraculum
 
 Then register Oraculum with the host you use:
 
+Claude Code:
+
 ```bash
 oraculum setup --runtime claude-code
+```
+
+Codex:
+
+```bash
 oraculum setup --runtime codex
 ```
 

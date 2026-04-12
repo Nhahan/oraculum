@@ -145,18 +145,25 @@ This is mainly for development or internal inspection. It scaffolds the consulta
 
 Use the shell binary for installation, uninstall, diagnostics, and MCP serving only.
 
+### Setup Host Integration
+
 ```bash
 oraculum setup --runtime claude-code
 oraculum setup --runtime codex
-oraculum setup status
-oraculum setup status --json
-oraculum uninstall
-oraculum uninstall --runtime claude-code
-oraculum uninstall --runtime codex
-oraculum mcp serve
 ```
 
-### Uninstall
+Run setup in your terminal, not inside the Claude Code or Codex chat input. This registers Oraculum globally for your local host installation.
+
+### Check Setup Status
+
+```bash
+oraculum setup status
+oraculum setup status --json
+```
+
+Use the plain command for a readable summary, or `--json` when you want machine-readable diagnostics.
+
+### Uninstall Host Integration
 
 Use `oraculum uninstall` to remove Oraculum's global Claude Code and Codex host wiring.
 
@@ -167,6 +174,14 @@ oraculum uninstall --runtime codex
 ```
 
 This removes host registration and installed host artifacts. If you also want to remove the globally installed npm package itself, run `npm uninstall -g oraculum` separately.
+
+### Run The MCP Server Directly
+
+```bash
+oraculum mcp serve
+```
+
+This is mainly for internal debugging or direct MCP integration checks. Normal Claude Code and Codex usage should go through `orc ...` after setup.
 
 ## Repo-Local Oracles
 
