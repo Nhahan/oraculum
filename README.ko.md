@@ -58,6 +58,9 @@ oraculum setup --runtime claude-code
 oraculum setup --runtime codex
 ```
 
+이 `oraculum setup ...` 명령은 Claude Code나 Codex 채팅창이 아니라 일반 터미널에서 실행해야 합니다.
+그리고 현재 디렉토리 전용 설정이 아니라, 로컬 Claude Code나 Codex 설치 전체에 대해 전역(host-level) 등록을 수행합니다.
+
 나중에 연결 상태를 다시 확인하고 싶다면:
 
 ```bash
@@ -66,7 +69,7 @@ oraculum setup status
 
 ## 빠른 시작
 
-Claude Code나 Codex에서 설정을 마치면 host-native 흐름은 아래와 같습니다.
+터미널에서 설정을 마친 뒤에는 Claude Code나 Codex 채팅창으로 돌아가 아래 host-native 흐름을 사용합니다.
 
 ```text
 orc consult "fix session loss on refresh"
@@ -91,4 +94,4 @@ Git 프로젝트에서는 `crown`이 지정한 브랜치를 만들고 선택된 
 
 ## 고급 사용법
 
-프로필 선택, 런타임 선택, 실행 기록 조회, 레포지토리에 정의한 오라클 설정, setup 진단, MCP 연결 같은 제어가 필요하면 [고급 사용법](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md)을 참고하세요. 빠른 시작용 기본값은 `.oraculum/config.json`에, 운영자용 제어는 `.oraculum/advanced.json`에 둡니다.
+프로필 선택, 런타임 선택, 실행 기록 조회, 레포지토리에 정의한 오라클 설정, setup 진단, MCP 연결, host uninstall 방법 같은 제어가 필요하면 [고급 사용법](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md)을 참고하세요. 빠른 시작용 기본값은 `.oraculum/config.json`에, 운영자용 제어는 `.oraculum/advanced.json`에 둡니다.

@@ -2,16 +2,16 @@
 
 This page is for users who want more control than the default one-command flow.
 
-Host-native path after setup in Claude Code or Codex:
+After running setup in your terminal, the host-native path in Claude Code or Codex is:
 
 ```text
 orc consult "fix session loss on refresh"
 orc crown fix/session-loss
 ```
 
-`consult` already prints the latest summary. Everything below is for reopening a consultation later, shaping the tournament more explicitly, or using shell-only setup and MCP commands.
+`consult` already prints the latest summary. Everything below is for reopening a consultation later, shaping the tournament more explicitly, or using shell-only setup, uninstall, and MCP commands.
 
-The primary product surface is a host-native chat surface with a shared `orc` command language across Claude Code and Codex. The shell binary remains for setup, MCP serving, and debugging. It no longer exposes the workflow commands directly.
+The primary product surface is a host-native chat surface with a shared `orc` command language across Claude Code and Codex. The shell binary remains for setup, uninstall, diagnostics, and MCP serving only. Run `oraculum setup ...` in your terminal, then use `orc ...` inside the host chat input. Current setup is host-level and global for your local Claude Code or Codex installation, not directory-scoped.
 
 If you want to inspect whether host-native wiring is complete, run:
 
@@ -32,7 +32,7 @@ orc consult tasks/fix-session-loss.md
 `consult` accepts:
 
 - inline task text
-- a Markdown task note
+- a task note file
 - a task packet path
 
 ## Choose Runtime And Candidate Count
@@ -61,16 +61,7 @@ Each consultation now writes a profile-selection artifact under:
 .oraculum/runs/<consultation-id>/reports/profile-selection.json
 ```
 
-That artifact records:
-
-- detected repo signals
-- capability signals and signal provenance
-- the command catalog offered to the runtime
-- skipped command candidates and reasons
-- the chosen profile id
-- confidence and rationale
-- missing capabilities
-- the consultation-scoped strategy and oracle defaults that were applied
+That artifact records the repo signals, the command catalog offered to the runtime, skipped command candidates, the chosen profile, and any missing capabilities.
 
 Today the built-in profile families are:
 
@@ -81,15 +72,15 @@ Today the built-in profile families are:
 
 The selected profile is consultation-scoped. It does not rewrite your saved quick-start config, and it does not overwrite explicit advanced operator settings.
 
-## Profile Boundary And Runtime Failures
+## Profile Selection Boundaries
 
-Oraculum assumes Claude Code or Codex is a frontier coding model. Deterministic code owns facts and safety: file signals, manifests, workspace roots, explicit config, command allowlists, timeouts, and artifact persistence. The model owns semantic judgment: profile choice, risk level, validation sufficiency, and which provided commands to select.
+The runtime does not invent executable commands. It selects from the command ids Oraculum already provided in the consultation-scoped catalog.
 
-If you want the stable maintainer-facing boundary definition, see [Frontier Boundary Policy](./frontier-boundary-policy.md).
-
-The model cannot invent executable commands for Oraculum to run. It returns command ids from the catalog Oraculum provided, and Oraculum rejects unknown profile ids, strategy ids, and command ids. Catalog commands include source, capability, dedupe key, path policy, safety, and provenance metadata. If a plausible command is not safe to generate, Oraculum records it under `skippedCommandCandidates` with a reason instead of running it. If runtime profile selection fails or is disabled, runtime-unavailable detection is conservative: zero-signal repositories use `generic`, ambiguous package managers do not silently become npm, and missing validation is recorded as `missingCapabilities`.
+Invalid profile ids fail schema validation. Unknown strategy ids and command ids are filtered out or replaced by safe fallbacks before the recommendation is applied. If a plausible command is not safe to generate, Oraculum records it under `skippedCommandCandidates` instead of running it. If runtime profile selection fails or is disabled, fallback behavior stays conservative: zero-signal repositories use `generic`, ambiguous package managers do not silently become npm, and missing validation is recorded as `missingCapabilities`.
 
 Repo-local scripts and explicit `.oraculum/advanced.json` oracles are strongest. Oraculum should not grow a built-in encyclopedia of framework, ORM, migration-tool, test-runner, or language-specific command recipes. Named tools, including Prisma or Drizzle, are recorded as evidence unless a repo-local script or explicit oracle defines the command.
+
+For the stable product-policy version of this boundary, see [Frontier Boundary Policy](./frontier-boundary-policy.md).
 
 ## Project Roots And Task Paths
 
@@ -152,25 +143,30 @@ This is mainly for development or internal inspection. It scaffolds the consulta
 
 ## Shell Setup And MCP Commands
 
-Use the shell binary for installation, diagnostics, and MCP serving only.
+Use the shell binary for installation, uninstall, diagnostics, and MCP serving only.
 
 ```bash
 oraculum setup --runtime claude-code
 oraculum setup --runtime codex
 oraculum setup status
 oraculum setup status --json
+oraculum uninstall
+oraculum uninstall --runtime claude-code
+oraculum uninstall --runtime codex
 oraculum mcp serve
 ```
 
-## Maintainer Validation
+### Uninstall
 
-For packaged validation during release work, run:
+Use `oraculum uninstall` to remove Oraculum's global Claude Code and Codex host wiring.
 
 ```bash
-npm run evidence:smoke
+oraculum uninstall
+oraculum uninstall --runtime claude-code
+oraculum uninstall --runtime codex
 ```
 
-This executes the installed-package smoke and the clean-install setup smoke together.
+This removes host registration and installed host artifacts. If you also want to remove the globally installed npm package itself, run `npm uninstall -g oraculum` separately.
 
 ## Repo-Local Oracles
 

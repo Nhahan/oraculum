@@ -58,6 +58,9 @@ oraculum setup --runtime claude-code
 oraculum setup --runtime codex
 ```
 
+Run those `oraculum setup ...` commands in your terminal, not inside the Claude Code or Codex chat input.
+They register Oraculum globally for your local Claude Code or Codex installation, not just for the current directory.
+
 If you want to verify the wiring later:
 
 ```bash
@@ -66,7 +69,7 @@ oraculum setup status
 
 ## Quick Start
 
-After setup in Claude Code or Codex:
+After running setup in your terminal, switch to the Claude Code or Codex chat input and use:
 
 ```text
 orc consult "fix session loss on refresh"
@@ -91,4 +94,4 @@ Results are saved under `.oraculum/`. The source of truth is the saved run state
 
 ## Advanced Usage
 
-If you want more control over consultation-scoped profile selection, runtimes, consultation history, repo-local oracle configuration, setup diagnostics, or MCP wiring details, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; operator controls belong in `.oraculum/advanced.json`.
+If you want more control over consultation-scoped profile selection, runtimes, consultation history, repo-local oracle configuration, setup diagnostics, MCP wiring details, or host uninstall instructions, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; operator controls belong in `.oraculum/advanced.json`.
