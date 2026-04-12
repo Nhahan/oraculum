@@ -41,6 +41,22 @@ interface FakeClaudeState {
   }>;
 }
 
+function normalizePathValue(value: string | undefined): string | undefined {
+  return value?.replaceAll("\\", "/");
+}
+
+function normalizePluginInstallPaths(
+  plugins: FakeClaudeState["plugins"],
+): FakeClaudeState["plugins"] {
+  return plugins.map((plugin) => {
+    const normalized: FakeClaudeState["plugins"][number] = { ...plugin };
+    if (plugin.installPath) {
+      normalized.installPath = normalizePathValue(plugin.installPath)!;
+    }
+    return normalized;
+  });
+}
+
 afterEach(async () => {
   await Promise.all(
     tempRoots.splice(0).map(async (path) => {
@@ -216,7 +232,7 @@ describe("Claude Code setup", () => {
         source: "directory",
       },
     ]);
-    expect(state.plugins).toEqual([
+    expect(normalizePluginInstallPaths(state.plugins)).toEqual([
       {
         id: "oraculum@oraculum",
         installPath: `/fake-cache/oraculum/oraculum/${APP_VERSION}`,
@@ -279,7 +295,7 @@ describe("Claude Code setup", () => {
         source: "directory",
       },
     ]);
-    expect(state.plugins).toEqual([
+    expect(normalizePluginInstallPaths(state.plugins)).toEqual([
       {
         id: "oraculum@oraculum",
         installPath: `/fake-cache/oraculum/oraculum/${APP_VERSION}`,
