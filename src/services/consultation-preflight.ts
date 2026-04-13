@@ -58,6 +58,7 @@ export async function recommendConsultationPreflight(
       ? llmResult.recommendation
       : buildFallbackPreflight({
           runtimeAttempted: allowRuntime,
+          taskPacket: options.taskPacket,
           ...(llmFailure ? { llmFailure } : {}),
         });
 
@@ -101,18 +102,25 @@ export async function recommendConsultationPreflight(
 
 function buildFallbackPreflight(options: {
   runtimeAttempted: boolean;
+  taskPacket: MaterializedTaskPacket;
   llmFailure?: string;
 }): ConsultationPreflight {
+  const reusedResearchBrief = options.taskPacket.source.kind === "research-brief";
+  const defaultFlow = reusedResearchBrief
+    ? "Proceed conservatively using the persisted research brief plus repository evidence."
+    : "Proceed conservatively with the default consultation flow.";
   const summary = options.runtimeAttempted
     ? options.llmFailure
-      ? `Runtime preflight failed: ${options.llmFailure}. Proceed conservatively with the default consultation flow.`
-      : "Runtime preflight did not return a structured recommendation. Proceed conservatively with the default consultation flow."
-    : "Runtime preflight was skipped. Proceed conservatively with the default consultation flow.";
+      ? `Runtime preflight failed: ${options.llmFailure}. ${defaultFlow}`
+      : `Runtime preflight did not return a structured recommendation. ${defaultFlow}`
+    : `Runtime preflight was skipped. ${defaultFlow}`;
 
   return consultationPreflightSchema.parse({
     decision: "proceed",
     confidence: "low",
     summary,
-    researchPosture: consultationResearchPostureSchema.enum["repo-only"],
+    researchPosture: reusedResearchBrief
+      ? consultationResearchPostureSchema.enum["repo-plus-external-docs"]
+      : consultationResearchPostureSchema.enum["repo-only"],
   });
 }
