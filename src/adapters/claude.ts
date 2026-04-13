@@ -298,24 +298,14 @@ function extractProfileRecommendation(stdout: string): AgentProfileRecommendatio
 
   try {
     const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-    if (
-      "profileId" in parsed &&
-      "summary" in parsed &&
-      "confidence" in parsed &&
-      "candidateCount" in parsed
-    ) {
+    if (looksLikeProfileRecommendation(parsed)) {
       return agentProfileRecommendationSchema.parse(parsed);
     }
 
     for (const value of nestedObjects(parsed)) {
       if (value && typeof value === "object" && !Array.isArray(value)) {
         const nested = value as Record<string, unknown>;
-        if (
-          "profileId" in nested &&
-          "summary" in nested &&
-          "confidence" in nested &&
-          "candidateCount" in nested
-        ) {
+        if (looksLikeProfileRecommendation(nested)) {
           return agentProfileRecommendationSchema.parse(nested);
         }
       }
@@ -325,6 +315,12 @@ function extractProfileRecommendation(stdout: string): AgentProfileRecommendatio
   }
 
   return undefined;
+}
+
+function looksLikeProfileRecommendation(value: Record<string, unknown>): boolean {
+  const hasProfileId = "profileId" in value || "validationProfileId" in value;
+  const hasSummary = "summary" in value || "validationSummary" in value;
+  return hasProfileId && hasSummary && "confidence" in value && "candidateCount" in value;
 }
 
 function extractPreflightRecommendation(stdout: string) {

@@ -673,20 +673,24 @@ function sanitizeRecommendation(
   const selectedCommandIds = [...new Set(filteredCommandIds)];
   const validStrategyIds = new Set(profileStrategyIds);
   const filteredStrategyIds = recommendation.strategyIds.filter((id) => validStrategyIds.has(id));
+  const validationGaps = inferMissingCapabilities(
+    recommendation.profileId,
+    selectedCommandIds,
+    signals.commandCatalog,
+    signals.capabilities,
+    signals.skippedCommandCandidates,
+    true,
+  );
 
   return agentProfileRecommendationSchema.parse({
     ...recommendation,
+    validationProfileId: recommendation.profileId,
+    validationSummary: recommendation.summary,
     candidateCount: clampCandidateCount(recommendation.candidateCount),
     strategyIds: filteredStrategyIds.length > 0 ? filteredStrategyIds : fallback.strategyIds,
     selectedCommandIds,
-    missingCapabilities: inferMissingCapabilities(
-      recommendation.profileId,
-      selectedCommandIds,
-      signals.commandCatalog,
-      signals.capabilities,
-      signals.skippedCommandCandidates,
-      true,
-    ),
+    missingCapabilities: validationGaps,
+    validationGaps,
   });
 }
 

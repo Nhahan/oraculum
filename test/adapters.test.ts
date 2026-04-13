@@ -570,7 +570,7 @@ process.stdout.write(JSON.stringify({ argv: process.argv.slice(2), schema }) + "
 if (out) {
   fs.writeFileSync(
     out,
-    '{"profileId":"library","confidence":"high","summary":"Library signals are strongest.","candidateCount":12,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast"],"missingCapabilities":[]}',
+    '{"validationProfileId":"library","confidence":"high","validationSummary":"Library signals are strongest.","candidateCount":12,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast"],"validationGaps":[]}',
     "utf8",
   );
 }
@@ -626,13 +626,19 @@ if (out) {
 
     expect(result.status).toBe("completed");
     expect(result.recommendation?.profileId).toBe("library");
+    expect(result.recommendation?.validationProfileId).toBe("library");
+    expect(result.recommendation?.summary).toBe("Library signals are strongest.");
+    expect(result.recommendation?.validationSummary).toBe("Library signals are strongest.");
     expect(result.recommendation?.candidateCount).toBe(12);
     expect(result.recommendation?.selectedCommandIds).toEqual(["lint-fast", "typecheck-fast"]);
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Profile options:",
     );
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "Treat profileId as a validation posture for default tournament settings, not as a claim about the whole repository.",
+      "Treat validationProfileId as the canonical validation posture field for default tournament settings, not as a claim about the whole repository.",
+    );
+    await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "Legacy aliases profileId, summary, and missingCapabilities are accepted for compatibility, but prefer validationProfileId, validationSummary, and validationGaps.",
     );
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Do not list theoretical profile-default checks when the repository provides no evidence for them.",
@@ -640,9 +646,11 @@ if (out) {
     await expect(readFile(join(logDir, "profile-judge.stdout.jsonl"), "utf8")).resolves.toContain(
       '"--output-schema"',
     );
-    await expect(readFile(join(logDir, "profile-judge.schema.json"), "utf8")).resolves.toContain(
-      '"generic"',
-    );
+    const profileSchema = JSON.parse(
+      await readFile(join(logDir, "profile-judge.schema.json"), "utf8"),
+    ) as { anyOf?: unknown[]; properties?: Record<string, unknown> };
+    expect(Array.isArray(profileSchema.anyOf)).toBe(true);
+    expect(profileSchema.properties).toHaveProperty("validationProfileId");
   });
 
   it("asks Claude to recommend a consultation profile with json-schema output", async () => {
@@ -656,13 +664,13 @@ if (out) {
 process.stdout.write(JSON.stringify({
   type: "result",
   structured_output: {
-    profileId: "frontend",
+    validationProfileId: "frontend",
     confidence: "medium",
-    summary: "Frontend build and e2e signals are present.",
+    validationSummary: "Frontend build and e2e signals are present.",
     candidateCount: 4,
     strategyIds: ["minimal-change", "safety-first"],
     selectedCommandIds: ["build-impact", "e2e-deep"],
-    missingCapabilities: [],
+    validationGaps: [],
   },
 }));`,
     );
@@ -716,11 +724,16 @@ process.stdout.write(JSON.stringify({
 
     expect(result.status).toBe("completed");
     expect(result.recommendation?.profileId).toBe("frontend");
+    expect(result.recommendation?.validationProfileId).toBe("frontend");
+    expect(result.recommendation?.summary).toBe("Frontend build and e2e signals are present.");
+    expect(result.recommendation?.validationSummary).toBe(
+      "Frontend build and e2e signals are present.",
+    );
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Command catalog:",
     );
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
-      'Use profileId "generic" when the repository has no strong command-grounded or repo-local profile evidence.',
+      'Use validationProfileId "generic" when the repository has no strong command-grounded or repo-local profile evidence.',
     );
     await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toContain(
       '"--permission-mode","plan"',
@@ -729,6 +742,124 @@ process.stdout.write(JSON.stringify({
       /generic/u,
     );
   }, 20_000);
+
+  it("rejects conflicting legacy and validation profile aliases", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "profile-conflict-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"profileId":"library","validationProfileId":"frontend","confidence":"high","summary":"Library signals are strongest.","validationSummary":"Frontend signals are strongest.","candidateCount":4,"strategyIds":["minimal-change"],"selectedCommandIds":[],"missingCapabilities":[],"validationGaps":[]}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const adapter = new CodexAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendProfile({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      signals: {
+        packageManager: "npm",
+        scripts: ["lint"],
+        dependencies: [],
+        files: ["package.json"],
+        workspaceRoots: [],
+        workspaceMetadata: [],
+        notes: [],
+        capabilities: [],
+        provenance: [],
+        skippedCommandCandidates: [],
+        commandCatalog: [],
+      },
+      profileOptions: [
+        { id: "library", description: "Library work." },
+        { id: "frontend", description: "Frontend work." },
+      ],
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation).toBeUndefined();
+  });
+
+  it("accepts matching validation gaps even when alias array order differs", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "profile-alias-order-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"profileId":"frontend","validationProfileId":"frontend","confidence":"medium","summary":"Frontend build and e2e signals are present.","validationSummary":"Frontend build and e2e signals are present.","candidateCount":4,"strategyIds":["minimal-change"],"selectedCommandIds":[],"missingCapabilities":["No build validation command was selected.","No e2e or visual deep check was selected."],"validationGaps":["No e2e or visual deep check was selected.","No build validation command was selected."]}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const adapter = new CodexAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendProfile({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      signals: {
+        packageManager: "npm",
+        scripts: ["build", "e2e"],
+        dependencies: [],
+        files: ["package.json"],
+        workspaceRoots: [],
+        workspaceMetadata: [],
+        notes: [],
+        capabilities: [],
+        provenance: [],
+        skippedCommandCandidates: [],
+        commandCatalog: [],
+      },
+      profileOptions: [
+        { id: "frontend", description: "Frontend work." },
+        { id: "generic", description: "Generic work." },
+      ],
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation?.profileId).toBe("frontend");
+    expect(result.recommendation?.validationGaps).toEqual([
+      "No e2e or visual deep check was selected.",
+      "No build validation command was selected.",
+    ]);
+  });
 
   it("asks Codex for structured preflight readiness output", async () => {
     const root = await createTempRoot();

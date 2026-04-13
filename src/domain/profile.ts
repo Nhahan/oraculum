@@ -116,15 +116,85 @@ export const profileRepoSignalsSchema = z.object({
   skippedCommandCandidates: z.array(profileSkippedCommandCandidateSchema).default([]),
 });
 
-export const agentProfileRecommendationSchema = z.object({
-  profileId: consultationProfileIdSchema,
-  confidence: decisionConfidenceSchema,
-  summary: z.string().min(1),
-  candidateCount: z.number().int().min(1).max(16),
-  strategyIds: z.array(profileStrategyIdSchema).min(1).max(4),
-  selectedCommandIds: z.array(z.string().min(1)).default([]),
-  missingCapabilities: z.array(z.string().min(1)).default([]),
-});
+const agentProfileRecommendationBaseSchema = z
+  .object({
+    profileId: consultationProfileIdSchema,
+    validationProfileId: consultationProfileIdSchema.optional(),
+    confidence: decisionConfidenceSchema,
+    summary: z.string().min(1),
+    validationSummary: z.string().min(1).optional(),
+    candidateCount: z.number().int().min(1).max(16),
+    strategyIds: z.array(profileStrategyIdSchema).min(1).max(4),
+    selectedCommandIds: z.array(z.string().min(1)).default([]),
+    missingCapabilities: z.array(z.string().min(1)).default([]),
+    validationGaps: z.array(z.string().min(1)).optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.validationProfileId && value.validationProfileId !== value.profileId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["validationProfileId"],
+        message: "validationProfileId must match profileId when both are present.",
+      });
+    }
+
+    if (value.validationSummary && value.validationSummary !== value.summary) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["validationSummary"],
+        message: "validationSummary must match summary when both are present.",
+      });
+    }
+
+    if (
+      value.validationGaps &&
+      !stringArrayMembersEqual(value.validationGaps, value.missingCapabilities)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["validationGaps"],
+        message: "validationGaps must match missingCapabilities when both are present.",
+      });
+    }
+  });
+
+export const agentProfileRecommendationSchema = z.preprocess((value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const payload = value as Record<string, unknown>;
+  const normalized: Record<string, unknown> = { ...payload };
+
+  if (
+    typeof normalized.profileId !== "string" &&
+    typeof normalized.validationProfileId === "string"
+  ) {
+    normalized.profileId = normalized.validationProfileId;
+  }
+  if (
+    typeof normalized.validationProfileId !== "string" &&
+    typeof normalized.profileId === "string"
+  ) {
+    normalized.validationProfileId = normalized.profileId;
+  }
+
+  if (typeof normalized.summary !== "string" && typeof normalized.validationSummary === "string") {
+    normalized.summary = normalized.validationSummary;
+  }
+  if (typeof normalized.validationSummary !== "string" && typeof normalized.summary === "string") {
+    normalized.validationSummary = normalized.summary;
+  }
+
+  if (!Array.isArray(normalized.missingCapabilities) && Array.isArray(normalized.validationGaps)) {
+    normalized.missingCapabilities = normalized.validationGaps;
+  }
+  if (!Array.isArray(normalized.validationGaps) && Array.isArray(normalized.missingCapabilities)) {
+    normalized.validationGaps = normalized.missingCapabilities;
+  }
+
+  return normalized;
+}, agentProfileRecommendationBaseSchema);
 
 export const consultationProfileSelectionSchema = z.object({
   profileId: consultationProfileIdSchema,
@@ -143,46 +213,58 @@ export const consultationProfileSelectionSchema = z.object({
 });
 
 export function buildAgentProfileRecommendationJsonSchema(): Record<string, unknown> {
+  const properties = {
+    profileId: {
+      type: "string",
+      enum: [...consultationProfileIds],
+    },
+    validationProfileId: {
+      type: "string",
+      enum: [...consultationProfileIds],
+    },
+    confidence: {
+      type: "string",
+      enum: [...decisionConfidenceLevels],
+    },
+    summary: { type: "string", minLength: 1 },
+    validationSummary: { type: "string", minLength: 1 },
+    candidateCount: { type: "integer", minimum: 1, maximum: 16 },
+    strategyIds: {
+      type: "array",
+      minItems: 1,
+      maxItems: 4,
+      items: {
+        type: "string",
+        enum: [...profileStrategyIds],
+      },
+    },
+    selectedCommandIds: {
+      type: "array",
+      items: { type: "string" },
+    },
+    missingCapabilities: {
+      type: "array",
+      items: { type: "string" },
+    },
+    validationGaps: {
+      type: "array",
+      items: { type: "string" },
+    },
+  } satisfies Record<string, unknown>;
+
+  const commonRequired = ["confidence", "candidateCount", "strategyIds", "selectedCommandIds"];
+
   return {
     type: "object",
     additionalProperties: false,
-    properties: {
-      profileId: {
-        type: "string",
-        enum: [...consultationProfileIds],
+    properties,
+    anyOf: [
+      {
+        required: [...commonRequired, "profileId", "summary", "missingCapabilities"],
       },
-      confidence: {
-        type: "string",
-        enum: [...decisionConfidenceLevels],
+      {
+        required: [...commonRequired, "validationProfileId", "validationSummary", "validationGaps"],
       },
-      summary: { type: "string", minLength: 1 },
-      candidateCount: { type: "integer", minimum: 1, maximum: 16 },
-      strategyIds: {
-        type: "array",
-        minItems: 1,
-        maxItems: 4,
-        items: {
-          type: "string",
-          enum: [...profileStrategyIds],
-        },
-      },
-      selectedCommandIds: {
-        type: "array",
-        items: { type: "string" },
-      },
-      missingCapabilities: {
-        type: "array",
-        items: { type: "string" },
-      },
-    },
-    required: [
-      "profileId",
-      "confidence",
-      "summary",
-      "candidateCount",
-      "strategyIds",
-      "selectedCommandIds",
-      "missingCapabilities",
     ],
   };
 }
@@ -198,6 +280,16 @@ export type ProfileSkippedCommandCandidate = z.infer<typeof profileSkippedComman
 export type ProfileRepoSignals = z.infer<typeof profileRepoSignalsSchema>;
 export type AgentProfileRecommendation = z.infer<typeof agentProfileRecommendationSchema>;
 export type ConsultationProfileSelection = z.infer<typeof consultationProfileSelectionSchema>;
+
+function stringArrayMembersEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  const leftSorted = [...left].sort();
+  const rightSorted = [...right].sort();
+  return leftSorted.every((value, index) => value === rightSorted[index]);
+}
 
 export function getValidationProfileId(
   selection: Pick<ConsultationProfileSelection, "profileId" | "validationProfileId"> | undefined,
