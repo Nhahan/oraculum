@@ -271,6 +271,8 @@ export function buildPreflightPrompt(request: AgentPreflightRequest): string {
     "- Return JSON only.",
   );
 
+  appendResearchBriefDecisionRules(sections, request.taskPacket);
+
   return `${sections.join("\n")}\n`;
 }
 
@@ -365,6 +367,8 @@ export function buildProfileSelectionPrompt(request: AgentProfileRequest): strin
     "- Return JSON only.",
   );
 
+  appendResearchBriefDecisionRules(sections, request.taskPacket);
+
   return `${sections.join("\n")}\n`;
 }
 
@@ -397,6 +401,23 @@ function appendTaskSourceContext(sections: string[], taskPacket: MaterializedTas
     "- This task was resumed from a persisted external research brief.",
     `- Research brief path: ${taskPacket.source.path}`,
     "- Treat the research summary in the task intent as prior investigation context.",
+  );
+}
+
+function appendResearchBriefDecisionRules(
+  sections: string[],
+  taskPacket: MaterializedTaskPacket,
+): void {
+  if (taskPacket.source.kind !== "research-brief") {
+    return;
+  }
+
+  sections.push(
+    "",
+    "Research brief rules:",
+    "- Treat the research summary as prior external context, not as a repository fact.",
+    "- Do not ask for the same external research again unless the current repository state still leaves a concrete unresolved external dependency.",
+    "- Base command selection and validation on repository evidence and the command catalog, not on the research brief alone.",
   );
 }
 

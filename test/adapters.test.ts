@@ -945,6 +945,19 @@ process.stdout.write(JSON.stringify({
         "Treat the research summary in the task intent as prior investigation context.",
       );
     }
+
+    for (const prompt of [preflightPrompt, profilePrompt]) {
+      expect(prompt).toContain("Research brief rules:");
+      expect(prompt).toContain(
+        "Treat the research summary as prior external context, not as a repository fact.",
+      );
+      expect(prompt).toContain(
+        "Do not ask for the same external research again unless the current repository state still leaves a concrete unresolved external dependency.",
+      );
+      expect(prompt).toContain(
+        "Base command selection and validation on repository evidence and the command catalog, not on the research brief alone.",
+      );
+    }
   });
 });
 
