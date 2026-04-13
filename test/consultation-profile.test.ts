@@ -943,10 +943,70 @@ if (out) {
     expect(recommendation.selection.summary).toContain("detected a unique frontend profile anchor");
     expect(recommendation.selection.summary).not.toContain("pack-impact");
     expect(recommendation.selection.summary).not.toContain("package-smoke-deep");
-    expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "typecheck-fast", "e2e-deep"]);
+    expect(recommendation.selection.oracleIds).toEqual([
+      "lint-fast",
+      "typecheck-fast",
+      "full-suite-deep",
+      "e2e-deep",
+    ]);
     expect(recommendation.selection.missingCapabilities).toEqual([
       "No build validation command was detected.",
     ]);
+  });
+
+  it("keeps conflicting explicit anchors on the generic fallback bundle", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(
+      join(cwd, "tasks", "fix.md"),
+      "# Fix\nKeep UI and migration checks healthy.\n",
+      "utf8",
+    );
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "explicit-anchor-conflict",
+          packageManager: "npm@10.0.0",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+            typecheck: 'node -e "process.exit(0)"',
+            test: 'node -e "process.exit(0)"',
+            e2e: 'node -e "process.exit(0)"',
+            "migration:dry-run": 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(join(cwd, "playwright.config.ts"), "export default {};\n", "utf8");
+    await mkdir(getReportsDir(cwd, "run_anchor_conflict"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_anchor_conflict"),
+      runId: "run_anchor_conflict",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.summary).toContain(
+      "defaulted to the generic profile because profile-specific anchors conflicted",
+    );
+    expect(recommendation.selection.oracleIds).toEqual([
+      "lint-fast",
+      "typecheck-fast",
+      "full-suite-deep",
+    ]);
+    expect(recommendation.selection.oracleIds).not.toContain("e2e-deep");
+    expect(recommendation.selection.oracleIds).not.toContain("migration-impact");
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
   });
 
   it("deduplicates aliased expensive package scripts under a single command candidate", async () => {
@@ -2135,6 +2195,7 @@ if (out) {
     });
 
     expect(recommendation.selection.profileId).toBe("frontend");
+    expect(recommendation.selection.candidateCount).toBe(4);
     expect(recommendation.selection.oracleIds).toContain("e2e-deep");
     expect(recommendation.selection.strategyIds).toEqual(["minimal-change", "safety-first"]);
   });
@@ -2172,6 +2233,7 @@ if (out) {
     });
 
     expect(recommendation.selection.profileId).toBe("migration");
+    expect(recommendation.selection.candidateCount).toBe(4);
     expect(recommendation.selection.oracleIds).toContain("migration-impact");
     expect(recommendation.selection.strategyIds).toEqual(["minimal-change", "safety-first"]);
   });

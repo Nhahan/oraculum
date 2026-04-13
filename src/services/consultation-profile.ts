@@ -57,13 +57,6 @@ const PROFILE_DESCRIPTIONS: Record<ConsultationProfileId, string> = {
     "Schema or migration work. Favor schema validation, migration dry-runs, rollback simulation, and conservative strategies.",
 };
 
-const PROFILE_DEFAULT_CANDIDATES: Record<ConsultationProfileId, number> = {
-  generic: 3,
-  library: 4,
-  frontend: 4,
-  migration: 3,
-};
-
 const GENERATED_ORACLE_TIMEOUT_MS = {
   fast: 60_000,
   impact: 5 * 60_000,
@@ -71,6 +64,8 @@ const GENERATED_ORACLE_TIMEOUT_MS = {
 } as const satisfies Record<ProfileCommandCandidate["roundId"], number>;
 
 const FALLBACK_STRATEGY_IDS: ProfileStrategyId[] = ["minimal-change", "safety-first"];
+const FALLBACK_DEFAULT_CANDIDATE_COUNT = defaultProjectConfig.defaultCandidates;
+const FALLBACK_LOW_CONFIDENCE_CANDIDATE_COUNT = Math.min(3, FALLBACK_DEFAULT_CANDIDATE_COUNT);
 
 interface ProfileCommandSlot {
   capability: string;
@@ -81,14 +76,12 @@ interface ProfileCommandSlot {
 // auto-selected when a single profile has explicit, profile-specific anchor commands.
 // Generic validation commands such as lint/typecheck/test should not silently masquerade as a
 // library/frontend/migration intent when runtime profile selection is unavailable.
-const PROFILE_FALLBACK_ANCHORS: Record<
-  Exclude<ConsultationProfileId, "generic">,
-  ProfileCommandSlot[]
-> = {
-  library: [
-    { roundId: "impact", capability: "package-export-smoke" },
-    { roundId: "deep", capability: "package-export-smoke" },
-  ],
+// Package export smoke remains review evidence, but it is product-owned today rather than an
+// explicit repo-local executable anchor, so fallback detection must not auto-select `library`.
+type FallbackAnchoredProfileId = "frontend" | "migration";
+type FallbackDetectedProfileId = "generic" | FallbackAnchoredProfileId;
+
+const PROFILE_FALLBACK_ANCHORS: Record<FallbackAnchoredProfileId, ProfileCommandSlot[]> = {
   frontend: [{ roundId: "deep", capability: "e2e-or-visual" }],
   migration: [
     { roundId: "fast", capability: "schema-validation" },
@@ -363,21 +356,19 @@ function buildFallbackRecommendation(
   );
   const anchoredProfiles = (
     Object.entries(PROFILE_FALLBACK_ANCHORS) as Array<
-      [Exclude<ConsultationProfileId, "generic">, ProfileCommandSlot[]]
+      [FallbackAnchoredProfileId, ProfileCommandSlot[]]
     >
   )
     .filter(([, anchors]) => anchors.some((anchor) => commandSlots.has(commandSlotKey(anchor))))
     .map(([profileId]) => profileId);
   const [anchoredProfile] = anchoredProfiles;
-  const chosenProfile: ConsultationProfileId =
+  const chosenProfile: FallbackDetectedProfileId =
     anchoredProfiles.length === 1 && anchoredProfile ? anchoredProfile : "generic";
   const confidence =
     anchoredProfiles.length === 1 ? "high" : commandSlots.size > 0 ? "medium" : "low";
 
   const selectedCommandIds = chooseFallbackCommandIds(
-    chosenProfile === "generic" && anchoredProfiles.length > 1
-      ? ["generic", ...anchoredProfiles]
-      : [chosenProfile],
+    buildFallbackCommandSlots(chosenProfile),
     signals.commandCatalog,
   );
   const missingCapabilities = inferMissingCapabilities(
@@ -392,8 +383,8 @@ function buildFallbackRecommendation(
     summary: buildFallbackSummary(chosenProfile, confidence, anchoredProfiles, signals, taskPacket),
     candidateCount:
       confidence === "low"
-        ? Math.min(3, PROFILE_DEFAULT_CANDIDATES[chosenProfile])
-        : PROFILE_DEFAULT_CANDIDATES[chosenProfile],
+        ? FALLBACK_LOW_CONFIDENCE_CANDIDATE_COUNT
+        : FALLBACK_DEFAULT_CANDIDATE_COUNT,
     strategyIds: FALLBACK_STRATEGY_IDS,
     selectedCommandIds,
     missingCapabilities,
@@ -401,9 +392,9 @@ function buildFallbackRecommendation(
 }
 
 function buildFallbackSummary(
-  profileId: ConsultationProfileId,
+  profileId: FallbackDetectedProfileId,
   confidence: AgentProfileRecommendation["confidence"],
-  anchoredProfiles: Array<Exclude<ConsultationProfileId, "generic">>,
+  anchoredProfiles: FallbackAnchoredProfileId[],
   signals: ProfileRepoSignals,
   taskPacket: MaterializedTaskPacket,
 ): string {
@@ -422,30 +413,46 @@ function buildFallbackSummary(
   return `Fallback detection ${rationale}; confidence=${confidence} for task "${basename(taskPacket.source.path)}".`;
 }
 
+function buildFallbackCommandSlots(profileId: FallbackDetectedProfileId): ProfileCommandSlot[] {
+  const profileAnchors = profileId === "generic" ? [] : PROFILE_FALLBACK_ANCHORS[profileId];
+  const slots =
+    profileId === "generic"
+      ? PROFILE_COMMAND_SLOTS.generic
+      : [...PROFILE_COMMAND_SLOTS.generic, ...profileAnchors];
+  const seen = new Set<string>();
+
+  return slots.filter((slot) => {
+    const key = commandSlotKey(slot);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
 function chooseFallbackCommandIds(
-  profileIds: ConsultationProfileId[],
+  desiredSlots: ProfileCommandSlot[],
   catalog: ProfileCommandCandidate[],
 ): string[] {
   const selectedCommandIds: string[] = [];
   const usedExecutionKeys = new Set<string>();
 
-  for (const profileId of profileIds) {
-    for (const desiredSlot of PROFILE_COMMAND_SLOTS[profileId]) {
-      const candidate = catalog.find((command) => {
-        const executionKey = commandExecutionKey(command);
-        return (
-          command.roundId === desiredSlot.roundId &&
-          command.capability === desiredSlot.capability &&
-          !usedExecutionKeys.has(executionKey)
-        );
-      });
-      if (!candidate) {
-        continue;
-      }
-
-      selectedCommandIds.push(candidate.id);
-      usedExecutionKeys.add(commandExecutionKey(candidate));
+  for (const desiredSlot of desiredSlots) {
+    const candidate = catalog.find((command) => {
+      const executionKey = commandExecutionKey(command);
+      return (
+        command.roundId === desiredSlot.roundId &&
+        command.capability === desiredSlot.capability &&
+        !usedExecutionKeys.has(executionKey)
+      );
+    });
+    if (!candidate) {
+      continue;
     }
+
+    selectedCommandIds.push(candidate.id);
+    usedExecutionKeys.add(commandExecutionKey(candidate));
   }
 
   return selectedCommandIds;
