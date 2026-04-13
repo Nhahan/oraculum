@@ -14,6 +14,7 @@ import {
   runManifestSchema,
   savedConsultationStatusSchema,
 } from "./run.js";
+import { taskSourceKindSchema } from "./task.js";
 
 export const commandPrefixSchema = z.literal("orc");
 
@@ -135,6 +136,8 @@ export const verdictReviewSchema = z.object({
   verificationLevel: consultationVerificationLevelSchema,
   validationPosture: consultationValidationPostureSchema,
   judgingBasisKind: consultationJudgingBasisKindSchema,
+  taskSourceKind: taskSourceKindSchema,
+  taskSourcePath: z.string().min(1),
   recommendedCandidateId: z.string().min(1).optional(),
   finalistIds: z.array(z.string().min(1)).default([]),
   profileId: z.string().min(1).optional(),

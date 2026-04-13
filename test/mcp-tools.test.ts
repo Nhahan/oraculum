@@ -107,6 +107,8 @@ describe("chat-native MCP tools", () => {
       verificationLevel: "lightweight",
       validationPosture: "sufficient",
       judgingBasisKind: "repo-local-oracle",
+      taskSourceKind: "task-note",
+      taskSourcePath: "/tmp/task.md",
       recommendedCandidateId: "cand-01",
       finalistIds: ["cand-01"],
       profileId: "library",
@@ -195,6 +197,8 @@ describe("chat-native MCP tools", () => {
       outcomeType: "recommended-survivor",
       terminal: true,
       crownable: true,
+      taskSourceKind: "task-note",
+      taskSourcePath: "/tmp/task.md",
       recommendedCandidateId: "cand-01",
       nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-survivor"],
     });
@@ -359,6 +363,8 @@ describe("chat-native MCP tools", () => {
       consultationId: "run_blocked",
       outcomeType: "needs-clarification",
       terminal: true,
+      taskSourceKind: "task-note",
+      taskSourcePath: "/tmp/task.md",
       preflightDecision: "needs-clarification",
       nextActions: [
         "reopen-verdict",
@@ -385,6 +391,8 @@ describe("chat-native MCP tools", () => {
     expect(verdict.status).toMatchObject({
       consultationId: "run_1",
       outcomeType: "recommended-survivor",
+      taskSourceKind: "task-note",
+      taskSourcePath: "/tmp/task.md",
       nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-survivor"],
     });
     expect(verdict.review).toMatchObject({

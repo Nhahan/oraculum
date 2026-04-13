@@ -155,6 +155,8 @@ describe("consultation workflow summaries", () => {
       "review-preflight-readiness",
       "answer-clarification-and-rerun",
     ]);
+    expect(status.taskSourceKind).toBe("task-note");
+    expect(status.taskSourcePath).toBe("/tmp/task.md");
   });
 
   it("builds a machine-readable verdict review from saved consultation state", async () => {
@@ -196,6 +198,8 @@ describe("consultation workflow summaries", () => {
       verificationLevel: "lightweight",
       validationPosture: "validation-gaps",
       judgingBasisKind: "repo-local-oracle",
+      taskSourceKind: "task-note",
+      taskSourcePath: "/tmp/task.md",
       recommendedCandidateId: "cand-01",
       finalistIds: ["cand-01"],
       profileId: "frontend",
@@ -299,20 +303,62 @@ describe("consultation workflow summaries", () => {
     );
 
     const summary = await renderConsultationSummary(manifest, cwd);
+    const status = buildSavedConsultationStatus(manifest);
     const review = buildVerdictReview(manifest, {
       preflightReadinessPath: getPreflightReadinessPath(cwd, manifest.id),
       researchBriefPath: getResearchBriefPath(cwd, manifest.id),
     });
 
+    expect(summary).toContain("Task source: task-note (");
     expect(summary).toContain("- research brief: .oraculum/runs/run_1/reports/research-brief.json");
     expect(summary).toContain(
       "Research needed: What does the official API documentation say about the current versioned behavior?",
     );
+    expect(summary).toContain("- gather the required external evidence.");
+    expect(summary).toContain(
+      "- rerun from the persisted research brief when ready: `orc consult .oraculum/runs/run_1/reports/research-brief.json`.",
+    );
+    expect(status.nextActions).toEqual([
+      "reopen-verdict",
+      "browse-archive",
+      "review-preflight-readiness",
+      "gather-external-research-and-rerun",
+      "rerun-with-research-brief",
+    ]);
+    expect(status.taskSourceKind).toBe("task-note");
+    expect(status.taskSourcePath).toBe("/tmp/task.md");
     expect(review.researchPosture).toBe("external-research-required");
     expect(review.researchQuestion).toBe(
       "What does the official API documentation say about the current versioned behavior?",
     );
+    expect(review.taskSourceKind).toBe("task-note");
+    expect(review.taskSourcePath).toBe("/tmp/task.md");
     expect(review.artifactAvailability.researchBrief).toBe(true);
+  });
+
+  it("renders research-brief task provenance in summary and review", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      taskPath: getResearchBriefPath(cwd, "run_source"),
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "research-brief",
+        sourcePath: getResearchBriefPath(cwd, "run_source"),
+      },
+    });
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const review = buildVerdictReview(manifest, {});
+    const status = buildSavedConsultationStatus(manifest);
+
+    expect(summary).toContain(
+      "Task source: research-brief (.oraculum/runs/run_source/reports/research-brief.json)",
+    );
+    expect(status.taskSourceKind).toBe("research-brief");
+    expect(status.taskSourcePath).toBe(getResearchBriefPath(cwd, "run_source"));
+    expect(review.taskSourceKind).toBe("research-brief");
+    expect(review.taskSourcePath).toBe(getResearchBriefPath(cwd, "run_source"));
   });
 
   it("does not report a promotion record when only a stale export plan file exists", async () => {

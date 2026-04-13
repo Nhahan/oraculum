@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { adapterSchema, roundIdSchema } from "./config.js";
 import { consultationProfileSelectionSchema, decisionConfidenceSchema } from "./profile.js";
-import { taskPacketSummarySchema } from "./task.js";
+import { taskPacketSummarySchema, taskSourceKindSchema } from "./task.js";
 
 export const candidateStatusSchema = z.enum([
   "planned",
@@ -62,6 +62,7 @@ export const consultationNextActionSchema = z.enum([
   "review-preflight-readiness",
   "answer-clarification-and-rerun",
   "gather-external-research-and-rerun",
+  "rerun-with-research-brief",
   "revise-task-and-rerun",
   "crown-recommended-survivor",
   "inspect-comparison-report",
@@ -167,6 +168,8 @@ export const savedConsultationStatusSchema = z.object({
   outcomeType: consultationOutcomeTypeSchema,
   terminal: z.boolean(),
   crownable: z.boolean(),
+  taskSourceKind: taskSourceKindSchema,
+  taskSourcePath: z.string().min(1),
   validationPosture: consultationValidationPostureSchema,
   recommendedCandidateId: z.string().min(1).optional(),
   finalistCount: z.number().int().min(0),
@@ -396,6 +399,8 @@ export function buildSavedConsultationStatus(manifest: RunManifest): SavedConsul
     outcomeType: outcome.type,
     terminal: outcome.terminal,
     crownable: outcome.crownable,
+    taskSourceKind: manifest.taskPacket.sourceKind,
+    taskSourcePath: manifest.taskPacket.sourcePath,
     validationPosture: outcome.validationPosture,
     ...(outcome.recommendedCandidateId
       ? { recommendedCandidateId: outcome.recommendedCandidateId }
@@ -496,6 +501,7 @@ function buildConsultationNextActions(outcome: ConsultationOutcome): Consultatio
     case "external-research-required":
       actions.add("review-preflight-readiness");
       actions.add("gather-external-research-and-rerun");
+      actions.add("rerun-with-research-brief");
       break;
     case "abstained-before-execution":
       actions.add("review-preflight-readiness");

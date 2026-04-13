@@ -90,6 +90,7 @@ export async function renderConsultationSummary(
     `Consultation: ${manifest.id}`,
     `Opened: ${manifest.createdAt}`,
     `Task: ${manifest.taskPacket.title}`,
+    `Task source: ${manifest.taskPacket.sourceKind} (${toDisplayPath(projectRoot, manifest.taskPacket.sourcePath)})`,
     `Agent: ${manifest.agent}`,
     `Candidates: ${manifest.candidateCount}`,
     `Status: ${manifest.status}`,
@@ -218,7 +219,12 @@ export async function renderConsultationSummary(
   } else if (status.outcomeType === "needs-clarification") {
     lines.push("- answer the preflight clarification question, then rerun `orc consult`.");
   } else if (status.outcomeType === "external-research-required") {
-    lines.push("- gather the required external evidence, then rerun `orc consult`.");
+    const researchBriefInput =
+      researchBriefExists && manifest.preflight?.researchQuestion
+        ? `orc consult ${toDisplayPath(projectRoot, researchBriefPath)}`
+        : "orc consult";
+    lines.push("- gather the required external evidence.");
+    lines.push(`- rerun from the persisted research brief when ready: \`${researchBriefInput}\`.`);
   } else if (status.outcomeType === "abstained-before-execution") {
     lines.push("- revise the task scope or repository setup, then rerun `orc consult`.");
   } else if (manifest.recommendedWinner) {
@@ -276,6 +282,8 @@ export function buildVerdictReview(
     verificationLevel: status.verificationLevel,
     validationPosture: status.validationPosture,
     judgingBasisKind: status.judgingBasisKind,
+    taskSourceKind: manifest.taskPacket.sourceKind,
+    taskSourcePath: manifest.taskPacket.sourcePath,
     ...(status.recommendedCandidateId
       ? { recommendedCandidateId: status.recommendedCandidateId }
       : {}),
