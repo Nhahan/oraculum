@@ -153,6 +153,11 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
         title: taskPacket.title,
         sourceKind: taskPacket.source.kind,
         sourcePath: taskPacket.source.path,
+        ...(taskPacket.artifactKind ? { artifactKind: taskPacket.artifactKind } : {}),
+        ...(taskPacket.targetArtifactPath
+          ? { targetArtifactPath: taskPacket.targetArtifactPath }
+          : {}),
+        ...(taskPacket.researchContext ? { researchContext: taskPacket.researchContext } : {}),
         ...(taskPacket.source.originKind && taskPacket.source.originPath
           ? {
               originKind: taskPacket.source.originKind,
@@ -272,6 +277,11 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
       title: taskPacket.title,
       sourceKind: taskPacket.source.kind,
       sourcePath: taskPacket.source.path,
+      ...(taskPacket.artifactKind ? { artifactKind: taskPacket.artifactKind } : {}),
+      ...(taskPacket.targetArtifactPath
+        ? { targetArtifactPath: taskPacket.targetArtifactPath }
+        : {}),
+      ...(taskPacket.researchContext ? { researchContext: taskPacket.researchContext } : {}),
       ...(taskPacket.source.originKind && taskPacket.source.originPath
         ? {
             originKind: taskPacket.source.originKind,

@@ -23,6 +23,7 @@ import {
 } from "../src/domain/config.js";
 import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
 import {
+  deriveResearchSignalFingerprint,
   deriveTaskPacketId,
   materializedTaskPacketSchema,
   taskPacketSchema,
@@ -94,6 +95,8 @@ describe("task packet contracts", () => {
           id: "session-loss",
           title: "Fix session loss",
           intent: "Preserve login state during refresh.",
+          artifactKind: "document",
+          targetArtifactPath: "docs/SESSION_PLAN.md",
           nonGoals: ["Do not redesign auth."],
           acceptanceCriteria: ["Refresh keeps the active session."],
           risks: ["Cookie scoping"],
@@ -110,6 +113,8 @@ describe("task packet contracts", () => {
     const packet = await loadTaskPacket(taskPath);
 
     expect(packet.source.kind).toBe("task-packet");
+    expect(packet.artifactKind).toBe("document");
+    expect(packet.targetArtifactPath).toBe("docs/SESSION_PLAN.md");
     expect(taskPacketSchema.parse(packet).acceptanceCriteria).toHaveLength(1);
     expect(packet.strategyHints).toContain("minimal-change");
   });
@@ -123,6 +128,7 @@ describe("task packet contracts", () => {
         {
           decision: "external-research-required",
           question: "What does the official API documentation say about the current behavior?",
+          confidence: "high",
           researchPosture: "external-research-required",
           summary: "Review the official versioned API docs before execution.",
           task: {
@@ -130,7 +136,27 @@ describe("task packet contracts", () => {
             title: "Fix session loss",
             sourceKind: "task-note",
             sourcePath: join(root, "fix-session-loss.md"),
+            artifactKind: "document",
+            targetArtifactPath: "docs/SESSION_PLAN.md",
           },
+          signalFingerprint: deriveResearchSignalFingerprint([
+            "Detected package.json and explicit lint/test scripts.",
+          ]),
+          sources: [
+            {
+              kind: "official-doc",
+              title: "Current API docs",
+              locator: "https://example.com/docs/current-api",
+            },
+          ],
+          claims: [
+            {
+              statement: "The current API requires a version header on session refresh.",
+              sourceLocators: ["https://example.com/docs/current-api"],
+            },
+          ],
+          versionNotes: ["Behavior changed in v3.2 compared with the legacy session API."],
+          unresolvedConflicts: ["The repo comments still describe the pre-v3.2 refresh flow."],
           notes: ["Prefer official docs over third-party blog posts."],
           signalSummary: ["Detected package.json and explicit lint/test scripts."],
         },
@@ -145,10 +171,44 @@ describe("task packet contracts", () => {
     expect(packet.source.kind).toBe("research-brief");
     expect(packet.source.originKind).toBe("task-note");
     expect(packet.source.originPath).toBe(join(root, "fix-session-loss.md"));
+    expect(packet.artifactKind).toBe("document");
+    expect(packet.targetArtifactPath).toBe("docs/SESSION_PLAN.md");
+    expect(packet.researchContext).toMatchObject({
+      question: "What does the official API documentation say about the current behavior?",
+      summary: "Review the official versioned API docs before execution.",
+      confidence: "high",
+      signalSummary: ["Detected package.json and explicit lint/test scripts."],
+      signalFingerprint: deriveResearchSignalFingerprint([
+        "Detected package.json and explicit lint/test scripts.",
+      ]),
+      sources: [
+        {
+          kind: "official-doc",
+          title: "Current API docs",
+          locator: "https://example.com/docs/current-api",
+        },
+      ],
+    });
     expect(packet.id).toBe("session-loss");
     expect(packet.title).toBe("Fix session loss");
     expect(packet.intent).toContain("Research question:");
     expect(packet.intent).toContain("Review the official versioned API docs before execution.");
+    expect(packet.intent).toContain("Research sources:");
+    expect(packet.intent).toContain(
+      "- [official-doc] Current API docs — https://example.com/docs/current-api",
+    );
+    expect(packet.intent).toContain("Research claims:");
+    expect(packet.intent).toContain(
+      "- The current API requires a version header on session refresh. (sources: https://example.com/docs/current-api)",
+    );
+    expect(packet.intent).toContain("Version notes:");
+    expect(packet.intent).toContain(
+      "- Behavior changed in v3.2 compared with the legacy session API.",
+    );
+    expect(packet.intent).toContain("Unresolved conflicts:");
+    expect(packet.intent).toContain(
+      "- The repo comments still describe the pre-v3.2 refresh flow.",
+    );
     expect(packet.contextFiles).toEqual([join(root, "fix-session-loss.md")]);
   });
 });

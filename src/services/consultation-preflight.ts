@@ -9,7 +9,7 @@ import {
   consultationResearchBriefSchema,
   consultationResearchPostureSchema,
 } from "../domain/run.js";
-import type { MaterializedTaskPacket } from "../domain/task.js";
+import { deriveResearchSignalFingerprint, type MaterializedTaskPacket } from "../domain/task.js";
 
 import { collectProfileRepoSignals } from "./consultation-profile.js";
 import { type ProjectConfigLayers, writeJsonFile } from "./project.js";
@@ -35,6 +35,17 @@ export async function recommendConsultationPreflight(
   const signals = await collectProfileRepoSignals(options.projectRoot, {
     rules: options.configLayers.config.managedTree,
   });
+  const signalSummary = signals.capabilities.map(
+    (capability) => `${capability.kind}:${capability.value}`,
+  );
+  const signalFingerprint =
+    signalSummary.length > 0 ? deriveResearchSignalFingerprint(signalSummary) : undefined;
+  const researchBasisDrift =
+    options.taskPacket.researchContext?.signalFingerprint && signalFingerprint
+      ? signalFingerprint !== options.taskPacket.researchContext.signalFingerprint
+      : options.taskPacket.researchContext?.signalFingerprint
+        ? true
+        : undefined;
   let llmResult: Awaited<ReturnType<AgentAdapter["recommendPreflight"]>> | undefined;
   let llmFailure: string | undefined;
   const allowRuntime = options.allowRuntime ?? true;
@@ -66,10 +77,20 @@ export async function recommendConsultationPreflight(
   await mkdir(dirname(preflightPath), { recursive: true });
   await writeJsonFile(preflightPath, {
     signals,
+    ...(options.taskPacket.researchContext?.signalFingerprint
+      ? {
+          researchBasis: {
+            acceptedSignalFingerprint: options.taskPacket.researchContext.signalFingerprint,
+            currentSignalFingerprint: signalFingerprint,
+            driftDetected: researchBasisDrift,
+          },
+        }
+      : {}),
     ...(!allowRuntime ? { llmSkipped: true } : {}),
     ...(llmFailure ? { llmFailure } : {}),
     llmResult,
-    recommendation: preflight,
+    recommendation:
+      researchBasisDrift !== undefined ? { ...preflight, researchBasisDrift } : preflight,
   });
   if (preflight.decision === "external-research-required" && preflight.researchQuestion) {
     const researchBriefPath = getResearchBriefPath(options.projectRoot, options.runId);
@@ -78,6 +99,7 @@ export async function recommendConsultationPreflight(
       consultationResearchBriefSchema.parse({
         decision: "external-research-required",
         question: preflight.researchQuestion,
+        confidence: preflight.confidence,
         researchPosture: preflight.researchPosture,
         summary: preflight.summary,
         task: {
@@ -85,17 +107,24 @@ export async function recommendConsultationPreflight(
           title: options.taskPacket.title,
           sourceKind: options.taskPacket.source.originKind ?? options.taskPacket.source.kind,
           sourcePath: options.taskPacket.source.originPath ?? options.taskPacket.source.path,
+          ...(options.taskPacket.artifactKind
+            ? { artifactKind: options.taskPacket.artifactKind }
+            : {}),
+          ...(options.taskPacket.targetArtifactPath
+            ? { targetArtifactPath: options.taskPacket.targetArtifactPath }
+            : {}),
         },
         notes: signals.notes,
-        signalSummary: signals.capabilities.map(
-          (capability) => `${capability.kind}:${capability.value}`,
-        ),
+        signalSummary,
+        ...(signalFingerprint ? { signalFingerprint } : {}),
       }),
     );
   }
 
   return {
-    preflight: consultationPreflightSchema.parse(preflight),
+    preflight: consultationPreflightSchema.parse(
+      researchBasisDrift !== undefined ? { ...preflight, researchBasisDrift } : preflight,
+    ),
     signals,
   };
 }

@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
-import { relative } from "node:path";
+import { isAbsolute, relative } from "node:path";
 
 import {
   getExportPlanPath,
@@ -15,6 +15,10 @@ import {
 } from "../core/paths.js";
 import type { VerdictReview } from "../domain/chat-native.js";
 import {
+  getValidationGaps,
+  getValidationProfileId,
+  getValidationSignals,
+  getValidationSummary,
   type ProfileSkippedCommandCandidate,
   profileRepoSignalsSchema,
 } from "../domain/profile.js";
@@ -103,11 +107,30 @@ export async function renderConsultationSummary(
       `Task origin: ${manifest.taskPacket.originKind} (${toDisplayPath(projectRoot, manifest.taskPacket.originPath)})`,
     );
   }
+  if (manifest.taskPacket.artifactKind) {
+    lines.splice(4, 0, `Artifact kind: ${manifest.taskPacket.artifactKind}`);
+  }
+  if (manifest.taskPacket.targetArtifactPath) {
+    lines.splice(
+      5,
+      0,
+      `Target artifact: ${toDisplayPath(projectRoot, manifest.taskPacket.targetArtifactPath)}`,
+    );
+  }
 
   if (status.validationPosture !== "unknown") {
     lines.push(`Validation posture: ${status.validationPosture}`);
   }
   lines.push(`Verification level: ${status.verificationLevel}`);
+  if (status.researchSignalCount > 0) {
+    lines.push(`Research signal basis: ${status.researchSignalCount}`);
+  }
+  if (status.researchSignalFingerprint) {
+    lines.push(`Research signal fingerprint: ${status.researchSignalFingerprint}`);
+  }
+  if (status.researchBasisDrift !== undefined) {
+    lines.push(`Research basis drift: ${status.researchBasisDrift ? "detected" : "not detected"}`);
+  }
 
   if (manifest.preflight && manifest.preflight.decision !== "proceed") {
     lines.push(
@@ -129,14 +152,21 @@ export async function renderConsultationSummary(
     );
   }
   if (manifest.profileSelection) {
+    const validationProfileId = getValidationProfileId(manifest.profileSelection);
+    const validationSummary = getValidationSummary(manifest.profileSelection);
+    const validationSignals = getValidationSignals(manifest.profileSelection);
+    const validationGaps = getValidationGaps(manifest.profileSelection);
     lines.push(
-      `Auto profile: ${manifest.profileSelection.profileId} (${manifest.profileSelection.confidence}, ${manifest.profileSelection.source})`,
-      manifest.profileSelection.summary,
+      `Auto validation profile: ${validationProfileId} (${manifest.profileSelection.confidence}, ${manifest.profileSelection.source})`,
+      validationSummary ?? manifest.profileSelection.summary,
     );
-    if (manifest.profileSelection.missingCapabilities.length > 0) {
+    if (validationSignals.length > 0) {
+      lines.push(`Validation evidence: ${validationSignals.join(", ")}`);
+    }
+    if (validationGaps.length > 0) {
       lines.push(
-        "Profile gaps:",
-        ...manifest.profileSelection.missingCapabilities.map((item) => `- ${item}`),
+        "Validation gaps from the selected profile:",
+        ...validationGaps.map((item) => `- ${item}`),
       );
     }
     const skippedCommandCandidates = await readSkippedProfileCommands(projectRoot, manifest.id);
@@ -221,17 +251,33 @@ export async function renderConsultationSummary(
   }
 
   lines.push("Next:");
+  const researchBriefInputPath = resolveResearchBriefInputPath({
+    manifest,
+    projectRoot,
+    currentResearchBriefPath: researchBriefPath,
+    currentResearchBriefExists: researchBriefExists,
+  });
   if (hasCrowningRecord) {
     lines.push(`- reopen the crowning record: ${toDisplayPath(projectRoot, exportPlanPath)}`);
   } else if (status.outcomeType === "needs-clarification") {
     lines.push("- answer the preflight clarification question, then rerun `orc consult`.");
   } else if (status.outcomeType === "external-research-required") {
-    const researchBriefInput =
-      researchBriefExists && manifest.preflight?.researchQuestion
-        ? `orc consult ${toDisplayPath(projectRoot, researchBriefPath)}`
-        : "orc consult";
+    const researchBriefInput = researchBriefInputPath
+      ? `orc consult ${researchBriefInputPath}`
+      : "orc consult";
     lines.push("- gather the required external evidence.");
-    lines.push(`- rerun from the persisted research brief when ready: \`${researchBriefInput}\`.`);
+    if (status.researchBasisDrift) {
+      lines.push(
+        "- refresh the persisted research brief because its signal basis no longer matches the current repository.",
+      );
+      lines.push(
+        `- rerun from the persisted research brief after refreshing evidence: \`${researchBriefInput}\`.`,
+      );
+    } else {
+      lines.push(
+        `- rerun from the persisted research brief when ready: \`${researchBriefInput}\`.`,
+      );
+    }
   } else if (status.outcomeType === "abstained-before-execution") {
     lines.push("- revise the task scope or repository setup, then rerun `orc consult`.");
   } else if (manifest.recommendedWinner) {
@@ -254,10 +300,35 @@ export async function renderConsultationSummary(
   } else {
     lines.push(`- reopen this consultation later: ${verdictCommand} ${manifest.id}`);
   }
+  if (status.researchBasisDrift && status.outcomeType !== "external-research-required") {
+    lines.push(
+      "- refresh the persisted external research because its signal basis no longer matches the current repository.",
+    );
+    if (researchBriefInputPath) {
+      lines.push(
+        `- rerun from the persisted research brief after refreshing evidence: \`orc consult ${researchBriefInputPath}\`.`,
+      );
+    }
+  }
   lines.push(`- reopen the latest consultation later: ${verdictCommand}`);
   lines.push(`- browse recent consultations: ${verdictCommand} archive`);
 
   return `${lines.join("\n")}\n`;
+}
+
+function resolveResearchBriefInputPath(options: {
+  manifest: RunManifest;
+  projectRoot: string;
+  currentResearchBriefPath: string;
+  currentResearchBriefExists: boolean;
+}): string | undefined {
+  if (options.manifest.taskPacket.sourceKind === "research-brief") {
+    return toDisplayPath(options.projectRoot, options.manifest.taskPacket.sourcePath);
+  }
+  if (options.currentResearchBriefExists) {
+    return toDisplayPath(options.projectRoot, options.currentResearchBriefPath);
+  }
+  return undefined;
 }
 
 export function buildVerdictReview(
@@ -273,6 +344,12 @@ export function buildVerdictReview(
   },
 ): VerdictReview {
   const status = buildSavedConsultationStatus(manifest);
+  const researchRerunInputPath =
+    manifest.taskPacket.sourceKind === "research-brief"
+      ? manifest.taskPacket.sourcePath
+      : artifacts.researchBriefPath;
+  const researchRerunRecommended =
+    status.outcomeType === "external-research-required" || status.researchBasisDrift === true;
   const candidateStateCounts = manifest.candidates.reduce<Record<string, number>>(
     (counts, candidate) => {
       counts[candidate.status] = (counts[candidate.status] ?? 0) + 1;
@@ -291,6 +368,33 @@ export function buildVerdictReview(
     judgingBasisKind: status.judgingBasisKind,
     taskSourceKind: manifest.taskPacket.sourceKind,
     taskSourcePath: manifest.taskPacket.sourcePath,
+    ...(manifest.taskPacket.artifactKind
+      ? { taskArtifactKind: manifest.taskPacket.artifactKind }
+      : {}),
+    ...(manifest.taskPacket.targetArtifactPath
+      ? { targetArtifactPath: manifest.taskPacket.targetArtifactPath }
+      : {}),
+    ...(manifest.taskPacket.researchContext?.summary
+      ? { researchSummary: manifest.taskPacket.researchContext.summary }
+      : {}),
+    ...(manifest.taskPacket.researchContext?.confidence
+      ? { researchConfidence: manifest.taskPacket.researchContext.confidence }
+      : {}),
+    researchSignalCount: manifest.taskPacket.researchContext?.signalSummary.length ?? 0,
+    ...(manifest.taskPacket.researchContext?.signalFingerprint
+      ? { researchSignalFingerprint: manifest.taskPacket.researchContext.signalFingerprint }
+      : {}),
+    ...(manifest.preflight?.researchBasisDrift !== undefined
+      ? { researchBasisDrift: manifest.preflight.researchBasisDrift }
+      : {}),
+    researchRerunRecommended,
+    ...(researchRerunInputPath ? { researchRerunInputPath } : {}),
+    researchSourceCount: manifest.taskPacket.researchContext?.sources.length ?? 0,
+    researchClaimCount: manifest.taskPacket.researchContext?.claims.length ?? 0,
+    researchVersionNoteCount: manifest.taskPacket.researchContext?.versionNotes.length ?? 0,
+    researchConflictCount: manifest.taskPacket.researchContext?.unresolvedConflicts.length ?? 0,
+    researchConflictsPresent:
+      (manifest.taskPacket.researchContext?.unresolvedConflicts.length ?? 0) > 0,
     ...(manifest.taskPacket.originKind && manifest.taskPacket.originPath
       ? {
           taskOriginSourceKind: manifest.taskPacket.originKind,
@@ -301,8 +405,18 @@ export function buildVerdictReview(
       ? { recommendedCandidateId: status.recommendedCandidateId }
       : {}),
     finalistIds,
-    ...(manifest.profileSelection ? { profileId: manifest.profileSelection.profileId } : {}),
-    profileMissingCapabilities: manifest.profileSelection?.missingCapabilities ?? [],
+    ...(getValidationProfileId(manifest.profileSelection)
+      ? { validationProfileId: getValidationProfileId(manifest.profileSelection) }
+      : {}),
+    ...(getValidationSummary(manifest.profileSelection)
+      ? { validationSummary: getValidationSummary(manifest.profileSelection) }
+      : {}),
+    validationSignals: getValidationSignals(manifest.profileSelection),
+    validationGaps: getValidationGaps(manifest.profileSelection),
+    ...(getValidationProfileId(manifest.profileSelection)
+      ? { profileId: getValidationProfileId(manifest.profileSelection) }
+      : {}),
+    profileMissingCapabilities: getValidationGaps(manifest.profileSelection),
     ...(manifest.preflight?.decision ? { preflightDecision: manifest.preflight.decision } : {}),
     researchPosture: status.researchPosture,
     ...(manifest.preflight?.clarificationQuestion
@@ -341,11 +455,12 @@ export function renderConsultationArchive(
   for (const manifest of manifests) {
     const status = buildSavedConsultationStatus(manifest);
     const recommendation = renderArchiveOutcomeSummary(manifest, status);
-    const profile = manifest.profileSelection
-      ? `profile ${manifest.profileSelection.profileId}`
+    const artifact = renderArchiveArtifactSummary(manifest);
+    const profile = getValidationProfileId(manifest.profileSelection)
+      ? `validation profile ${getValidationProfileId(manifest.profileSelection)}`
       : "no auto profile";
     lines.push(
-      `- ${manifest.id} | ${manifest.status} | ${manifest.taskPacket.title} | ${profile} | ${recommendation}`,
+      `- ${manifest.id} | ${manifest.status} | ${manifest.taskPacket.title}${artifact ? ` | ${artifact}` : ""} | ${profile} | ${recommendation}`,
       `  opened: ${manifest.createdAt}`,
       `  reopen: ${verdictCommand} ${manifest.id}`,
     );
@@ -384,7 +499,27 @@ function renderArchiveOutcomeSummary(
   }
 }
 
+function renderArchiveArtifactSummary(manifest: RunManifest): string | undefined {
+  if (!manifest.taskPacket.artifactKind && !manifest.taskPacket.targetArtifactPath) {
+    return undefined;
+  }
+
+  if (manifest.taskPacket.artifactKind && manifest.taskPacket.targetArtifactPath) {
+    return `artifact ${manifest.taskPacket.artifactKind} @ ${manifest.taskPacket.targetArtifactPath}`;
+  }
+
+  if (manifest.taskPacket.artifactKind) {
+    return `artifact ${manifest.taskPacket.artifactKind}`;
+  }
+
+  return `artifact @ ${manifest.taskPacket.targetArtifactPath}`;
+}
+
 function toDisplayPath(projectRoot: string, targetPath: string): string {
+  if (!isAbsolute(targetPath)) {
+    return targetPath.replaceAll("\\", "/");
+  }
+
   const display = relative(projectRoot, targetPath).replaceAll("\\", "/");
   return display.length > 0 ? display : ".";
 }

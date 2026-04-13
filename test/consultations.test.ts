@@ -18,6 +18,7 @@ import {
   consultationResearchBriefSchema,
   type RunManifest,
 } from "../src/domain/run.js";
+import { deriveResearchSignalFingerprint } from "../src/domain/task.js";
 import {
   buildVerdictReview,
   listRecentConsultations,
@@ -80,7 +81,8 @@ describe("consultation workflow summaries", () => {
       "- winner selection: .oraculum/runs/run_1/reports/winner-selection.json",
     );
     expect(summary).toContain("- crowning record: .oraculum/runs/run_1/reports/export-plan.json");
-    expect(summary).toContain("Auto profile: library (high, llm-recommendation)");
+    expect(summary).toContain("Auto validation profile: library (high, llm-recommendation)");
+    expect(summary).toContain("Validation evidence: package-export, lint-script");
     expect(summary).toContain("Recommended survivor: cand-01 (high, llm-judge)");
     expect(summary).toContain("Next:");
     expect(summary).toContain(
@@ -200,12 +202,23 @@ describe("consultation workflow summaries", () => {
       judgingBasisKind: "repo-local-oracle",
       taskSourceKind: "task-note",
       taskSourcePath: "/tmp/task.md",
+      researchSignalCount: 0,
+      researchSourceCount: 0,
+      researchClaimCount: 0,
+      researchVersionNoteCount: 0,
+      researchConflictCount: 0,
+      researchConflictsPresent: false,
       recommendedCandidateId: "cand-01",
       finalistIds: ["cand-01"],
+      validationProfileId: "frontend",
+      validationSummary: "Frontend evidence is strongest.",
+      validationSignals: ["frontend-framework", "build-script"],
+      validationGaps: ["No e2e or visual deep check was detected."],
       profileId: "frontend",
       profileMissingCapabilities: ["No e2e or visual deep check was detected."],
       preflightDecision: "proceed",
       researchPosture: "repo-only",
+      researchRerunRecommended: false,
       artifactAvailability: {
         preflightReadiness: true,
         researchBrief: false,
@@ -327,25 +340,69 @@ describe("consultation workflow summaries", () => {
     ]);
     expect(status.taskSourceKind).toBe("task-note");
     expect(status.taskSourcePath).toBe("/tmp/task.md");
+    expect(status.researchRerunRecommended).toBe(true);
+    expect(status.researchRerunInputPath).toBeUndefined();
+    expect(status.researchConflictsPresent).toBe(false);
     expect(review.researchPosture).toBe("external-research-required");
     expect(review.researchQuestion).toBe(
       "What does the official API documentation say about the current versioned behavior?",
     );
+    expect(review.researchRerunRecommended).toBe(true);
+    expect(review.researchRerunInputPath).toBe(getResearchBriefPath(cwd, manifest.id));
+    expect(review.researchSourceCount).toBe(0);
+    expect(review.researchClaimCount).toBe(0);
+    expect(review.researchVersionNoteCount).toBe(0);
+    expect(review.researchConflictCount).toBe(0);
     expect(review.taskSourceKind).toBe("task-note");
     expect(review.taskSourcePath).toBe("/tmp/task.md");
+    expect(review.validationSignals).toEqual([]);
+    expect(review.researchConflictsPresent).toBe(false);
     expect(review.artifactAvailability.researchBrief).toBe(true);
   });
 
   it("renders research-brief task provenance in summary and review", async () => {
     const cwd = await createInitializedProject();
     const originalTaskPath = "/tmp/original-task.md";
+    const targetArtifactPath = "docs/SESSION_PLAN.md";
     const manifest = createManifest("completed", {
       taskPath: getResearchBriefPath(cwd, "run_source"),
+      preflight: {
+        decision: "proceed",
+        confidence: "medium",
+        summary:
+          "Repository evidence is sufficient to proceed with the persisted research context.",
+        researchPosture: "repo-plus-external-docs",
+        researchBasisDrift: true,
+      },
       taskPacket: {
         id: "task",
         title: "Task",
         sourceKind: "research-brief",
         sourcePath: getResearchBriefPath(cwd, "run_source"),
+        artifactKind: "document",
+        targetArtifactPath,
+        researchContext: {
+          question: "What does the official API documentation say about the current behavior?",
+          summary: "Review the official versioned API docs before execution.",
+          confidence: "medium",
+          signalSummary: ["language:javascript"],
+          signalFingerprint: deriveResearchSignalFingerprint(["language:javascript"]),
+          sources: [
+            {
+              kind: "official-doc",
+              title: "Current API docs",
+              locator: "https://example.com/docs/current-api",
+            },
+          ],
+          claims: [
+            {
+              statement: "The current API requires a version header on session refresh.",
+              sourceLocators: ["https://example.com/docs/current-api"],
+            },
+          ],
+          versionNotes: ["Behavior changed in v3.2 compared with the legacy session API."],
+          unresolvedConflicts: ["The repo comments still describe the pre-v3.2 refresh flow."],
+        },
         originKind: "task-note",
         originPath: originalTaskPath,
       },
@@ -358,15 +415,66 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain(
       "Task source: research-brief (.oraculum/runs/run_source/reports/research-brief.json)",
     );
+    expect(summary).toContain("Artifact kind: document");
+    expect(summary).toContain("Target artifact: docs/SESSION_PLAN.md");
+    expect(summary).toContain("Research signal basis: 1");
+    expect(summary).toContain(
+      `Research signal fingerprint: ${deriveResearchSignalFingerprint(["language:javascript"])}`,
+    );
+    expect(summary).toContain("Research basis drift: detected");
+    expect(summary).toContain(
+      "- refresh the persisted external research because its signal basis no longer matches the current repository.",
+    );
+    expect(summary).toContain(
+      "- rerun from the persisted research brief after refreshing evidence: `orc consult .oraculum/runs/run_source/reports/research-brief.json`.",
+    );
     expect(summary).toContain("Task origin: task-note (");
     expect(status.taskSourceKind).toBe("research-brief");
     expect(status.taskSourcePath).toBe(getResearchBriefPath(cwd, "run_source"));
+    expect(status.taskArtifactKind).toBe("document");
+    expect(status.targetArtifactPath).toBe(targetArtifactPath);
+    expect(status.validationProfileId).toBeUndefined();
+    expect(status.validationSignals).toEqual([]);
+    expect(status.validationGaps).toEqual([]);
+    expect(status.researchRerunRecommended).toBe(true);
+    expect(status.researchRerunInputPath).toBe(getResearchBriefPath(cwd, "run_source"));
+    expect(status.researchConfidence).toBe("medium");
+    expect(status.researchSignalCount).toBe(1);
+    expect(status.researchSignalFingerprint).toBe(
+      deriveResearchSignalFingerprint(["language:javascript"]),
+    );
+    expect(status.researchBasisDrift).toBe(true);
+    expect(status.researchConflictsPresent).toBe(true);
+    expect(status.nextActions).toEqual([
+      "reopen-verdict",
+      "browse-archive",
+      "inspect-comparison-report",
+      "rerun-with-different-candidate-count",
+      "refresh-stale-research-and-rerun",
+    ]);
     expect(status.taskOriginSourceKind).toBe("task-note");
     expect(status.taskOriginSourcePath).toBe(originalTaskPath);
     expect(review.taskSourceKind).toBe("research-brief");
     expect(review.taskSourcePath).toBe(getResearchBriefPath(cwd, "run_source"));
+    expect(review.taskArtifactKind).toBe("document");
+    expect(review.targetArtifactPath).toBe(targetArtifactPath);
+    expect(review.researchSummary).toBe("Review the official versioned API docs before execution.");
+    expect(review.researchConfidence).toBe("medium");
+    expect(review.researchSignalCount).toBe(1);
+    expect(review.researchSignalFingerprint).toBe(
+      deriveResearchSignalFingerprint(["language:javascript"]),
+    );
+    expect(review.researchBasisDrift).toBe(true);
+    expect(review.researchRerunRecommended).toBe(true);
+    expect(review.researchRerunInputPath).toBe(getResearchBriefPath(cwd, "run_source"));
+    expect(review.researchSourceCount).toBe(1);
+    expect(review.researchClaimCount).toBe(1);
+    expect(review.researchVersionNoteCount).toBe(1);
+    expect(review.researchConflictCount).toBe(1);
+    expect(review.researchConflictsPresent).toBe(true);
     expect(review.taskOriginSourceKind).toBe("task-note");
     expect(review.taskOriginSourcePath).toBe(originalTaskPath);
+    expect(review.validationSignals).toEqual([]);
   });
 
   it("does not report a promotion record when only a stale export plan file exists", async () => {
@@ -467,9 +575,16 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain("Outcome: finalists-without-recommendation");
     expect(summary).toContain("Validation posture: validation-gaps");
     expect(summary).toContain("Verification level: standard");
-    expect(summary).toContain("Profile gaps:");
+    expect(summary).toContain("Validation evidence: frontend-framework, build-script");
+    expect(summary).toContain("Validation gaps from the selected profile:");
     expect(summary).toContain("- No e2e or visual deep check was detected.");
     expect(status.verificationLevel).toBe("standard");
+    expect(status.validationProfileId).toBe("frontend");
+    expect(status.validationSummary).toBe("Frontend signals are strongest.");
+    expect(status.validationSignals).toEqual(["frontend-framework", "build-script"]);
+    expect(status.validationGaps).toEqual(["No e2e or visual deep check was detected."]);
+    expect(status.researchRerunRecommended).toBe(false);
+    expect(status.researchRerunInputPath).toBeUndefined();
     expect(status.nextActions).toEqual([
       "reopen-verdict",
       "browse-archive",
@@ -643,7 +758,29 @@ describe("consultation workflow summaries", () => {
       "- run_finalists | completed | Task | no auto profile | finalists without recommendation",
     );
     expect(archive).toContain(
-      "- run_gaps | completed | Task | profile frontend | completed with validation gaps",
+      "- run_gaps | completed | Task | validation profile frontend | completed with validation gaps",
+    );
+  });
+
+  it("renders artifact metadata in archive entries when the task packet carries it", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("planned", {
+      id: "run_artifact",
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: "/tmp/task.md",
+        artifactKind: "document",
+        targetArtifactPath: "docs/SESSION_PLAN.md",
+      },
+    });
+    await writeManifest(cwd, manifest);
+
+    const archive = renderConsultationArchive(await listRecentConsultations(cwd, 10));
+
+    expect(archive).toContain(
+      "- run_artifact | planned | Task | artifact document @ docs/SESSION_PLAN.md | no auto profile | pending execution",
     );
   });
 

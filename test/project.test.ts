@@ -30,6 +30,7 @@ import {
   latestRunStateSchema,
   runManifestSchema,
 } from "../src/domain/run.js";
+import { deriveResearchSignalFingerprint } from "../src/domain/task.js";
 import { executeRun } from "../src/services/execution.js";
 import {
   ensureProjectInitialized,
@@ -371,6 +372,12 @@ describe("project scaffold", () => {
       "reopen-verdict",
       "browse-archive",
     ]);
+    expect(buildSavedConsultationStatus(saved).validationProfileId).toBeUndefined();
+    expect(buildSavedConsultationStatus(saved).validationSummary).toBeUndefined();
+    expect(buildSavedConsultationStatus(saved).validationSignals).toEqual([]);
+    expect(buildSavedConsultationStatus(saved).validationGaps).toEqual([]);
+    expect(buildSavedConsultationStatus(saved).researchRerunRecommended).toBe(false);
+    expect(buildSavedConsultationStatus(saved).researchRerunInputPath).toBeUndefined();
   });
 
   it("resolves nested invocation to the nearest initialized Oraculum root", async () => {
@@ -594,11 +601,20 @@ if (out) {
     );
     expect(researchBrief).toMatchObject({
       decision: "external-research-required",
+      confidence: "high",
       researchPosture: "external-research-required",
       question:
         "What does the official API documentation say about the current versioned behavior?",
       task: manifest.taskPacket,
     });
+    expect(researchBrief.sources).toEqual([]);
+    expect(researchBrief.claims).toEqual([]);
+    expect(researchBrief.versionNotes).toEqual([]);
+    expect(researchBrief.unresolvedConflicts).toEqual([]);
+    expect(researchBrief.signalSummary.length).toBeGreaterThan(0);
+    expect(researchBrief.signalFingerprint).toBe(
+      deriveResearchSignalFingerprint(researchBrief.signalSummary),
+    );
   });
 
   it("accepts a persisted research brief as the next task input", async () => {
@@ -619,9 +635,14 @@ if (out) {
             title: "fix session loss",
             sourceKind: "task-note",
             sourcePath: join(cwd, "tasks", "fix-session-loss.md"),
+            artifactKind: "document",
+            targetArtifactPath: "docs/SESSION_PLAN.md",
           },
           notes: ["Prefer official docs."],
           signalSummary: ["Detected explicit lint and test scripts."],
+          signalFingerprint: deriveResearchSignalFingerprint([
+            "Detected explicit lint and test scripts.",
+          ]),
         },
         null,
         2,
@@ -641,6 +662,21 @@ if (out) {
       title: "fix session loss",
       sourceKind: "research-brief",
       sourcePath: getResearchBriefPath(cwd, "run_research"),
+      artifactKind: "document",
+      targetArtifactPath: "docs/SESSION_PLAN.md",
+      researchContext: {
+        question:
+          "What does the official API documentation say about the current versioned behavior?",
+        summary: "Review the official versioned API docs before execution.",
+        signalSummary: ["Detected explicit lint and test scripts."],
+        signalFingerprint: deriveResearchSignalFingerprint([
+          "Detected explicit lint and test scripts.",
+        ]),
+        sources: [],
+        claims: [],
+        versionNotes: [],
+        unresolvedConflicts: [],
+      },
       originKind: "task-note",
       originPath: join(cwd, "tasks", "fix-session-loss.md"),
     });
@@ -691,6 +727,48 @@ if (out) {
     expect(manifest.preflight?.summary).toContain(
       "Proceed conservatively using the persisted research brief plus repository evidence.",
     );
+  });
+
+  it("records research basis drift when a persisted research brief carries a stale fingerprint", async () => {
+    const cwd = await createInitializedProject();
+    await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
+    await mkdir(dirname(getResearchBriefPath(cwd, "run_research")), { recursive: true });
+    await writeFile(
+      getResearchBriefPath(cwd, "run_research"),
+      `${JSON.stringify(
+        {
+          decision: "external-research-required",
+          question:
+            "What does the official API documentation say about the current versioned behavior?",
+          researchPosture: "external-research-required",
+          summary: "Review the official versioned API docs before execution.",
+          task: {
+            id: "fix-session-loss",
+            title: "fix session loss",
+            sourceKind: "task-note",
+            sourcePath: join(cwd, "tasks", "fix-session-loss.md"),
+          },
+          signalSummary: ["language:typescript"],
+          signalFingerprint: "stale-fingerprint",
+          notes: ["Prefer official docs."],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const manifest = await planRun({
+      cwd,
+      taskInput: ".oraculum/runs/run_research/reports/research-brief.json",
+      candidates: 1,
+      preflight: {
+        allowRuntime: false,
+      },
+    });
+
+    expect(manifest.preflight?.decision).toBe("proceed");
+    expect(manifest.preflight?.researchBasisDrift).toBe(true);
   });
 
   it("preserves the original task provenance when a reused research brief still needs external research", async () => {

@@ -128,14 +128,18 @@ export const agentProfileRecommendationSchema = z.object({
 
 export const consultationProfileSelectionSchema = z.object({
   profileId: consultationProfileIdSchema,
+  validationProfileId: z.string().min(1).optional(),
   confidence: decisionConfidenceSchema,
   source: z.enum(["llm-recommendation", "fallback-detection"]),
   summary: z.string().min(1),
+  validationSummary: z.string().min(1).optional(),
   candidateCount: z.number().int().min(1).max(16),
   strategyIds: z.array(z.string().min(1)).min(1),
   oracleIds: z.array(z.string().min(1)).default([]),
   missingCapabilities: z.array(z.string().min(1)).default([]),
+  validationGaps: z.array(z.string().min(1)).optional(),
   signals: z.array(z.string().min(1)).default([]),
+  validationSignals: z.array(z.string().min(1)).optional(),
 });
 
 export function buildAgentProfileRecommendationJsonSchema(): Record<string, unknown> {
@@ -194,3 +198,29 @@ export type ProfileSkippedCommandCandidate = z.infer<typeof profileSkippedComman
 export type ProfileRepoSignals = z.infer<typeof profileRepoSignalsSchema>;
 export type AgentProfileRecommendation = z.infer<typeof agentProfileRecommendationSchema>;
 export type ConsultationProfileSelection = z.infer<typeof consultationProfileSelectionSchema>;
+
+export function getValidationProfileId(
+  selection: Pick<ConsultationProfileSelection, "profileId" | "validationProfileId"> | undefined,
+): string | undefined {
+  return selection?.validationProfileId ?? selection?.profileId;
+}
+
+export function getValidationSummary(
+  selection: Pick<ConsultationProfileSelection, "summary" | "validationSummary"> | undefined,
+): string | undefined {
+  return selection?.validationSummary ?? selection?.summary;
+}
+
+export function getValidationSignals(
+  selection: Pick<ConsultationProfileSelection, "signals" | "validationSignals"> | undefined,
+): string[] {
+  return selection?.validationSignals ?? selection?.signals ?? [];
+}
+
+export function getValidationGaps(
+  selection:
+    | Pick<ConsultationProfileSelection, "missingCapabilities" | "validationGaps">
+    | undefined,
+): string[] {
+  return selection?.validationGaps ?? selection?.missingCapabilities ?? [];
+}

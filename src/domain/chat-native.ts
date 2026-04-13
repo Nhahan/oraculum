@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { adapterSchema } from "./config.js";
+import { decisionConfidenceSchema } from "./profile.js";
 import {
   consultationJudgingBasisKindSchema,
   consultationOutcomeTypeSchema,
@@ -138,10 +139,28 @@ export const verdictReviewSchema = z.object({
   judgingBasisKind: consultationJudgingBasisKindSchema,
   taskSourceKind: taskSourceKindSchema,
   taskSourcePath: z.string().min(1),
+  taskArtifactKind: z.string().min(1).optional(),
+  targetArtifactPath: z.string().min(1).optional(),
+  researchSummary: z.string().min(1).optional(),
+  researchConfidence: decisionConfidenceSchema.optional(),
+  researchSignalCount: z.number().int().min(0),
+  researchSignalFingerprint: z.string().min(1).optional(),
+  researchBasisDrift: z.boolean().optional(),
+  researchRerunRecommended: z.boolean(),
+  researchRerunInputPath: z.string().min(1).optional(),
+  researchSourceCount: z.number().int().min(0),
+  researchClaimCount: z.number().int().min(0),
+  researchVersionNoteCount: z.number().int().min(0),
+  researchConflictCount: z.number().int().min(0),
+  researchConflictsPresent: z.boolean(),
   taskOriginSourceKind: taskSourceKindSchema.optional(),
   taskOriginSourcePath: z.string().min(1).optional(),
   recommendedCandidateId: z.string().min(1).optional(),
   finalistIds: z.array(z.string().min(1)).default([]),
+  validationProfileId: z.string().min(1).optional(),
+  validationSummary: z.string().min(1).optional(),
+  validationSignals: z.array(z.string().min(1)).default([]),
+  validationGaps: z.array(z.string().min(1)).default([]),
   profileId: z.string().min(1).optional(),
   profileMissingCapabilities: z.array(z.string().min(1)).default([]),
   preflightDecision: consultationPreflightDecisionSchema.optional(),

@@ -9,10 +9,17 @@ import {
 } from "../core/paths.js";
 import type { Adapter, ManagedTreeRules } from "../domain/config.js";
 import type { OracleVerdict } from "../domain/oracle.js";
-import { consultationProfileSelectionSchema } from "../domain/profile.js";
+import {
+  consultationProfileSelectionSchema,
+  getValidationGaps,
+  getValidationProfileId,
+  getValidationSignals,
+  getValidationSummary,
+} from "../domain/profile.js";
 import {
   type CandidateManifest,
   candidateStatusSchema,
+  type consultationPreflightSchema,
   consultationVerificationLevelSchema,
   type RunRecommendation,
   runRecommendationSchema,
@@ -31,6 +38,7 @@ interface WriteFinalistComparisonReportOptions {
   taskPacket: TaskPacketSummary;
   verdictsByCandidate: Map<string, OracleVerdict[]>;
   agent: Adapter;
+  preflight?: z.infer<typeof consultationPreflightSchema>;
   consultationProfile?: z.infer<typeof consultationProfileSelectionSchema>;
   verificationLevel: z.infer<typeof consultationVerificationLevelSchema>;
   managedTreeRules?: ManagedTreeRules;
@@ -44,6 +52,13 @@ const comparisonReportSchema = z.object({
   finalistCount: z.number().int().min(0),
   recommendedWinner: runRecommendationSchema.optional(),
   whyThisWon: z.string().min(1).optional(),
+  validationProfileId: z.string().min(1).optional(),
+  validationSummary: z.string().min(1).optional(),
+  validationSignals: z.array(z.string().min(1)).default([]),
+  validationGaps: z.array(z.string().min(1)).default([]),
+  researchBasisDrift: z.boolean().optional(),
+  researchRerunRecommended: z.boolean(),
+  researchRerunInputPath: z.string().min(1).optional(),
   consultationProfile: consultationProfileSelectionSchema.optional(),
   verificationLevel: consultationVerificationLevelSchema,
   finalists: z.array(
@@ -76,6 +91,9 @@ export async function writeFinalistComparisonReport(
     verdictsByCandidate: options.verdictsByCandidate,
   });
   const candidateById = new Map(options.candidates.map((candidate) => [candidate.id, candidate]));
+  const researchRerunInputPath =
+    options.taskPacket.sourceKind === "research-brief" ? options.taskPacket.sourcePath : undefined;
+  const researchRerunRecommended = options.preflight?.researchBasisDrift === true;
   const report = comparisonReportSchema.parse({
     runId: options.runId,
     generatedAt: new Date().toISOString(),
@@ -84,6 +102,19 @@ export async function writeFinalistComparisonReport(
     finalistCount: finalists.length,
     ...(options.recommendedWinner ? { recommendedWinner: options.recommendedWinner } : {}),
     ...(options.recommendedWinner ? { whyThisWon: options.recommendedWinner.summary } : {}),
+    ...(getValidationProfileId(options.consultationProfile)
+      ? { validationProfileId: getValidationProfileId(options.consultationProfile) }
+      : {}),
+    ...(getValidationSummary(options.consultationProfile)
+      ? { validationSummary: getValidationSummary(options.consultationProfile) }
+      : {}),
+    validationSignals: getValidationSignals(options.consultationProfile),
+    validationGaps: getValidationGaps(options.consultationProfile),
+    ...(options.preflight?.researchBasisDrift !== undefined
+      ? { researchBasisDrift: options.preflight.researchBasisDrift }
+      : {}),
+    researchRerunRecommended,
+    ...(researchRerunInputPath ? { researchRerunInputPath } : {}),
     ...(options.consultationProfile ? { consultationProfile: options.consultationProfile } : {}),
     verificationLevel: options.verificationLevel,
     finalists: finalists.map((finalist) => ({
@@ -154,8 +185,56 @@ function buildComparisonMarkdown(report: ComparisonReport): string {
     `- Survivors: ${report.finalistCount}`,
     `- Verification level: ${report.verificationLevel}`,
   ];
+  if (report.task.artifactKind) {
+    lines.splice(5, 0, `- Artifact kind: ${report.task.artifactKind}`);
+  }
+  if (report.task.targetArtifactPath) {
+    lines.splice(6, 0, `- Target artifact: ${report.task.targetArtifactPath}`);
+  }
   if (report.task.originKind && report.task.originPath) {
     lines.splice(4, 0, `- Task origin: ${report.task.originKind} (${report.task.originPath})`);
+  }
+  if (report.task.researchContext?.summary) {
+    lines.splice(7, 0, `- Research summary: ${report.task.researchContext.summary}`);
+  }
+  if (report.task.researchContext?.confidence) {
+    lines.splice(8, 0, `- Research confidence: ${report.task.researchContext.confidence}`);
+  }
+  if (report.task.researchContext) {
+    lines.splice(
+      9,
+      0,
+      `- Research signal basis: ${report.task.researchContext.signalSummary.length}`,
+    );
+    if (report.task.researchContext.signalFingerprint) {
+      lines.splice(
+        10,
+        0,
+        `- Research signal fingerprint: ${report.task.researchContext.signalFingerprint}`,
+      );
+    }
+    lines.splice(11, 0, `- Research sources: ${report.task.researchContext.sources.length}`);
+    lines.splice(12, 0, `- Research claims: ${report.task.researchContext.claims.length}`);
+    lines.splice(
+      13,
+      0,
+      `- Research version notes: ${report.task.researchContext.versionNotes.length}`,
+    );
+    lines.splice(
+      14,
+      0,
+      `- Research conflicts: ${report.task.researchContext.unresolvedConflicts.length}`,
+    );
+    if (report.researchBasisDrift !== undefined) {
+      lines.splice(
+        15,
+        0,
+        `- Research basis drift: ${report.researchBasisDrift ? "detected" : "not detected"}`,
+      );
+    }
+    if (report.researchRerunRecommended && report.researchRerunInputPath) {
+      lines.splice(16, 0, `- Research rerun input: ${report.researchRerunInputPath}`);
+    }
   }
 
   if (report.recommendedWinner) {
@@ -170,19 +249,24 @@ function buildComparisonMarkdown(report: ComparisonReport): string {
   }
 
   if (report.consultationProfile) {
+    const validationProfileId = getValidationProfileId(report.consultationProfile);
+    const validationSummary =
+      report.consultationProfile.validationSummary ?? report.consultationProfile.summary;
+    const validationSignals = getValidationSignals(report.consultationProfile);
+    const validationGaps = getValidationGaps(report.consultationProfile);
     lines.push(
       "",
-      "## Consultation Profile",
-      `- Profile: ${report.consultationProfile.profileId}`,
+      "## Consultation Validation Profile",
+      `- Validation profile: ${validationProfileId}`,
       `- Confidence: ${report.consultationProfile.confidence}`,
       `- Source: ${report.consultationProfile.source}`,
-      `- Summary: ${report.consultationProfile.summary}`,
+      `- Summary: ${validationSummary}`,
     );
-    if (report.consultationProfile.missingCapabilities.length > 0) {
-      lines.push(
-        "- Validation gaps:",
-        ...report.consultationProfile.missingCapabilities.map((item) => `  - ${item}`),
-      );
+    if (validationSignals.length > 0) {
+      lines.push(`- Validation evidence: ${validationSignals.join(", ")}`);
+    }
+    if (validationGaps.length > 0) {
+      lines.push("- Validation gaps:", ...validationGaps.map((item) => `  - ${item}`));
     }
   }
 

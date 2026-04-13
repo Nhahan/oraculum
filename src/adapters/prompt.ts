@@ -1,6 +1,6 @@
 import type { ProfileCommandCandidate } from "../domain/profile.js";
 import { profileStrategyIds } from "../domain/profile.js";
-import type { MaterializedTaskPacket } from "../domain/task.js";
+import { deriveResearchSignalFingerprint, type MaterializedTaskPacket } from "../domain/task.js";
 import type {
   AgentJudgeRequest,
   AgentPreflightRequest,
@@ -21,7 +21,9 @@ export function buildCandidatePrompt(request: AgentRunRequest): string {
     request.taskPacket.intent,
   ];
 
+  appendArtifactIntentContext(sections, request.taskPacket);
   appendTaskSourceContext(sections, request.taskPacket);
+  appendStructuredResearchContext(sections, request.taskPacket);
 
   if (request.taskPacket.nonGoals.length > 0) {
     sections.push("", "Non-goals:", ...request.taskPacket.nonGoals.map((item) => `- ${item}`));
@@ -108,7 +110,9 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
     request.taskPacket.intent,
   ];
 
+  appendArtifactIntentContext(sections, request.taskPacket);
   appendTaskSourceContext(sections, request.taskPacket);
+  appendStructuredResearchContext(sections, request.taskPacket);
 
   if (request.taskPacket.acceptanceCriteria.length > 0) {
     sections.push(
@@ -125,12 +129,12 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
   if (request.consultationProfile) {
     sections.push(
       "",
-      `Consultation profile: ${request.consultationProfile.profileId} (${request.consultationProfile.confidence})`,
+      `Consultation validation profile: ${request.consultationProfile.profileId} (${request.consultationProfile.confidence})`,
       request.consultationProfile.summary,
     );
     if (request.consultationProfile.missingCapabilities.length > 0) {
       sections.push(
-        "Profile gaps:",
+        "Validation gaps from the selected profile:",
         ...request.consultationProfile.missingCapabilities.map((item) => `- ${item}`),
       );
     }
@@ -213,7 +217,14 @@ export function buildPreflightPrompt(request: AgentPreflightRequest): string {
     request.taskPacket.intent,
   ];
 
+  appendArtifactIntentContext(sections, request.taskPacket);
   appendTaskSourceContext(sections, request.taskPacket);
+  appendStructuredResearchContext(sections, request.taskPacket);
+  appendResearchSignalDriftContext(
+    sections,
+    request.taskPacket,
+    request.signals.capabilities.map((capability) => `${capability.kind}:${capability.value}`),
+  );
 
   if (request.taskPacket.nonGoals.length > 0) {
     sections.push("", "Non-goals:", ...request.taskPacket.nonGoals.map((item) => `- ${item}`));
@@ -283,7 +294,8 @@ export function buildProfileSelectionPrompt(request: AgentProfileRequest): strin
     "Choose exactly one profile option and synthesize the strongest default tournament settings for this consultation.",
     "Only choose command ids from the provided command catalog. Do not invent commands or command ids.",
     `Choose strategy IDs only from: ${strategyList}.`,
-    'Use profileId "generic" when the repository has no strong profile-specific signals.',
+    "Treat profileId as a validation posture for default tournament settings, not as a claim about the whole repository.",
+    'Use profileId "generic" when the repository has no strong command-grounded or repo-local profile evidence.',
     'Return JSON only in this shape: {"profileId":"generic","confidence":"low","summary":"short rationale","candidateCount":3,"strategyIds":["minimal-change","safety-first"],"selectedCommandIds":[],"missingCapabilities":["none or short notes"]}',
     "",
     `Task ID: ${request.taskPacket.id}`,
@@ -294,7 +306,14 @@ export function buildProfileSelectionPrompt(request: AgentProfileRequest): strin
     request.taskPacket.intent,
   ];
 
+  appendArtifactIntentContext(sections, request.taskPacket);
   appendTaskSourceContext(sections, request.taskPacket);
+  appendStructuredResearchContext(sections, request.taskPacket);
+  appendResearchSignalDriftContext(
+    sections,
+    request.taskPacket,
+    request.signals.capabilities.map((capability) => `${capability.kind}:${capability.value}`),
+  );
 
   if (request.taskPacket.acceptanceCriteria.length > 0) {
     sections.push(
@@ -391,6 +410,14 @@ function formatProfileCommandCandidate(candidate: ProfileCommandCandidate): stri
 }
 
 function appendTaskSourceContext(sections: string[], taskPacket: MaterializedTaskPacket): void {
+  if (taskPacket.source.originKind && taskPacket.source.originPath) {
+    sections.push(
+      "",
+      "Task origin:",
+      `- ${taskPacket.source.originKind} (${taskPacket.source.originPath})`,
+    );
+  }
+
   if (taskPacket.source.kind !== "research-brief") {
     return;
   }
@@ -402,6 +429,20 @@ function appendTaskSourceContext(sections: string[], taskPacket: MaterializedTas
     `- Research brief path: ${taskPacket.source.path}`,
     "- Treat the research summary in the task intent as prior investigation context.",
   );
+}
+
+function appendArtifactIntentContext(sections: string[], taskPacket: MaterializedTaskPacket): void {
+  if (!taskPacket.artifactKind && !taskPacket.targetArtifactPath) {
+    return;
+  }
+
+  sections.push("", "Artifact intent:");
+  if (taskPacket.artifactKind) {
+    sections.push(`- Kind: ${taskPacket.artifactKind}`);
+  }
+  if (taskPacket.targetArtifactPath) {
+    sections.push(`- Target artifact: ${taskPacket.targetArtifactPath}`);
+  }
 }
 
 function appendResearchBriefDecisionRules(
@@ -418,6 +459,122 @@ function appendResearchBriefDecisionRules(
     "- Treat the research summary as prior external context, not as a repository fact.",
     "- Do not ask for the same external research again unless the current repository state still leaves a concrete unresolved external dependency.",
     "- Base command selection and validation on repository evidence and the command catalog, not on the research brief alone.",
+  );
+}
+
+function appendStructuredResearchContext(
+  sections: string[],
+  taskPacket: MaterializedTaskPacket,
+): void {
+  if (!taskPacket.researchContext) {
+    return;
+  }
+
+  sections.push(
+    "",
+    "Accepted research context:",
+    `- Question: ${taskPacket.researchContext.question}`,
+    `- Summary: ${taskPacket.researchContext.summary}`,
+  );
+
+  if (taskPacket.researchContext.confidence) {
+    sections.push(`- Confidence: ${taskPacket.researchContext.confidence}`);
+  }
+
+  if (taskPacket.researchContext.signalSummary.length > 0) {
+    sections.push(
+      "Research signal basis:",
+      ...taskPacket.researchContext.signalSummary.map((signal) => `- ${signal}`),
+    );
+  }
+
+  const acceptedSignalFingerprint =
+    taskPacket.researchContext.signalFingerprint ??
+    (taskPacket.researchContext.signalSummary.length > 0
+      ? deriveResearchSignalFingerprint(taskPacket.researchContext.signalSummary)
+      : undefined);
+  if (acceptedSignalFingerprint) {
+    sections.push(`- Signal fingerprint: ${acceptedSignalFingerprint}`);
+  }
+
+  if (taskPacket.researchContext.sources.length > 0) {
+    sections.push(
+      "Research sources:",
+      ...taskPacket.researchContext.sources.map(
+        (source) => `- [${source.kind}] ${source.title} — ${source.locator}`,
+      ),
+    );
+  }
+
+  if (taskPacket.researchContext.claims.length > 0) {
+    sections.push(
+      "Research claims:",
+      ...taskPacket.researchContext.claims.map((claim) =>
+        claim.sourceLocators.length > 0
+          ? `- ${claim.statement} (sources: ${claim.sourceLocators.join(", ")})`
+          : `- ${claim.statement}`,
+      ),
+    );
+  }
+
+  if (taskPacket.researchContext.versionNotes.length > 0) {
+    sections.push(
+      "Version notes:",
+      ...taskPacket.researchContext.versionNotes.map((note) => `- ${note}`),
+    );
+  }
+
+  if (taskPacket.researchContext.unresolvedConflicts.length > 0) {
+    sections.push(
+      "Unresolved conflicts:",
+      ...taskPacket.researchContext.unresolvedConflicts.map((conflict) => `- ${conflict}`),
+    );
+    sections.push(
+      "Research conflict rule:",
+      "- Treat unresolved conflicts as a reason to stay conservative, abstain, or require further clarification/research instead of guessing.",
+    );
+  }
+}
+
+function appendResearchSignalDriftContext(
+  sections: string[],
+  taskPacket: MaterializedTaskPacket,
+  currentSignalSummary: string[],
+): void {
+  if (!taskPacket.researchContext || taskPacket.researchContext.signalSummary.length === 0) {
+    return;
+  }
+
+  const acceptedSignalFingerprint =
+    taskPacket.researchContext.signalFingerprint ??
+    deriveResearchSignalFingerprint(taskPacket.researchContext.signalSummary);
+  const currentSignalFingerprint =
+    currentSignalSummary.length > 0
+      ? deriveResearchSignalFingerprint(currentSignalSummary)
+      : undefined;
+  const driftDetected =
+    Boolean(currentSignalFingerprint) && currentSignalFingerprint !== acceptedSignalFingerprint;
+
+  sections.push(
+    "",
+    "Research basis comparison:",
+    `- Accepted signal fingerprint: ${acceptedSignalFingerprint}`,
+    `- Current signal fingerprint: ${currentSignalFingerprint ?? "none"}`,
+    `- Drift detected: ${driftDetected ? "yes" : "no"}`,
+  );
+
+  if (currentSignalSummary.length > 0) {
+    sections.push(
+      "Current repo signal basis:",
+      ...currentSignalSummary.map((signal) => `- ${signal}`),
+    );
+  }
+
+  sections.push(
+    "Research staleness rule:",
+    driftDetected
+      ? "- The repository signal basis has changed since this research was captured. Reuse only the research still consistent with current repository evidence, and require fresh external research when the old basis may now be stale."
+      : "- The repository signal basis still matches the accepted research snapshot. Reuse that research conservatively, but continue treating repository evidence as the source of truth for execution and validation.",
   );
 }
 

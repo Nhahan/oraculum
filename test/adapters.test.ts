@@ -12,7 +12,10 @@ import {
   buildProfileSelectionPrompt,
   buildWinnerSelectionPrompt,
 } from "../src/adapters/prompt.js";
-import { materializedTaskPacketSchema } from "../src/domain/task.js";
+import {
+  deriveResearchSignalFingerprint,
+  materializedTaskPacketSchema,
+} from "../src/domain/task.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
 
 const tempRoots: string[] = [];
@@ -366,7 +369,7 @@ if (out) {
     });
 
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "Consultation profile: frontend (medium)",
+      "Consultation validation profile: frontend (medium)",
     );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
       "No e2e or visual deep check was detected.",
@@ -629,6 +632,9 @@ if (out) {
       "Profile options:",
     );
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "Treat profileId as a validation posture for default tournament settings, not as a claim about the whole repository.",
+    );
+    await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Do not list theoretical profile-default checks when the repository provides no evidence for them.",
     );
     await expect(readFile(join(logDir, "profile-judge.stdout.jsonl"), "utf8")).resolves.toContain(
@@ -712,6 +718,9 @@ process.stdout.write(JSON.stringify({
     expect(result.recommendation?.profileId).toBe("frontend");
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Command catalog:",
+    );
+    await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
+      'Use profileId "generic" when the repository has no strong command-grounded or repo-local profile evidence.',
     );
     await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toContain(
       '"--permission-mode","plan"',
@@ -893,9 +902,35 @@ process.stdout.write(JSON.stringify({
   it("includes research brief provenance in shared prompts", () => {
     const taskPacket = createTaskPacket({
       intent: "Continue the original task using the required research context.",
+      artifactKind: "document",
+      targetArtifactPath: "docs/SESSION_PLAN.md",
+      researchContext: {
+        question: "What does the official API documentation say about the current behavior?",
+        summary: "Review the official versioned API docs before execution.",
+        confidence: "high",
+        signalSummary: ["language:javascript"],
+        signalFingerprint: deriveResearchSignalFingerprint(["language:javascript"]),
+        sources: [
+          {
+            kind: "official-doc",
+            title: "Current API docs",
+            locator: "https://example.com/docs/current-api",
+          },
+        ],
+        claims: [
+          {
+            statement: "The current API requires a version header on session refresh.",
+            sourceLocators: ["https://example.com/docs/current-api"],
+          },
+        ],
+        versionNotes: ["Behavior changed in v3.2 compared with the legacy session API."],
+        unresolvedConflicts: ["The repo comments still describe the pre-v3.2 refresh flow."],
+      },
       source: {
         kind: "research-brief",
         path: "/repo/.oraculum/runs/run_1/reports/research-brief.json",
+        originKind: "task-note",
+        originPath: "/repo/tasks/fix-session-loss.md",
       },
     });
 
@@ -940,6 +975,40 @@ process.stdout.write(JSON.stringify({
       expect(prompt).toContain(
         "Task Source: research-brief (/repo/.oraculum/runs/run_1/reports/research-brief.json)",
       );
+      expect(prompt).toContain("Artifact intent:");
+      expect(prompt).toContain("- Kind: document");
+      expect(prompt).toContain("- Target artifact: docs/SESSION_PLAN.md");
+      expect(prompt).toContain("Task origin:");
+      expect(prompt).toContain("- task-note (/repo/tasks/fix-session-loss.md)");
+      expect(prompt).toContain("Accepted research context:");
+      expect(prompt).toContain(
+        "- Question: What does the official API documentation say about the current behavior?",
+      );
+      expect(prompt).toContain(
+        "- Summary: Review the official versioned API docs before execution.",
+      );
+      expect(prompt).toContain("- Confidence: high");
+      expect(prompt).toContain("Research signal basis:");
+      expect(prompt).toContain("- language:javascript");
+      expect(prompt).toContain(
+        `- Signal fingerprint: ${deriveResearchSignalFingerprint(["language:javascript"])}`,
+      );
+      expect(prompt).toContain("Research sources:");
+      expect(prompt).toContain(
+        "- [official-doc] Current API docs — https://example.com/docs/current-api",
+      );
+      expect(prompt).toContain("Research claims:");
+      expect(prompt).toContain(
+        "- The current API requires a version header on session refresh. (sources: https://example.com/docs/current-api)",
+      );
+      expect(prompt).toContain("Version notes:");
+      expect(prompt).toContain("- Behavior changed in v3.2 compared with the legacy session API.");
+      expect(prompt).toContain("Unresolved conflicts:");
+      expect(prompt).toContain("- The repo comments still describe the pre-v3.2 refresh flow.");
+      expect(prompt).toContain("Research conflict rule:");
+      expect(prompt).toContain(
+        "- Treat unresolved conflicts as a reason to stay conservative, abstain, or require further clarification/research instead of guessing.",
+      );
       expect(prompt).toContain("Research brief provenance:");
       expect(prompt).toContain(
         "Treat the research summary in the task intent as prior investigation context.",
@@ -948,6 +1017,20 @@ process.stdout.write(JSON.stringify({
 
     for (const prompt of [preflightPrompt, profilePrompt]) {
       expect(prompt).toContain("Research brief rules:");
+      expect(prompt).toContain("Research basis comparison:");
+      expect(prompt).toContain(
+        `- Accepted signal fingerprint: ${deriveResearchSignalFingerprint(["language:javascript"])}`,
+      );
+      expect(prompt).toContain(
+        `- Current signal fingerprint: ${deriveResearchSignalFingerprint(["command:lint"])}`,
+      );
+      expect(prompt).toContain("- Drift detected: yes");
+      expect(prompt).toContain("Current repo signal basis:");
+      expect(prompt).toContain("- command:lint");
+      expect(prompt).toContain("Research staleness rule:");
+      expect(prompt).toContain(
+        "The repository signal basis has changed since this research was captured.",
+      );
       expect(prompt).toContain(
         "Treat the research summary as prior external context, not as a repository fact.",
       );

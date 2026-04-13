@@ -1,7 +1,14 @@
 import { z } from "zod";
 
 import { adapterSchema, roundIdSchema } from "./config.js";
-import { consultationProfileSelectionSchema, decisionConfidenceSchema } from "./profile.js";
+import {
+  consultationProfileSelectionSchema,
+  decisionConfidenceSchema,
+  getValidationGaps,
+  getValidationProfileId,
+  getValidationSignals,
+  getValidationSummary,
+} from "./profile.js";
 import { taskPacketSummarySchema, taskSourceKindSchema } from "./task.js";
 
 export const candidateStatusSchema = z.enum([
@@ -63,6 +70,7 @@ export const consultationNextActionSchema = z.enum([
   "answer-clarification-and-rerun",
   "gather-external-research-and-rerun",
   "rerun-with-research-brief",
+  "refresh-stale-research-and-rerun",
   "revise-task-and-rerun",
   "crown-recommended-survivor",
   "inspect-comparison-report",
@@ -133,6 +141,7 @@ export const consultationPreflightSchema = z
     confidence: decisionConfidenceSchema,
     summary: z.string().min(1),
     researchPosture: consultationResearchPostureSchema,
+    researchBasisDrift: z.boolean().optional(),
     clarificationQuestion: z.string().min(1).optional(),
     researchQuestion: z.string().min(1).optional(),
   })
@@ -156,11 +165,32 @@ export const consultationPreflightSchema = z
 export const consultationResearchBriefSchema = z.object({
   decision: z.literal("external-research-required"),
   question: z.string().min(1),
+  confidence: decisionConfidenceSchema.optional(),
   researchPosture: consultationResearchPostureSchema,
   summary: z.string().min(1),
   task: taskPacketSummarySchema,
+  sources: z
+    .array(
+      z.object({
+        kind: z.enum(["repo-doc", "official-doc", "curated-doc", "other"]),
+        title: z.string().min(1),
+        locator: z.string().min(1),
+      }),
+    )
+    .default([]),
+  claims: z
+    .array(
+      z.object({
+        statement: z.string().min(1),
+        sourceLocators: z.array(z.string().min(1)).default([]),
+      }),
+    )
+    .default([]),
+  versionNotes: z.array(z.string().min(1)).default([]),
+  unresolvedConflicts: z.array(z.string().min(1)).default([]),
   notes: z.array(z.string().min(1)).default([]),
   signalSummary: z.array(z.string().min(1)).default([]),
+  signalFingerprint: z.string().min(1).optional(),
 });
 export const savedConsultationStatusSchema = z.object({
   consultationId: z.string().min(1),
@@ -170,9 +200,22 @@ export const savedConsultationStatusSchema = z.object({
   crownable: z.boolean(),
   taskSourceKind: taskSourceKindSchema,
   taskSourcePath: z.string().min(1),
+  taskArtifactKind: z.string().min(1).optional(),
+  targetArtifactPath: z.string().min(1).optional(),
+  researchConfidence: decisionConfidenceSchema.optional(),
+  researchSignalCount: z.number().int().min(0),
+  researchSignalFingerprint: z.string().min(1).optional(),
+  researchBasisDrift: z.boolean().optional(),
+  researchRerunRecommended: z.boolean(),
+  researchRerunInputPath: z.string().min(1).optional(),
+  researchConflictsPresent: z.boolean(),
   taskOriginSourceKind: taskSourceKindSchema.optional(),
   taskOriginSourcePath: z.string().min(1).optional(),
   validationPosture: consultationValidationPostureSchema,
+  validationProfileId: z.string().min(1).optional(),
+  validationSummary: z.string().min(1).optional(),
+  validationSignals: z.array(z.string().min(1)).default([]),
+  validationGaps: z.array(z.string().min(1)).default([]),
   recommendedCandidateId: z.string().min(1).optional(),
   finalistCount: z.number().int().min(0),
   missingCapabilitiesPresent: z.boolean(),
@@ -376,7 +419,7 @@ export function deriveConsultationOutcomeForManifest(
     ...(manifest.profileSelection
       ? {
           profileSelection: {
-            missingCapabilities: manifest.profileSelection.missingCapabilities,
+            missingCapabilities: getValidationGaps(manifest.profileSelection),
             oracleIds: manifest.profileSelection.oracleIds,
           },
         }
@@ -393,7 +436,16 @@ export function deriveConsultationOutcomeForManifest(
 
 export function buildSavedConsultationStatus(manifest: RunManifest): SavedConsultationStatus {
   const outcome = manifest.outcome ?? deriveConsultationOutcomeForManifest(manifest);
-  const nextActions = buildConsultationNextActions(outcome);
+  const nextActions = buildConsultationNextActions(outcome, {
+    researchBasisDrift: manifest.preflight?.researchBasisDrift === true,
+  });
+  const researchRerunInputPath =
+    manifest.taskPacket.sourceKind === "research-brief"
+      ? manifest.taskPacket.sourcePath
+      : undefined;
+  const researchRerunRecommended =
+    outcome.type === "external-research-required" ||
+    manifest.preflight?.researchBasisDrift === true;
 
   return savedConsultationStatusSchema.parse({
     consultationId: manifest.id,
@@ -403,6 +455,26 @@ export function buildSavedConsultationStatus(manifest: RunManifest): SavedConsul
     crownable: outcome.crownable,
     taskSourceKind: manifest.taskPacket.sourceKind,
     taskSourcePath: manifest.taskPacket.sourcePath,
+    ...(manifest.taskPacket.artifactKind
+      ? { taskArtifactKind: manifest.taskPacket.artifactKind }
+      : {}),
+    ...(manifest.taskPacket.targetArtifactPath
+      ? { targetArtifactPath: manifest.taskPacket.targetArtifactPath }
+      : {}),
+    ...(manifest.taskPacket.researchContext?.confidence
+      ? { researchConfidence: manifest.taskPacket.researchContext.confidence }
+      : {}),
+    researchSignalCount: manifest.taskPacket.researchContext?.signalSummary.length ?? 0,
+    ...(manifest.taskPacket.researchContext?.signalFingerprint
+      ? { researchSignalFingerprint: manifest.taskPacket.researchContext.signalFingerprint }
+      : {}),
+    ...(manifest.preflight?.researchBasisDrift !== undefined
+      ? { researchBasisDrift: manifest.preflight.researchBasisDrift }
+      : {}),
+    researchRerunRecommended,
+    ...(researchRerunInputPath ? { researchRerunInputPath } : {}),
+    researchConflictsPresent:
+      (manifest.taskPacket.researchContext?.unresolvedConflicts.length ?? 0) > 0,
     ...(manifest.taskPacket.originKind && manifest.taskPacket.originPath
       ? {
           taskOriginSourceKind: manifest.taskPacket.originKind,
@@ -410,6 +482,14 @@ export function buildSavedConsultationStatus(manifest: RunManifest): SavedConsul
         }
       : {}),
     validationPosture: outcome.validationPosture,
+    ...(getValidationProfileId(manifest.profileSelection)
+      ? { validationProfileId: getValidationProfileId(manifest.profileSelection) }
+      : {}),
+    ...(getValidationSummary(manifest.profileSelection)
+      ? { validationSummary: getValidationSummary(manifest.profileSelection) }
+      : {}),
+    validationSignals: getValidationSignals(manifest.profileSelection),
+    validationGaps: getValidationGaps(manifest.profileSelection),
     ...(outcome.recommendedCandidateId
       ? { recommendedCandidateId: outcome.recommendedCandidateId }
       : {}),
@@ -498,7 +578,10 @@ function deriveVerificationLevel(
   return "lightweight";
 }
 
-function buildConsultationNextActions(outcome: ConsultationOutcome): ConsultationNextAction[] {
+function buildConsultationNextActions(
+  outcome: ConsultationOutcome,
+  options?: { researchBasisDrift?: boolean },
+): ConsultationNextAction[] {
   const actions = new Set<ConsultationNextAction>(["reopen-verdict", "browse-archive"]);
 
   switch (outcome.type) {
@@ -540,6 +623,9 @@ function buildConsultationNextActions(outcome: ConsultationOutcome): Consultatio
   if (outcome.missingCapabilityCount > 0) {
     actions.add("review-validation-gaps");
     actions.add("add-repo-local-oracle");
+  }
+  if (options?.researchBasisDrift) {
+    actions.add("refresh-stale-research-and-rerun");
   }
 
   return [...actions];

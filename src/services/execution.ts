@@ -429,6 +429,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     ...(recommendedWinner ? { recommendedWinner } : {}),
     runId: completedManifest.id,
     taskPacket: completedManifest.taskPacket,
+    ...(completedManifest.preflight ? { preflight: completedManifest.preflight } : {}),
     verificationLevel: completedManifest.outcome?.verificationLevel ?? "none",
     managedTreeRules: projectConfig.managedTree,
     verdictsByCandidate,

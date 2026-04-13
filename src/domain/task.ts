@@ -3,7 +3,29 @@ import { basename, extname } from "node:path";
 
 import { z } from "zod";
 
+import { decisionConfidenceSchema } from "./profile.js";
+
 export const taskSourceKindSchema = z.enum(["task-packet", "task-note", "research-brief"]);
+export const taskResearchSourceSchema = z.object({
+  kind: z.enum(["repo-doc", "official-doc", "curated-doc", "other"]),
+  title: z.string().min(1),
+  locator: z.string().min(1),
+});
+export const taskResearchClaimSchema = z.object({
+  statement: z.string().min(1),
+  sourceLocators: z.array(z.string().min(1)).default([]),
+});
+export const taskResearchContextSchema = z.object({
+  question: z.string().min(1),
+  summary: z.string().min(1),
+  confidence: decisionConfidenceSchema.optional(),
+  signalSummary: z.array(z.string().min(1)).default([]),
+  signalFingerprint: z.string().min(1).optional(),
+  sources: z.array(taskResearchSourceSchema).default([]),
+  claims: z.array(taskResearchClaimSchema).default([]),
+  versionNotes: z.array(z.string().min(1)).default([]),
+  unresolvedConflicts: z.array(z.string().min(1)).default([]),
+});
 
 export const taskPacketSourceSchema = z
   .object({
@@ -25,6 +47,9 @@ export const taskPacketSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
   intent: z.string().min(1),
+  artifactKind: z.string().min(1).optional(),
+  targetArtifactPath: z.string().min(1).optional(),
+  researchContext: taskResearchContextSchema.optional(),
   nonGoals: z.array(z.string().min(1)).default([]),
   acceptanceCriteria: z.array(z.string().min(1)).default([]),
   risks: z.array(z.string().min(1)).default([]),
@@ -43,6 +68,9 @@ export const taskPacketSummarySchema = z
     title: z.string().min(1),
     sourceKind: taskSourceKindSchema,
     sourcePath: z.string().min(1),
+    artifactKind: z.string().min(1).optional(),
+    targetArtifactPath: z.string().min(1).optional(),
+    researchContext: taskResearchContextSchema.optional(),
     originKind: taskSourceKindSchema.optional(),
     originPath: z.string().min(1).optional(),
   })
@@ -59,6 +87,13 @@ export type TaskPacket = z.infer<typeof taskPacketSchema>;
 export type MaterializedTaskPacket = z.infer<typeof materializedTaskPacketSchema>;
 export type TaskPacketSummary = z.infer<typeof taskPacketSummarySchema>;
 export type TaskSourceKind = z.infer<typeof taskSourceKindSchema>;
+export type TaskResearchContext = z.infer<typeof taskResearchContextSchema>;
+
+export function deriveResearchSignalFingerprint(signalSummary: string[]): string {
+  return createHash("sha256")
+    .update([...signalSummary].sort((left, right) => left.localeCompare(right)).join("\n"))
+    .digest("hex");
+}
 
 export function deriveTaskPacketId(taskPath: string): string {
   const rawStem = basename(taskPath, extname(taskPath));
