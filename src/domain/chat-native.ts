@@ -2,6 +2,11 @@ import { z } from "zod";
 
 import { adapterSchema } from "./config.js";
 import {
+  consultationJudgingBasisKindSchema,
+  consultationOutcomeTypeSchema,
+  consultationPreflightDecisionSchema,
+  consultationValidationPostureSchema,
+  consultationVerificationLevelSchema,
   exportModeSchema,
   exportPlanSchema,
   optionalNonEmptyStringSchema,
@@ -123,10 +128,33 @@ export const verdictToolRequestSchema = z.object({
   consultationId: z.string().min(1).optional(),
 });
 
+export const verdictReviewSchema = z.object({
+  outcomeType: consultationOutcomeTypeSchema,
+  verificationLevel: consultationVerificationLevelSchema,
+  validationPosture: consultationValidationPostureSchema,
+  judgingBasisKind: consultationJudgingBasisKindSchema,
+  recommendedCandidateId: z.string().min(1).optional(),
+  finalistIds: z.array(z.string().min(1)).default([]),
+  profileId: z.string().min(1).optional(),
+  profileMissingCapabilities: z.array(z.string().min(1)).default([]),
+  preflightDecision: consultationPreflightDecisionSchema.optional(),
+  clarificationQuestion: z.string().min(1).optional(),
+  researchQuestion: z.string().min(1).optional(),
+  artifactAvailability: z.object({
+    preflightReadiness: z.boolean(),
+    profileSelection: z.boolean(),
+    comparisonReport: z.boolean(),
+    winnerSelection: z.boolean(),
+    crowningRecord: z.boolean(),
+  }),
+  candidateStateCounts: z.record(z.string().min(1), z.number().int().min(0)),
+});
+
 export const verdictToolResponseSchema = z.object({
   mode: z.literal("verdict"),
   consultation: runManifestSchema,
   status: savedConsultationStatusSchema,
+  review: verdictReviewSchema,
   summary: z.string().min(1),
   artifacts: consultationArtifactPathsSchema,
 });
@@ -233,6 +261,7 @@ export type ConsultToolResponse = z.infer<typeof consultToolResponseSchema>;
 export type DraftToolRequest = z.infer<typeof draftToolRequestSchema>;
 export type DraftToolResponse = z.infer<typeof draftToolResponseSchema>;
 export type VerdictToolRequest = z.infer<typeof verdictToolRequestSchema>;
+export type VerdictReview = z.infer<typeof verdictReviewSchema>;
 export type VerdictToolResponse = z.infer<typeof verdictToolResponseSchema>;
 export type VerdictArchiveToolRequest = z.infer<typeof verdictArchiveToolRequestSchema>;
 export type VerdictArchiveToolResponse = z.infer<typeof verdictArchiveToolResponseSchema>;

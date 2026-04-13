@@ -12,6 +12,7 @@ import {
   getWinnerSelectionPath,
   resolveProjectRoot,
 } from "../core/paths.js";
+import type { VerdictReview } from "../domain/chat-native.js";
 import {
   type ProfileSkippedCommandCandidate,
   profileRepoSignalsSchema,
@@ -236,6 +237,58 @@ export async function renderConsultationSummary(
   lines.push(`- browse recent consultations: ${verdictCommand} archive`);
 
   return `${lines.join("\n")}\n`;
+}
+
+export function buildVerdictReview(
+  manifest: RunManifest,
+  artifacts: {
+    preflightReadinessPath?: string;
+    profileSelectionPath?: string;
+    comparisonJsonPath?: string;
+    comparisonMarkdownPath?: string;
+    winnerSelectionPath?: string;
+    crowningRecordPath?: string;
+  },
+): VerdictReview {
+  const status = buildSavedConsultationStatus(manifest);
+  const candidateStateCounts = manifest.candidates.reduce<Record<string, number>>(
+    (counts, candidate) => {
+      counts[candidate.status] = (counts[candidate.status] ?? 0) + 1;
+      return counts;
+    },
+    {},
+  );
+  const finalistIds = manifest.candidates
+    .filter((candidate) => candidate.status === "promoted" || candidate.status === "exported")
+    .map((candidate) => candidate.id);
+
+  return {
+    outcomeType: status.outcomeType,
+    verificationLevel: status.verificationLevel,
+    validationPosture: status.validationPosture,
+    judgingBasisKind: status.judgingBasisKind,
+    ...(status.recommendedCandidateId
+      ? { recommendedCandidateId: status.recommendedCandidateId }
+      : {}),
+    finalistIds,
+    ...(manifest.profileSelection ? { profileId: manifest.profileSelection.profileId } : {}),
+    profileMissingCapabilities: manifest.profileSelection?.missingCapabilities ?? [],
+    ...(manifest.preflight?.decision ? { preflightDecision: manifest.preflight.decision } : {}),
+    ...(manifest.preflight?.clarificationQuestion
+      ? { clarificationQuestion: manifest.preflight.clarificationQuestion }
+      : {}),
+    ...(manifest.preflight?.researchQuestion
+      ? { researchQuestion: manifest.preflight.researchQuestion }
+      : {}),
+    artifactAvailability: {
+      preflightReadiness: Boolean(artifacts.preflightReadinessPath),
+      profileSelection: Boolean(artifacts.profileSelectionPath),
+      comparisonReport: Boolean(artifacts.comparisonJsonPath || artifacts.comparisonMarkdownPath),
+      winnerSelection: Boolean(artifacts.winnerSelectionPath),
+      crowningRecord: Boolean(artifacts.crowningRecordPath),
+    },
+    candidateStateCounts,
+  };
 }
 
 export function renderConsultationArchive(

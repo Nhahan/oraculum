@@ -14,6 +14,7 @@ import {
 } from "../src/core/paths.js";
 import { buildSavedConsultationStatus, type RunManifest } from "../src/domain/run.js";
 import {
+  buildVerdictReview,
   listRecentConsultations,
   renderConsultationArchive,
   renderConsultationSummary,
@@ -149,6 +150,56 @@ describe("consultation workflow summaries", () => {
       "review-preflight-readiness",
       "answer-clarification-and-rerun",
     ]);
+  });
+
+  it("builds a machine-readable verdict review from saved consultation state", async () => {
+    const manifest = createManifest("completed", {
+      profileSelection: {
+        profileId: "frontend",
+        confidence: "high",
+        source: "llm-recommendation",
+        summary: "Frontend evidence is strongest.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change", "test-amplified"],
+        oracleIds: ["build-impact"],
+        missingCapabilities: ["No e2e or visual deep check was detected."],
+        signals: ["frontend-framework", "build-script"],
+      },
+      recommendedWinner: {
+        candidateId: "cand-01",
+        confidence: "high",
+        source: "llm-judge",
+        summary: "cand-01 is the recommended promotion.",
+      },
+    });
+
+    const review = buildVerdictReview(manifest, {
+      preflightReadinessPath: "/tmp/run_1/reports/preflight-readiness.json",
+      profileSelectionPath: "/tmp/run_1/reports/profile-selection.json",
+      comparisonMarkdownPath: "/tmp/run_1/reports/comparison.md",
+      winnerSelectionPath: "/tmp/run_1/reports/winner-selection.json",
+    });
+
+    expect(review).toEqual({
+      outcomeType: "recommended-survivor",
+      verificationLevel: "lightweight",
+      validationPosture: "validation-gaps",
+      judgingBasisKind: "repo-local-oracle",
+      recommendedCandidateId: "cand-01",
+      finalistIds: ["cand-01"],
+      profileId: "frontend",
+      profileMissingCapabilities: ["No e2e or visual deep check was detected."],
+      artifactAvailability: {
+        preflightReadiness: true,
+        profileSelection: true,
+        comparisonReport: true,
+        winnerSelection: true,
+        crowningRecord: false,
+      },
+      candidateStateCounts: {
+        exported: 1,
+      },
+    });
   });
 
   it("renders blocked preflight consultations distinctly in the archive", async () => {

@@ -45,6 +45,7 @@ import {
   filterSetupDiagnosticsResponse,
 } from "./chat-native.js";
 import {
+  buildVerdictReview,
   listRecentConsultations,
   renderConsultationArchive,
   renderConsultationSummary,
@@ -138,15 +139,17 @@ export async function runVerdictTool(input: VerdictToolRequest): Promise<Verdict
   const manifest = request.consultationId
     ? await readRunManifest(request.cwd, request.consultationId)
     : await readLatestRunManifest(request.cwd);
+  const artifacts = buildConsultationArtifacts(request.cwd, manifest.id);
 
   return verdictToolResponseSchema.parse({
     mode: "verdict",
     consultation: manifest,
     status: buildSavedConsultationStatus(manifest),
+    review: buildVerdictReview(manifest, artifacts),
     summary: await renderConsultationSummary(manifest, request.cwd, {
       surface: "chat-native",
     }),
-    artifacts: buildConsultationArtifacts(request.cwd, manifest.id),
+    artifacts,
   });
 }
 

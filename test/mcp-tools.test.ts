@@ -25,6 +25,7 @@ vi.mock("../src/services/project.js", () => ({
 }));
 
 vi.mock("../src/services/consultations.js", () => ({
+  buildVerdictReview: vi.fn(),
   listRecentConsultations: vi.fn(),
   renderConsultationArchive: vi.fn(),
   renderConsultationSummary: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock("../src/services/exports.js", () => ({
 import { runSubprocess } from "../src/core/subprocess.js";
 import { summarizeSetupDiagnosticsHosts } from "../src/services/chat-native.js";
 import {
+  buildVerdictReview,
   listRecentConsultations,
   renderConsultationArchive,
   renderConsultationSummary,
@@ -68,6 +70,7 @@ const mockedExecuteRun = vi.mocked(executeRun);
 const mockedEnsureProjectInitialized = vi.mocked(ensureProjectInitialized);
 const mockedInitializeProject = vi.mocked(initializeProject);
 const mockedListRecentConsultations = vi.mocked(listRecentConsultations);
+const mockedBuildVerdictReview = vi.mocked(buildVerdictReview);
 const mockedRenderConsultationArchive = vi.mocked(renderConsultationArchive);
 const mockedRenderConsultationSummary = vi.mocked(renderConsultationSummary);
 const mockedMaterializeExport = vi.mocked(materializeExport);
@@ -91,6 +94,7 @@ describe("chat-native MCP tools", () => {
     mockedEnsureProjectInitialized.mockReset();
     mockedInitializeProject.mockReset();
     mockedListRecentConsultations.mockReset();
+    mockedBuildVerdictReview.mockReset();
     mockedRenderConsultationArchive.mockReset();
     mockedRenderConsultationSummary.mockReset();
     mockedMaterializeExport.mockReset();
@@ -98,6 +102,26 @@ describe("chat-native MCP tools", () => {
 
     mockedEnsureProjectInitialized.mockResolvedValue(undefined);
     mockedListRecentConsultations.mockResolvedValue([createCompletedManifest()]);
+    mockedBuildVerdictReview.mockReturnValue({
+      outcomeType: "recommended-survivor",
+      verificationLevel: "lightweight",
+      validationPosture: "sufficient",
+      judgingBasisKind: "repo-local-oracle",
+      recommendedCandidateId: "cand-01",
+      finalistIds: ["cand-01"],
+      profileId: "library",
+      profileMissingCapabilities: [],
+      artifactAvailability: {
+        preflightReadiness: false,
+        profileSelection: false,
+        comparisonReport: false,
+        winnerSelection: false,
+        crowningRecord: false,
+      },
+      candidateStateCounts: {
+        promoted: 1,
+      },
+    });
     mockedRenderConsultationSummary.mockResolvedValue("Consultation summary.\n");
     mockedRenderConsultationArchive.mockReturnValue("Recent consultations.\n");
     mockedPlanRun.mockResolvedValue(createPlannedManifest());
@@ -360,6 +384,12 @@ describe("chat-native MCP tools", () => {
       consultationId: "run_1",
       outcomeType: "recommended-survivor",
       nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-survivor"],
+    });
+    expect(verdict.review).toMatchObject({
+      outcomeType: "recommended-survivor",
+      recommendedCandidateId: "cand-01",
+      finalistIds: ["cand-01"],
+      profileId: "library",
     });
     expect(archive.mode).toBe("verdict-archive");
   });
