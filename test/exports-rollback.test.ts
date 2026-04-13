@@ -66,8 +66,10 @@ describe("git export rollback", () => {
         winnerId: candidateId,
         branchName: "fix/session-loss",
         mode: "git-branch",
+        materializationMode: "branch",
         workspaceDir,
         patchPath: join(reportsDir, "export.patch"),
+        materializationPatchPath: join(reportsDir, "export.patch"),
         withReport: false,
         createdAt: "2026-04-06T00:00:00.000Z",
       },
@@ -100,6 +102,17 @@ describe("git export rollback", () => {
         confidence: "high",
         summary: "cand-01 is the recommended winner.",
         source: "llm-judge",
+      },
+      outcome: {
+        type: "recommended-survivor",
+        terminal: true,
+        crownable: true,
+        finalistCount: 1,
+        recommendedCandidateId: candidateId,
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
       },
       candidates: [
         {
@@ -186,10 +199,11 @@ describe("git export rollback", () => {
     await expect(
       materializeExport({
         cwd,
+        winnerId: candidateId,
         branchName: "fix/session-loss",
         withReport: false,
       }),
-    ).rejects.toThrow('Failed to apply the crowned patch onto branch "fix/session-loss".');
+    ).rejects.toThrow('Failed to materialize candidate "cand-01" onto branch "fix/session-loss".');
 
     expect(
       mockedRunSubprocess.mock.calls.some(
@@ -248,8 +262,10 @@ describe("git export rollback", () => {
         winnerId: candidateId,
         branchName: "fix/session-loss",
         mode: "git-branch",
+        materializationMode: "branch",
         workspaceDir,
         patchPath: join(reportsDir, "export.patch"),
+        materializationPatchPath: join(reportsDir, "export.patch"),
         withReport: false,
         createdAt: "2026-04-06T00:00:00.000Z",
       },
@@ -282,6 +298,17 @@ describe("git export rollback", () => {
         confidence: "high",
         summary: "cand-01 is the recommended winner.",
         source: "llm-judge",
+      },
+      outcome: {
+        type: "recommended-survivor",
+        terminal: true,
+        crownable: true,
+        finalistCount: 1,
+        recommendedCandidateId: candidateId,
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
       },
       candidates: [
         {
@@ -338,6 +365,17 @@ describe("git export rollback", () => {
             confidence: "high",
             summary: "cand-01 is the recommended winner.",
             source: "llm-judge",
+          },
+          outcome: {
+            type: "recommended-survivor",
+            terminal: true,
+            crownable: true,
+            finalistCount: 1,
+            recommendedCandidateId: candidateId,
+            validationPosture: "sufficient",
+            verificationLevel: "lightweight",
+            validationGapCount: 0,
+            judgingBasisKind: "unknown",
           },
           candidates: [
             {
@@ -532,8 +570,10 @@ describe("git export rollback", () => {
         winnerId: candidateId,
         branchName: "fix/session-loss",
         mode: "git-branch",
+        materializationMode: "branch",
         workspaceDir,
         patchPath: join(reportsDir, "export.patch"),
+        materializationPatchPath: join(reportsDir, "export.patch"),
         withReport: false,
         createdAt: "2026-04-06T00:00:00.000Z",
       },
@@ -557,6 +597,17 @@ describe("git export rollback", () => {
         confidence: "high",
         summary: "cand-01 is the recommended winner.",
         source: "llm-judge",
+      },
+      outcome: {
+        type: "recommended-survivor",
+        terminal: true,
+        crownable: true,
+        finalistCount: 1,
+        recommendedCandidateId: candidateId,
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
       },
       candidates: [
         {

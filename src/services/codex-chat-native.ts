@@ -169,7 +169,7 @@ function renderCodexRules(manifest: readonly CommandManifestEntry[]): string {
   return [
     "# Oraculum for Codex",
     "",
-    "Use Oraculum when the user is asking to run Oraculum consultations, reopen verdicts, browse the consultation archive, or crown a survivor.",
+    "Use Oraculum when the user is asking to run Oraculum consultations, reopen verdicts, browse the consultation archive, or crown a recommended result.",
     "",
     "## Critical: Exact-Prefix Routing",
     "",
@@ -259,12 +259,13 @@ function buildCodexSkillArgumentLines(entry: CommandManifestEntry): string[] {
     case "crown":
       return [
         ...shared,
-        "- optional `branchName`: the first positional argument after `orc crown` when present; required only for Git-backed crowning",
-        "- omit `branchName` when the user typed bare `orc crown`",
-        "- in non-Git workspace-sync mode, Oraculum treats a provided `branchName` value as a materialization label rather than a Git branch",
-        "- the chat-native crowning path uses the recommended survivor automatically",
-        '- Example: `orc crown fix/greet` -> `{ branchName: "fix/greet" }`',
-        "- Example: `orc crown` -> no branchName field",
+        "- optional `materializationName`: the first positional argument after `orc crown` when present; required only for branch materialization",
+        "- omit `materializationName` when the user typed bare `orc crown`",
+        "- compatibility note: the MCP request still accepts legacy `branchName`",
+        "- in non-Git workspace-sync mode, Oraculum treats a provided `materializationName` value as a materialization label rather than a Git branch",
+        "- the chat-native crowning path uses the recommended result automatically",
+        '- Example: `orc crown fix/greet` -> `{ materializationName: "fix/greet" }`',
+        "- Example: `orc crown` -> no materializationName field",
       ];
     case "init":
       return [...shared, "- optional `force`: parse the presence of `--force` as `true`"];

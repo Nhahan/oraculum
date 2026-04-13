@@ -35,6 +35,8 @@ import {
   deriveConsultationOutcomeForManifest,
   type ExportPlan,
   exportPlanSchema,
+  getExportMaterializationMode,
+  getExportMaterializationPatchPath,
   type RunManifest,
   runManifestSchema,
 } from "../domain/run.js";
@@ -90,7 +92,7 @@ export async function materializeExport(
   await mkdir(dirname(syncSummaryPath), { recursive: true });
 
   const outcome =
-    planned.mode === "git-branch"
+    getExportMaterializationMode(planned) === "branch"
       ? await materializeGitBranchExport(projectRoot, planned, winner, managedTreeRules)
       : await materializeWorkspaceSyncExport(projectRoot, planned, winner, managedTreeRules);
 
@@ -164,7 +166,7 @@ function findExportCandidate(manifest: RunManifest, candidateId: string): Candid
 
   if (candidate.status !== "promoted" && candidate.status !== "exported") {
     throw new OraculumError(
-      `Candidate "${candidate.id}" is not eligible for crowning because its status is "${candidate.status}".`,
+      `Candidate "${candidate.id}" is not ready to materialize because its status is "${candidate.status}".`,
     );
   }
 
@@ -194,13 +196,14 @@ async function materializeGitBranchExport(
   managedTreeRules: ManagedTreeRules,
 ): Promise<MaterializationOutcome> {
   const branchName = requireGitBranchName(plan);
-  const patchPath = plan.patchPath ?? getExportPatchPath(projectRoot, plan.runId);
+  const patchPath =
+    getExportMaterializationPatchPath(plan) ?? getExportPatchPath(projectRoot, plan.runId);
   await ensureCleanGitWorkingTree(projectRoot);
   await ensureBranchDoesNotExist(projectRoot, branchName);
 
   if (!winner.baseRevision) {
     throw new OraculumError(
-      `Candidate "${winner.id}" does not record the git revision it was generated from.`,
+      `Candidate "${winner.id}" does not record the git revision needed for branch materialization.`,
     );
   }
 
@@ -210,7 +213,7 @@ async function materializeGitBranchExport(
   const initialDirectoryPaths = await listProjectDirectoryPaths(projectRoot);
   if (currentRevision !== winner.baseRevision) {
     throw new OraculumError(
-      `Cannot crown candidate "${winner.id}" because the current HEAD (${currentRevision}) no longer matches its recorded base revision (${winner.baseRevision}).`,
+      `Cannot materialize candidate "${winner.id}" onto a branch because the current HEAD (${currentRevision}) no longer matches its recorded base revision (${winner.baseRevision}).`,
     );
   }
 
@@ -222,7 +225,7 @@ async function materializeGitBranchExport(
   );
   if (!patch.trim()) {
     throw new OraculumError(
-      `Candidate "${winner.id}" has no materialized patch to crown from ${winner.workspaceDir}.`,
+      `Candidate "${winner.id}" does not have materialized branch changes to apply from ${winner.workspaceDir}.`,
     );
   }
 
@@ -257,11 +260,13 @@ async function materializeGitBranchExport(
       );
     } catch (rollbackError) {
       throw new OraculumError(
-        `Failed to apply the crowned patch onto branch "${branchName}", and rollback did not complete cleanly: ${formatUnknownError(rollbackError)}`,
+        `Failed to materialize candidate "${winner.id}" onto branch "${branchName}", and rollback did not complete cleanly: ${formatUnknownError(rollbackError)}`,
       );
     }
 
-    throw new OraculumError(`Failed to apply the crowned patch onto branch "${branchName}".`);
+    throw new OraculumError(
+      `Failed to materialize candidate "${winner.id}" onto branch "${branchName}".`,
+    );
   }
 
   return {
@@ -285,7 +290,7 @@ async function materializeGitBranchExport(
 function requireGitBranchName(plan: ExportPlan): string {
   if (!plan.branchName) {
     throw new OraculumError(
-      `Git-branch crowning for consultation "${plan.runId}" requires a target branch name.`,
+      `Branch materialization for consultation "${plan.runId}" requires a target branch name.`,
     );
   }
 
@@ -343,7 +348,7 @@ async function materializeWorkspaceSyncExport(
       );
       if (rollbackError) {
         throw new OraculumError(
-          `Workspace-sync crowning failed and rollback did not complete cleanly: ${formatUnknownError(error)}; rollback error: ${rollbackError.message}`,
+          `Workspace-sync materialization failed and rollback did not complete cleanly: ${formatUnknownError(error)}; rollback error: ${rollbackError.message}`,
         );
       }
     } finally {
@@ -376,7 +381,7 @@ async function ensureCleanGitWorkingTree(projectRoot: string): Promise<void> {
   const hasTrackedChanges = unstaged.exitCode === 1 || staged.exitCode === 1;
   if (hasTrackedChanges) {
     throw new OraculumError(
-      "Cannot crown onto a git branch while the current working tree has tracked local changes.",
+      "Cannot materialize onto a git branch while the current working tree has tracked local changes.",
     );
   }
 }
@@ -449,7 +454,7 @@ async function generateWorkspacePatch(
     timeoutMs: 30_000,
   });
   if (changedPathsResult.exitCode !== 0 || untrackedResult.exitCode !== 0) {
-    throw new OraculumError(`Failed to inspect crowning patch paths from ${workspaceDir}.`);
+    throw new OraculumError(`Failed to inspect branch materialization paths from ${workspaceDir}.`);
   }
 
   const changedPaths = new Set<string>();
@@ -508,7 +513,9 @@ async function generateWorkspacePatch(
     timeoutMs: 30_000,
   });
   if (diff.exitCode !== 0) {
-    throw new OraculumError(`Failed to generate crowning patch from ${workspaceDir}.`);
+    throw new OraculumError(
+      `Failed to generate branch materialization changes from ${workspaceDir}.`,
+    );
   }
 
   return diff.stdout;

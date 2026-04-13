@@ -1,6 +1,10 @@
 import type { ProfileCommandCandidate } from "../domain/profile.js";
 import { profileStrategyIds } from "../domain/profile.js";
-import { deriveResearchSignalFingerprint, type MaterializedTaskPacket } from "../domain/task.js";
+import {
+  deriveResearchSignalFingerprint,
+  describeRecommendedTaskResultLabel,
+  type MaterializedTaskPacket,
+} from "../domain/task.js";
 import type {
   AgentJudgeRequest,
   AgentPreflightRequest,
@@ -10,7 +14,7 @@ import type {
 
 export function buildCandidatePrompt(request: AgentRunRequest): string {
   const sections: string[] = [
-    "You are generating one Oraculum patch candidate.",
+    "You are generating one Oraculum candidate result.",
     `Candidate ID: ${request.candidateId}`,
     `Strategy: ${request.strategyLabel} (${request.strategyId})`,
     `Task ID: ${request.taskPacket.id}`,
@@ -21,6 +25,7 @@ export function buildCandidatePrompt(request: AgentRunRequest): string {
     request.taskPacket.intent,
   ];
 
+  appendResultIntentContext(sections, request.taskPacket);
   appendArtifactIntentContext(sections, request.taskPacket);
   appendTaskSourceContext(sections, request.taskPacket);
   appendStructuredResearchContext(sections, request.taskPacket);
@@ -85,11 +90,11 @@ export function buildCandidatePrompt(request: AgentRunRequest): string {
     "",
     "Instructions:",
     "- Work only inside the provided workspace.",
-    "- Materialize the patch by editing files in the workspace. Do not only describe the intended diff.",
+    "- Materialize the required result by editing files in the workspace. Do not only describe the intended changes.",
     "- Leave the workspace with the real edited files on disk before you finish.",
-    "- Candidates without a materialized patch will be eliminated.",
-    "- Produce the strongest patch you can for this strategy.",
-    "- Keep the final response concise and focused on the patch outcome.",
+    "- Candidates without a materialized result will be eliminated.",
+    "- Produce the strongest result you can for this strategy.",
+    "- Keep the final response concise and focused on the materialized result.",
   );
 
   return `${sections.join("\n")}\n`;
@@ -98,9 +103,9 @@ export function buildCandidatePrompt(request: AgentRunRequest): string {
 export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
   const sections: string[] = [
     "You are selecting the best Oraculum finalist.",
-    "Either select the single safest finalist to promote or abstain if no finalist is safe enough.",
+    "Either select the single safest finalist as the recommended result or abstain if no finalist is safe enough.",
     "Prefer the candidate that best satisfies the task while preserving repo rules and leaving the strongest reviewable evidence.",
-    'Return JSON only in one of these shapes: {"decision":"select","candidateId":"cand-01","confidence":"high","summary":"short rationale"} or {"decision":"abstain","confidence":"low","summary":"why no finalist is safe to promote"}',
+    'Return JSON only in one of these shapes: {"decision":"select","candidateId":"cand-01","confidence":"high","summary":"short rationale"} or {"decision":"abstain","confidence":"low","summary":"why no finalist is safe to recommend"}',
     "",
     `Task ID: ${request.taskPacket.id}`,
     `Task Title: ${request.taskPacket.title}`,
@@ -110,6 +115,7 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
     request.taskPacket.intent,
   ];
 
+  appendResultIntentContext(sections, request.taskPacket);
   appendArtifactIntentContext(sections, request.taskPacket);
   appendTaskSourceContext(sections, request.taskPacket);
   appendStructuredResearchContext(sections, request.taskPacket);
@@ -209,7 +215,7 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
 export function buildPreflightPrompt(request: AgentPreflightRequest): string {
   const sections: string[] = [
     "You are deciding whether an Oraculum consultation is ready to proceed before any candidate is generated.",
-    "Do not solve the task and do not propose patches. Only decide readiness.",
+    "Do not solve the task and do not propose implementations. Only decide readiness.",
     'Return JSON only in this shape: {"decision":"proceed","confidence":"medium","summary":"short rationale","researchPosture":"repo-only"}',
     'If the task is ambiguous, return {"decision":"needs-clarification",...,"clarificationQuestion":"one short question"} instead of guessing.',
     'If safe execution depends on external official documentation or version-specific facts that are not present in the repository, return {"decision":"external-research-required",...,"researchQuestion":"one short research question","researchPosture":"external-research-required"} instead of guessing.',
@@ -223,6 +229,7 @@ export function buildPreflightPrompt(request: AgentPreflightRequest): string {
     request.taskPacket.intent,
   ];
 
+  appendResultIntentContext(sections, request.taskPacket);
   appendArtifactIntentContext(sections, request.taskPacket);
   appendTaskSourceContext(sections, request.taskPacket);
   appendStructuredResearchContext(sections, request.taskPacket);
@@ -313,6 +320,7 @@ export function buildProfileSelectionPrompt(request: AgentProfileRequest): strin
     request.taskPacket.intent,
   ];
 
+  appendResultIntentContext(sections, request.taskPacket);
   appendArtifactIntentContext(sections, request.taskPacket);
   appendTaskSourceContext(sections, request.taskPacket);
   appendStructuredResearchContext(sections, request.taskPacket);
@@ -435,6 +443,17 @@ function appendTaskSourceContext(sections: string[], taskPacket: MaterializedTas
     "- This task was resumed from a persisted external research brief.",
     `- Research brief path: ${taskPacket.source.path}`,
     "- Treat the research summary in the task intent as prior investigation context.",
+  );
+}
+
+function appendResultIntentContext(sections: string[], taskPacket: MaterializedTaskPacket): void {
+  sections.push(
+    `Target result: ${describeRecommendedTaskResultLabel({
+      ...(taskPacket.artifactKind ? { artifactKind: taskPacket.artifactKind } : {}),
+      ...(taskPacket.targetArtifactPath
+        ? { targetArtifactPath: taskPacket.targetArtifactPath }
+        : {}),
+    })}`,
   );
 }
 

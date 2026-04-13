@@ -27,6 +27,7 @@ import {
   isPreflightBlockedConsultation,
   type RunManifest,
 } from "../domain/run.js";
+import { describeRecommendedTaskResultLabel, describeTaskResultLabel } from "../domain/task.js";
 
 import { pathExists } from "./project.js";
 import { parseRunManifestArtifact } from "./run-manifest-artifact.js";
@@ -95,29 +96,27 @@ export async function renderConsultationSummary(
     `Opened: ${manifest.createdAt}`,
     `Task: ${manifest.taskPacket.title}`,
     `Task source: ${manifest.taskPacket.sourceKind} (${toDisplayPath(projectRoot, manifest.taskPacket.sourcePath)})`,
-    `Agent: ${manifest.agent}`,
-    `Candidates: ${manifest.candidateCount}`,
-    `Status: ${manifest.status}`,
-    `Outcome: ${status.outcomeType}`,
   ];
   const recommendedCandidateId = status.recommendedCandidateId;
   if (manifest.taskPacket.originKind && manifest.taskPacket.originPath) {
-    lines.splice(
-      4,
-      0,
+    lines.push(
       `Task origin: ${manifest.taskPacket.originKind} (${toDisplayPath(projectRoot, manifest.taskPacket.originPath)})`,
     );
   }
   if (manifest.taskPacket.artifactKind) {
-    lines.splice(4, 0, `Artifact kind: ${manifest.taskPacket.artifactKind}`);
+    lines.push(`Artifact kind: ${manifest.taskPacket.artifactKind}`);
   }
   if (manifest.taskPacket.targetArtifactPath) {
-    lines.splice(
-      5,
-      0,
+    lines.push(
       `Target artifact: ${toDisplayPath(projectRoot, manifest.taskPacket.targetArtifactPath)}`,
     );
   }
+  lines.push(
+    `Agent: ${manifest.agent}`,
+    `Candidates: ${manifest.candidateCount}`,
+    `Status: ${manifest.status}`,
+    `Outcome: ${status.outcomeType}`,
+  );
 
   if (status.validationPosture !== "unknown") {
     lines.push(`Validation posture: ${status.validationPosture}`);
@@ -132,6 +131,20 @@ export async function renderConsultationSummary(
   if (status.researchBasisDrift !== undefined) {
     lines.push(`Research basis drift: ${status.researchBasisDrift ? "detected" : "not detected"}`);
   }
+  const recommendedResultLabel = describeTaskResultLabel({
+    ...(manifest.taskPacket.artifactKind ? { artifactKind: manifest.taskPacket.artifactKind } : {}),
+    ...(manifest.taskPacket.targetArtifactPath
+      ? { targetArtifactPath: toDisplayPath(projectRoot, manifest.taskPacket.targetArtifactPath) }
+      : {}),
+  });
+  const crownableResultLabel = describeRecommendedTaskResultLabel({
+    ...(manifest.taskPacket.artifactKind ? { artifactKind: manifest.taskPacket.artifactKind } : {}),
+    ...(manifest.taskPacket.targetArtifactPath
+      ? { targetArtifactPath: toDisplayPath(projectRoot, manifest.taskPacket.targetArtifactPath) }
+      : {}),
+  });
+  const hasExplicitResultIntent =
+    Boolean(manifest.taskPacket.artifactKind) || Boolean(manifest.taskPacket.targetArtifactPath);
 
   if (manifest.preflight && manifest.preflight.decision !== "proceed") {
     lines.push(
@@ -151,11 +164,11 @@ export async function renderConsultationSummary(
     manifest.recommendedWinner.candidateId === recommendedCandidateId
   ) {
     lines.push(
-      `Recommended survivor: ${manifest.recommendedWinner.candidateId} (${manifest.recommendedWinner.confidence}, ${manifest.recommendedWinner.source})`,
+      `Recommended ${recommendedResultLabel}: ${manifest.recommendedWinner.candidateId} (${manifest.recommendedWinner.confidence}, ${manifest.recommendedWinner.source})`,
       manifest.recommendedWinner.summary,
     );
   } else if (recommendedCandidateId) {
-    lines.push(`Recommended survivor: ${recommendedCandidateId}`);
+    lines.push(`Recommended ${recommendedResultLabel}: ${recommendedCandidateId}`);
   }
   if (manifest.profileSelection) {
     const validationProfileId = getValidationProfileId(manifest.profileSelection);
@@ -245,9 +258,13 @@ export async function renderConsultationSummary(
   if (isPreflightBlockedConsultation(manifest) && manifest.candidates.length === 0) {
     lines.push("No candidates were generated because execution stopped at preflight.");
   } else if (finalists.length === 0) {
-    lines.push("No survivor yet. Candidate states:");
+    lines.push(
+      !hasExplicitResultIntent
+        ? "No survivor yet. Candidate states:"
+        : `No ${crownableResultLabel} yet. Candidate states:`,
+    );
   } else {
-    lines.push("Survivors:");
+    lines.push("Finalists:");
     for (const candidate of finalists) {
       lines.push(`- ${candidate.id}: ${candidate.strategyLabel}`);
     }
@@ -296,10 +313,10 @@ export async function renderConsultationSummary(
       recommendedCandidate?.workspaceMode === "copy"
         ? crownCommand
         : `${crownCommand} <branch-name>`;
-    lines.push(`- crown the recommended survivor: ${crownTarget}`);
+    lines.push(`- crown the ${crownableResultLabel}: ${crownTarget}`);
   } else if (manifest.status === "completed" && finalists.length > 0) {
     lines.push(
-      `- inspect the comparison first. The shared \`${crownCommand}\` path only crowns a recommended survivor.`,
+      `- inspect the comparison first. The shared \`${crownCommand}\` path only crowns a ${crownableResultLabel}.`,
     );
   } else if (manifest.status === "completed") {
     lines.push(
@@ -451,6 +468,7 @@ export function renderConsultationArchive(
   manifests: RunManifest[],
   options?: {
     surface?: ConsultationSurface;
+    projectRoot?: string;
   },
 ): string {
   void options;
@@ -464,8 +482,8 @@ export function renderConsultationArchive(
   const lines = ["Recent consultations:"];
   for (const manifest of manifests) {
     const status = buildSavedConsultationStatus(manifest);
-    const recommendation = renderArchiveOutcomeSummary(status);
-    const artifact = renderArchiveArtifactSummary(manifest);
+    const recommendation = renderArchiveOutcomeSummary(manifest, status, options?.projectRoot);
+    const artifact = renderArchiveArtifactSummary(manifest, options?.projectRoot);
     const profile = getValidationProfileId(manifest.profileSelection)
       ? `validation profile ${getValidationProfileId(manifest.profileSelection)}`
       : "no auto profile";
@@ -480,10 +498,25 @@ export function renderConsultationArchive(
 }
 
 function renderArchiveOutcomeSummary(
+  manifest: RunManifest,
   status: ReturnType<typeof buildSavedConsultationStatus>,
+  projectRoot?: string,
 ): string {
+  const hasExplicitResultIntent =
+    Boolean(manifest.taskPacket.artifactKind) || Boolean(manifest.taskPacket.targetArtifactPath);
+  const recommendedResultLabel = describeRecommendedTaskResultLabel({
+    ...(manifest.taskPacket.artifactKind ? { artifactKind: manifest.taskPacket.artifactKind } : {}),
+    ...(manifest.taskPacket.targetArtifactPath
+      ? {
+          targetArtifactPath: projectRoot
+            ? toDisplayPath(projectRoot, manifest.taskPacket.targetArtifactPath)
+            : manifest.taskPacket.targetArtifactPath,
+        }
+      : {}),
+  });
+
   if (status.recommendedCandidateId) {
-    return `survivor ${status.recommendedCandidateId}`;
+    return `${recommendedResultLabel} ${status.recommendedCandidateId}`;
   }
 
   switch (status.outcomeType) {
@@ -502,26 +535,35 @@ function renderArchiveOutcomeSummary(
     case "completed-with-validation-gaps":
       return "completed with validation gaps";
     case "no-survivors":
-      return "no survivors";
+      return !hasExplicitResultIntent ? "no survivors" : `no ${recommendedResultLabel} yet`;
     default:
-      return "no survivor yet";
+      return `no ${recommendedResultLabel} yet`;
   }
 }
 
-function renderArchiveArtifactSummary(manifest: RunManifest): string | undefined {
+function renderArchiveArtifactSummary(
+  manifest: RunManifest,
+  projectRoot?: string,
+): string | undefined {
+  const targetArtifactPath = manifest.taskPacket.targetArtifactPath
+    ? projectRoot
+      ? toDisplayPath(projectRoot, manifest.taskPacket.targetArtifactPath)
+      : manifest.taskPacket.targetArtifactPath
+    : undefined;
+
   if (!manifest.taskPacket.artifactKind && !manifest.taskPacket.targetArtifactPath) {
     return undefined;
   }
 
-  if (manifest.taskPacket.artifactKind && manifest.taskPacket.targetArtifactPath) {
-    return `artifact ${manifest.taskPacket.artifactKind} @ ${manifest.taskPacket.targetArtifactPath}`;
+  if (manifest.taskPacket.artifactKind && targetArtifactPath) {
+    return `artifact ${manifest.taskPacket.artifactKind} @ ${targetArtifactPath}`;
   }
 
   if (manifest.taskPacket.artifactKind) {
     return `artifact ${manifest.taskPacket.artifactKind}`;
   }
 
-  return `artifact @ ${manifest.taskPacket.targetArtifactPath}`;
+  return `artifact @ ${targetArtifactPath}`;
 }
 
 function toDisplayPath(projectRoot: string, targetPath: string): string {
@@ -530,7 +572,15 @@ function toDisplayPath(projectRoot: string, targetPath: string): string {
   }
 
   const display = relative(projectRoot, targetPath).replaceAll("\\", "/");
-  return display.length > 0 ? display : ".";
+  if (display.length === 0) {
+    return ".";
+  }
+
+  if (display === ".." || display.startsWith("../") || isAbsolute(display)) {
+    return targetPath.replaceAll("\\", "/");
+  }
+
+  return display;
 }
 
 function getSurfaceCommand(command: "consult" | "verdict" | "crown"): string {

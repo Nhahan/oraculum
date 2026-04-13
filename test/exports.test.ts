@@ -80,7 +80,9 @@ describe("materialized exports", () => {
     });
 
     expect(result.plan.mode).toBe("git-branch");
+    expect(result.plan.materializationMode).toBe("branch");
     expect(result.plan.patchPath).toBe(getExportPatchPath(cwd, planned.id));
+    expect(result.plan.materializationPatchPath).toBe(getExportPatchPath(cwd, planned.id));
     expect(normalizeLineEndings(await readFile(join(cwd, "app.txt"), "utf8"))).toBe("patched\n");
     expect(normalizeLineEndings(await readFile(join(cwd, "added.txt"), "utf8"))).toBe("new file\n");
     await expect(readFile(join(cwd, "remove.txt"), "utf8")).rejects.toThrow();
@@ -125,7 +127,7 @@ describe("materialized exports", () => {
         cwd,
         withReport: false,
       }),
-    ).rejects.toThrow("Git-backed crowning requires a target branch name");
+    ).rejects.toThrow("Branch materialization requires a target branch name");
   }, 20_000);
 
   it("preserves file renames when generating a git branch export patch", async () => {
@@ -746,6 +748,17 @@ if (out) {
             confidence: "high",
             summary: "cand-01 is the recommended winner.",
             source: "llm-judge",
+          },
+          outcome: {
+            type: "recommended-survivor",
+            terminal: true,
+            crownable: true,
+            finalistCount: 1,
+            recommendedCandidateId: candidateId,
+            validationPosture: "sufficient",
+            verificationLevel: "lightweight",
+            validationGapCount: 0,
+            judgingBasisKind: "unknown",
           },
           candidates: [candidate],
         }),

@@ -149,6 +149,232 @@ describe("consultation workflow summaries", () => {
     expect(archive).toContain("survivor cand-01");
   });
 
+  it("renders artifact-aware recommendation and crown guidance when the task targets a repo artifact", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: "/tmp/task.md",
+        artifactKind: "document",
+        targetArtifactPath: "docs/SESSION_PLAN.md",
+      },
+      recommendedWinner: {
+        candidateId: "cand-01",
+        confidence: "high",
+        source: "llm-judge",
+        summary: "cand-01 is the recommended promotion.",
+      },
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/workspace",
+          taskPacketPath: "/tmp/task-packet.json",
+          workspaceMode: "copy",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+    await writeManifest(cwd, manifest);
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+
+    expect(summary).toContain(
+      "Recommended document result for docs/SESSION_PLAN.md: cand-01 (high, llm-judge)",
+    );
+    expect(summary).toContain(
+      "- crown the recommended document result for docs/SESSION_PLAN.md: orc crown",
+    );
+    expect(summary).not.toContain("- crown the recommended survivor: orc crown");
+  });
+
+  it("renders summary header fields in a stable order when origin and artifact metadata are both present", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: join(cwd, "tasks", "task.md"),
+        originKind: "task-note",
+        originPath: join(cwd, "notes", "seed.md"),
+        artifactKind: "document",
+        targetArtifactPath: join(cwd, "docs", "SESSION_PLAN.md"),
+      },
+    });
+    await writeManifest(cwd, manifest);
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+
+    expect(summary).toContain("Task source: task-note (tasks/task.md)");
+    expect(summary).toContain("Task origin: task-note (notes/seed.md)");
+    expect(summary).toContain("Artifact kind: document");
+    expect(summary).toContain("Target artifact: docs/SESSION_PLAN.md");
+    expect(summary.indexOf("Task source: task-note (tasks/task.md)")).toBeLessThan(
+      summary.indexOf("Task origin: task-note (notes/seed.md)"),
+    );
+    expect(summary.indexOf("Task origin: task-note (notes/seed.md)")).toBeLessThan(
+      summary.indexOf("Artifact kind: document"),
+    );
+    expect(summary.indexOf("Artifact kind: document")).toBeLessThan(
+      summary.indexOf("Target artifact: docs/SESSION_PLAN.md"),
+    );
+  });
+
+  it("renders artifact-aware fallback wording when no recommended artifact result exists yet", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: "/tmp/task.md",
+        artifactKind: "document",
+        targetArtifactPath: "docs/SESSION_PLAN.md",
+      },
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "eliminated",
+          workspaceDir: "/tmp/workspace",
+          taskPacketPath: "/tmp/task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+      outcome: {
+        type: "no-survivors",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    await writeManifest(cwd, manifest);
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const archive = renderConsultationArchive([manifest], { projectRoot: cwd });
+
+    expect(summary).toContain(
+      "No recommended document result for docs/SESSION_PLAN.md yet. Candidate states:",
+    );
+    expect(archive).toContain("no recommended document result for docs/SESSION_PLAN.md yet");
+    expect(summary).not.toContain("No survivor yet. Candidate states:");
+  });
+
+  it("normalizes absolute artifact target paths in archive output when the project root is known", async () => {
+    const cwd = await createInitializedProject();
+    const absoluteTargetArtifactPath = join(cwd, "docs", "SESSION_PLAN.md");
+    const manifest = createManifest("completed", {
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: join(cwd, "task.md"),
+        artifactKind: "document",
+        targetArtifactPath: absoluteTargetArtifactPath,
+      },
+      outcome: {
+        type: "no-survivors",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "eliminated",
+          workspaceDir: join(cwd, "workspace", "cand-01"),
+          taskPacketPath: join(cwd, "task-packet.json"),
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const archive = renderConsultationArchive([manifest], { projectRoot: cwd });
+
+    expect(summary).toContain(
+      "No recommended document result for docs/SESSION_PLAN.md yet. Candidate states:",
+    );
+    expect(archive).toContain("artifact document @ docs/SESSION_PLAN.md");
+    expect(archive).toContain("no recommended document result for docs/SESSION_PLAN.md yet");
+    expect(archive).not.toContain(absoluteTargetArtifactPath);
+  });
+
+  it("preserves absolute artifact target paths outside the project root", async () => {
+    const cwd = await createInitializedProject();
+    const externalTargetArtifactPath = join(tmpdir(), "external", "SESSION_PLAN.md");
+    const manifest = createManifest("completed", {
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: join(cwd, "task.md"),
+        artifactKind: "document",
+        targetArtifactPath: externalTargetArtifactPath,
+      },
+      outcome: {
+        type: "no-survivors",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "eliminated",
+          workspaceDir: join(cwd, "workspace", "cand-01"),
+          taskPacketPath: join(cwd, "task-packet.json"),
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const archive = renderConsultationArchive([manifest], { projectRoot: cwd });
+
+    expect(summary).toContain(
+      `Target artifact: ${externalTargetArtifactPath.replaceAll("\\", "/")}`,
+    );
+    expect(archive).toContain(
+      `artifact document @ ${externalTargetArtifactPath.replaceAll("\\", "/")}`,
+    );
+    expect(summary).not.toContain("../external/SESSION_PLAN.md");
+    expect(archive).not.toContain("../external/SESSION_PLAN.md");
+  });
+
   it("renders blocked preflight consultations with readiness guidance", async () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {

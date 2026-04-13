@@ -42,7 +42,7 @@ describe("finalist comparison reports", () => {
         sourceKind: "task-note",
         sourcePath: join(projectRoot, "task.md"),
         artifactKind: "document",
-        targetArtifactPath: "docs/SESSION_PLAN.md",
+        targetArtifactPath: join(projectRoot, "docs", "SESSION_PLAN.md"),
         researchContext: {
           question: "What does the official API documentation say about the current behavior?",
           summary: "Review the official versioned API docs before execution.",
@@ -189,6 +189,7 @@ describe("finalist comparison reports", () => {
 
     const comparisonJson = JSON.parse(await readFile(result.jsonPath, "utf8")) as {
       finalistCount: number;
+      targetResultLabel: string;
       task: {
         originKind?: string;
         researchContext?: unknown;
@@ -207,6 +208,9 @@ describe("finalist comparison reports", () => {
       }>;
     };
     expect(comparisonJson.finalistCount).toBe(1);
+    expect(comparisonJson.targetResultLabel).toBe(
+      "recommended document result for docs/SESSION_PLAN.md",
+    );
     expect(comparisonJson.task.originKind).toBe("task-note");
     expect(comparisonJson.task.researchContext).toBeTruthy();
     expect(comparisonJson.validationProfileId).toBe("library");
@@ -217,63 +221,48 @@ describe("finalist comparison reports", () => {
     expect(comparisonJson.researchRerunRecommended).toBe(true);
     expect(comparisonJson.researchRerunInputPath).toBeUndefined();
     expect(comparisonJson.finalists[0]?.verdictCounts.warning).toBe(1);
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "## Recommended Survivor",
+    const markdown = await readFile(result.markdownPath, "utf8");
+    expect(markdown).toContain("# Finalist Comparison");
+    expect(markdown).toContain("## Recommended Result");
+    expect(markdown).toContain(
+      "- Target result: recommended document result for docs/SESSION_PLAN.md",
     );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "- Task source: task-note (",
-    );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "- Artifact kind: document",
-    );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "- Target artifact: docs/SESSION_PLAN.md",
-    );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
+    expect(markdown).toContain("- Task source: task-note (task.md)");
+    expect(markdown).toContain("- Artifact kind: document");
+    expect(markdown).toContain("- Target artifact: docs/SESSION_PLAN.md");
+    expect(markdown).toContain(
       "- Research summary: Review the official versioned API docs before execution.",
     );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "- Research confidence: medium",
-    );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "- Research signal basis: 1",
-    );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
+    expect(markdown).toContain("- Research confidence: medium");
+    expect(markdown).toContain("- Research signal basis: 1");
+    expect(markdown).toContain(
       `- Research signal fingerprint: ${deriveResearchSignalFingerprint(["language:javascript"])}`,
     );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain("- Research sources: 1");
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain("- Research claims: 1");
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "- Research version notes: 1",
+    expect(markdown).toContain("- Research sources: 1");
+    expect(markdown).toContain("- Research claims: 1");
+    expect(markdown).toContain("- Research version notes: 1");
+    expect(markdown).toContain("- Research conflicts: 1");
+    expect(markdown).toContain("- Research basis drift: detected");
+    expect(markdown).toContain("- Task origin: task-note (task.md)");
+    expect(markdown).toContain("## Consultation Validation Profile");
+    expect(markdown).toContain("- Validation profile: library");
+    expect(markdown).toContain("- Validation evidence: intent:library");
+    expect(markdown).toContain("- Why this won: cand-01 best matches the task intent.");
+    expect(markdown).toContain("Repair attempts: 1 (impact)");
+    expect(markdown).toContain("Review the session restore API surface.");
+    expect(markdown).toContain("API drift");
+    expect(markdown.indexOf("- Task origin: task-note (")).toBeLessThan(
+      markdown.indexOf("- Target result: recommended document result for docs/SESSION_PLAN.md"),
     );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "- Research conflicts: 1",
+    expect(
+      markdown.indexOf("- Target result: recommended document result for docs/SESSION_PLAN.md"),
+    ).toBeLessThan(markdown.indexOf("- Artifact kind: document"));
+    expect(markdown.indexOf("- Artifact kind: document")).toBeLessThan(
+      markdown.indexOf("- Target artifact: docs/SESSION_PLAN.md"),
     );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "- Research basis drift: detected",
+    expect(markdown.indexOf("- Target artifact: docs/SESSION_PLAN.md")).toBeLessThan(
+      markdown.indexOf("- Task source: task-note ("),
     );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "- Task origin: task-note (",
-    );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "## Consultation Validation Profile",
-    );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "- Validation profile: library",
-    );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "- Validation evidence: intent:library",
-    );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "- Why this won: cand-01 best matches the task intent.",
-    );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "Repair attempts: 1 (impact)",
-    );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      "Review the session restore API surface.",
-    );
-    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain("API drift");
   });
 
   it("renders an explicit no-finalists report when nobody survives", async () => {
@@ -314,7 +303,10 @@ describe("finalist comparison reports", () => {
 
     await expect(
       readFile(getFinalistComparisonMarkdownPath(projectRoot, "run_2"), "utf8"),
-    ).resolves.toContain("No survivors cleared this run.");
+    ).resolves.toContain("No finalists cleared this run.");
+    await expect(
+      readFile(getFinalistComparisonMarkdownPath(projectRoot, "run_2"), "utf8"),
+    ).resolves.toContain("- Target result: recommended patch result for src/auth/session.ts");
     await expect(
       readFile(getFinalistComparisonMarkdownPath(projectRoot, "run_2"), "utf8"),
     ).resolves.toContain("- Task source: task-note (");
@@ -373,14 +365,55 @@ describe("finalist comparison reports", () => {
       researchBasisDrift?: boolean;
       researchRerunRecommended: boolean;
       researchRerunInputPath?: string;
+      targetResultLabel: string;
     };
 
     expect(comparisonJson.researchBasisDrift).toBe(true);
     expect(comparisonJson.researchRerunRecommended).toBe(true);
     expect(comparisonJson.researchRerunInputPath).toBe(researchBriefPath);
+    expect(comparisonJson.targetResultLabel).toBe("recommended survivor");
     await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
-      `- Research rerun input: ${researchBriefPath}`,
+      "- Research rerun input: .oraculum/runs/run_src/reports/research-brief.json",
     );
+  });
+
+  it("preserves absolute target artifact paths outside the project root in report labels", async () => {
+    const projectRoot = await createTempRoot();
+    const externalTargetArtifactPath = join(tmpdir(), "external", "SESSION_PLAN.md");
+    await mkdir(getReportsDir(projectRoot, "run_external_target"), { recursive: true });
+
+    const result = await writeFinalistComparisonReport({
+      agent: "codex",
+      runId: "run_external_target",
+      taskPacket: {
+        id: "task_external_target",
+        title: "Draft plan",
+        sourceKind: "task-note",
+        sourcePath: join(projectRoot, "task.md"),
+        artifactKind: "document",
+        targetArtifactPath: externalTargetArtifactPath,
+      },
+      candidates: [],
+      candidateResults: [],
+      verdictsByCandidate: new Map(),
+      projectRoot,
+      verificationLevel: "none",
+    });
+
+    const comparisonJson = JSON.parse(await readFile(result.jsonPath, "utf8")) as {
+      targetResultLabel: string;
+    };
+    const markdown = await readFile(result.markdownPath, "utf8");
+    const normalizedExternalTarget = externalTargetArtifactPath.replaceAll("\\", "/");
+
+    expect(comparisonJson.targetResultLabel).toBe(
+      `recommended document result for ${normalizedExternalTarget}`,
+    );
+    expect(markdown).toContain(
+      `- Target result: recommended document result for ${normalizedExternalTarget}`,
+    );
+    expect(markdown).toContain(`- Target artifact: ${normalizedExternalTarget}`);
+    expect(markdown).not.toContain("../external/SESSION_PLAN.md");
   });
 });
 

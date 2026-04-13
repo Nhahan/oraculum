@@ -21,6 +21,7 @@ const tempRoots: string[] = [];
 interface ClaudeMarketplaceManifestShape {
   name: string;
   plugins: Array<{
+    tags?: string[];
     source?: string;
   }>;
 }
@@ -146,11 +147,26 @@ describe("Claude Code chat-native packaging", () => {
       ".claude-plugin/skills/init/SKILL.md",
     ]);
 
+    expect(plugin.description).toBe(
+      "Consult competing candidates, read verdicts, and crown recommended results with Oraculum.",
+    );
+    expect(plugin.keywords).toContain("consultation");
+    expect(marketplace.plugins[0]?.tags).toContain("candidate-consultation");
+
     const crownSkill = skills.find((file) => file.path.includes("/crown/"));
     expect(crownSkill?.content).toContain("mcp_tool: oraculum_crown");
-    expect(crownSkill?.content).toContain('branchName: "$1"');
+    expect(crownSkill?.content).toContain('materializationName: "$1"');
     expect(crownSkill?.content).toContain(
-      "- The first argument is required only when crowning a Git-backed candidate onto a new branch.",
+      "- The first argument is required only when materializing onto a Git branch.",
+    );
+    expect(crownSkill?.content).toContain(
+      "- The MCP request also accepts `materializationName` as the canonical alias for the first crowning argument.",
+    );
+    expect(crownSkill?.content).toContain(
+      "- It crowns the recommended result from the latest eligible consultation and materializes it.",
+    );
+    expect(crownSkill?.content).toContain(
+      "do not re-apply the materialized result or run extra Bash, Edit, or Write steps",
     );
     expect(crownSkill?.content).toContain("`orc crown` for non-Git projects");
     expect(crownSkill?.content).toContain(

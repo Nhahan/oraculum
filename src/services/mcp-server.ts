@@ -5,7 +5,7 @@ import { APP_NAME, APP_VERSION } from "../core/constants.js";
 import {
   consultToolRequestSchema,
   consultToolResponseSchema,
-  crownToolRequestSchema,
+  crownToolRequestInputSchema,
   crownToolResponseSchema,
   draftToolRequestSchema,
   draftToolResponseSchema,
@@ -33,7 +33,7 @@ export function createOraculumMcpServer(): McpServer {
     { name: APP_NAME, version: APP_VERSION },
     {
       instructions:
-        "Use Oraculum to run consultations, reopen verdicts, and crown survivors. Prefer the shared `orc` command language over ad-hoc shell execution.",
+        "Use Oraculum to run consultations, reopen verdicts, and crown recommended results. Prefer the shared `orc` command language over ad-hoc shell execution.",
     },
   );
 
@@ -111,12 +111,15 @@ export function createOraculumMcpServer(): McpServer {
     {
       title: "Oraculum Crown",
       description:
-        "Crown the recommended survivor, or materialize an explicitly selected survivor when the tool caller provides candidateId.",
-      inputSchema: crownToolRequestSchema,
+        "Crown the recommended result, or materialize an explicitly selected finalist when the tool caller provides candidateId.",
+      inputSchema: crownToolRequestInputSchema,
       outputSchema: crownToolResponseSchema,
     },
     async (request) => {
       const response = await runCrownTool(request);
+      const materializedResultSummary = request.candidateId
+        ? "The selected finalist has already been materialized; do not materialize it again."
+        : "The recommended result has already been materialized; do not materialize it again.";
       return {
         content: [
           {
@@ -135,7 +138,7 @@ export function createOraculumMcpServer(): McpServer {
                 : []),
               `Changed paths: ${response.materialization.changedPathCount}`,
               `Post-checks: ${response.materialization.checks.length} passed`,
-              "The survivor patch has already been materialized; do not apply it again.",
+              materializedResultSummary,
               `Crowning record: ${response.recordPath}`,
             ].join("\n"),
           },

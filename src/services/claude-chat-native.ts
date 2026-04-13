@@ -86,7 +86,8 @@ export function buildClaudeMarketplaceManifest(): Record<string, unknown> {
     plugins: [
       {
         name: CLAUDE_PLUGIN_NAME,
-        description: "Consult competing patches, read verdicts, and crown survivors with Oraculum.",
+        description:
+          "Consult competing candidates, read verdicts, and crown recommended results with Oraculum.",
         version: APP_VERSION,
         author: {
           name: "Nhahan",
@@ -97,8 +98,8 @@ export function buildClaudeMarketplaceManifest(): Record<string, unknown> {
         homepage: "https://github.com/Nhahan/oraculum",
         repository: "https://github.com/Nhahan/oraculum",
         license: "MIT",
-        keywords: ["oraculum", "patch", "verdict", "crowning", "mcp"],
-        tags: ["patch-consultation", "oracle-guided", "development"],
+        keywords: ["oraculum", "consultation", "verdict", "crowning", "mcp"],
+        tags: ["candidate-consultation", "oracle-guided", "development"],
       },
     ],
   };
@@ -108,7 +109,8 @@ export function buildClaudePluginManifest(): Record<string, unknown> {
   return {
     name: CLAUDE_PLUGIN_NAME,
     version: APP_VERSION,
-    description: "Oracle-guided patch consultation and crowning for Claude Code.",
+    description:
+      "Consult competing candidates, read verdicts, and crown recommended results with Oraculum.",
     author: {
       name: "Nhahan",
       email: "kisy324@naver.com",
@@ -116,7 +118,7 @@ export function buildClaudePluginManifest(): Record<string, unknown> {
     repository: "https://github.com/Nhahan/oraculum",
     homepage: "https://github.com/Nhahan/oraculum",
     license: "MIT",
-    keywords: ["oraculum", "patch", "verdict", "crowning", "mcp"],
+    keywords: ["oraculum", "consultation", "verdict", "crowning", "mcp"],
     skills: "./skills/",
     mcpServers: "./.mcp.json",
   };
@@ -701,7 +703,7 @@ function buildClaudeSkillMcpArgs(entry: CommandManifestEntry): Record<string, un
     case "verdict":
       return { cwd: "$CWD", consultationId: "$1" };
     case "crown":
-      return { cwd: "$CWD", branchName: "$1", withReport: false };
+      return { cwd: "$CWD", materializationName: "$1", withReport: false };
     case "init":
       return { cwd: "$CWD", force: false };
     default:
@@ -738,10 +740,11 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
 
   if (entry.id === "crown") {
     return [
-      "- The first argument is required only when crowning a Git-backed candidate onto a new branch.",
+      "- The first argument is required only when materializing onto a Git branch.",
       "- In non-Git workspace-sync mode, `orc crown` may omit the first argument; if one is present, Oraculum records it as a materialization label rather than a Git branch.",
-      "- It crowns the recommended survivor from the latest eligible consultation and materializes the patch.",
-      "- After the MCP tool succeeds, report the verified materialization result and stop; do not re-apply the patch or run extra Bash, Edit, or Write steps unless the user explicitly asks.",
+      "- The MCP request also accepts `materializationName` as the canonical alias for the first crowning argument.",
+      "- It crowns the recommended result from the latest eligible consultation and materializes it.",
+      "- After the MCP tool succeeds, report the verified materialization result and stop; do not re-apply the materialized result or run extra Bash, Edit, or Write steps unless the user explicitly asks.",
       "- The shared chat-native surface is `orc crown <branch-name>` for Git projects and `orc crown` for non-Git projects.",
       "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
     ];

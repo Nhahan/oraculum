@@ -133,12 +133,14 @@ if (out) {
     ) as {
       recommendedWinner?: { candidateId: string };
       finalistCount: number;
+      targetResultLabel: string;
     };
     expect(comparisonJson.finalistCount).toBe(1);
     expect(comparisonJson.recommendedWinner?.candidateId).toBe("cand-01");
+    expect(comparisonJson.targetResultLabel).toBe("recommended survivor");
     await expect(
       readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
-    ).resolves.toContain("Survivor Comparison");
+    ).resolves.toContain("Finalist Comparison");
   }, 20_000);
 
   it("eliminates candidates when the adapter exits non-zero", async () => {

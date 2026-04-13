@@ -1,4 +1,5 @@
 import { writeFile } from "node:fs/promises";
+import { isAbsolute, relative } from "node:path";
 import { z } from "zod";
 
 import { type AgentRunResult, finalistSummarySchema } from "../adapters/types.js";
@@ -24,7 +25,11 @@ import {
   type RunRecommendation,
   runRecommendationSchema,
 } from "../domain/run.js";
-import { type TaskPacketSummary, taskPacketSummarySchema } from "../domain/task.js";
+import {
+  describeRecommendedTaskResultLabel,
+  type TaskPacketSummary,
+  taskPacketSummarySchema,
+} from "../domain/task.js";
 
 import { buildEnrichedFinalistSummaries } from "./finalist-insights.js";
 import { writeJsonFile } from "./project.js";
@@ -49,6 +54,7 @@ const comparisonReportSchema = z.object({
   generatedAt: z.string().min(1),
   agent: z.string().min(1),
   task: taskPacketSummarySchema,
+  targetResultLabel: z.string().min(1),
   finalistCount: z.number().int().min(0),
   recommendedWinner: runRecommendationSchema.optional(),
   whyThisWon: z.string().min(1).optional(),
@@ -84,6 +90,9 @@ export async function writeFinalistComparisonReport(
   options: WriteFinalistComparisonReportOptions,
 ): Promise<{ jsonPath: string; markdownPath: string }> {
   const projectRoot = resolveProjectRoot(options.projectRoot);
+  const displayTargetArtifactPath = options.taskPacket.targetArtifactPath
+    ? toDisplayPath(projectRoot, options.taskPacket.targetArtifactPath)
+    : undefined;
   const finalists = await buildEnrichedFinalistSummaries({
     candidates: options.candidates,
     candidateResults: options.candidateResults,
@@ -99,6 +108,10 @@ export async function writeFinalistComparisonReport(
     generatedAt: new Date().toISOString(),
     agent: options.agent,
     task: options.taskPacket,
+    targetResultLabel: describeRecommendedTaskResultLabel({
+      ...(options.taskPacket.artifactKind ? { artifactKind: options.taskPacket.artifactKind } : {}),
+      ...(displayTargetArtifactPath ? { targetArtifactPath: displayTargetArtifactPath } : {}),
+    }),
     finalistCount: finalists.length,
     ...(options.recommendedWinner ? { recommendedWinner: options.recommendedWinner } : {}),
     ...(options.recommendedWinner ? { whyThisWon: options.recommendedWinner.summary } : {}),
@@ -127,7 +140,7 @@ export async function writeFinalistComparisonReport(
   const jsonPath = getFinalistComparisonJsonPath(projectRoot, options.runId);
   const markdownPath = getFinalistComparisonMarkdownPath(projectRoot, options.runId);
   await writeJsonFile(jsonPath, report);
-  await writeFile(markdownPath, buildComparisonMarkdown(report), "utf8");
+  await writeFile(markdownPath, buildComparisonMarkdown(report, projectRoot), "utf8");
 
   return { jsonPath, markdownPath };
 }
@@ -174,73 +187,73 @@ function countVerdicts(
   return counts;
 }
 
-function buildComparisonMarkdown(report: ComparisonReport): string {
+function buildComparisonMarkdown(report: ComparisonReport, projectRoot: string): string {
+  const taskSourcePath = toDisplayPath(projectRoot, report.task.sourcePath);
+  const taskOriginPath = report.task.originPath
+    ? toDisplayPath(projectRoot, report.task.originPath)
+    : undefined;
+  const targetArtifactPath = report.task.targetArtifactPath
+    ? toDisplayPath(projectRoot, report.task.targetArtifactPath)
+    : undefined;
+  const researchRerunInputPath = report.researchRerunInputPath
+    ? toDisplayPath(projectRoot, report.researchRerunInputPath)
+    : undefined;
   const lines: string[] = [
-    "# Survivor Comparison",
+    "# Finalist Comparison",
     "",
     `- Run: ${report.runId}`,
     `- Task: ${report.task.title}`,
-    `- Task source: ${report.task.sourceKind} (${report.task.sourcePath})`,
-    `- Agent: ${report.agent}`,
-    `- Survivors: ${report.finalistCount}`,
-    `- Verification level: ${report.verificationLevel}`,
   ];
+
+  if (report.task.originKind && taskOriginPath) {
+    lines.push(`- Task origin: ${report.task.originKind} (${taskOriginPath})`);
+  }
+
+  lines.push(`- Target result: ${report.targetResultLabel}`);
+
   if (report.task.artifactKind) {
-    lines.splice(5, 0, `- Artifact kind: ${report.task.artifactKind}`);
+    lines.push(`- Artifact kind: ${report.task.artifactKind}`);
   }
-  if (report.task.targetArtifactPath) {
-    lines.splice(6, 0, `- Target artifact: ${report.task.targetArtifactPath}`);
+  if (targetArtifactPath) {
+    lines.push(`- Target artifact: ${targetArtifactPath}`);
   }
-  if (report.task.originKind && report.task.originPath) {
-    lines.splice(4, 0, `- Task origin: ${report.task.originKind} (${report.task.originPath})`);
-  }
+
+  lines.push(
+    `- Task source: ${report.task.sourceKind} (${taskSourcePath})`,
+    `- Agent: ${report.agent}`,
+    `- Finalists: ${report.finalistCount}`,
+    `- Verification level: ${report.verificationLevel}`,
+  );
+
   if (report.task.researchContext?.summary) {
-    lines.splice(7, 0, `- Research summary: ${report.task.researchContext.summary}`);
+    lines.push(`- Research summary: ${report.task.researchContext.summary}`);
   }
   if (report.task.researchContext?.confidence) {
-    lines.splice(8, 0, `- Research confidence: ${report.task.researchContext.confidence}`);
+    lines.push(`- Research confidence: ${report.task.researchContext.confidence}`);
   }
   if (report.task.researchContext) {
-    lines.splice(
-      9,
-      0,
-      `- Research signal basis: ${report.task.researchContext.signalSummary.length}`,
-    );
+    lines.push(`- Research signal basis: ${report.task.researchContext.signalSummary.length}`);
     if (report.task.researchContext.signalFingerprint) {
-      lines.splice(
-        10,
-        0,
-        `- Research signal fingerprint: ${report.task.researchContext.signalFingerprint}`,
-      );
+      lines.push(`- Research signal fingerprint: ${report.task.researchContext.signalFingerprint}`);
     }
-    lines.splice(11, 0, `- Research sources: ${report.task.researchContext.sources.length}`);
-    lines.splice(12, 0, `- Research claims: ${report.task.researchContext.claims.length}`);
-    lines.splice(
-      13,
-      0,
-      `- Research version notes: ${report.task.researchContext.versionNotes.length}`,
-    );
-    lines.splice(
-      14,
-      0,
-      `- Research conflicts: ${report.task.researchContext.unresolvedConflicts.length}`,
-    );
+    lines.push(`- Research sources: ${report.task.researchContext.sources.length}`);
+    lines.push(`- Research claims: ${report.task.researchContext.claims.length}`);
+    lines.push(`- Research version notes: ${report.task.researchContext.versionNotes.length}`);
+    lines.push(`- Research conflicts: ${report.task.researchContext.unresolvedConflicts.length}`);
     if (report.researchBasisDrift !== undefined) {
-      lines.splice(
-        15,
-        0,
+      lines.push(
         `- Research basis drift: ${report.researchBasisDrift ? "detected" : "not detected"}`,
       );
     }
-    if (report.researchRerunRecommended && report.researchRerunInputPath) {
-      lines.splice(16, 0, `- Research rerun input: ${report.researchRerunInputPath}`);
+    if (report.researchRerunRecommended && researchRerunInputPath) {
+      lines.push(`- Research rerun input: ${researchRerunInputPath}`);
     }
   }
 
   if (report.recommendedWinner) {
     lines.push(
       "",
-      "## Recommended Survivor",
+      "## Recommended Result",
       `- Candidate: ${report.recommendedWinner.candidateId}`,
       `- Confidence: ${report.recommendedWinner.confidence}`,
       `- Source: ${report.recommendedWinner.source}`,
@@ -248,21 +261,46 @@ function buildComparisonMarkdown(report: ComparisonReport): string {
     );
   }
 
-  if (report.consultationProfile) {
-    const validationProfileId = getValidationProfileId(report.consultationProfile);
-    const validationSummary =
-      getValidationSummary(report.consultationProfile) ??
-      report.consultationProfile.validationSummary;
-    const validationSignals = getValidationSignals(report.consultationProfile);
-    const validationGaps = getValidationGaps(report.consultationProfile);
+  const validationProfileId =
+    report.validationProfileId ??
+    (report.consultationProfile ? getValidationProfileId(report.consultationProfile) : undefined);
+  const validationSummary =
+    report.validationSummary ??
+    (report.consultationProfile
+      ? (getValidationSummary(report.consultationProfile) ??
+        report.consultationProfile.validationSummary)
+      : undefined);
+  const validationSignals =
+    report.validationSignals.length > 0
+      ? report.validationSignals
+      : report.consultationProfile
+        ? getValidationSignals(report.consultationProfile)
+        : [];
+  const validationGaps =
+    report.validationGaps.length > 0
+      ? report.validationGaps
+      : report.consultationProfile
+        ? getValidationGaps(report.consultationProfile)
+        : [];
+
+  if (
+    validationProfileId ||
+    validationSummary ||
+    validationSignals.length > 0 ||
+    validationGaps.length > 0
+  ) {
     lines.push(
       "",
       "## Consultation Validation Profile",
-      `- Validation profile: ${validationProfileId}`,
-      `- Confidence: ${report.consultationProfile.confidence}`,
-      `- Source: ${report.consultationProfile.source}`,
-      `- Summary: ${validationSummary}`,
+      `- Validation profile: ${validationProfileId ?? "unknown"}`,
     );
+    if (report.consultationProfile) {
+      lines.push(`- Confidence: ${report.consultationProfile.confidence}`);
+      lines.push(`- Source: ${report.consultationProfile.source}`);
+    }
+    if (validationSummary) {
+      lines.push(`- Summary: ${validationSummary}`);
+    }
     if (validationSignals.length > 0) {
       lines.push(`- Validation evidence: ${validationSignals.join(", ")}`);
     }
@@ -272,11 +310,11 @@ function buildComparisonMarkdown(report: ComparisonReport): string {
   }
 
   if (report.finalists.length === 0) {
-    lines.push("", "No survivors cleared this run.");
+    lines.push("", "No finalists cleared this run.");
     return `${lines.join("\n")}\n`;
   }
 
-  lines.push("", "## Survivors");
+  lines.push("", "## Finalists");
 
   for (const finalist of report.finalists) {
     lines.push(
@@ -362,4 +400,21 @@ function renderChangeDetail(finalist: ComparisonReport["finalists"][number]): st
   }
 
   return detail.join(", ");
+}
+
+function toDisplayPath(projectRoot: string, targetPath: string): string {
+  if (!isAbsolute(targetPath)) {
+    return targetPath.replaceAll("\\", "/");
+  }
+
+  const display = relative(projectRoot, targetPath).replaceAll("\\", "/");
+  if (display.length === 0) {
+    return ".";
+  }
+
+  if (display === ".." || display.startsWith("../") || isAbsolute(display)) {
+    return targetPath.replaceAll("\\", "/");
+  }
+
+  return display;
 }

@@ -34,6 +34,7 @@ describe("Codex chat-native packaging", () => {
     expect(rules[0]?.path).toBe("rules/oraculum.md");
     expect(rules[0]?.content).toContain("## Critical: Exact-Prefix Routing");
     expect(rules[0]?.content).toContain("`oraculum_consult`");
+    expect(rules[0]?.content).toContain("crown a recommended result");
 
     expect(skills.map((file) => file.path)).toEqual([
       "skills/oraculum-consult/SKILL.md",
@@ -56,8 +57,17 @@ describe("Codex chat-native packaging", () => {
     );
     expect(crownSkill?.content).toContain("Call the MCP tool `oraculum_crown`.");
     expect(crownSkill?.content).toContain("report the verified tool result concisely and stop");
-    expect(crownSkill?.content).toContain("required only for Git-backed crowning");
-    expect(crownSkill?.content).toContain("Example: `orc crown` -> no branchName field");
+    expect(crownSkill?.content).toContain("required only for branch materialization");
+    expect(crownSkill?.content).toContain(
+      "compatibility note: the MCP request still accepts legacy `branchName`",
+    );
+    expect(crownSkill?.content).toContain(
+      "the chat-native crowning path uses the recommended result automatically",
+    );
+    expect(crownSkill?.content).toContain(
+      'Example: `orc crown fix/greet` -> `{ materializationName: "fix/greet" }`',
+    );
+    expect(crownSkill?.content).toContain("Example: `orc crown` -> no materializationName field");
     expect(getExpectedCodexRuleFileName()).toBe("oraculum.md");
     expect(getExpectedCodexSkillDirs()).toContain("oraculum-consult");
   });

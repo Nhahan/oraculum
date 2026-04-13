@@ -120,10 +120,23 @@ export const reportBundleSchema = z.object({
 });
 
 export const exportModeSchema = z.enum(["git-branch", "workspace-sync"]);
+export const exportMaterializationModeSchema = z.enum(["branch", "workspace-sync"]);
 export const optionalNonEmptyStringSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim().length === 0 ? undefined : value),
   z.string().min(1).optional(),
 );
+
+function deriveExportModeFromMaterializationMode(
+  materializationMode: z.infer<typeof exportMaterializationModeSchema>,
+): z.infer<typeof exportModeSchema> {
+  return materializationMode === "branch" ? "git-branch" : "workspace-sync";
+}
+
+function deriveExportMaterializationMode(
+  mode: z.infer<typeof exportModeSchema>,
+): z.infer<typeof exportMaterializationModeSchema> {
+  return mode === "git-branch" ? "branch" : "workspace-sync";
+}
 
 function getExpectedOutcomeFlags(type: z.infer<typeof consultationOutcomeTypeSchema>): {
   terminal: boolean;
@@ -842,30 +855,103 @@ export const runManifestSchema = z
     }
   });
 
-export const exportPlanSchema = z
-  .object({
-    runId: z.string().min(1),
-    winnerId: z.string().min(1),
-    branchName: optionalNonEmptyStringSchema,
-    materializationLabel: optionalNonEmptyStringSchema,
-    mode: exportModeSchema,
-    workspaceDir: z.string().min(1),
-    patchPath: z.string().min(1).optional(),
-    appliedPathCount: z.number().int().min(0).optional(),
-    removedPathCount: z.number().int().min(0).optional(),
-    withReport: z.boolean(),
-    reportBundle: reportBundleSchema.optional(),
-    createdAt: z.string().min(1),
-  })
-  .superRefine((plan, context) => {
-    if (plan.mode === "git-branch" && !plan.branchName) {
-      context.addIssue({
-        code: "custom",
-        message: "Git branch exports must include branchName.",
-        path: ["branchName"],
-      });
+export const exportPlanSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
     }
-  });
+
+    const payload = value as Record<string, unknown>;
+    const mode = typeof payload.mode === "string" ? payload.mode : undefined;
+    const materializationMode =
+      typeof payload.materializationMode === "string" ? payload.materializationMode : undefined;
+    const patchPath = typeof payload.patchPath === "string" ? payload.patchPath : undefined;
+    const materializationPatchPath =
+      typeof payload.materializationPatchPath === "string"
+        ? payload.materializationPatchPath
+        : undefined;
+
+    return {
+      ...payload,
+      ...(mode
+        ? { mode }
+        : materializationMode
+          ? {
+              mode: deriveExportModeFromMaterializationMode(
+                materializationMode as z.infer<typeof exportMaterializationModeSchema>,
+              ),
+            }
+          : {}),
+      ...(materializationMode
+        ? { materializationMode }
+        : mode
+          ? {
+              materializationMode: deriveExportMaterializationMode(
+                mode as z.infer<typeof exportModeSchema>,
+              ),
+            }
+          : {}),
+      ...(patchPath
+        ? { patchPath }
+        : materializationPatchPath
+          ? { patchPath: materializationPatchPath }
+          : {}),
+      ...(materializationPatchPath
+        ? { materializationPatchPath }
+        : patchPath
+          ? { materializationPatchPath: patchPath }
+          : {}),
+    };
+  },
+  z
+    .object({
+      runId: z.string().min(1),
+      winnerId: z.string().min(1),
+      branchName: optionalNonEmptyStringSchema,
+      materializationLabel: optionalNonEmptyStringSchema,
+      mode: exportModeSchema,
+      materializationMode: exportMaterializationModeSchema,
+      workspaceDir: z.string().min(1),
+      patchPath: z.string().min(1).optional(),
+      materializationPatchPath: z.string().min(1).optional(),
+      appliedPathCount: z.number().int().min(0).optional(),
+      removedPathCount: z.number().int().min(0).optional(),
+      withReport: z.boolean(),
+      reportBundle: reportBundleSchema.optional(),
+      createdAt: z.string().min(1),
+    })
+    .superRefine((plan, context) => {
+      if (plan.mode === "git-branch" && !plan.branchName) {
+        context.addIssue({
+          code: "custom",
+          message: "Git branch exports must include branchName.",
+          path: ["branchName"],
+        });
+      }
+
+      if (plan.materializationMode !== deriveExportMaterializationMode(plan.mode)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["materializationMode"],
+          message:
+            "materializationMode must match mode when both legacy and canonical export fields are present.",
+        });
+      }
+
+      if (
+        plan.patchPath !== undefined &&
+        plan.materializationPatchPath !== undefined &&
+        plan.patchPath !== plan.materializationPatchPath
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["materializationPatchPath"],
+          message:
+            "materializationPatchPath must match patchPath when both legacy and canonical export fields are present.",
+        });
+      }
+    }),
+);
 
 export const latestRunStateSchema = z.object({
   runId: z.string().min(1),
@@ -885,6 +971,36 @@ export type ExportPlan = z.infer<typeof exportPlanSchema>;
 export type LatestRunState = z.infer<typeof latestRunStateSchema>;
 export type WorkspaceMode = z.infer<typeof workspaceModeSchema>;
 export type ExportMode = z.infer<typeof exportModeSchema>;
+export type ExportMaterializationMode = z.infer<typeof exportMaterializationModeSchema>;
+
+export function getExportMaterializationMode(plan: {
+  materializationMode: ExportMaterializationMode;
+}): ExportMaterializationMode;
+export function getExportMaterializationMode(plan: {
+  materializationMode?: ExportMaterializationMode | undefined;
+  mode: ExportMode;
+}): ExportMaterializationMode;
+export function getExportMaterializationMode(plan: {
+  materializationMode?: ExportMaterializationMode | undefined;
+  mode?: ExportMode | undefined;
+}): ExportMaterializationMode {
+  if (plan.materializationMode) {
+    return plan.materializationMode;
+  }
+
+  if (plan.mode) {
+    return deriveExportMaterializationMode(plan.mode);
+  }
+
+  return "workspace-sync";
+}
+
+export function getExportMaterializationPatchPath(plan: {
+  materializationPatchPath?: string | undefined;
+  patchPath?: string | undefined;
+}): string | undefined {
+  return plan.materializationPatchPath ?? plan.patchPath;
+}
 
 interface ConsultationOutcomeInput {
   candidates: Array<Pick<CandidateManifest, "status">>;

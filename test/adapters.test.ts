@@ -93,7 +93,7 @@ process.stderr.write("claude stderr");
       "Repair context:",
     );
     await expect(readFile(join(logDir, "claude.stdout.txt"), "utf8")).resolves.toContain(
-      '"summary":"You are generating one Oraculum patch candidate.',
+      '"summary":"You are generating one Oraculum candidate result.',
     );
     await expect(readFile(join(logDir, "claude.stderr.txt"), "utf8")).resolves.toContain(
       "claude stderr",
@@ -1296,6 +1296,9 @@ process.stdout.write(JSON.stringify({
       expect(prompt).toContain(
         "Task Source: research-brief (/repo/.oraculum/runs/run_1/reports/research-brief.json)",
       );
+      expect(prompt).toContain(
+        "Target result: recommended document result for docs/SESSION_PLAN.md",
+      );
       expect(prompt).toContain("Artifact intent:");
       expect(prompt).toContain("- Kind: document");
       expect(prompt).toContain("- Target artifact: docs/SESSION_PLAN.md");
@@ -1362,6 +1365,30 @@ process.stdout.write(JSON.stringify({
         "Base command selection and validation on repository evidence and the command catalog, not on the research brief alone.",
       );
     }
+
+    expect(candidatePrompt).toContain("You are generating one Oraculum candidate result.");
+    expect(candidatePrompt).toContain(
+      "- Materialize the required result by editing files in the workspace. Do not only describe the intended changes.",
+    );
+    expect(candidatePrompt).toContain(
+      "- Candidates without a materialized result will be eliminated.",
+    );
+    expect(candidatePrompt).toContain("- Produce the strongest result you can for this strategy.");
+    expect(candidatePrompt).toContain(
+      "- Keep the final response concise and focused on the materialized result.",
+    );
+    expect(candidatePrompt).not.toContain(
+      "Materialize the patch by editing files in the workspace.",
+    );
+    expect(winnerPrompt).toContain(
+      "Either select the single safest finalist as the recommended result or abstain if no finalist is safe enough.",
+    );
+    expect(winnerPrompt).toContain(
+      '"decision":"abstain","confidence":"low","summary":"why no finalist is safe to recommend"',
+    );
+    expect(preflightPrompt).toContain(
+      "Do not solve the task and do not propose implementations. Only decide readiness.",
+    );
   });
 });
 

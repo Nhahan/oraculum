@@ -2084,6 +2084,7 @@ if (out) {
 
     expect(result.plan.winnerId).toBe("cand-01");
     expect(saved.branchName).toBeUndefined();
+    expect(saved.materializationMode).toBe("workspace-sync");
     expect(saved.materializationLabel).toBe("manual-sync-label");
     expect(saved.withReport).toBe(true);
     expect(saved.reportBundle?.files).toEqual(
@@ -2576,6 +2577,159 @@ if (out) {
     ).rejects.toThrow("does not have a recommended survivor");
   });
 
+  it("rejects implicit export with artifact-aware wording when the task targets a repo artifact", async () => {
+    const cwd = await createInitializedProject();
+    const runId = "run_document_without_winner";
+    const createdAt = "2026-04-06T00:00:00.000Z";
+    await mkdir(dirname(getRunManifestPath(cwd, runId)), { recursive: true });
+
+    await writeFile(
+      getRunManifestPath(cwd, runId),
+      `${JSON.stringify(
+        {
+          id: runId,
+          status: "completed",
+          taskPath: join(cwd, "tasks", "draft-plan.md"),
+          taskPacket: {
+            id: "task_document",
+            title: "Draft plan",
+            sourceKind: "task-note",
+            sourcePath: join(cwd, "tasks", "draft-plan.md"),
+            artifactKind: "document",
+            targetArtifactPath: join(cwd, "docs", "SESSION_PLAN.md"),
+          },
+          agent: "codex",
+          candidateCount: 1,
+          createdAt,
+          updatedAt: createdAt,
+          rounds: [
+            {
+              id: "fast",
+              label: "Fast",
+              status: "completed",
+              verdictCount: 1,
+              survivorCount: 1,
+              eliminatedCount: 0,
+            },
+          ],
+          candidates: [
+            {
+              id: "cand-01",
+              strategyId: "minimal-change",
+              strategyLabel: "Minimal Change",
+              status: "promoted",
+              workspaceDir: join(cwd, ".oraculum", "runs", runId, "cand-01", "workspace"),
+              taskPacketPath: join(cwd, ".oraculum", "runs", runId, "cand-01", "task-packet.json"),
+              workspaceMode: "copy",
+              repairCount: 0,
+              repairedRounds: [],
+              createdAt,
+            },
+          ],
+          outcome: {
+            type: "finalists-without-recommendation",
+            terminal: true,
+            crownable: false,
+            finalistCount: 1,
+            validationPosture: "sufficient",
+            verificationLevel: "lightweight",
+            validationGapCount: 0,
+            judgingBasisKind: "repo-local-oracle",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    await expect(
+      buildExportPlan({
+        cwd,
+        runId,
+        withReport: false,
+      }),
+    ).rejects.toThrow("does not have a recommended document result for docs/SESSION_PLAN.md");
+  });
+
+  it("preserves absolute target artifact paths outside the project root in export guidance", async () => {
+    const cwd = await createInitializedProject();
+    const runId = "run_external_document_without_winner";
+    const createdAt = "2026-04-06T00:00:00.000Z";
+    const externalTargetArtifactPath = join(tmpdir(), "external", "SESSION_PLAN.md");
+    await mkdir(dirname(getRunManifestPath(cwd, runId)), { recursive: true });
+
+    await writeFile(
+      getRunManifestPath(cwd, runId),
+      `${JSON.stringify(
+        {
+          id: runId,
+          status: "completed",
+          taskPath: join(cwd, "tasks", "draft-plan.md"),
+          taskPacket: {
+            id: "task_external_document",
+            title: "Draft plan",
+            sourceKind: "task-note",
+            sourcePath: join(cwd, "tasks", "draft-plan.md"),
+            artifactKind: "document",
+            targetArtifactPath: externalTargetArtifactPath,
+          },
+          agent: "codex",
+          candidateCount: 1,
+          createdAt,
+          updatedAt: createdAt,
+          rounds: [
+            {
+              id: "fast",
+              label: "Fast",
+              status: "completed",
+              verdictCount: 1,
+              survivorCount: 1,
+              eliminatedCount: 0,
+            },
+          ],
+          candidates: [
+            {
+              id: "cand-01",
+              strategyId: "minimal-change",
+              strategyLabel: "Minimal Change",
+              status: "promoted",
+              workspaceDir: join(cwd, ".oraculum", "runs", runId, "cand-01", "workspace"),
+              taskPacketPath: join(cwd, ".oraculum", "runs", runId, "cand-01", "task-packet.json"),
+              workspaceMode: "copy",
+              repairCount: 0,
+              repairedRounds: [],
+              createdAt,
+            },
+          ],
+          outcome: {
+            type: "finalists-without-recommendation",
+            terminal: true,
+            crownable: false,
+            finalistCount: 1,
+            validationPosture: "sufficient",
+            verificationLevel: "lightweight",
+            validationGapCount: 0,
+            judgingBasisKind: "repo-local-oracle",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    await expect(
+      buildExportPlan({
+        cwd,
+        runId,
+        withReport: false,
+      }),
+    ).rejects.toThrow(
+      `does not have a recommended document result for ${externalTargetArtifactPath.replaceAll("\\", "/")}`,
+    );
+  });
+
   it("accepts implicit export for legacy survivor manifests that only persist outcome survivor ids", async () => {
     const cwd = await createInitializedProject();
     const runId = "run_legacy_survivor";
@@ -2651,6 +2805,25 @@ if (out) {
     expect(result.plan.runId).toBe(runId);
     expect(result.plan.winnerId).toBe("cand-01");
     expect(result.plan.mode).toBe("workspace-sync");
+    expect(result.plan.materializationMode).toBe("workspace-sync");
+  });
+
+  it("backfills legacy export aliases from canonical materialization fields", () => {
+    const plan = exportPlanSchema.parse({
+      runId: "run_alias_only",
+      winnerId: "cand-01",
+      branchName: "fix/session-loss",
+      materializationMode: "branch",
+      workspaceDir: "/tmp/workspace",
+      materializationPatchPath: "/tmp/export.patch",
+      withReport: false,
+      createdAt: "2026-04-06T00:00:00.000Z",
+    });
+
+    expect(plan.mode).toBe("git-branch");
+    expect(plan.materializationMode).toBe("branch");
+    expect(plan.patchPath).toBe("/tmp/export.patch");
+    expect(plan.materializationPatchPath).toBe("/tmp/export.patch");
   });
 
   it("keeps the latest exportable run when a later run is only planned", async () => {
@@ -2809,7 +2982,248 @@ if (out) {
         branchName: "fix/session-loss",
         withReport: false,
       }),
-    ).rejects.toThrow("older consultation artifact");
+    ).rejects.toThrow("git base revision needed for branch materialization");
+  });
+
+  it("requires a branch name when materializing a branch-backed recommended result", async () => {
+    const cwd = await createInitializedProject();
+    const runId = "run_branch_materialization";
+    const createdAt = "2026-04-06T00:00:00.000Z";
+    await mkdir(dirname(getRunManifestPath(cwd, runId)), { recursive: true });
+
+    await writeFile(
+      getRunManifestPath(cwd, runId),
+      `${JSON.stringify(
+        {
+          id: runId,
+          status: "completed",
+          taskPath: join(cwd, "tasks", "branch-backed.md"),
+          taskPacket: {
+            id: "task_branch",
+            title: "Branch-backed task",
+            sourceKind: "task-note",
+            sourcePath: join(cwd, "tasks", "branch-backed.md"),
+          },
+          agent: "codex",
+          candidateCount: 1,
+          createdAt,
+          updatedAt: createdAt,
+          rounds: [
+            {
+              id: "fast",
+              label: "Fast",
+              status: "completed",
+              verdictCount: 1,
+              survivorCount: 1,
+              eliminatedCount: 0,
+            },
+          ],
+          recommendedWinner: {
+            candidateId: "cand-01",
+            confidence: "high",
+            summary: "cand-01 is the recommended promotion.",
+            source: "llm-judge",
+          },
+          candidates: [
+            {
+              id: "cand-01",
+              strategyId: "minimal-change",
+              strategyLabel: "Minimal Change",
+              status: "promoted",
+              workspaceDir: join(cwd, ".oraculum", "runs", runId, "cand-01", "workspace"),
+              taskPacketPath: join(cwd, ".oraculum", "runs", runId, "cand-01", "task-packet.json"),
+              workspaceMode: "git-worktree",
+              baseRevision: "abc123",
+              repairCount: 0,
+              repairedRounds: [],
+              createdAt,
+            },
+          ],
+          outcome: {
+            type: "recommended-survivor",
+            terminal: true,
+            crownable: true,
+            finalistCount: 1,
+            recommendedCandidateId: "cand-01",
+            validationPosture: "sufficient",
+            verificationLevel: "lightweight",
+            validationGapCount: 0,
+            judgingBasisKind: "unknown",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    await expect(
+      buildExportPlan({
+        cwd,
+        runId,
+        withReport: false,
+      }),
+    ).rejects.toThrow("Branch materialization requires a target branch name");
+  });
+
+  it("uses artifact-aware guidance when a recommended result lacks a recorded materialization mode", async () => {
+    const cwd = await createInitializedProject();
+    const runId = "run_missing_materialization_mode";
+    const createdAt = "2026-04-06T00:00:00.000Z";
+    await mkdir(dirname(getRunManifestPath(cwd, runId)), { recursive: true });
+
+    await writeFile(
+      getRunManifestPath(cwd, runId),
+      `${JSON.stringify(
+        {
+          id: runId,
+          status: "completed",
+          taskPath: join(cwd, "tasks", "draft-plan.md"),
+          taskPacket: {
+            id: "task_document_mode",
+            title: "Draft plan",
+            sourceKind: "task-note",
+            sourcePath: join(cwd, "tasks", "draft-plan.md"),
+            artifactKind: "document",
+            targetArtifactPath: "docs/SESSION_PLAN.md",
+          },
+          agent: "codex",
+          candidateCount: 1,
+          createdAt,
+          updatedAt: createdAt,
+          rounds: [
+            {
+              id: "fast",
+              label: "Fast",
+              status: "completed",
+              verdictCount: 1,
+              survivorCount: 1,
+              eliminatedCount: 0,
+            },
+          ],
+          recommendedWinner: {
+            candidateId: "cand-01",
+            confidence: "high",
+            summary: "cand-01 is the recommended promotion.",
+            source: "llm-judge",
+          },
+          candidates: [
+            {
+              id: "cand-01",
+              strategyId: "minimal-change",
+              strategyLabel: "Minimal Change",
+              status: "promoted",
+              workspaceDir: join(cwd, ".oraculum", "runs", runId, "cand-01", "workspace"),
+              taskPacketPath: join(cwd, ".oraculum", "runs", runId, "cand-01", "task-packet.json"),
+              repairCount: 0,
+              repairedRounds: [],
+              createdAt,
+            },
+          ],
+          outcome: {
+            type: "recommended-survivor",
+            terminal: true,
+            crownable: true,
+            finalistCount: 1,
+            recommendedCandidateId: "cand-01",
+            validationPosture: "sufficient",
+            verificationLevel: "lightweight",
+            validationGapCount: 0,
+            judgingBasisKind: "unknown",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    await expect(
+      buildExportPlan({
+        cwd,
+        runId,
+        withReport: false,
+      }),
+    ).rejects.toThrow(
+      'Candidate "cand-01" does not record a crowning materialization mode. Re-run the consultation before materializing it.',
+    );
+  });
+
+  it("uses selected-finalist guidance when an explicit crown target lacks a recorded materialization mode", async () => {
+    const cwd = await createInitializedProject();
+    const runId = "run_selected_finalist_missing_materialization_mode";
+    const createdAt = "2026-04-06T00:00:00.000Z";
+    await mkdir(dirname(getRunManifestPath(cwd, runId)), { recursive: true });
+
+    await writeFile(
+      getRunManifestPath(cwd, runId),
+      `${JSON.stringify(
+        {
+          id: runId,
+          status: "completed",
+          taskPath: join(cwd, "tasks", "draft-plan.md"),
+          taskPacket: {
+            id: "task_document_selected_mode",
+            title: "Draft plan",
+            sourceKind: "task-note",
+            sourcePath: join(cwd, "tasks", "draft-plan.md"),
+            artifactKind: "document",
+            targetArtifactPath: "docs/SESSION_PLAN.md",
+          },
+          agent: "codex",
+          candidateCount: 1,
+          createdAt,
+          updatedAt: createdAt,
+          rounds: [
+            {
+              id: "fast",
+              label: "Fast",
+              status: "completed",
+              verdictCount: 1,
+              survivorCount: 1,
+              eliminatedCount: 0,
+            },
+          ],
+          candidates: [
+            {
+              id: "cand-02",
+              strategyId: "minimal-change",
+              strategyLabel: "Minimal Change",
+              status: "promoted",
+              workspaceDir: join(cwd, ".oraculum", "runs", runId, "cand-02", "workspace"),
+              taskPacketPath: join(cwd, ".oraculum", "runs", runId, "cand-02", "task-packet.json"),
+              repairCount: 0,
+              repairedRounds: [],
+              createdAt,
+            },
+          ],
+          outcome: {
+            type: "finalists-without-recommendation",
+            terminal: true,
+            crownable: false,
+            finalistCount: 1,
+            validationPosture: "sufficient",
+            verificationLevel: "lightweight",
+            validationGapCount: 0,
+            judgingBasisKind: "unknown",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    await expect(
+      buildExportPlan({
+        cwd,
+        runId,
+        winnerId: "cand-02",
+        withReport: false,
+      }),
+    ).rejects.toThrow(
+      'Candidate "cand-02" does not record a crowning materialization mode. Re-run the consultation before materializing it.',
+    );
   });
 
   it("reads legacy run manifests that do not record candidateCount", async () => {

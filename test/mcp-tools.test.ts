@@ -156,6 +156,7 @@ describe("chat-native MCP tools", () => {
         winnerId: "cand-01",
         branchName: "fix/session-loss",
         mode: "git-branch",
+        materializationMode: "branch",
         workspaceDir: "/tmp/workspace",
         withReport: false,
         createdAt: "2026-04-05T00:00:00.000Z",
@@ -425,6 +426,26 @@ describe("chat-native MCP tools", () => {
     expect(archive.mode).toBe("verdict-archive");
   });
 
+  it("renders verdict archive display paths against the resolved project root", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oraculum-mcp-archive-root-"));
+    tempRoots.push(root);
+    const nestedCwd = join(root, "packages", "app");
+    await mkdir(join(root, ".oraculum"), { recursive: true });
+    await writeFile(join(root, ".oraculum", "config.json"), "{}\n", "utf8");
+    await mkdir(nestedCwd, { recursive: true });
+
+    await runVerdictArchiveTool({
+      cwd: nestedCwd,
+      count: 3,
+    });
+
+    expect(mockedListRecentConsultations).toHaveBeenCalledWith(nestedCwd, 3);
+    expect(mockedRenderConsultationArchive).toHaveBeenCalledWith([createCompletedManifest()], {
+      projectRoot: root,
+      surface: "chat-native",
+    });
+  });
+
   it("filters setup-status responses to the requested host", async () => {
     const response = await runSetupStatusTool({
       cwd: process.cwd(),
@@ -463,8 +484,10 @@ describe("chat-native MCP tools", () => {
         winnerId: "cand-01",
         branchName: "fix/session-loss",
         mode: "git-branch",
+        materializationMode: "branch",
         workspaceDir: "/tmp/workspace",
         patchPath,
+        materializationPatchPath: patchPath,
         withReport: true,
         createdAt: "2026-04-05T00:00:00.000Z",
       },
@@ -495,7 +518,9 @@ describe("chat-native MCP tools", () => {
       materialized: true,
       verified: true,
       mode: "git-branch",
+      materializationMode: "branch",
       branchName: "fix/session-loss",
+      materializationName: "fix/session-loss",
       currentBranch: "fix/session-loss",
       changedPaths: ["src/message.js"],
       changedPathCount: 1,
@@ -517,6 +542,7 @@ describe("chat-native MCP tools", () => {
         runId: "run_1",
         winnerId: "cand-01",
         mode: "workspace-sync",
+        materializationMode: "workspace-sync",
         workspaceDir: "/tmp/workspace",
         appliedPathCount: 1,
         removedPathCount: 0,
@@ -530,6 +556,43 @@ describe("chat-native MCP tools", () => {
       cwd: root,
       branchName: "",
       materializationLabel: "   ",
+      withReport: false,
+    });
+
+    expect(mockedMaterializeExport).toHaveBeenCalledWith({
+      cwd: root,
+      withReport: false,
+    });
+  });
+
+  it("normalizes an empty canonical materialization name before materialization", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oraculum-mcp-crown-empty-materialization-name-"));
+    tempRoots.push(root);
+    const summaryPath = join(root, ".oraculum", "runs", "run_1", "reports", "export-sync.json");
+    await mkdir(join(root, ".oraculum", "runs", "run_1", "reports"), { recursive: true });
+    await writeFile(
+      summaryPath,
+      `${JSON.stringify({ appliedFiles: ["app.txt"], removedFiles: [] }, null, 2)}\n`,
+      "utf8",
+    );
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        mode: "workspace-sync",
+        materializationMode: "workspace-sync",
+        workspaceDir: "/tmp/workspace",
+        appliedPathCount: 1,
+        removedPathCount: 0,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: join(root, ".oraculum", "runs", "run_1", "reports", "export-plan.json"),
+    });
+
+    await runCrownTool({
+      cwd: root,
+      materializationName: "   ",
       withReport: false,
     });
 
@@ -563,8 +626,10 @@ describe("chat-native MCP tools", () => {
         winnerId: "cand-01",
         branchName: "fix/session-loss",
         mode: "git-branch",
+        materializationMode: "branch",
         workspaceDir: "/tmp/workspace",
         patchPath,
+        materializationPatchPath: patchPath,
         withReport: false,
         createdAt: "2026-04-05T00:00:00.000Z",
       },
@@ -584,7 +649,9 @@ describe("chat-native MCP tools", () => {
       materialized: true,
       verified: true,
       mode: "git-branch",
+      materializationMode: "branch",
       branchName: "fix/session-loss",
+      materializationName: "fix/session-loss",
       currentBranch: "fix/session-loss",
       changedPaths: ["README.md", "src/message.js"],
       changedPathCount: 2,
@@ -625,8 +692,10 @@ describe("chat-native MCP tools", () => {
         winnerId: "cand-01",
         branchName: "fix/session-loss",
         mode: "git-branch",
+        materializationMode: "branch",
         workspaceDir: "/tmp/workspace",
         patchPath,
+        materializationPatchPath: patchPath,
         withReport: false,
         createdAt: "2026-04-05T00:00:00.000Z",
       },
@@ -646,7 +715,9 @@ describe("chat-native MCP tools", () => {
       materialized: true,
       verified: true,
       mode: "git-branch",
+      materializationMode: "branch",
       branchName: "fix/session-loss",
+      materializationName: "fix/session-loss",
       currentBranch: "fix/session-loss",
       changedPaths: ["src/message.js", "src/new-file.js"],
       changedPathCount: 2,
@@ -680,6 +751,7 @@ describe("chat-native MCP tools", () => {
         runId: "run_1",
         winnerId: "cand-01",
         mode: "workspace-sync",
+        materializationMode: "workspace-sync",
         workspaceDir: "/tmp/workspace",
         appliedPathCount: 2,
         removedPathCount: 1,
@@ -702,6 +774,7 @@ describe("chat-native MCP tools", () => {
       materialized: true,
       verified: true,
       mode: "workspace-sync",
+      materializationMode: "workspace-sync",
       changedPaths: ["added.txt", "app.txt", "removed.txt"],
       changedPathCount: 3,
       checks: [
@@ -727,6 +800,7 @@ describe("chat-native MCP tools", () => {
         winnerId: "cand-01",
         branchName: "legacy-label",
         mode: "workspace-sync",
+        materializationMode: "workspace-sync",
         workspaceDir: "/tmp/workspace",
         appliedPathCount: 1,
         removedPathCount: 0,
@@ -743,6 +817,8 @@ describe("chat-native MCP tools", () => {
 
     expect(response.materialization).toMatchObject({
       mode: "workspace-sync",
+      materializationMode: "workspace-sync",
+      materializationName: "legacy-label",
       materializationLabel: "legacy-label",
     });
     expect(response.materialization.branchName).toBeUndefined();
@@ -766,8 +842,10 @@ describe("chat-native MCP tools", () => {
         winnerId: "cand-01",
         branchName: "fix/session-loss",
         mode: "git-branch",
+        materializationMode: "branch",
         workspaceDir: "/tmp/workspace",
         patchPath,
+        materializationPatchPath: patchPath,
         withReport: false,
         createdAt: "2026-04-05T00:00:00.000Z",
       },
@@ -794,8 +872,10 @@ describe("chat-native MCP tools", () => {
         winnerId: "cand-01",
         branchName: "fix/session-loss",
         mode: "git-branch",
+        materializationMode: "branch",
         workspaceDir: "/tmp/workspace",
         patchPath: missingPatchPath,
+        materializationPatchPath: missingPatchPath,
         withReport: false,
         createdAt: "2026-04-05T00:00:00.000Z",
       },
@@ -808,7 +888,7 @@ describe("chat-native MCP tools", () => {
         branchName: "fix/session-loss",
         withReport: false,
       }),
-    ).rejects.toThrow("expected export patch does not exist");
+    ).rejects.toThrow("expected branch materialization artifact does not exist");
   });
 
   it("initializes projects through the MCP tool path", async () => {
@@ -914,6 +994,18 @@ function createCompletedManifest() {
       confidence: "high" as const,
       source: "llm-judge" as const,
       summary: "cand-01 is the recommended survivor.",
+    },
+    outcome: {
+      type: "recommended-survivor" as const,
+      terminal: true,
+      crownable: true,
+      finalistCount: 1,
+      recommendedCandidateId: "cand-01",
+      validationPosture: "sufficient" as const,
+      verificationLevel: "lightweight" as const,
+      missingCapabilityCount: 0,
+      validationGapCount: 0,
+      judgingBasisKind: "repo-local-oracle" as const,
     },
     candidates: [
       {

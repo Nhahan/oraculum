@@ -89,6 +89,11 @@ export type TaskPacketSummary = z.infer<typeof taskPacketSummarySchema>;
 export type TaskSourceKind = z.infer<typeof taskSourceKindSchema>;
 export type TaskResearchContext = z.infer<typeof taskResearchContextSchema>;
 
+interface TaskResultDescriptorInput {
+  artifactKind?: string | undefined;
+  targetArtifactPath?: string | undefined;
+}
+
 export function deriveResearchSignalFingerprint(signalSummary: string[]): string {
   return createHash("sha256")
     .update([...signalSummary].sort((left, right) => left.localeCompare(right)).join("\n"))
@@ -129,4 +134,25 @@ export function extractTaskTitle(taskPath: string, content: string): string {
 
   const stem = basename(taskPath, extname(taskPath)).replaceAll(/[-_]+/g, " ").trim();
   return stem || "Untitled task";
+}
+
+export function describeTaskResultLabel(task: TaskResultDescriptorInput): string {
+  if (task.artifactKind && task.targetArtifactPath) {
+    return `${task.artifactKind} result for ${task.targetArtifactPath}`;
+  }
+
+  if (task.artifactKind) {
+    return `${task.artifactKind} result`;
+  }
+
+  if (task.targetArtifactPath) {
+    return `result for ${task.targetArtifactPath}`;
+  }
+
+  return "survivor";
+}
+
+export function describeRecommendedTaskResultLabel(task: TaskResultDescriptorInput): string {
+  const label = describeTaskResultLabel(task);
+  return label === "survivor" ? "recommended survivor" : `recommended ${label}`;
 }

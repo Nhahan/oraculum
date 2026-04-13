@@ -37,7 +37,12 @@ import {
   verdictToolResponseSchema,
 } from "../domain/chat-native.js";
 import { type Adapter, adapterSchema } from "../domain/config.js";
-import { buildSavedConsultationStatus, isPreflightBlockedConsultation } from "../domain/run.js";
+import {
+  buildSavedConsultationStatus,
+  getExportMaterializationMode,
+  getExportMaterializationPatchPath,
+  isPreflightBlockedConsultation,
+} from "../domain/run.js";
 import {
   buildConsultationArtifacts,
   buildProjectInitializationResult,
@@ -158,11 +163,13 @@ export async function runVerdictArchiveTool(
 ): Promise<VerdictArchiveToolResponse> {
   const request = verdictArchiveToolRequestSchema.parse(input);
   const consultations = await listRecentConsultations(request.cwd, request.count);
+  const projectRoot = resolveProjectRoot(request.cwd);
 
   return verdictArchiveToolResponseSchema.parse({
     mode: "verdict-archive",
     consultations,
     archive: renderConsultationArchive(consultations, {
+      projectRoot,
       surface: "chat-native",
     }),
   });
@@ -196,6 +203,9 @@ function normalizeCrownToolRequest(request: CrownToolRequest): CrownToolRequest 
     ...request,
     ...(request.branchName !== undefined
       ? { branchName: normalizeOptionalStringInput(request.branchName) }
+      : {}),
+    ...(request.materializationName !== undefined
+      ? { materializationName: normalizeOptionalStringInput(request.materializationName) }
       : {}),
     ...(request.materializationLabel !== undefined
       ? { materializationLabel: normalizeOptionalStringInput(request.materializationLabel) }
@@ -437,8 +447,9 @@ async function buildCrownMaterialization(
   const projectRoot = resolveProjectRoot(cwd);
   const checks: CrownMaterializationCheck[] = [];
   let currentBranch: string | undefined;
+  const materializationMode = getExportMaterializationMode(plan);
 
-  if (plan.mode === "git-branch") {
+  if (materializationMode === "branch") {
     const branchName = requireMaterializedBranchName(plan);
     checks.push(assertGitPatchArtifact(plan));
     currentBranch = await readVerifiedCurrentGitBranch(projectRoot, branchName);
@@ -449,7 +460,7 @@ async function buildCrownMaterialization(
     });
   }
 
-  if (plan.mode === "workspace-sync") {
+  if (materializationMode === "workspace-sync") {
     checks.push(assertWorkspaceSyncSummary(projectRoot, plan.runId));
   }
 
@@ -466,13 +477,19 @@ async function buildCrownMaterialization(
   });
 
   const materializationLabel =
-    plan.mode === "workspace-sync" ? (plan.materializationLabel ?? plan.branchName) : undefined;
+    materializationMode === "workspace-sync"
+      ? (plan.materializationLabel ?? plan.branchName)
+      : undefined;
+  const materializationName =
+    materializationMode === "branch" ? plan.branchName : materializationLabel;
 
   return {
     materialized: true,
     verified: true,
-    mode: plan.mode,
-    ...(plan.mode === "git-branch" && plan.branchName ? { branchName: plan.branchName } : {}),
+    mode: materializationMode === "branch" ? "git-branch" : "workspace-sync",
+    materializationMode,
+    ...(materializationMode === "branch" && plan.branchName ? { branchName: plan.branchName } : {}),
+    ...(materializationName ? { materializationName } : {}),
     ...(materializationLabel ? { materializationLabel } : {}),
     ...(currentBranch ? { currentBranch } : {}),
     changedPaths,
@@ -492,22 +509,23 @@ function requireMaterializedBranchName(plan: CrownToolResponse["plan"]): string 
 }
 
 function assertGitPatchArtifact(plan: CrownToolResponse["plan"]): CrownMaterializationCheck {
-  if (!plan.patchPath) {
+  const patchPath = getExportMaterializationPatchPath(plan);
+  if (!patchPath) {
     throw new OraculumError(
-      `Crowning post-check failed: git-branch export "${plan.runId}" did not record an export patch path.`,
+      `Crowning post-check failed: branch materialization "${plan.runId}" did not record a branch materialization artifact path.`,
     );
   }
 
-  if (!existsSync(plan.patchPath)) {
+  if (!existsSync(patchPath)) {
     throw new OraculumError(
-      `Crowning post-check failed: expected export patch does not exist at ${plan.patchPath}.`,
+      `Crowning post-check failed: expected branch materialization artifact does not exist at ${patchPath}.`,
     );
   }
 
   return {
     id: "git-patch-artifact",
     status: "passed",
-    summary: `Export patch exists at ${plan.patchPath}.`,
+    summary: `Branch materialization artifact exists at ${patchPath}.`,
   };
 }
 
@@ -565,18 +583,19 @@ async function readMaterializedChangedPaths(
   projectRoot: string,
   plan: CrownToolResponse["plan"],
 ): Promise<string[]> {
-  if (plan.mode === "git-branch") {
-    if (!plan.patchPath) {
+  if (getExportMaterializationMode(plan) === "branch") {
+    const patchPath = getExportMaterializationPatchPath(plan);
+    if (!patchPath) {
       throw new OraculumError(
-        `Crowning post-check failed: git-branch export "${plan.runId}" did not record an export patch path.`,
+        `Crowning post-check failed: branch materialization "${plan.runId}" did not record a branch materialization artifact path.`,
       );
     }
 
     try {
-      return parseGitPatchChangedPaths(await readFile(plan.patchPath, "utf8"));
+      return parseGitPatchChangedPaths(await readFile(patchPath, "utf8"));
     } catch (error) {
       throw new OraculumError(
-        `Crowning post-check failed: could not read export patch at ${plan.patchPath}: ${formatUnknownError(error)}`,
+        `Crowning post-check failed: could not read branch materialization artifact at ${patchPath}: ${formatUnknownError(error)}`,
       );
     }
   }

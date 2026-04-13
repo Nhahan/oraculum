@@ -24,7 +24,7 @@ import {
   commandManifestEntrySchema,
   consultToolRequestSchema,
   consultToolResponseSchema,
-  crownToolRequestSchema,
+  crownToolRequestInputSchema,
   crownToolResponseSchema,
   draftToolRequestSchema,
   draftToolResponseSchema,
@@ -63,7 +63,7 @@ export const oraculumMcpSchemas = {
     response: verdictArchiveToolResponseSchema,
   },
   oraculum_crown: {
-    request: crownToolRequestSchema,
+    request: crownToolRequestInputSchema,
     response: crownToolResponseSchema,
   },
   oraculum_init: {
@@ -221,8 +221,8 @@ export const oraculumMcpToolSurface = [
   {
     id: "oraculum_crown",
     purpose:
-      "Crown the recommended survivor, or materialize an explicitly selected survivor when a direct tool caller provides candidateId.",
-    requestShape: "crownToolRequestSchema",
+      "Crown the recommended result, or materialize an explicitly selected finalist when a direct tool caller provides candidateId.",
+    requestShape: "crownToolRequestInputSchema",
     responseShape: "crownToolResponseSchema",
     bindings: [
       {
@@ -301,7 +301,7 @@ export const oraculumCommandManifest = [
       {
         name: "candidates",
         kind: "integer",
-        description: "Number of candidate patches to plan.",
+        description: "Number of candidate variants to plan.",
         option: "--candidates",
       },
       {
@@ -356,16 +356,16 @@ export const oraculumCommandManifest = [
     id: "crown",
     prefix: "orc",
     path: ["crown"],
-    summary: "Crown the recommended survivor and materialize it in the project.",
+    summary: "Crown the recommended result and materialize it in the project.",
     mcpTool: "oraculum_crown",
-    requestShape: "crownToolRequestSchema",
+    requestShape: "crownToolRequestInputSchema",
     responseShape: "crownToolResponseSchema",
     arguments: [
       {
-        name: "branchName",
+        name: "materializationName",
         kind: "string",
         description:
-          "Git branch name to create; optional workspace-sync label in non-Git projects.",
+          "Branch name to create, or an optional workspace-sync materialization label in non-Git projects.",
         required: false,
         positional: true,
       },
@@ -398,7 +398,7 @@ export const oraculumCommandManifest = [
       {
         name: "candidates",
         kind: "integer",
-        description: "Number of candidate patches to plan.",
+        description: "Number of candidate variants to plan.",
         option: "--candidates",
       },
     ],

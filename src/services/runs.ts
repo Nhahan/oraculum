@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { extname, isAbsolute, relative, resolve } from "node:path";
 
 import { createAgentAdapter } from "../adapters/index.js";
 import { OraculumError } from "../core/errors.js";
@@ -35,11 +35,13 @@ import {
   deriveConsultationOutcomeForManifest,
   type ExportPlan,
   exportPlanSchema,
+  getExportMaterializationMode,
   latestRunStateSchema,
   type RunManifest,
   type RunRound,
   runManifestSchema,
 } from "../domain/run.js";
+import { describeRecommendedTaskResultLabel } from "../domain/task.js";
 import { recommendConsultationPreflight } from "./consultation-preflight.js";
 import { recommendConsultationProfile } from "./consultation-profile.js";
 import { loadProjectConfigLayers, pathExists, writeJsonFile } from "./project.js";
@@ -364,9 +366,17 @@ export async function prepareExportPlan(
     options.winnerId ??
     manifest.recommendedWinner?.candidateId ??
     manifest.outcome?.recommendedCandidateId;
+  const recommendedResultLabel = describeRecommendedTaskResultLabel({
+    ...(manifest.taskPacket.artifactKind ? { artifactKind: manifest.taskPacket.artifactKind } : {}),
+    ...(manifest.taskPacket.targetArtifactPath
+      ? {
+          targetArtifactPath: toDisplayPath(projectRoot, manifest.taskPacket.targetArtifactPath),
+        }
+      : {}),
+  });
   if (!resolvedWinnerId) {
     throw new OraculumError(
-      `Consultation "${manifest.id}" does not have a recommended survivor. Reopen the comparison report first, or provide a candidate id explicitly through a direct tool call.`,
+      `Consultation "${manifest.id}" does not have a ${recommendedResultLabel}. Reopen the comparison report first, or provide a candidate id explicitly through a direct tool call.`,
     );
   }
 
@@ -379,32 +389,33 @@ export async function prepareExportPlan(
   }
   if (winner.status !== "promoted" && winner.status !== "exported") {
     throw new OraculumError(
-      `Candidate "${winner.id}" is not eligible for crowning because its status is "${winner.status}".`,
+      `Candidate "${winner.id}" is not ready to materialize because its status is "${winner.status}".`,
     );
   }
 
   if (!winner.workspaceMode) {
     throw new OraculumError(
-      `Candidate "${winner.id}" does not have a materialized workspace mode. Execute the consultation before crowning it.`,
+      `Candidate "${winner.id}" does not record a crowning materialization mode. Re-run the consultation before materializing it.`,
     );
   }
 
   const reportFiles = options.withReport ? await collectReportFiles(projectRoot, manifest.id) : [];
   const mode = winner.workspaceMode === "git-worktree" ? "git-branch" : "workspace-sync";
+  const materializationMode = getExportMaterializationMode({ mode });
   if (mode === "git-branch" && !options.branchName) {
     throw new OraculumError(
-      "Git-backed crowning requires a target branch name. Use `orc crown <branch-name>`.",
+      "Branch materialization requires a target branch name. Use `orc crown <branch-name>`.",
     );
   }
   if (mode === "git-branch" && !winner.baseRevision) {
     throw new OraculumError(
-      `Candidate "${winner.id}" was produced by an older consultation artifact that does not record its git base revision. Re-run the task before crowning it.`,
+      `Candidate "${winner.id}" was produced by an older consultation artifact that does not record the git base revision needed for branch materialization. Re-run the consultation before materializing it.`,
     );
   }
 
   if (mode === "workspace-sync" && !winner.baseSnapshotPath) {
     throw new OraculumError(
-      `Candidate "${winner.id}" was produced by an older consultation artifact that does not record its base snapshot. Re-run the task before crowning it.`,
+      `Candidate "${winner.id}" was produced by an older consultation artifact that does not record the base snapshot needed for workspace synchronization. Re-run the consultation before materializing it.`,
     );
   }
 
@@ -412,12 +423,18 @@ export async function prepareExportPlan(
     runId: manifest.id,
     winnerId: winner.id,
     mode,
+    materializationMode,
     workspaceDir: winner.workspaceDir,
     ...(mode === "git-branch" ? { branchName: options.branchName } : {}),
     ...(mode === "workspace-sync"
       ? { materializationLabel: options.materializationLabel ?? options.branchName }
       : {}),
-    ...(mode === "git-branch" ? { patchPath: getExportPatchPath(projectRoot, manifest.id) } : {}),
+    ...(mode === "git-branch"
+      ? {
+          patchPath: getExportPatchPath(projectRoot, manifest.id),
+          materializationPatchPath: getExportPatchPath(projectRoot, manifest.id),
+        }
+      : {}),
     withReport: options.withReport,
     ...(options.withReport && reportFiles.length > 0
       ? {
@@ -434,6 +451,23 @@ export async function prepareExportPlan(
 
   const planPath = getExportPlanPath(projectRoot, manifest.id);
   return { plan, path: planPath };
+}
+
+function toDisplayPath(projectRoot: string, targetPath: string): string {
+  if (!isAbsolute(targetPath)) {
+    return targetPath.replaceAll("\\", "/");
+  }
+
+  const display = relative(projectRoot, targetPath).replaceAll("\\", "/");
+  if (display.length === 0) {
+    return ".";
+  }
+
+  if (display === ".." || display.startsWith("../") || isAbsolute(display)) {
+    return targetPath.replaceAll("\\", "/");
+  }
+
+  return display;
 }
 
 export async function readLatestRunManifest(cwd: string): Promise<RunManifest> {
@@ -462,7 +496,7 @@ export async function readLatestExportableRunId(cwd: string): Promise<string> {
 
   if (!(await pathExists(latestRunStatePath))) {
     throw new OraculumError(
-      "No crownable consultation found yet. Complete a consultation with a recommended survivor first.",
+      "No crownable consultation found yet. Complete a consultation with a recommended result first.",
     );
   }
 
