@@ -3,7 +3,7 @@ import { basename, extname } from "node:path";
 
 import { z } from "zod";
 
-export const taskSourceKindSchema = z.enum(["task-packet", "task-note"]);
+export const taskSourceKindSchema = z.enum(["task-packet", "task-note", "research-brief"]);
 
 export const taskPacketSourceSchema = z.object({
   kind: taskSourceKindSchema,
@@ -36,6 +36,7 @@ export const taskPacketSummarySchema = z.object({
 export type TaskPacket = z.infer<typeof taskPacketSchema>;
 export type MaterializedTaskPacket = z.infer<typeof materializedTaskPacketSchema>;
 export type TaskPacketSummary = z.infer<typeof taskPacketSummarySchema>;
+export type TaskSourceKind = z.infer<typeof taskSourceKindSchema>;
 
 export function deriveTaskPacketId(taskPath: string): string {
   const rawStem = basename(taskPath, extname(taskPath));

@@ -601,6 +601,49 @@ if (out) {
     });
   });
 
+  it("accepts a persisted research brief as the next task input", async () => {
+    const cwd = await createInitializedProject();
+    await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
+    await mkdir(dirname(getResearchBriefPath(cwd, "run_research")), { recursive: true });
+    await writeFile(
+      getResearchBriefPath(cwd, "run_research"),
+      `${JSON.stringify(
+        {
+          decision: "external-research-required",
+          question:
+            "What does the official API documentation say about the current versioned behavior?",
+          researchPosture: "external-research-required",
+          summary: "Review the official versioned API docs before execution.",
+          task: {
+            id: "fix-session-loss",
+            title: "fix session loss",
+            sourceKind: "task-note",
+            sourcePath: join(cwd, "tasks", "fix-session-loss.md"),
+          },
+          notes: ["Prefer official docs."],
+          signalSummary: ["Detected explicit lint and test scripts."],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const manifest = await planRun({
+      cwd,
+      taskInput: ".oraculum/runs/run_research/reports/research-brief.json",
+      candidates: 1,
+    });
+
+    expect(manifest.taskPath).toBe(getResearchBriefPath(cwd, "run_research"));
+    expect(manifest.taskPacket).toMatchObject({
+      id: "fix-session-loss",
+      title: "fix session loss",
+      sourceKind: "research-brief",
+      sourcePath: getResearchBriefPath(cwd, "run_research"),
+    });
+  });
+
   it("guides missing project config toward host-native init first", async () => {
     const cwd = await createTempProject();
 

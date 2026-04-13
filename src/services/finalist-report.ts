@@ -17,7 +17,7 @@ import {
   type RunRecommendation,
   runRecommendationSchema,
 } from "../domain/run.js";
-import { taskPacketSummarySchema } from "../domain/task.js";
+import { type TaskPacketSummary, taskPacketSummarySchema } from "../domain/task.js";
 
 import { buildEnrichedFinalistSummaries } from "./finalist-insights.js";
 import { writeJsonFile } from "./project.js";
@@ -28,12 +28,7 @@ interface WriteFinalistComparisonReportOptions {
   projectRoot: string;
   recommendedWinner?: RunRecommendation;
   runId: string;
-  taskPacket: {
-    id: string;
-    title: string;
-    sourceKind: "task-note" | "task-packet";
-    sourcePath: string;
-  };
+  taskPacket: TaskPacketSummary;
   verdictsByCandidate: Map<string, OracleVerdict[]>;
   agent: Adapter;
   consultationProfile?: z.infer<typeof consultationProfileSelectionSchema>;

@@ -113,6 +113,42 @@ describe("task packet contracts", () => {
     expect(taskPacketSchema.parse(packet).acceptanceCriteria).toHaveLength(1);
     expect(packet.strategyHints).toContain("minimal-change");
   });
+
+  it("loads an external research brief into a reusable task packet", async () => {
+    const root = await createTempProject();
+    const taskPath = join(root, "research-brief.json");
+    await writeFile(
+      taskPath,
+      `${JSON.stringify(
+        {
+          decision: "external-research-required",
+          question: "What does the official API documentation say about the current behavior?",
+          researchPosture: "external-research-required",
+          summary: "Review the official versioned API docs before execution.",
+          task: {
+            id: "session-loss",
+            title: "Fix session loss",
+            sourceKind: "task-note",
+            sourcePath: join(root, "fix-session-loss.md"),
+          },
+          notes: ["Prefer official docs over third-party blog posts."],
+          signalSummary: ["Detected package.json and explicit lint/test scripts."],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const packet = await loadTaskPacket(taskPath);
+
+    expect(packet.source.kind).toBe("research-brief");
+    expect(packet.id).toBe("session-loss");
+    expect(packet.title).toBe("Fix session loss");
+    expect(packet.intent).toContain("Research question:");
+    expect(packet.intent).toContain("Review the official versioned API docs before execution.");
+    expect(packet.contextFiles).toEqual([join(root, "fix-session-loss.md")]);
+  });
 });
 
 describe("oracle and adapter contracts", () => {
