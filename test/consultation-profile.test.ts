@@ -174,6 +174,52 @@ if (out) {
     expect(manifest.profileSelection?.missingCapabilities).toEqual([]);
   });
 
+  it("does not require a full-suite deep test when a runtime-selected library has no deep-test evidence", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep the package healthy.\n", "utf8");
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "demo-library-no-deep-test",
+          packageManager: "npm@10.0.0",
+          type: "module",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+            typecheck: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_library_no_deep_test"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter({
+        profileId: "library",
+        confidence: "high",
+        summary: "Library signals are strongest.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change"],
+        selectedCommandIds: ["lint-fast", "typecheck-fast"],
+        missingCapabilities: [],
+      }),
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_library_no_deep_test"),
+      runId: "run_library_no_deep_test",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "typecheck-fast"]);
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
+  });
+
   it("keeps explicit quick and advanced settings while still recording the auto profile decision", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
@@ -407,6 +453,59 @@ if (out) {
       "full-suite-deep",
     ]);
     expect(recommendation.selection.missingCapabilities).toEqual([]);
+  });
+
+  it("requires build validation when a runtime-selected frontend has build evidence but no build command selected", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep it small.\n", "utf8");
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "frontend-runtime-build-evidence",
+          packageManager: "npm@10.0.0",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+            typecheck: 'node -e "process.exit(0)"',
+            build: "node -e \"console.log('build')\"",
+            test: "node -e \"console.log('test')\"",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_frontend_runtime_build_evidence"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter({
+        profileId: "frontend",
+        confidence: "medium",
+        summary: "Treat this as frontend work.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change"],
+        selectedCommandIds: ["lint-fast", "typecheck-fast", "full-suite-deep"],
+        missingCapabilities: [],
+      }),
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_frontend_runtime_build_evidence"),
+      runId: "run_frontend_runtime_build_evidence",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("frontend");
+    expect(recommendation.selection.oracleIds).toEqual([
+      "lint-fast",
+      "typecheck-fast",
+      "full-suite-deep",
+    ]);
+    expect(recommendation.selection.missingCapabilities).toEqual([
+      "No build validation command was selected.",
+    ]);
   });
 
   it("does not require migration-only checks when a runtime-selected migration has no migration evidence", async () => {
