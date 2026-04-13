@@ -48,13 +48,13 @@ export interface RecommendedConsultationProfile {
 
 const PROFILE_DESCRIPTIONS: Record<ConsultationProfileId, string> = {
   generic:
-    "General-purpose work when repository signals are weak or ecosystem-specific checks are not safely detectable.",
+    "Conservative default validation posture when repository evidence is weak or profile-specific checks are not safely grounded.",
   library:
-    "Package or shared library work. Favor lint/typecheck, unit tests, and package/export evidence.",
+    "Package/export-oriented validation posture. Favor lint/typecheck, deep tests, and packaging checks only when repository evidence supports them.",
   frontend:
-    "User-facing frontend work. Favor lint/typecheck, build, changed-area tests, and e2e/visual checks when available.",
+    "Build and e2e oriented validation posture. Favor build and visual/e2e checks only when command-grounded repository evidence supports them.",
   migration:
-    "Schema or migration work. Favor schema validation, migration dry-runs, rollback simulation, and conservative strategies.",
+    "Schema and migration validation posture. Favor schema, dry-run, rollback, and drift checks only when command-grounded repository evidence supports them.",
 };
 
 const GENERATED_ORACLE_TIMEOUT_MS = {
@@ -76,9 +76,6 @@ interface MissingCapabilityRule {
   runtimeEvidencePredicate?: (context: {
     capabilities: ProfileRepoSignals["capabilities"];
     hasCatalogEvidence: boolean;
-    hasCapabilitySignal: (
-      predicate: (capability: ProfileRepoSignals["capabilities"][number]) => boolean,
-    ) => boolean;
     hasSkippedEvidence: boolean;
   }) => boolean;
   slots: ProfileCommandSlot[];
@@ -122,10 +119,8 @@ const PROFILE_MISSING_CAPABILITY_RULES: Record<
 > = {
   library: [
     {
-      runtimeEvidencePredicate: ({ hasCatalogEvidence, hasCapabilitySignal, hasSkippedEvidence }) =>
-        hasCatalogEvidence ||
-        hasSkippedEvidence ||
-        hasCapabilitySignal((capability) => capability.kind === "test-runner"),
+      runtimeEvidencePredicate: ({ hasCatalogEvidence, hasSkippedEvidence }) =>
+        hasCatalogEvidence || hasSkippedEvidence,
       slots: [{ roundId: "deep", capability: "full-suite-test" }],
       whenDetectedButNotSelected: "No full-suite deep test command was selected.",
       whenNotDetected: "No full-suite deep test command was detected.",
@@ -143,26 +138,15 @@ const PROFILE_MISSING_CAPABILITY_RULES: Record<
   ],
   frontend: [
     {
-      runtimeEvidencePredicate: ({ hasCatalogEvidence, hasCapabilitySignal }) =>
-        hasCatalogEvidence ||
-        hasCapabilitySignal(
-          (capability) =>
-            (capability.kind === "build-system" && capability.value === "frontend-config") ||
-            (capability.kind === "command" && capability.value === "build"),
-        ),
+      runtimeEvidencePredicate: ({ hasCatalogEvidence, hasSkippedEvidence }) =>
+        hasCatalogEvidence || hasSkippedEvidence,
       slots: [{ roundId: "impact", capability: "build" }],
       whenDetectedButNotSelected: "No build validation command was selected.",
       whenNotDetected: "No build validation command was detected.",
     },
     {
-      runtimeEvidencePredicate: ({ hasCatalogEvidence, hasCapabilitySignal, hasSkippedEvidence }) =>
-        hasCatalogEvidence ||
-        hasSkippedEvidence ||
-        hasCapabilitySignal(
-          (capability) =>
-            capability.kind === "test-runner" &&
-            (capability.value === "playwright" || capability.value === "cypress"),
-        ),
+      runtimeEvidencePredicate: ({ hasCatalogEvidence, hasSkippedEvidence }) =>
+        hasCatalogEvidence || hasSkippedEvidence,
       slots: [{ roundId: "deep", capability: "e2e-or-visual" }],
       whenDetectedButNotSelected: "No e2e or visual deep check was selected.",
       whenNotDetected: "No e2e or visual deep check was detected.",
@@ -170,28 +154,22 @@ const PROFILE_MISSING_CAPABILITY_RULES: Record<
   ],
   migration: [
     {
-      runtimeEvidencePredicate: ({ hasCatalogEvidence, hasCapabilitySignal, hasSkippedEvidence }) =>
-        hasCatalogEvidence ||
-        hasSkippedEvidence ||
-        hasCapabilitySignal((capability) => capability.kind === "migration-tool"),
+      runtimeEvidencePredicate: ({ hasCatalogEvidence, hasSkippedEvidence }) =>
+        hasCatalogEvidence || hasSkippedEvidence,
       slots: [{ roundId: "fast", capability: "schema-validation" }],
       whenDetectedButNotSelected: "No schema validation command was selected.",
       whenNotDetected: "No schema validation command was detected.",
     },
     {
-      runtimeEvidencePredicate: ({ hasCatalogEvidence, hasCapabilitySignal, hasSkippedEvidence }) =>
-        hasCatalogEvidence ||
-        hasSkippedEvidence ||
-        hasCapabilitySignal((capability) => capability.kind === "migration-tool"),
+      runtimeEvidencePredicate: ({ hasCatalogEvidence, hasSkippedEvidence }) =>
+        hasCatalogEvidence || hasSkippedEvidence,
       slots: [{ roundId: "impact", capability: "migration-dry-run" }],
       whenDetectedButNotSelected: "No migration planning or dry-run command was selected.",
       whenNotDetected: "No migration planning or dry-run command was detected.",
     },
     {
-      runtimeEvidencePredicate: ({ hasCatalogEvidence, hasCapabilitySignal, hasSkippedEvidence }) =>
-        hasCatalogEvidence ||
-        hasSkippedEvidence ||
-        hasCapabilitySignal((capability) => capability.kind === "migration-tool"),
+      runtimeEvidencePredicate: ({ hasCatalogEvidence, hasSkippedEvidence }) =>
+        hasCatalogEvidence || hasSkippedEvidence,
       slots: [
         { roundId: "deep", capability: "rollback-simulation" },
         { roundId: "deep", capability: "migration-drift" },
@@ -300,19 +278,25 @@ function applyProfileSelection(options: {
     strategies: effectiveStrategies,
     oracles: effectiveOracles,
   });
+  const validationSignals = buildSelectionSignalSummary(options.signals);
+  const validationGaps = explicitOracles ? [] : options.recommendation.missingCapabilities;
 
   return {
     config,
     selection: consultationProfileSelectionSchema.parse({
       profileId: options.recommendation.profileId,
+      validationProfileId: options.recommendation.profileId,
       confidence: options.recommendation.confidence,
       source: options.source,
       summary: options.recommendation.summary,
+      validationSummary: options.recommendation.summary,
       candidateCount: effectiveCandidateCount,
       strategyIds: effectiveStrategies.map((strategy) => strategy.id),
       oracleIds: effectiveOracles.map((oracle) => oracle.id),
-      missingCapabilities: explicitOracles ? [] : options.recommendation.missingCapabilities,
-      signals: buildSelectionSignalSummary(options.signals.capabilities),
+      missingCapabilities: validationGaps,
+      validationGaps,
+      signals: validationSignals,
+      validationSignals,
     }),
   };
 }
@@ -415,9 +399,70 @@ function buildSignalNotes(
 }
 
 function buildSelectionSignalSummary(
-  capabilities: ProfileRepoSignals["capabilities"],
+  signals: ProfileRepoSignals,
 ): ConsultationProfileSelection["signals"] {
-  return capabilities.map((capability) => `${capability.kind}:${capability.value}`);
+  const summary: string[] = [];
+  const add = (label: string) => {
+    if (!summary.includes(label)) {
+      summary.push(label);
+    }
+  };
+  const hasCapability = (
+    predicate: (capability: ProfileRepoSignals["capabilities"][number]) => boolean,
+  ) => signals.capabilities.some(predicate);
+  const hasRepoLocalCapability = (capability: string) =>
+    signals.commandCatalog.some(
+      (command) => command.source === "repo-local-script" && command.capability === capability,
+    );
+
+  if (signals.commandCatalog.some((command) => command.source === "repo-local-script")) {
+    add("repo-local-validation");
+  }
+  if (hasRepoLocalCapability("e2e-or-visual")) {
+    add("repo-e2e-anchor");
+  }
+  if (
+    ["schema-validation", "migration-dry-run", "rollback-simulation", "migration-drift"].some(
+      hasRepoLocalCapability,
+    )
+  ) {
+    add("repo-migration-anchor");
+  }
+  if (
+    hasCapability((capability) => capability.kind === "intent" && capability.value === "library")
+  ) {
+    add("package-export");
+  }
+  if (
+    hasCapability(
+      (capability) => capability.kind === "build-system" && capability.value === "frontend-config",
+    )
+  ) {
+    add("frontend-config");
+  }
+  if (
+    hasCapability(
+      (capability) =>
+        capability.kind === "test-runner" &&
+        (capability.value === "playwright" || capability.value === "cypress"),
+    )
+  ) {
+    add("e2e-runner");
+  }
+  if (hasCapability((capability) => capability.kind === "migration-tool")) {
+    add("migration-tool");
+  }
+  if (signals.workspaceRoots.length > 0) {
+    add("workspace");
+  }
+  if (
+    summary.length === 0 &&
+    hasCapability((capability) => capability.kind === "intent" && capability.value === "unknown")
+  ) {
+    add("unknown");
+  }
+
+  return summary;
 }
 
 function buildFallbackRecommendation(
@@ -483,10 +528,10 @@ function buildFallbackSummary(
       .join(", ") || "no executable command evidence";
   const rationale =
     profileId !== "generic"
-      ? `detected a unique ${profileId} profile anchor from executable command evidence (${topCommandIds})`
+      ? `detected a unique ${profileId} validation anchor from executable command evidence (${topCommandIds})`
       : anchoredProfiles.length > 1
-        ? `defaulted to the generic profile because profile-specific anchors conflicted (${anchoredProfiles.join(", ")})`
-        : "defaulted to the generic profile because no executable profile-specific anchor was detected";
+        ? `defaulted to the generic validation profile because profile-specific validation anchors conflicted (${anchoredProfiles.join(", ")})`
+        : "defaulted to the generic validation profile because no executable profile-specific validation anchor was detected";
   return `Fallback detection ${rationale}; confidence=${confidence} for task "${basename(taskPacket.source.path)}".`;
 }
 
@@ -568,9 +613,6 @@ function inferMissingCapabilities(
     );
   const hasSkippedCapability = (capability: string) =>
     skippedCommandCandidates.some((candidate) => candidate.capability === capability);
-  const hasCapabilitySignal = (
-    predicate: (capability: ProfileRepoSignals["capabilities"][number]) => boolean,
-  ) => capabilities.some(predicate);
   const recordMissing = (options: {
     slots: ProfileCommandSlot[];
     whenDetectedButNotSelected: string;
@@ -607,7 +649,6 @@ function inferMissingCapabilities(
         !rule.runtimeEvidencePredicate({
           capabilities,
           hasCatalogEvidence,
-          hasCapabilitySignal,
           hasSkippedEvidence,
         })
       ) {
