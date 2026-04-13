@@ -208,15 +208,12 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
       status: "running",
       startedAt,
     };
-    manifest = await writeRunManifest(
-      projectRoot,
-      runManifestSchema.parse({
-        ...manifest,
-        status: "running",
-        rounds: roundStates,
-        candidates: Array.from(candidateMap.values()),
-      }),
-    );
+    manifest = await writeRunManifest(projectRoot, {
+      ...manifest,
+      status: "running",
+      rounds: roundStates,
+      candidates: Array.from(candidateMap.values()),
+    });
 
     let verdictCount = 0;
     let eliminatedCount = 0;
@@ -412,16 +409,13 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
         )
       : undefined);
 
-  const completedManifest = await writeRunManifest(
-    projectRoot,
-    runManifestSchema.parse({
-      ...manifest,
-      status: "completed",
-      rounds: roundStates,
-      candidates: Array.from(candidateMap.values()),
-      ...(recommendedWinner ? { recommendedWinner } : {}),
-    }),
-  );
+  const completedManifest = await writeRunManifest(projectRoot, {
+    ...manifest,
+    status: "completed",
+    rounds: roundStates,
+    candidates: Array.from(candidateMap.values()),
+    ...(recommendedWinner ? { recommendedWinner } : {}),
+  });
   await writeFinalistComparisonReport({
     agent: completedManifest.agent,
     candidateResults,

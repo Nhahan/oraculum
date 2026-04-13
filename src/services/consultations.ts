@@ -100,6 +100,7 @@ export async function renderConsultationSummary(
     `Status: ${manifest.status}`,
     `Outcome: ${status.outcomeType}`,
   ];
+  const recommendedCandidateId = status.recommendedCandidateId;
   if (manifest.taskPacket.originKind && manifest.taskPacket.originPath) {
     lines.splice(
       4,
@@ -145,11 +146,16 @@ export async function renderConsultationSummary(
     }
   }
 
-  if (manifest.recommendedWinner) {
+  if (
+    manifest.recommendedWinner &&
+    manifest.recommendedWinner.candidateId === recommendedCandidateId
+  ) {
     lines.push(
       `Recommended survivor: ${manifest.recommendedWinner.candidateId} (${manifest.recommendedWinner.confidence}, ${manifest.recommendedWinner.source})`,
       manifest.recommendedWinner.summary,
     );
+  } else if (recommendedCandidateId) {
+    lines.push(`Recommended survivor: ${recommendedCandidateId}`);
   }
   if (manifest.profileSelection) {
     const validationProfileId = getValidationProfileId(manifest.profileSelection);
@@ -282,9 +288,9 @@ export async function renderConsultationSummary(
     }
   } else if (status.outcomeType === "abstained-before-execution") {
     lines.push("- revise the task scope or repository setup, then rerun `orc consult`.");
-  } else if (manifest.recommendedWinner) {
+  } else if (recommendedCandidateId) {
     const recommendedCandidate = manifest.candidates.find(
-      (candidate) => candidate.id === manifest.recommendedWinner?.candidateId,
+      (candidate) => candidate.id === recommendedCandidateId,
     );
     const crownTarget =
       recommendedCandidate?.workspaceMode === "copy"
@@ -362,6 +368,12 @@ export function buildVerdictReview(
   const finalistIds = manifest.candidates
     .filter((candidate) => candidate.status === "promoted" || candidate.status === "exported")
     .map((candidate) => candidate.id);
+  const reviewFinalistIds =
+    finalistIds.length === 0 &&
+    status.outcomeType === "recommended-survivor" &&
+    status.recommendedCandidateId
+      ? [status.recommendedCandidateId]
+      : finalistIds;
 
   return {
     outcomeType: status.outcomeType,
@@ -406,7 +418,7 @@ export function buildVerdictReview(
     ...(status.recommendedCandidateId
       ? { recommendedCandidateId: status.recommendedCandidateId }
       : {}),
-    finalistIds,
+    finalistIds: reviewFinalistIds,
     ...(getValidationProfileId(manifest.profileSelection)
       ? { validationProfileId: getValidationProfileId(manifest.profileSelection) }
       : {}),
@@ -452,7 +464,7 @@ export function renderConsultationArchive(
   const lines = ["Recent consultations:"];
   for (const manifest of manifests) {
     const status = buildSavedConsultationStatus(manifest);
-    const recommendation = renderArchiveOutcomeSummary(manifest, status);
+    const recommendation = renderArchiveOutcomeSummary(status);
     const artifact = renderArchiveArtifactSummary(manifest);
     const profile = getValidationProfileId(manifest.profileSelection)
       ? `validation profile ${getValidationProfileId(manifest.profileSelection)}`
@@ -468,11 +480,10 @@ export function renderConsultationArchive(
 }
 
 function renderArchiveOutcomeSummary(
-  manifest: RunManifest,
   status: ReturnType<typeof buildSavedConsultationStatus>,
 ): string {
-  if (manifest.recommendedWinner) {
-    return `survivor ${manifest.recommendedWinner.candidateId}`;
+  if (status.recommendedCandidateId) {
+    return `survivor ${status.recommendedCandidateId}`;
   }
 
   switch (status.outcomeType) {

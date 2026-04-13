@@ -360,7 +360,10 @@ export async function prepareExportPlan(
       ? await readLatestRunId(projectRoot)
       : await readLatestExportableRunId(projectRoot));
   const manifest = await readRunManifest(projectRoot, resolvedRunId);
-  const resolvedWinnerId = options.winnerId ?? manifest.recommendedWinner?.candidateId;
+  const resolvedWinnerId =
+    options.winnerId ??
+    manifest.recommendedWinner?.candidateId ??
+    manifest.outcome?.recommendedCandidateId;
   if (!resolvedWinnerId) {
     throw new OraculumError(
       `Consultation "${manifest.id}" does not have a recommended survivor. Reopen the comparison report first, or provide a candidate id explicitly through a direct tool call.`,

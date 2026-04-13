@@ -124,6 +124,42 @@ export const optionalNonEmptyStringSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim().length === 0 ? undefined : value),
   z.string().min(1).optional(),
 );
+
+function getExpectedOutcomeFlags(type: z.infer<typeof consultationOutcomeTypeSchema>): {
+  terminal: boolean;
+  crownable: boolean;
+} {
+  switch (type) {
+    case "pending-execution":
+    case "running":
+      return { terminal: false, crownable: false };
+    case "recommended-survivor":
+      return { terminal: true, crownable: true };
+    case "needs-clarification":
+    case "external-research-required":
+    case "abstained-before-execution":
+    case "finalists-without-recommendation":
+    case "no-survivors":
+    case "completed-with-validation-gaps":
+      return { terminal: true, crownable: false };
+  }
+}
+
+function getBlockedOutcomeType(
+  decision: z.infer<typeof consultationPreflightDecisionSchema>,
+): z.infer<typeof consultationOutcomeTypeSchema> | undefined {
+  switch (decision) {
+    case "needs-clarification":
+      return "needs-clarification";
+    case "external-research-required":
+      return "external-research-required";
+    case "abstain":
+      return "abstained-before-execution";
+    case "proceed":
+      return undefined;
+  }
+}
+
 export const consultationOutcomeSchema = z.preprocess(
   (value) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -136,14 +172,20 @@ export const consultationOutcomeSchema = z.preprocess(
         ? payload.missingCapabilityCount
         : undefined;
     const validationGapCount =
-      typeof payload.validationGapCount === "number"
-        ? payload.validationGapCount
-        : (missingCapabilityCount ?? 0);
+      typeof payload.validationGapCount === "number" ? payload.validationGapCount : undefined;
 
     return {
       ...payload,
-      missingCapabilityCount: missingCapabilityCount ?? validationGapCount,
-      validationGapCount,
+      ...(validationGapCount !== undefined
+        ? { validationGapCount }
+        : missingCapabilityCount !== undefined
+          ? { validationGapCount: missingCapabilityCount }
+          : {}),
+      ...(missingCapabilityCount !== undefined
+        ? { missingCapabilityCount }
+        : validationGapCount !== undefined
+          ? { missingCapabilityCount: validationGapCount }
+          : {}),
     };
   },
   z
@@ -160,6 +202,23 @@ export const consultationOutcomeSchema = z.preprocess(
       judgingBasisKind: consultationJudgingBasisKindSchema,
     })
     .superRefine((value, context) => {
+      const expectedFlags = getExpectedOutcomeFlags(value.type);
+      if (value.terminal !== expectedFlags.terminal) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["terminal"],
+          message: `terminal must be ${expectedFlags.terminal} when outcome type is ${value.type}.`,
+        });
+      }
+
+      if (value.crownable !== expectedFlags.crownable) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["crownable"],
+          message: `crownable must be ${expectedFlags.crownable} when outcome type is ${value.type}.`,
+        });
+      }
+
       if (
         value.missingCapabilityCount !== undefined &&
         value.missingCapabilityCount !== value.validationGapCount
@@ -169,6 +228,108 @@ export const consultationOutcomeSchema = z.preprocess(
           path: ["validationGapCount"],
           message:
             "validationGapCount must match missingCapabilityCount when both legacy and validation aliases are present.",
+        });
+      }
+
+      if (value.type === "recommended-survivor" && !value.recommendedCandidateId) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["recommendedCandidateId"],
+          message: "recommendedCandidateId is required when outcome type is recommended-survivor.",
+        });
+      }
+
+      if (value.type !== "recommended-survivor" && value.recommendedCandidateId) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["recommendedCandidateId"],
+          message:
+            "recommendedCandidateId is only allowed when outcome type is recommended-survivor.",
+        });
+      }
+
+      if (
+        (value.type === "recommended-survivor" ||
+          value.type === "finalists-without-recommendation") &&
+        value.finalistCount < 1
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["finalistCount"],
+          message:
+            "recommended-survivor and finalists-without-recommendation outcomes require finalistCount to be at least 1.",
+        });
+      }
+
+      if (
+        value.type !== "recommended-survivor" &&
+        value.type !== "finalists-without-recommendation" &&
+        value.finalistCount !== 0
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["finalistCount"],
+          message: `${value.type} outcomes require finalistCount to be 0.`,
+        });
+      }
+
+      if (value.type === "completed-with-validation-gaps" && value.validationGapCount < 1) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationGapCount"],
+          message:
+            "completed-with-validation-gaps outcomes require validationGapCount to be at least 1.",
+        });
+      }
+
+      if (
+        value.type === "completed-with-validation-gaps" &&
+        value.validationPosture !== "validation-gaps"
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationPosture"],
+          message:
+            "completed-with-validation-gaps outcomes require validationPosture to be validation-gaps.",
+        });
+      }
+
+      if (value.type === "no-survivors" && value.validationGapCount !== 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationGapCount"],
+          message: "no-survivors outcomes require validationGapCount to be 0.",
+        });
+      }
+
+      if (value.type === "no-survivors" && value.validationPosture === "validation-gaps") {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationPosture"],
+          message: "no-survivors outcomes cannot use validation-gaps validationPosture.",
+        });
+      }
+
+      if (
+        value.type === "external-research-required" &&
+        value.validationPosture !== "validation-gaps"
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationPosture"],
+          message:
+            "external-research-required outcomes require validationPosture to be validation-gaps.",
+        });
+      }
+
+      if (
+        (value.type === "needs-clarification" || value.type === "abstained-before-execution") &&
+        value.validationPosture !== "unknown"
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationPosture"],
+          message: `${value.type} outcomes require validationPosture to be unknown.`,
         });
       }
     }),
@@ -244,12 +405,20 @@ export const savedConsultationStatusSchema = z.preprocess(
     const validationGapsPresent =
       typeof payload.validationGapsPresent === "boolean"
         ? payload.validationGapsPresent
-        : (missingCapabilitiesPresent ?? false);
+        : undefined;
 
     return {
       ...payload,
-      missingCapabilitiesPresent: missingCapabilitiesPresent ?? validationGapsPresent,
-      validationGapsPresent,
+      ...(validationGapsPresent !== undefined
+        ? { validationGapsPresent }
+        : missingCapabilitiesPresent !== undefined
+          ? { validationGapsPresent: missingCapabilitiesPresent }
+          : {}),
+      ...(missingCapabilitiesPresent !== undefined
+        ? { missingCapabilitiesPresent }
+        : validationGapsPresent !== undefined
+          ? { missingCapabilitiesPresent: validationGapsPresent }
+          : {}),
     };
   },
   z
@@ -289,6 +458,23 @@ export const savedConsultationStatusSchema = z.preprocess(
       updatedAt: z.string().min(1),
     })
     .superRefine((value, context) => {
+      const expectedFlags = getExpectedOutcomeFlags(value.outcomeType);
+      if (value.terminal !== expectedFlags.terminal) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["terminal"],
+          message: `terminal must be ${expectedFlags.terminal} when outcomeType is ${value.outcomeType}.`,
+        });
+      }
+
+      if (value.crownable !== expectedFlags.crownable) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["crownable"],
+          message: `crownable must be ${expectedFlags.crownable} when outcomeType is ${value.outcomeType}.`,
+        });
+      }
+
       if (
         value.missingCapabilitiesPresent !== undefined &&
         value.missingCapabilitiesPresent !== value.validationGapsPresent
@@ -300,26 +486,361 @@ export const savedConsultationStatusSchema = z.preprocess(
             "validationGapsPresent must match missingCapabilitiesPresent when both legacy and validation aliases are present.",
         });
       }
+
+      if (value.validationGaps.length > 0 && !value.validationGapsPresent) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationGapsPresent"],
+          message: "validationGapsPresent must be true when detailed validationGaps are present.",
+        });
+      }
+
+      if (value.outcomeType === "recommended-survivor" && !value.recommendedCandidateId) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["recommendedCandidateId"],
+          message: "recommendedCandidateId is required when outcomeType is recommended-survivor.",
+        });
+      }
+
+      if (value.outcomeType !== "recommended-survivor" && value.recommendedCandidateId) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["recommendedCandidateId"],
+          message:
+            "recommendedCandidateId is only allowed when outcomeType is recommended-survivor.",
+        });
+      }
+
+      if (
+        (value.outcomeType === "recommended-survivor" ||
+          value.outcomeType === "finalists-without-recommendation") &&
+        value.finalistCount < 1
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["finalistCount"],
+          message:
+            "recommended-survivor and finalists-without-recommendation statuses require finalistCount to be at least 1.",
+        });
+      }
+
+      if (
+        value.outcomeType !== "recommended-survivor" &&
+        value.outcomeType !== "finalists-without-recommendation" &&
+        value.finalistCount !== 0
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["finalistCount"],
+          message: `${value.outcomeType} statuses require finalistCount to be 0.`,
+        });
+      }
+
+      if (value.outcomeType === "completed-with-validation-gaps" && !value.validationGapsPresent) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationGapsPresent"],
+          message:
+            "completed-with-validation-gaps statuses require validationGapsPresent to be true.",
+        });
+      }
+
+      if (
+        value.outcomeType === "completed-with-validation-gaps" &&
+        value.validationPosture !== "validation-gaps"
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationPosture"],
+          message:
+            "completed-with-validation-gaps statuses require validationPosture to be validation-gaps.",
+        });
+      }
+
+      if (value.outcomeType === "no-survivors" && value.validationGapsPresent) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationGapsPresent"],
+          message: "no-survivors statuses require validationGapsPresent to be false.",
+        });
+      }
+
+      if (value.outcomeType === "no-survivors" && value.validationPosture === "validation-gaps") {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationPosture"],
+          message: "no-survivors statuses cannot use validation-gaps validationPosture.",
+        });
+      }
+
+      if (
+        value.outcomeType === "external-research-required" &&
+        value.validationPosture !== "validation-gaps"
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationPosture"],
+          message:
+            "external-research-required statuses require validationPosture to be validation-gaps.",
+        });
+      }
+
+      if (
+        (value.outcomeType === "needs-clarification" ||
+          value.outcomeType === "abstained-before-execution") &&
+        value.validationPosture !== "unknown"
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationPosture"],
+          message: `${value.outcomeType} statuses require validationPosture to be unknown.`,
+        });
+      }
+
+      const expectedBlockedOutcomeType = value.preflightDecision
+        ? getBlockedOutcomeType(value.preflightDecision)
+        : undefined;
+      if (expectedBlockedOutcomeType && value.outcomeType !== expectedBlockedOutcomeType) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["outcomeType"],
+          message: `preflightDecision ${value.preflightDecision} requires outcomeType ${expectedBlockedOutcomeType}.`,
+        });
+      }
+
+      if (
+        value.preflightDecision === "proceed" &&
+        (value.outcomeType === "needs-clarification" ||
+          value.outcomeType === "external-research-required" ||
+          value.outcomeType === "abstained-before-execution")
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["outcomeType"],
+          message: "preflightDecision proceed cannot use a blocked preflight outcomeType.",
+        });
+      }
+
+      if (value.consultationState === "planned" && value.outcomeType !== "pending-execution") {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["outcomeType"],
+          message: "planned consultation statuses must use outcomeType pending-execution.",
+        });
+      }
+
+      if (value.consultationState === "running" && value.outcomeType !== "running") {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["outcomeType"],
+          message: "running consultation statuses must use outcomeType running.",
+        });
+      }
+
+      if (
+        value.consultationState === "completed" &&
+        (value.outcomeType === "pending-execution" || value.outcomeType === "running")
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["outcomeType"],
+          message:
+            "completed consultation statuses cannot use outcomeType pending-execution or running.",
+        });
+      }
     }),
 );
 
-export const runManifestSchema = z.object({
-  id: z.string().min(1),
-  status: runStatusSchema,
-  taskPath: z.string().min(1),
-  taskPacket: taskPacketSummarySchema,
-  agent: adapterSchema,
-  configPath: z.string().min(1).optional(),
-  candidateCount: z.number().int().min(0),
-  createdAt: z.string().min(1),
-  updatedAt: z.string().min(1).optional(),
-  rounds: z.array(roundManifestSchema),
-  candidates: z.array(candidateManifestSchema),
-  preflight: consultationPreflightSchema.optional(),
-  profileSelection: consultationProfileSelectionSchema.optional(),
-  recommendedWinner: runRecommendationSchema.optional(),
-  outcome: consultationOutcomeSchema.optional(),
-});
+export const runManifestSchema = z
+  .object({
+    id: z.string().min(1),
+    status: runStatusSchema,
+    taskPath: z.string().min(1),
+    taskPacket: taskPacketSummarySchema,
+    agent: adapterSchema,
+    configPath: z.string().min(1).optional(),
+    candidateCount: z.number().int().min(0),
+    createdAt: z.string().min(1),
+    updatedAt: z.string().min(1).optional(),
+    rounds: z.array(roundManifestSchema),
+    candidates: z.array(candidateManifestSchema),
+    preflight: consultationPreflightSchema.optional(),
+    profileSelection: consultationProfileSelectionSchema.optional(),
+    recommendedWinner: runRecommendationSchema.optional(),
+    outcome: consultationOutcomeSchema.optional(),
+  })
+  .superRefine((value, context) => {
+    const expectedBlockedOutcomeType = value.preflight
+      ? getBlockedOutcomeType(value.preflight.decision)
+      : undefined;
+
+    if (expectedBlockedOutcomeType && value.outcome?.type !== expectedBlockedOutcomeType) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["outcome", "type"],
+        message: `blocked preflight decision ${value.preflight?.decision} requires outcome type ${expectedBlockedOutcomeType}.`,
+      });
+    }
+
+    if (expectedBlockedOutcomeType && value.candidateCount !== 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["candidateCount"],
+        message: "blocked preflight manifests must not persist candidateCount above 0.",
+      });
+    }
+
+    if (expectedBlockedOutcomeType && value.candidates.length > 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["candidates"],
+        message: "blocked preflight manifests must not persist candidate records.",
+      });
+    }
+
+    if (expectedBlockedOutcomeType && value.rounds.length > 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rounds"],
+        message: "blocked preflight manifests must not persist execution rounds.",
+      });
+    }
+
+    if (expectedBlockedOutcomeType && value.recommendedWinner) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["recommendedWinner"],
+        message: "blocked preflight manifests cannot persist a recommended winner.",
+      });
+    }
+
+    if (
+      value.preflight?.decision === "proceed" &&
+      value.outcome &&
+      (value.outcome.type === "needs-clarification" ||
+        value.outcome.type === "external-research-required" ||
+        value.outcome.type === "abstained-before-execution")
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["outcome", "type"],
+        message: "preflight decision proceed cannot persist a blocked preflight outcome type.",
+      });
+    }
+
+    if (
+      value.outcome &&
+      value.profileSelection &&
+      value.outcome.validationGapCount !== getValidationGaps(value.profileSelection).length
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["outcome", "validationGapCount"],
+        message:
+          "outcome.validationGapCount must match profileSelection validation gaps when a persisted profile selection is present.",
+      });
+    }
+
+    if (value.candidates.length > 0 && value.candidateCount !== value.candidates.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["candidateCount"],
+        message:
+          "candidateCount must match the number of persisted candidates when candidate records are present.",
+      });
+    }
+
+    if (value.outcome) {
+      const persistedFinalistCount = value.candidates.filter(
+        (candidate) => candidate.status === "promoted" || candidate.status === "exported",
+      ).length;
+      if (value.candidates.length > 0 && value.outcome.finalistCount !== persistedFinalistCount) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["outcome", "finalistCount"],
+          message:
+            "outcome.finalistCount must match the number of promoted or exported candidates when candidate records are present.",
+        });
+      }
+
+      if (value.status === "planned" && value.outcome.type !== "pending-execution") {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["outcome", "type"],
+          message: "planned manifests must use the pending-execution outcome type.",
+        });
+      }
+
+      if (value.status === "running" && value.outcome.type !== "running") {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["outcome", "type"],
+          message: "running manifests must use the running outcome type.",
+        });
+      }
+
+      if (
+        value.status === "completed" &&
+        (value.outcome.type === "pending-execution" || value.outcome.type === "running")
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["outcome", "type"],
+          message: "completed manifests cannot use pending-execution or running outcome types.",
+        });
+      }
+    }
+
+    if (value.recommendedWinner && value.outcome?.type !== "recommended-survivor") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["recommendedWinner"],
+        message: "recommendedWinner is only allowed when outcome type is recommended-survivor.",
+      });
+    }
+
+    if (
+      value.recommendedWinner &&
+      value.outcome?.recommendedCandidateId &&
+      value.recommendedWinner.candidateId !== value.outcome.recommendedCandidateId
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["recommendedWinner", "candidateId"],
+        message:
+          "recommendedWinner.candidateId must match outcome.recommendedCandidateId when both are present.",
+      });
+    }
+
+    const recommendedCandidateId =
+      value.outcome?.recommendedCandidateId ?? value.recommendedWinner?.candidateId;
+    if (recommendedCandidateId) {
+      const recommendedCandidate = value.candidates.find(
+        (candidate) => candidate.id === recommendedCandidateId,
+      );
+      if (!recommendedCandidate && value.candidates.length > 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["candidates"],
+          message:
+            "recommended survivors must reference a persisted candidate when candidate records are present in the manifest.",
+        });
+      }
+      if (
+        recommendedCandidate &&
+        recommendedCandidate.status !== "promoted" &&
+        recommendedCandidate.status !== "exported"
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["candidates"],
+          message:
+            "recommended survivors must reference a promoted or exported candidate when that candidate is present in the manifest.",
+        });
+      }
+    }
+  });
 
 export const exportPlanSchema = z
   .object({
@@ -369,8 +890,8 @@ interface ConsultationOutcomeInput {
   candidates: Array<Pick<CandidateManifest, "status">>;
   rounds?: Array<Pick<RunRound, "id" | "status" | "verdictCount">>;
   profileSelection?: {
-    missingCapabilities?: string[] | undefined;
     validationGaps?: string[] | undefined;
+    missingCapabilities?: string[] | undefined;
     oracleIds: string[];
   };
   recommendedWinner?: Pick<NonNullable<RunManifest["recommendedWinner"]>, "candidateId">;
@@ -383,8 +904,8 @@ interface ConsultationOutcomeManifestInput {
   rounds?: Array<Pick<RunRound, "id" | "status" | "verdictCount">> | undefined;
   profileSelection?:
     | {
-        missingCapabilities?: string[] | undefined;
         validationGaps?: string[] | undefined;
+        missingCapabilities?: string[] | undefined;
         oracleIds: string[];
       }
     | undefined;
@@ -496,7 +1017,7 @@ export function deriveConsultationOutcomeForManifest(
     ...(manifest.profileSelection
       ? {
           profileSelection: {
-            missingCapabilities: getValidationGaps(manifest.profileSelection),
+            validationGaps: getValidationGaps(manifest.profileSelection),
             oracleIds: manifest.profileSelection.oracleIds,
           },
         }

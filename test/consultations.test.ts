@@ -122,6 +122,33 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain(`orc verdict ${manifest.id}`);
   });
 
+  it("renders legacy survivor manifests that only persist the outcome survivor id", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      recommendedWinner: undefined,
+      outcome: {
+        type: "recommended-survivor",
+        terminal: true,
+        crownable: true,
+        finalistCount: 1,
+        recommendedCandidateId: "cand-01",
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    await writeManifest(cwd, manifest);
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const archive = renderConsultationArchive([manifest]);
+
+    expect(summary).toContain("Outcome: recommended-survivor");
+    expect(summary).toContain("Recommended survivor: cand-01");
+    expect(summary).toContain("- crown the recommended survivor: orc crown <branch-name>");
+    expect(archive).toContain("survivor cand-01");
+  });
+
   it("renders blocked preflight consultations with readiness guidance", async () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {
@@ -264,6 +291,7 @@ describe("consultation workflow summaries", () => {
       researchVersionNoteCount: 0,
       researchConflictCount: 0,
       researchConflictsPresent: false,
+      recommendedCandidateId: "cand-01",
       finalistIds: ["cand-01"],
       validationProfileId: "frontend",
       validationSignals: ["frontend-framework"],
@@ -308,6 +336,7 @@ describe("consultation workflow summaries", () => {
       researchVersionNoteCount: 0,
       researchConflictCount: 0,
       researchConflictsPresent: false,
+      recommendedCandidateId: "cand-01",
       finalistIds: ["cand-01"],
       validationProfileId: "frontend",
       validationSignals: ["frontend-framework"],
@@ -339,6 +368,502 @@ describe("consultation workflow summaries", () => {
       "No e2e or visual deep check was detected.",
       "No build validation command was selected.",
     ]);
+  });
+
+  it("rejects recommended-survivor review payloads that omit the recommended candidate id", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "recommended-survivor",
+        verificationLevel: "standard",
+        validationPosture: "sufficient",
+        judgingBasisKind: "repo-local-oracle",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        finalistIds: ["cand-01"],
+        validationSignals: [],
+        validationGaps: [],
+        researchPosture: "repo-only",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow("recommendedCandidateId is required when outcomeType is recommended-survivor");
+  });
+
+  it("rejects review payloads whose finalist ids do not match survivor semantics", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "recommended-survivor",
+        verificationLevel: "standard",
+        validationPosture: "sufficient",
+        judgingBasisKind: "repo-local-oracle",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        recommendedCandidateId: "cand-01",
+        finalistIds: [],
+        researchPosture: "repo-only",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow("recommended-survivor reviews require at least one finalist id");
+
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "recommended-survivor",
+        verificationLevel: "standard",
+        validationPosture: "sufficient",
+        judgingBasisKind: "repo-local-oracle",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        recommendedCandidateId: "cand-01",
+        finalistIds: ["cand-02"],
+        researchPosture: "repo-only",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow("recommended-survivor reviews must include recommendedCandidateId in finalistIds");
+
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "finalists-without-recommendation",
+        verificationLevel: "standard",
+        validationPosture: "sufficient",
+        judgingBasisKind: "repo-local-oracle",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        finalistIds: [],
+        researchPosture: "repo-only",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {
+          promoted: 1,
+        },
+      }),
+    ).toThrow(
+      "finalistIds must match the number of promoted or exported candidate states when candidateStateCounts are present",
+    );
+  });
+
+  it("rejects non-recommended review payloads that still include a recommended candidate id", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "no-survivors",
+        verificationLevel: "none",
+        validationPosture: "unknown",
+        judgingBasisKind: "unknown",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        recommendedCandidateId: "cand-01",
+        finalistIds: [],
+        validationSignals: [],
+        validationGaps: [],
+        researchPosture: "unknown",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow("recommendedCandidateId is only allowed when outcomeType is recommended-survivor");
+  });
+
+  it("rejects non-finalist review payloads that still include finalist ids", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "no-survivors",
+        verificationLevel: "none",
+        validationPosture: "unknown",
+        judgingBasisKind: "unknown",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        finalistIds: ["cand-01"],
+        validationSignals: [],
+        validationGaps: [],
+        researchPosture: "unknown",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow("no-survivors reviews require finalistIds to be empty");
+  });
+
+  it("rejects review payloads whose validation-gap semantics disagree with the outcome type", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "no-survivors",
+        verificationLevel: "none",
+        validationPosture: "unknown",
+        judgingBasisKind: "unknown",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        finalistIds: [],
+        validationSignals: [],
+        validationGaps: ["No build validation command was selected."],
+        researchPosture: "unknown",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow("no-survivors reviews require validationGaps to be empty");
+
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "completed-with-validation-gaps",
+        verificationLevel: "none",
+        validationPosture: "sufficient",
+        judgingBasisKind: "missing-capability",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        finalistIds: [],
+        validationSignals: [],
+        validationGaps: [],
+        researchPosture: "unknown",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow(
+      "completed-with-validation-gaps reviews require validationPosture to be validation-gaps",
+    );
+
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "no-survivors",
+        verificationLevel: "none",
+        validationPosture: "validation-gaps",
+        judgingBasisKind: "unknown",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        finalistIds: [],
+        validationSignals: [],
+        validationGaps: [],
+        researchPosture: "unknown",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow("no-survivors reviews cannot use validation-gaps validationPosture");
+  });
+
+  it("rejects blocked-preflight review payloads whose validationPosture disagrees with the blocked state", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "external-research-required",
+        verificationLevel: "none",
+        validationPosture: "unknown",
+        judgingBasisKind: "unknown",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: true,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        finalistIds: [],
+        validationSignals: [],
+        validationGaps: [],
+        researchPosture: "external-research-required",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow("external-research-required reviews require validationPosture to be validation-gaps");
+
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "needs-clarification",
+        verificationLevel: "none",
+        validationPosture: "sufficient",
+        judgingBasisKind: "unknown",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        finalistIds: [],
+        validationSignals: [],
+        validationGaps: [],
+        researchPosture: "repo-only",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow("needs-clarification reviews require validationPosture to be unknown");
+  });
+
+  it("rejects review payloads whose preflightDecision disagrees with the blocked outcome type", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "no-survivors",
+        verificationLevel: "none",
+        validationPosture: "unknown",
+        judgingBasisKind: "unknown",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        finalistIds: [],
+        validationSignals: [],
+        validationGaps: [],
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        researchPosture: "repo-only",
+        preflightDecision: "needs-clarification",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow("preflightDecision needs-clarification requires outcomeType needs-clarification");
+
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "external-research-required",
+        verificationLevel: "none",
+        validationPosture: "validation-gaps",
+        judgingBasisKind: "unknown",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        finalistIds: [],
+        validationSignals: [],
+        validationGaps: [],
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        researchPosture: "external-research-required",
+        preflightDecision: "proceed",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow("preflightDecision proceed cannot use a blocked preflight outcomeType");
+  });
+
+  it("allows legacy validation-gap reviews that only know the gap count", () => {
+    const manifest = createManifest("completed", {
+      id: "run_gap_review",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      outcome: {
+        type: "completed-with-validation-gaps",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "validation-gaps",
+        verificationLevel: "none",
+        validationGapCount: 1,
+        judgingBasisKind: "missing-capability",
+      },
+    });
+
+    const review = buildVerdictReview(manifest, {});
+
+    expect(review.outcomeType).toBe("completed-with-validation-gaps");
+    expect(review.validationGaps).toEqual([]);
+  });
+
+  it("allows legacy survivor reviews that only know the recommended survivor id", () => {
+    const manifest = createManifest("completed", {
+      id: "run_legacy_survivor_review",
+      candidateCount: 1,
+      rounds: [],
+      candidates: [],
+      outcome: {
+        type: "recommended-survivor",
+        terminal: true,
+        crownable: true,
+        finalistCount: 1,
+        recommendedCandidateId: "cand-01",
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+
+    const review = verdictReviewSchema.parse(buildVerdictReview(manifest, {}));
+
+    expect(review.outcomeType).toBe("recommended-survivor");
+    expect(review.recommendedCandidateId).toBe("cand-01");
+    expect(review.finalistIds).toEqual(["cand-01"]);
+  });
+
+  it("allows legacy finalists-without-recommendation reviews without invented finalist ids", () => {
+    const manifest = createManifest("completed", {
+      id: "run_legacy_finalists_review",
+      candidateCount: 2,
+      rounds: [],
+      candidates: [],
+      outcome: {
+        type: "finalists-without-recommendation",
+        terminal: true,
+        crownable: false,
+        finalistCount: 2,
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+
+    const review = verdictReviewSchema.parse(buildVerdictReview(manifest, {}));
+
+    expect(review.outcomeType).toBe("finalists-without-recommendation");
+    expect(review.finalistIds).toEqual([]);
   });
 
   it("renders blocked preflight consultations distinctly in the archive", async () => {
