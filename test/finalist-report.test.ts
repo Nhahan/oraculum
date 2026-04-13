@@ -244,8 +244,8 @@ describe("finalist comparison reports", () => {
     expect(markdown).toContain("- Research conflicts: 1");
     expect(markdown).toContain("- Research basis drift: detected");
     expect(markdown).toContain("- Task origin: task-note (task.md)");
-    expect(markdown).toContain("## Consultation Validation Profile");
-    expect(markdown).toContain("- Validation profile: library");
+    expect(markdown).toContain("## Consultation Validation Posture");
+    expect(markdown).toContain("- Validation posture: library");
     expect(markdown).toContain("- Validation evidence: intent:library");
     expect(markdown).toContain("- Why this won: cand-01 best matches the task intent.");
     expect(markdown).toContain("Repair attempts: 1 (impact)");

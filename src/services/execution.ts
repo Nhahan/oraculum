@@ -23,7 +23,11 @@ import {
 import { runSubprocess } from "../core/subprocess.js";
 import { projectConfigSchema } from "../domain/config.js";
 import type { OracleVerdict } from "../domain/oracle.js";
-import { getValidationGaps, getValidationProfileId } from "../domain/profile.js";
+import {
+  getValidationGaps,
+  getValidationProfileId,
+  toCanonicalConsultationProfileSelection,
+} from "../domain/profile.js";
 import {
   type CandidateManifest,
   candidateManifestSchema,
@@ -553,7 +557,7 @@ function chooseFallbackWinner(
       candidateId: winner.id,
       confidence,
       summary: hasProfileGaps
-        ? `Selected by fallback policy because ${winner.id} is the only surviving finalist, but the selected validation profile${validationProfileId ? ` (${validationProfileId})` : ""} still has validation gaps: ${validationGaps.join("; ")}.`
+        ? `Selected by fallback policy because ${winner.id} is the only surviving finalist, but the selected validation posture${validationProfileId ? ` (${validationProfileId})` : ""} still has validation gaps: ${validationGaps.join("; ")}.`
         : `Selected by fallback policy because ${winner.id} is the only surviving finalist.`,
       source: "fallback-policy",
     };
@@ -578,7 +582,7 @@ function chooseFallbackWinner(
       confidence === "medium"
         ? `Selected by fallback policy from ${finalists.length} finalists using current deterministic signals: fewer warnings/errors, stronger pass coverage, and better artifact coverage.`
         : hasProfileGaps
-          ? `Selected by fallback policy from ${finalists.length} finalists, but the selected validation profile${validationProfileId ? ` (${validationProfileId})` : ""} still has validation gaps: ${validationGaps.join("; ")}.`
+          ? `Selected by fallback policy from ${finalists.length} finalists, but the selected validation posture${validationProfileId ? ` (${validationProfileId})` : ""} still has validation gaps: ${validationGaps.join("; ")}.`
           : `Selected by fallback policy from ${finalists.length} finalists; finalists were close, so confidence is limited.`,
     source: "fallback-policy",
   };
@@ -604,7 +608,12 @@ async function writeRunManifest(projectRoot: string, manifest: RunManifest): Pro
     updatedAt,
     outcome: deriveConsultationOutcomeForManifest(manifest),
   });
-  await writeJsonFile(getRunManifestPath(projectRoot, manifest.id), persisted);
+  await writeJsonFile(getRunManifestPath(projectRoot, manifest.id), {
+    ...persisted,
+    ...(persisted.profileSelection
+      ? { profileSelection: toCanonicalConsultationProfileSelection(persisted.profileSelection) }
+      : {}),
+  });
   return persisted;
 }
 

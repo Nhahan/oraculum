@@ -29,6 +29,7 @@ import {
   type ManagedTreeRules,
   projectConfigSchema,
 } from "../domain/config.js";
+import { toCanonicalConsultationProfileSelection } from "../domain/profile.js";
 import {
   type CandidateManifest,
   candidateManifestSchema,
@@ -1044,14 +1045,20 @@ async function markCandidateExported(
 
   try {
     await writeJsonFile(candidateManifestPath, exportedCandidate);
-    await writeJsonFile(
-      getRunManifestPath(projectRoot, manifest.id),
-      runManifestSchema.parse({
+    await writeJsonFile(getRunManifestPath(projectRoot, manifest.id), {
+      ...runManifestSchema.parse({
         ...nextManifest,
         updatedAt: new Date().toISOString(),
         outcome: deriveConsultationOutcomeForManifest(nextManifest),
       }),
-    );
+      ...(nextManifest.profileSelection
+        ? {
+            profileSelection: toCanonicalConsultationProfileSelection(
+              nextManifest.profileSelection,
+            ),
+          }
+        : {}),
+    });
   } catch (error) {
     const restoreFailures: string[] = [];
 

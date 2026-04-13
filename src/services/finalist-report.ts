@@ -291,8 +291,8 @@ function buildComparisonMarkdown(report: ComparisonReport, projectRoot: string):
   ) {
     lines.push(
       "",
-      "## Consultation Validation Profile",
-      `- Validation profile: ${validationProfileId ?? "unknown"}`,
+      "## Consultation Validation Posture",
+      `- Validation posture: ${validationProfileId ?? "unknown"}`,
     );
     if (report.consultationProfile) {
       lines.push(`- Confidence: ${report.consultationProfile.confidence}`);

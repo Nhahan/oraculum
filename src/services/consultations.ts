@@ -178,7 +178,7 @@ export async function renderConsultationSummary(
     const validationSignals = getValidationSignals(manifest.profileSelection);
     const validationGaps = getValidationGaps(manifest.profileSelection);
     lines.push(
-      `Auto validation profile: ${validationProfileId} (${manifest.profileSelection.confidence}, ${manifest.profileSelection.source})`,
+      `Auto validation posture: ${validationProfileId} (${manifest.profileSelection.confidence}, ${manifest.profileSelection.source})`,
       validationSummary,
     );
     if (validationSignals.length > 0) {
@@ -186,14 +186,14 @@ export async function renderConsultationSummary(
     }
     if (validationGaps.length > 0) {
       lines.push(
-        "Validation gaps from the selected profile:",
+        "Validation gaps from the selected posture:",
         ...validationGaps.map((item) => `- ${item}`),
       );
     }
     const skippedCommandCandidates = await readSkippedProfileCommands(projectRoot, manifest.id);
     if (skippedCommandCandidates.length > 0) {
       lines.push(
-        "Skipped profile commands:",
+        "Skipped validation posture commands:",
         ...skippedCommandCandidates
           .slice(0, 5)
           .map((candidate) => `- ${candidate.id}: ${candidate.reason} - ${candidate.detail}`),
@@ -485,8 +485,8 @@ export function renderConsultationArchive(
     const recommendation = renderArchiveOutcomeSummary(manifest, status, options?.projectRoot);
     const artifact = renderArchiveArtifactSummary(manifest, options?.projectRoot);
     const profile = getValidationProfileId(manifest.profileSelection)
-      ? `validation profile ${getValidationProfileId(manifest.profileSelection)}`
-      : "no auto profile";
+      ? `validation posture ${getValidationProfileId(manifest.profileSelection)}`
+      : "no auto validation posture";
     lines.push(
       `- ${manifest.id} | ${manifest.status} | ${manifest.taskPacket.title}${artifact ? ` | ${artifact}` : ""} | ${profile} | ${recommendation}`,
       `  opened: ${manifest.createdAt}`,

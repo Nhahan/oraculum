@@ -16,6 +16,7 @@ import {
   getFinalistComparisonMarkdownPath,
   getLatestExportableRunStatePath,
   getLatestRunStatePath,
+  getRunManifestPath,
 } from "../src/core/paths.js";
 import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
 import { executeRun } from "../src/services/execution.js";
@@ -1272,7 +1273,7 @@ if (out) {
     ).resolves.toContain("fallback-policy");
   });
 
-  it("mentions validation gaps in fallback winner summaries using the selected validation profile", async () => {
+  it("mentions validation gaps in fallback winner summaries using the selected validation posture", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
     await writeFile(
@@ -1355,7 +1356,7 @@ if (out) {
 
     expect(executed.manifest.recommendedWinner?.source).toBe("fallback-policy");
     expect(executed.manifest.recommendedWinner?.summary).toContain(
-      "selected validation profile (library) still has validation gaps",
+      "selected validation posture (library) still has validation gaps",
     );
     expect(executed.manifest.recommendedWinner?.summary).toContain(
       "No package packaging smoke check was selected.",
@@ -1598,6 +1599,20 @@ if (out) {
     expect(executed.manifest.rounds[0]?.verdictCount).toBeGreaterThanOrEqual(4);
     expect(executed.manifest.rounds[1]?.verdictCount).toBeGreaterThanOrEqual(3);
     expect(executed.manifest.rounds[2]?.verdictCount).toBeGreaterThanOrEqual(1);
+    const rawSavedManifest = JSON.parse(
+      await readFile(getRunManifestPath(cwd, planned.id), "utf8"),
+    ) as {
+      profileSelection?: {
+        profileId?: string;
+        summary?: string;
+        signals?: string[];
+        missingCapabilities?: string[];
+      };
+    };
+    expect(rawSavedManifest.profileSelection).not.toHaveProperty("profileId");
+    expect(rawSavedManifest.profileSelection).not.toHaveProperty("summary");
+    expect(rawSavedManifest.profileSelection).not.toHaveProperty("signals");
+    expect(rawSavedManifest.profileSelection).not.toHaveProperty("missingCapabilities");
 
     await expect(
       readFile(getCandidateVerdictPath(cwd, planned.id, "cand-01", "fast", "lint-fast"), "utf8"),

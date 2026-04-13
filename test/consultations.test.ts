@@ -97,7 +97,7 @@ describe("consultation workflow summaries", () => {
       "- winner selection: .oraculum/runs/run_1/reports/winner-selection.json",
     );
     expect(summary).toContain("- crowning record: .oraculum/runs/run_1/reports/export-plan.json");
-    expect(summary).toContain("Auto validation profile: library (high, llm-recommendation)");
+    expect(summary).toContain("Auto validation posture: library (high, llm-recommendation)");
     expect(summary).toContain("Validation evidence: package-export, lint-script");
     expect(summary).toContain("Recommended survivor: cand-01 (high, llm-judge)");
     expect(summary).toContain("Next:");
@@ -1124,7 +1124,7 @@ describe("consultation workflow summaries", () => {
     const archive = renderConsultationArchive(manifests);
 
     expect(archive).toContain(
-      "- run_blocked | completed | Task | no auto profile | needs clarification",
+      "- run_blocked | completed | Task | no auto validation posture | needs clarification",
     );
   });
 
@@ -1438,7 +1438,7 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain("Validation posture: validation-gaps");
     expect(summary).toContain("Verification level: standard");
     expect(summary).toContain("Validation evidence: frontend-framework, build-script");
-    expect(summary).toContain("Validation gaps from the selected profile:");
+    expect(summary).toContain("Validation gaps from the selected posture:");
     expect(summary).toContain("- No e2e or visual deep check was detected.");
     expect(status.verificationLevel).toBe("standard");
     expect(status.validationProfileId).toBe("frontend");
@@ -1499,7 +1499,7 @@ describe("consultation workflow summaries", () => {
 
     const summary = await renderConsultationSummary(manifest, cwd);
 
-    expect(summary).toContain("Skipped profile commands:");
+    expect(summary).toContain("Skipped validation posture commands:");
     expect(summary).toContain(
       "- e2e-deep: missing-explicit-command - A test-runner capability was detected",
     );
@@ -1559,9 +1559,11 @@ describe("consultation workflow summaries", () => {
 
     expect(manifests.map((manifest) => manifest.id)).toEqual(["run_newer", "run_older"]);
     expect(archive).toContain("Recent consultations:");
-    expect(archive).toContain("- run_newer | planned | Task | no auto profile | pending execution");
     expect(archive).toContain(
-      "- run_older | completed | Task | no auto profile | finalists without recommendation",
+      "- run_newer | planned | Task | no auto validation posture | pending execution",
+    );
+    expect(archive).toContain(
+      "- run_older | completed | Task | no auto validation posture | finalists without recommendation",
     );
     expect(archive).toContain("orc verdict run_newer");
   });
@@ -1617,10 +1619,10 @@ describe("consultation workflow summaries", () => {
     const archive = renderConsultationArchive(await listRecentConsultations(cwd, 10));
 
     expect(archive).toContain(
-      "- run_finalists | completed | Task | no auto profile | finalists without recommendation",
+      "- run_finalists | completed | Task | no auto validation posture | finalists without recommendation",
     );
     expect(archive).toContain(
-      "- run_gaps | completed | Task | validation profile frontend | completed with validation gaps",
+      "- run_gaps | completed | Task | validation posture frontend | completed with validation gaps",
     );
   });
 
@@ -1642,7 +1644,7 @@ describe("consultation workflow summaries", () => {
     const archive = renderConsultationArchive(await listRecentConsultations(cwd, 10));
 
     expect(archive).toContain(
-      "- run_artifact | planned | Task | artifact document @ docs/SESSION_PLAN.md | no auto profile | pending execution",
+      "- run_artifact | planned | Task | artifact document @ docs/SESSION_PLAN.md | no auto validation posture | pending execution",
     );
   });
 

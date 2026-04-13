@@ -28,6 +28,7 @@ import {
   resolveProjectRoot,
 } from "../core/paths.js";
 import type { Adapter, ProjectConfig, Strategy } from "../domain/config.js";
+import { toCanonicalConsultationProfileSelection } from "../domain/profile.js";
 import {
   buildBlockedPreflightOutcome,
   type CandidateManifest,
@@ -322,8 +323,17 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
     }),
   };
 
-  runManifestSchema.parse(manifest);
-  await writeJsonFile(getRunManifestPath(projectRoot, runId), manifest);
+  const persistedManifest = runManifestSchema.parse(manifest);
+  await writeJsonFile(getRunManifestPath(projectRoot, runId), {
+    ...persistedManifest,
+    ...(persistedManifest.profileSelection
+      ? {
+          profileSelection: toCanonicalConsultationProfileSelection(
+            persistedManifest.profileSelection,
+          ),
+        }
+      : {}),
+  });
 
   return manifest;
 }
