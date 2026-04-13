@@ -85,6 +85,8 @@ function materializeResearchBriefTaskPacket(
     source: {
       kind: "research-brief",
       path: taskPath,
+      originKind: researchBrief.task.sourceKind,
+      originPath: researchBrief.task.sourcePath,
     },
   });
 }

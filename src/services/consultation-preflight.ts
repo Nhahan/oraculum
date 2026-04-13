@@ -83,8 +83,8 @@ export async function recommendConsultationPreflight(
         task: {
           id: options.taskPacket.id,
           title: options.taskPacket.title,
-          sourceKind: options.taskPacket.source.kind,
-          sourcePath: options.taskPacket.source.path,
+          sourceKind: options.taskPacket.source.originKind ?? options.taskPacket.source.kind,
+          sourcePath: options.taskPacket.source.originPath ?? options.taskPacket.source.path,
         },
         notes: signals.notes,
         signalSummary: signals.capabilities.map(

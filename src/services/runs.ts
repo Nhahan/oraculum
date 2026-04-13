@@ -153,6 +153,12 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
         title: taskPacket.title,
         sourceKind: taskPacket.source.kind,
         sourcePath: taskPacket.source.path,
+        ...(taskPacket.source.originKind && taskPacket.source.originPath
+          ? {
+              originKind: taskPacket.source.originKind,
+              originPath: taskPacket.source.originPath,
+            }
+          : {}),
       },
       agent,
       configPath,
@@ -266,6 +272,12 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
       title: taskPacket.title,
       sourceKind: taskPacket.source.kind,
       sourcePath: taskPacket.source.path,
+      ...(taskPacket.source.originKind && taskPacket.source.originPath
+        ? {
+            originKind: taskPacket.source.originKind,
+            originPath: taskPacket.source.originPath,
+          }
+        : {}),
     },
     agent,
     configPath,

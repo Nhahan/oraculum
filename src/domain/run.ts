@@ -170,6 +170,8 @@ export const savedConsultationStatusSchema = z.object({
   crownable: z.boolean(),
   taskSourceKind: taskSourceKindSchema,
   taskSourcePath: z.string().min(1),
+  taskOriginSourceKind: taskSourceKindSchema.optional(),
+  taskOriginSourcePath: z.string().min(1).optional(),
   validationPosture: consultationValidationPostureSchema,
   recommendedCandidateId: z.string().min(1).optional(),
   finalistCount: z.number().int().min(0),
@@ -401,6 +403,12 @@ export function buildSavedConsultationStatus(manifest: RunManifest): SavedConsul
     crownable: outcome.crownable,
     taskSourceKind: manifest.taskPacket.sourceKind,
     taskSourcePath: manifest.taskPacket.sourcePath,
+    ...(manifest.taskPacket.originKind && manifest.taskPacket.originPath
+      ? {
+          taskOriginSourceKind: manifest.taskPacket.originKind,
+          taskOriginSourcePath: manifest.taskPacket.originPath,
+        }
+      : {}),
     validationPosture: outcome.validationPosture,
     ...(outcome.recommendedCandidateId
       ? { recommendedCandidateId: outcome.recommendedCandidateId }

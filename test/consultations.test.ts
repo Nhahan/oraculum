@@ -338,6 +338,7 @@ describe("consultation workflow summaries", () => {
 
   it("renders research-brief task provenance in summary and review", async () => {
     const cwd = await createInitializedProject();
+    const originalTaskPath = "/tmp/original-task.md";
     const manifest = createManifest("completed", {
       taskPath: getResearchBriefPath(cwd, "run_source"),
       taskPacket: {
@@ -345,6 +346,8 @@ describe("consultation workflow summaries", () => {
         title: "Task",
         sourceKind: "research-brief",
         sourcePath: getResearchBriefPath(cwd, "run_source"),
+        originKind: "task-note",
+        originPath: originalTaskPath,
       },
     });
 
@@ -355,10 +358,15 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain(
       "Task source: research-brief (.oraculum/runs/run_source/reports/research-brief.json)",
     );
+    expect(summary).toContain("Task origin: task-note (");
     expect(status.taskSourceKind).toBe("research-brief");
     expect(status.taskSourcePath).toBe(getResearchBriefPath(cwd, "run_source"));
+    expect(status.taskOriginSourceKind).toBe("task-note");
+    expect(status.taskOriginSourcePath).toBe(originalTaskPath);
     expect(review.taskSourceKind).toBe("research-brief");
     expect(review.taskSourcePath).toBe(getResearchBriefPath(cwd, "run_source"));
+    expect(review.taskOriginSourceKind).toBe("task-note");
+    expect(review.taskOriginSourcePath).toBe(originalTaskPath);
   });
 
   it("does not report a promotion record when only a stale export plan file exists", async () => {

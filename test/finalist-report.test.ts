@@ -40,6 +40,8 @@ describe("finalist comparison reports", () => {
         title: "Fix session loss",
         sourceKind: "task-note",
         sourcePath: join(projectRoot, "task.md"),
+        originKind: "task-note",
+        originPath: join(projectRoot, "task.md"),
       },
       recommendedWinner: {
         candidateId: "cand-01",
@@ -139,9 +141,16 @@ describe("finalist comparison reports", () => {
     expect(result.markdownPath).toBe(getFinalistComparisonMarkdownPath(projectRoot, "run_1"));
 
     await expect(readFile(result.jsonPath, "utf8")).resolves.toContain('"finalistCount": 1');
+    await expect(readFile(result.jsonPath, "utf8")).resolves.toContain('"originKind": "task-note"');
     await expect(readFile(result.jsonPath, "utf8")).resolves.toContain('"warning": 1');
     await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
       "## Recommended Survivor",
+    );
+    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
+      "- Task source: task-note (",
+    );
+    await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
+      "- Task origin: task-note (",
     );
     await expect(readFile(result.markdownPath, "utf8")).resolves.toContain(
       "- Why this won: cand-01 best matches the task intent.",
@@ -167,6 +176,8 @@ describe("finalist comparison reports", () => {
         title: "Fix auth regression",
         sourceKind: "task-note",
         sourcePath: join(projectRoot, "task.md"),
+        originKind: "task-note",
+        originPath: join(projectRoot, "task.md"),
       },
       candidates: [
         {
@@ -190,6 +201,9 @@ describe("finalist comparison reports", () => {
     await expect(
       readFile(getFinalistComparisonMarkdownPath(projectRoot, "run_2"), "utf8"),
     ).resolves.toContain("No survivors cleared this run.");
+    await expect(
+      readFile(getFinalistComparisonMarkdownPath(projectRoot, "run_2"), "utf8"),
+    ).resolves.toContain("- Task source: task-note (");
   });
 });
 

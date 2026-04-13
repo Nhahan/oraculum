@@ -641,6 +641,8 @@ if (out) {
       title: "fix session loss",
       sourceKind: "research-brief",
       sourcePath: getResearchBriefPath(cwd, "run_research"),
+      originKind: "task-note",
+      originPath: join(cwd, "tasks", "fix-session-loss.md"),
     });
   });
 
@@ -689,6 +691,75 @@ if (out) {
     expect(manifest.preflight?.summary).toContain(
       "Proceed conservatively using the persisted research brief plus repository evidence.",
     );
+  });
+
+  it("preserves the original task provenance when a reused research brief still needs external research", async () => {
+    const cwd = await createInitializedProject();
+    const originalTaskPath = join(cwd, "tasks", "fix-session-loss.md");
+    await writeFile(originalTaskPath, "# fix session loss\n", "utf8");
+    await mkdir(dirname(getResearchBriefPath(cwd, "run_research")), { recursive: true });
+    await writeFile(
+      getResearchBriefPath(cwd, "run_research"),
+      `${JSON.stringify(
+        {
+          decision: "external-research-required",
+          question:
+            "What does the official API documentation say about the current versioned behavior?",
+          researchPosture: "external-research-required",
+          summary: "Review the official versioned API docs before execution.",
+          task: {
+            id: "fix-session-loss",
+            title: "fix session loss",
+            sourceKind: "task-note",
+            sourcePath: originalTaskPath,
+          },
+          notes: ["Prefer official docs."],
+          signalSummary: ["Detected explicit lint and test scripts."],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"decision":"external-research-required","confidence":"high","summary":"More official API documentation is required before execution.","researchPosture":"external-research-required","researchQuestion":"What does the official API documentation say about the newly surfaced edge case?"}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const manifest = await planRun({
+      cwd,
+      taskInput: ".oraculum/runs/run_research/reports/research-brief.json",
+      agent: "codex",
+      preflight: {
+        codexBinaryPath: fakeCodex,
+        timeoutMs: 5_000,
+      },
+    });
+
+    const researchBrief = consultationResearchBriefSchema.parse(
+      JSON.parse(await readFile(getResearchBriefPath(cwd, manifest.id), "utf8")) as unknown,
+    );
+    expect(researchBrief.task).toMatchObject({
+      id: "fix-session-loss",
+      title: "fix session loss",
+      sourceKind: "task-note",
+      sourcePath: originalTaskPath,
+    });
   });
 
   it("guides missing project config toward host-native init first", async () => {

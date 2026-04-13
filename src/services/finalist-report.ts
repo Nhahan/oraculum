@@ -149,10 +149,14 @@ function buildComparisonMarkdown(report: ComparisonReport): string {
     "",
     `- Run: ${report.runId}`,
     `- Task: ${report.task.title}`,
+    `- Task source: ${report.task.sourceKind} (${report.task.sourcePath})`,
     `- Agent: ${report.agent}`,
     `- Survivors: ${report.finalistCount}`,
     `- Verification level: ${report.verificationLevel}`,
   ];
+  if (report.task.originKind && report.task.originPath) {
+    lines.splice(4, 0, `- Task origin: ${report.task.originKind} (${report.task.originPath})`);
+  }
 
   if (report.recommendedWinner) {
     lines.push(

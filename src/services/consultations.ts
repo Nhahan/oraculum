@@ -96,6 +96,13 @@ export async function renderConsultationSummary(
     `Status: ${manifest.status}`,
     `Outcome: ${status.outcomeType}`,
   ];
+  if (manifest.taskPacket.originKind && manifest.taskPacket.originPath) {
+    lines.splice(
+      4,
+      0,
+      `Task origin: ${manifest.taskPacket.originKind} (${toDisplayPath(projectRoot, manifest.taskPacket.originPath)})`,
+    );
+  }
 
   if (status.validationPosture !== "unknown") {
     lines.push(`Validation posture: ${status.validationPosture}`);
@@ -284,6 +291,12 @@ export function buildVerdictReview(
     judgingBasisKind: status.judgingBasisKind,
     taskSourceKind: manifest.taskPacket.sourceKind,
     taskSourcePath: manifest.taskPacket.sourcePath,
+    ...(manifest.taskPacket.originKind && manifest.taskPacket.originPath
+      ? {
+          taskOriginSourceKind: manifest.taskPacket.originKind,
+          taskOriginSourcePath: manifest.taskPacket.originPath,
+        }
+      : {}),
     ...(status.recommendedCandidateId
       ? { recommendedCandidateId: status.recommendedCandidateId }
       : {}),

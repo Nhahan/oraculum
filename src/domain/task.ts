@@ -5,10 +5,21 @@ import { z } from "zod";
 
 export const taskSourceKindSchema = z.enum(["task-packet", "task-note", "research-brief"]);
 
-export const taskPacketSourceSchema = z.object({
-  kind: taskSourceKindSchema,
-  path: z.string().min(1),
-});
+export const taskPacketSourceSchema = z
+  .object({
+    kind: taskSourceKindSchema,
+    path: z.string().min(1),
+    originKind: taskSourceKindSchema.optional(),
+    originPath: z.string().min(1).optional(),
+  })
+  .superRefine((value, context) => {
+    if (Boolean(value.originKind) !== Boolean(value.originPath)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "originKind and originPath must either both be present or both be omitted.",
+      });
+    }
+  });
 
 export const taskPacketSchema = z.object({
   id: z.string().min(1),
@@ -26,12 +37,23 @@ export const materializedTaskPacketSchema = taskPacketSchema.extend({
   source: taskPacketSourceSchema,
 });
 
-export const taskPacketSummarySchema = z.object({
-  id: z.string().min(1),
-  title: z.string().min(1),
-  sourceKind: taskSourceKindSchema,
-  sourcePath: z.string().min(1),
-});
+export const taskPacketSummarySchema = z
+  .object({
+    id: z.string().min(1),
+    title: z.string().min(1),
+    sourceKind: taskSourceKindSchema,
+    sourcePath: z.string().min(1),
+    originKind: taskSourceKindSchema.optional(),
+    originPath: z.string().min(1).optional(),
+  })
+  .superRefine((value, context) => {
+    if (Boolean(value.originKind) !== Boolean(value.originPath)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "originKind and originPath must either both be present or both be omitted.",
+      });
+    }
+  });
 
 export type TaskPacket = z.infer<typeof taskPacketSchema>;
 export type MaterializedTaskPacket = z.infer<typeof materializedTaskPacketSchema>;

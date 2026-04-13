@@ -143,6 +143,8 @@ describe("task packet contracts", () => {
     const packet = await loadTaskPacket(taskPath);
 
     expect(packet.source.kind).toBe("research-brief");
+    expect(packet.source.originKind).toBe("task-note");
+    expect(packet.source.originPath).toBe(join(root, "fix-session-loss.md"));
     expect(packet.id).toBe("session-loss");
     expect(packet.title).toBe("Fix session loss");
     expect(packet.intent).toContain("Research question:");

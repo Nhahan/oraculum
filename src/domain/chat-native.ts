@@ -138,6 +138,8 @@ export const verdictReviewSchema = z.object({
   judgingBasisKind: consultationJudgingBasisKindSchema,
   taskSourceKind: taskSourceKindSchema,
   taskSourcePath: z.string().min(1),
+  taskOriginSourceKind: taskSourceKindSchema.optional(),
+  taskOriginSourcePath: z.string().min(1).optional(),
   recommendedCandidateId: z.string().min(1).optional(),
   finalistIds: z.array(z.string().min(1)).default([]),
   profileId: z.string().min(1).optional(),
