@@ -84,7 +84,7 @@ if (out) {
       "full-suite-deep",
     ]);
     expect(savedManifest.profileSelection?.missingCapabilities).toEqual([
-      "No package packaging smoke check was detected.",
+      "No package packaging smoke check was selected.",
     ]);
     const configPath = savedManifest.configPath;
     expect(configPath).toBeDefined();
@@ -110,6 +110,68 @@ if (out) {
     await expect(readFile(getProfileSelectionPath(cwd, manifest.id), "utf8")).resolves.toContain(
       '"profileId": "library"',
     );
+  });
+
+  it("does not require package export smoke when a runtime-selected library has no export metadata", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep the package healthy.\n", "utf8");
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "demo-library-no-exports",
+          packageManager: "npm@10.0.0",
+          type: "module",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+            typecheck: 'node -e "process.exit(0)"',
+            test: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"profileId":"library","confidence":"high","summary":"Library scripts are strongest.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast","unit-impact","full-suite-deep"],"missingCapabilities":[]}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const manifest = await planRun({
+      cwd,
+      taskInput: "tasks/fix.md",
+      agent: "codex",
+      autoProfile: {
+        codexBinaryPath: fakeCodex,
+        timeoutMs: 5_000,
+      },
+    });
+
+    expect(manifest.profileSelection?.profileId).toBe("library");
+    expect(manifest.profileSelection?.oracleIds).toEqual([
+      "lint-fast",
+      "typecheck-fast",
+      "full-suite-deep",
+    ]);
+    expect(manifest.profileSelection?.missingCapabilities).toEqual([]);
   });
 
   it("keeps explicit quick and advanced settings while still recording the auto profile decision", async () => {
@@ -217,7 +279,7 @@ if (out) {
       "full-suite-deep",
     ]);
     expect(recommendation.selection.missingCapabilities).toEqual([
-      "No package packaging smoke check was detected.",
+      "No package packaging smoke check was selected.",
     ]);
   });
 
@@ -248,6 +310,148 @@ if (out) {
     await expect(readFile(getProfileSelectionPath(cwd, "run_draft"), "utf8")).resolves.toContain(
       '"llmSkipped": true',
     );
+  });
+
+  it("reports unselected repo-local validation when a generic runtime recommendation omits commands", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep it small.\n", "utf8");
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "generic-runtime-empty-selection",
+          packageManager: "npm@10.0.0",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+            test: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_generic_runtime_empty_selection"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter({
+        profileId: "generic",
+        confidence: "medium",
+        summary: "Keep the generic profile.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change"],
+        selectedCommandIds: [],
+        missingCapabilities: [],
+      }),
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_generic_runtime_empty_selection"),
+      runId: "run_generic_runtime_empty_selection",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.oracleIds).toEqual([]);
+    expect(recommendation.selection.missingCapabilities).toEqual([
+      "No repo-local validation command was selected.",
+    ]);
+  });
+
+  it("does not require frontend-only checks when a runtime-selected frontend has no frontend evidence", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep it small.\n", "utf8");
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "frontend-runtime-no-evidence",
+          packageManager: "npm@10.0.0",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+            typecheck: 'node -e "process.exit(0)"',
+            test: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_frontend_runtime_no_evidence"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter({
+        profileId: "frontend",
+        confidence: "medium",
+        summary: "Treat this as frontend work.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change"],
+        selectedCommandIds: ["lint-fast", "typecheck-fast", "full-suite-deep"],
+        missingCapabilities: [],
+      }),
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_frontend_runtime_no_evidence"),
+      runId: "run_frontend_runtime_no_evidence",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("frontend");
+    expect(recommendation.selection.oracleIds).toEqual([
+      "lint-fast",
+      "typecheck-fast",
+      "full-suite-deep",
+    ]);
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
+  });
+
+  it("does not require migration-only checks when a runtime-selected migration has no migration evidence", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep it small.\n", "utf8");
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "migration-runtime-no-evidence",
+          packageManager: "npm@10.0.0",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+            test: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_migration_runtime_no_evidence"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter({
+        profileId: "migration",
+        confidence: "medium",
+        summary: "Treat this as migration work.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change"],
+        selectedCommandIds: ["lint-fast", "full-suite-deep"],
+        missingCapabilities: [],
+      }),
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_migration_runtime_no_evidence"),
+      runId: "run_migration_runtime_no_evidence",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("migration");
+    expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
   });
 
   it("defaults zero-signal fallback detection to the generic profile", async () => {

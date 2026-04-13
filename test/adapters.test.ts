@@ -623,6 +623,9 @@ if (out) {
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Profile options:",
     );
+    await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "Do not list theoretical profile-default checks when the repository provides no evidence for them.",
+    );
     await expect(readFile(join(logDir, "profile-judge.stdout.jsonl"), "utf8")).resolves.toContain(
       '"--output-schema"',
     );

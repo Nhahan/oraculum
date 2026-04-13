@@ -346,7 +346,9 @@ export function buildProfileSelectionPrompt(request: AgentProfileRequest): strin
     "- Candidate count should usually be 3 or 4 unless the repository signals strongly suggest otherwise.",
     "- Strategy ids must be chosen from this set: minimal-change, safety-first, test-amplified, structural-refactor.",
     "- Selected command ids must come only from the catalog above.",
-    "- If an expected check is missing, explain that in missingCapabilities instead of inventing a command.",
+    "- Only mention missingCapabilities for checks that are grounded by the repository: a command in the catalog, a skipped command candidate, or an explicit repo capability signal.",
+    "- Do not list theoretical profile-default checks when the repository provides no evidence for them.",
+    "- If an expected grounded check is missing, explain that in missingCapabilities instead of inventing a command.",
     "- Return JSON only.",
   );
 

@@ -91,40 +91,72 @@ const PROFILE_FALLBACK_ANCHORS: Record<FallbackAnchoredProfileId, ProfileCommand
   ],
 };
 
-// These slot bundles are explicit product policy for generated oracle coverage after a profile is
-// chosen. They are intentionally capability-level only; repository semantics still come from raw
-// facts plus runtime profile selection rather than dependency-name heuristics.
-const PROFILE_COMMAND_SLOTS: Record<ConsultationProfileId, ProfileCommandSlot[]> = {
-  generic: [
-    { roundId: "fast", capability: "lint" },
-    { roundId: "fast", capability: "typecheck" },
-    { roundId: "impact", capability: "changed-area-test" },
-    { roundId: "impact", capability: "unit-test" },
-    { roundId: "impact", capability: "build" },
-    { roundId: "deep", capability: "full-suite-test" },
-  ],
+// This baseline is only for conservative fallback oracle selection when runtime profile selection
+// is unavailable. Profile-specific fallback pressure comes only from explicit anchor slots.
+const FALLBACK_BASELINE_COMMAND_SLOTS: ProfileCommandSlot[] = [
+  { roundId: "fast", capability: "lint" },
+  { roundId: "fast", capability: "typecheck" },
+  { roundId: "impact", capability: "changed-area-test" },
+  { roundId: "impact", capability: "unit-test" },
+  { roundId: "impact", capability: "build" },
+  { roundId: "deep", capability: "full-suite-test" },
+];
+
+const PROFILE_MISSING_CAPABILITY_RULES: Record<
+  Exclude<ConsultationProfileId, "generic">,
+  Array<{
+    slots: ProfileCommandSlot[];
+    whenDetectedButNotSelected: string;
+    whenNotDetected: string;
+  }>
+> = {
   library: [
-    { roundId: "fast", capability: "lint" },
-    { roundId: "fast", capability: "typecheck" },
-    { roundId: "impact", capability: "unit-test" },
-    { roundId: "impact", capability: "package-export-smoke" },
-    { roundId: "deep", capability: "full-suite-test" },
-    { roundId: "deep", capability: "package-export-smoke" },
+    {
+      slots: [{ roundId: "deep", capability: "full-suite-test" }],
+      whenDetectedButNotSelected: "No full-suite deep test command was selected.",
+      whenNotDetected: "No full-suite deep test command was detected.",
+    },
+    {
+      slots: [
+        { roundId: "deep", capability: "package-export-smoke" },
+        { roundId: "impact", capability: "package-export-smoke" },
+      ],
+      whenDetectedButNotSelected: "No package packaging smoke check was selected.",
+      whenNotDetected: "No package packaging smoke check was detected.",
+    },
   ],
   frontend: [
-    { roundId: "fast", capability: "lint" },
-    { roundId: "fast", capability: "typecheck" },
-    { roundId: "impact", capability: "changed-area-test" },
-    { roundId: "impact", capability: "build" },
-    { roundId: "deep", capability: "e2e-or-visual" },
+    {
+      slots: [{ roundId: "impact", capability: "build" }],
+      whenDetectedButNotSelected: "No build validation command was selected.",
+      whenNotDetected: "No build validation command was detected.",
+    },
+    {
+      slots: [{ roundId: "deep", capability: "e2e-or-visual" }],
+      whenDetectedButNotSelected: "No e2e or visual deep check was selected.",
+      whenNotDetected: "No e2e or visual deep check was detected.",
+    },
   ],
   migration: [
-    { roundId: "fast", capability: "schema-validation" },
-    { roundId: "fast", capability: "lint" },
-    { roundId: "fast", capability: "typecheck" },
-    { roundId: "impact", capability: "migration-dry-run" },
-    { roundId: "deep", capability: "rollback-simulation" },
-    { roundId: "deep", capability: "migration-drift" },
+    {
+      slots: [{ roundId: "fast", capability: "schema-validation" }],
+      whenDetectedButNotSelected: "No schema validation command was selected.",
+      whenNotDetected: "No schema validation command was detected.",
+    },
+    {
+      slots: [{ roundId: "impact", capability: "migration-dry-run" }],
+      whenDetectedButNotSelected: "No migration planning or dry-run command was selected.",
+      whenNotDetected: "No migration planning or dry-run command was detected.",
+    },
+    {
+      slots: [
+        { roundId: "deep", capability: "rollback-simulation" },
+        { roundId: "deep", capability: "migration-drift" },
+      ],
+      whenDetectedButNotSelected:
+        "No rollback simulation or migration drift deep check was selected.",
+      whenNotDetected: "No rollback simulation or migration drift deep check was detected.",
+    },
   ],
 };
 
@@ -375,6 +407,8 @@ function buildFallbackRecommendation(
     chosenProfile,
     selectedCommandIds,
     signals.commandCatalog,
+    signals.capabilities,
+    signals.skippedCommandCandidates,
   );
 
   return agentProfileRecommendationSchema.parse({
@@ -417,8 +451,8 @@ function buildFallbackCommandSlots(profileId: FallbackDetectedProfileId): Profil
   const profileAnchors = profileId === "generic" ? [] : PROFILE_FALLBACK_ANCHORS[profileId];
   const slots =
     profileId === "generic"
-      ? PROFILE_COMMAND_SLOTS.generic
-      : [...PROFILE_COMMAND_SLOTS.generic, ...profileAnchors];
+      ? FALLBACK_BASELINE_COMMAND_SLOTS
+      : [...FALLBACK_BASELINE_COMMAND_SLOTS, ...profileAnchors];
   const seen = new Set<string>();
 
   return slots.filter((slot) => {
@@ -462,6 +496,9 @@ function inferMissingCapabilities(
   profileId: ConsultationProfileId,
   selectedCommandIds: string[],
   catalog: ProfileCommandCandidate[],
+  capabilities: ProfileRepoSignals["capabilities"],
+  skippedCommandCandidates: ProfileRepoSignals["skippedCommandCandidates"],
+  requireRuntimeEvidence = false,
 ): string[] {
   const byId = new Map(catalog.map((candidate) => [candidate.id, candidate]));
   const selectedCommands = selectedCommandIds.flatMap((id) => {
@@ -482,51 +519,92 @@ function inferMissingCapabilities(
         candidate.capability === slot.capability &&
         selectedExecutionKeys.has(commandExecutionKey(candidate)),
     );
+  const hasCatalogSlot = (slot: ProfileCommandSlot) =>
+    catalog.some(
+      (candidate) => candidate.roundId === slot.roundId && candidate.capability === slot.capability,
+    );
+  const hasSkippedCapability = (capability: string) =>
+    skippedCommandCandidates.some((candidate) => candidate.capability === capability);
+  const hasCapabilitySignal = (
+    predicate: (capability: ProfileRepoSignals["capabilities"][number]) => boolean,
+  ) => capabilities.some(predicate);
+  const recordMissing = (options: {
+    slots: ProfileCommandSlot[];
+    whenDetectedButNotSelected: string;
+    whenNotDetected: string;
+  }) => {
+    if (options.slots.some(hasSelectedSlot)) {
+      return;
+    }
+    missing.push(
+      options.slots.some(hasCatalogSlot)
+        ? options.whenDetectedButNotSelected
+        : options.whenNotDetected,
+    );
+  };
   const missing: string[] = [];
 
   if (profileId === "generic" && selectedSlots.size === 0) {
-    missing.push("No repo-local validation command was detected.");
+    const hasRepoLocalValidationCommand = catalog.some(
+      (candidate) => candidate.source === "repo-local-script",
+    );
+    missing.push(
+      hasRepoLocalValidationCommand
+        ? "No repo-local validation command was selected."
+        : "No repo-local validation command was detected.",
+    );
   }
-  if (
-    profileId === "library" &&
-    !hasSelectedSlot({ roundId: "deep", capability: "full-suite-test" })
-  ) {
-    missing.push("No full-suite deep test command was detected.");
-  }
-  if (
-    profileId === "library" &&
-    !hasSelectedSlot({ roundId: "deep", capability: "package-export-smoke" }) &&
-    !hasSelectedSlot({ roundId: "impact", capability: "package-export-smoke" })
-  ) {
-    missing.push("No package packaging smoke check was detected.");
-  }
-  if (profileId === "frontend" && !hasSelectedSlot({ roundId: "impact", capability: "build" })) {
-    missing.push("No build validation command was detected.");
-  }
-  if (
-    profileId === "frontend" &&
-    !hasSelectedSlot({ roundId: "deep", capability: "e2e-or-visual" })
-  ) {
-    missing.push("No e2e or visual deep check was detected.");
-  }
-  if (
-    profileId === "migration" &&
-    !hasSelectedSlot({ roundId: "fast", capability: "schema-validation" })
-  ) {
-    missing.push("No schema validation command was detected.");
-  }
-  if (
-    profileId === "migration" &&
-    !hasSelectedSlot({ roundId: "impact", capability: "migration-dry-run" })
-  ) {
-    missing.push("No migration planning or dry-run command was detected.");
-  }
-  if (
-    profileId === "migration" &&
-    !hasSelectedSlot({ roundId: "deep", capability: "rollback-simulation" }) &&
-    !hasSelectedSlot({ roundId: "deep", capability: "migration-drift" })
-  ) {
-    missing.push("No rollback simulation or migration drift deep check was detected.");
+  if (profileId !== "generic") {
+    for (const rule of PROFILE_MISSING_CAPABILITY_RULES[profileId]) {
+      const hasCatalogEvidence = rule.slots.some(hasCatalogSlot);
+      const hasSkippedEvidence = rule.slots.some((slot) => hasSkippedCapability(slot.capability));
+      if (
+        requireRuntimeEvidence &&
+        profileId === "library" &&
+        rule.slots.some((slot) => slot.capability === "package-export-smoke") &&
+        !hasCatalogEvidence &&
+        !hasSkippedCapability("package-export-smoke")
+      ) {
+        continue;
+      }
+      if (
+        requireRuntimeEvidence &&
+        profileId === "frontend" &&
+        rule.slots.some((slot) => slot.capability === "build") &&
+        !hasCatalogEvidence &&
+        !hasCapabilitySignal(
+          (capability) =>
+            (capability.kind === "build-system" && capability.value === "frontend-config") ||
+            (capability.kind === "command" && capability.value === "build"),
+        )
+      ) {
+        continue;
+      }
+      if (
+        requireRuntimeEvidence &&
+        profileId === "frontend" &&
+        rule.slots.some((slot) => slot.capability === "e2e-or-visual") &&
+        !hasCatalogEvidence &&
+        !hasSkippedEvidence &&
+        !hasCapabilitySignal(
+          (capability) =>
+            capability.kind === "test-runner" &&
+            (capability.value === "playwright" || capability.value === "cypress"),
+        )
+      ) {
+        continue;
+      }
+      if (
+        requireRuntimeEvidence &&
+        profileId === "migration" &&
+        !hasCatalogEvidence &&
+        !hasSkippedEvidence &&
+        !hasCapabilitySignal((capability) => capability.kind === "migration-tool")
+      ) {
+        continue;
+      }
+      recordMissing(rule);
+    }
   }
 
   return missing;
@@ -554,6 +632,9 @@ function sanitizeRecommendation(
       recommendation.profileId,
       selectedCommandIds,
       signals.commandCatalog,
+      signals.capabilities,
+      signals.skippedCommandCandidates,
+      true,
     ),
   });
 }
