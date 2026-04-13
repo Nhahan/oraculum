@@ -284,18 +284,14 @@ function applyProfileSelection(options: {
   return {
     config,
     selection: consultationProfileSelectionSchema.parse({
-      profileId: options.recommendation.profileId,
       validationProfileId: options.recommendation.profileId,
       confidence: options.recommendation.confidence,
       source: options.source,
-      summary: options.recommendation.summary,
       validationSummary: options.recommendation.summary,
       candidateCount: effectiveCandidateCount,
       strategyIds: effectiveStrategies.map((strategy) => strategy.id),
       oracleIds: effectiveOracles.map((oracle) => oracle.id),
-      missingCapabilities: validationGaps,
       validationGaps,
-      signals: validationSignals,
       validationSignals,
     }),
   };

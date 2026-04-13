@@ -190,10 +190,11 @@ export interface AgentJudgeRequest {
   taskPacket: MaterializedTaskPacket;
   finalists: FinalistSummary[];
   consultationProfile?: {
-    profileId: ConsultationProfileId;
     confidence: DecisionConfidence;
-    summary: string;
-    missingCapabilities: string[];
+    validationProfileId: string;
+    validationSummary: string;
+    validationSignals: string[];
+    validationGaps: string[];
   };
 }
 

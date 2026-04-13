@@ -129,13 +129,19 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
   if (request.consultationProfile) {
     sections.push(
       "",
-      `Consultation validation profile: ${request.consultationProfile.profileId} (${request.consultationProfile.confidence})`,
-      request.consultationProfile.summary,
+      `Consultation validation profile: ${request.consultationProfile.validationProfileId} (${request.consultationProfile.confidence})`,
+      request.consultationProfile.validationSummary,
     );
-    if (request.consultationProfile.missingCapabilities.length > 0) {
+    if (request.consultationProfile.validationSignals.length > 0) {
+      sections.push(
+        "Validation evidence:",
+        ...request.consultationProfile.validationSignals.map((item) => `- ${item}`),
+      );
+    }
+    if (request.consultationProfile.validationGaps.length > 0) {
       sections.push(
         "Validation gaps from the selected profile:",
-        ...request.consultationProfile.missingCapabilities.map((item) => `- ${item}`),
+        ...request.consultationProfile.validationGaps.map((item) => `- ${item}`),
       );
     }
   }

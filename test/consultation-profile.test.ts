@@ -11,7 +11,10 @@ import {
   getProfileSelectionPath,
   getReportsDir,
 } from "../src/core/paths.js";
-import type { AgentProfileRecommendation } from "../src/domain/profile.js";
+import {
+  type AgentProfileRecommendation,
+  consultationProfileSelectionSchema,
+} from "../src/domain/profile.js";
 import { recommendConsultationProfile } from "../src/services/consultation-profile.js";
 import {
   initializeProject,
@@ -33,6 +36,82 @@ afterEach(async () => {
 });
 
 describe("consultation auto profile", () => {
+  it("backfills legacy aliases from validation-first consultation profile selections", () => {
+    const parsed = consultationProfileSelectionSchema.parse({
+      validationProfileId: "frontend",
+      confidence: "medium",
+      source: "llm-recommendation",
+      validationSummary: "Frontend evidence is strongest.",
+      candidateCount: 4,
+      strategyIds: ["minimal-change"],
+      oracleIds: ["lint-fast"],
+      validationSignals: ["repo-local-validation", "repo-e2e-anchor"],
+      validationGaps: ["No build validation command was selected."],
+    });
+
+    expect(parsed.profileId).toBe("frontend");
+    expect(parsed.summary).toBe("Frontend evidence is strongest.");
+    expect(parsed.signals).toEqual(["repo-local-validation", "repo-e2e-anchor"]);
+    expect(parsed.missingCapabilities).toEqual(["No build validation command was selected."]);
+  });
+
+  it("accepts reordered legacy consultation profile alias arrays", () => {
+    const parsed = consultationProfileSelectionSchema.parse({
+      profileId: "frontend",
+      validationProfileId: "frontend",
+      confidence: "medium",
+      source: "llm-recommendation",
+      summary: "Frontend evidence is strongest.",
+      validationSummary: "Frontend evidence is strongest.",
+      candidateCount: 4,
+      strategyIds: ["minimal-change"],
+      oracleIds: ["lint-fast"],
+      signals: ["repo-e2e-anchor", "repo-local-validation"],
+      validationSignals: ["repo-local-validation", "repo-e2e-anchor"],
+      missingCapabilities: [
+        "No e2e or visual deep check was selected.",
+        "No build validation command was selected.",
+      ],
+      validationGaps: [
+        "No build validation command was selected.",
+        "No e2e or visual deep check was selected.",
+      ],
+    });
+
+    expect(parsed.profileId).toBe("frontend");
+    expect(parsed.validationProfileId).toBe("frontend");
+    expect(parsed.signals).toEqual(["repo-e2e-anchor", "repo-local-validation"]);
+    expect(parsed.validationSignals).toEqual(["repo-local-validation", "repo-e2e-anchor"]);
+    expect(parsed.missingCapabilities).toEqual([
+      "No e2e or visual deep check was selected.",
+      "No build validation command was selected.",
+    ]);
+    expect(parsed.validationGaps).toEqual([
+      "No build validation command was selected.",
+      "No e2e or visual deep check was selected.",
+    ]);
+  });
+
+  it("rejects conflicting legacy consultation profile aliases", () => {
+    expect(() =>
+      consultationProfileSelectionSchema.parse({
+        profileId: "library",
+        validationProfileId: "frontend",
+        confidence: "medium",
+        source: "llm-recommendation",
+        summary: "Frontend evidence is strongest.",
+        validationSummary: "Frontend evidence is strongest.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change"],
+        oracleIds: ["lint-fast"],
+        signals: ["repo-local-validation", "repo-e2e-anchor"],
+        validationSignals: ["repo-e2e-anchor", "repo-local-validation"],
+        missingCapabilities: ["No build validation command was selected."],
+        validationGaps: ["No build validation command was selected."],
+      }),
+    ).toThrow("profileId must match validationProfileId");
+  });
+
   it("applies an auto-selected library profile when quick-start settings are still implicit", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });

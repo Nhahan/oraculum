@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { oraclePathPolicySchema, oracleRelativeCwdSchema, roundIdSchema } from "./config.js";
+import { stringArrayMembersEqual } from "./schema-compat.js";
 
 export const decisionConfidenceLevels = ["low", "medium", "high"] as const;
 export const consultationProfileIds = ["generic", "library", "frontend", "migration"] as const;
@@ -196,21 +197,98 @@ export const agentProfileRecommendationSchema = z.preprocess((value) => {
   return normalized;
 }, agentProfileRecommendationBaseSchema);
 
-export const consultationProfileSelectionSchema = z.object({
-  profileId: consultationProfileIdSchema,
-  validationProfileId: z.string().min(1).optional(),
-  confidence: decisionConfidenceSchema,
-  source: z.enum(["llm-recommendation", "fallback-detection"]),
-  summary: z.string().min(1),
-  validationSummary: z.string().min(1).optional(),
-  candidateCount: z.number().int().min(1).max(16),
-  strategyIds: z.array(z.string().min(1)).min(1),
-  oracleIds: z.array(z.string().min(1)).default([]),
-  missingCapabilities: z.array(z.string().min(1)).default([]),
-  validationGaps: z.array(z.string().min(1)).optional(),
-  signals: z.array(z.string().min(1)).default([]),
-  validationSignals: z.array(z.string().min(1)).optional(),
-});
+const consultationProfileSelectionBaseSchema = z
+  .object({
+    profileId: consultationProfileIdSchema.optional(),
+    validationProfileId: consultationProfileIdSchema,
+    confidence: decisionConfidenceSchema,
+    source: z.enum(["llm-recommendation", "fallback-detection"]),
+    summary: z.string().min(1).optional(),
+    validationSummary: z.string().min(1),
+    candidateCount: z.number().int().min(1).max(16),
+    strategyIds: z.array(z.string().min(1)).min(1),
+    oracleIds: z.array(z.string().min(1)).default([]),
+    missingCapabilities: z.array(z.string().min(1)).optional(),
+    validationGaps: z.array(z.string().min(1)).default([]),
+    signals: z.array(z.string().min(1)).optional(),
+    validationSignals: z.array(z.string().min(1)).default([]),
+  })
+  .superRefine((value, context) => {
+    if (value.profileId && value.profileId !== value.validationProfileId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["profileId"],
+        message: "profileId must match validationProfileId when both are present.",
+      });
+    }
+
+    if (value.summary && value.summary !== value.validationSummary) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["summary"],
+        message: "summary must match validationSummary when both are present.",
+      });
+    }
+
+    if (
+      value.missingCapabilities &&
+      !stringArrayMembersEqual(value.missingCapabilities, value.validationGaps)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["missingCapabilities"],
+        message:
+          "missingCapabilities must match validationGaps when both legacy and validation aliases are present.",
+      });
+    }
+
+    if (value.signals && !stringArrayMembersEqual(value.signals, value.validationSignals)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["signals"],
+        message:
+          "signals must match validationSignals when both legacy and validation aliases are present.",
+      });
+    }
+  });
+
+export const consultationProfileSelectionSchema = z.preprocess((value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const payload = { ...(value as Record<string, unknown>) };
+
+  if (typeof payload.validationProfileId !== "string" && typeof payload.profileId === "string") {
+    payload.validationProfileId = payload.profileId;
+  }
+  if (typeof payload.profileId !== "string" && typeof payload.validationProfileId === "string") {
+    payload.profileId = payload.validationProfileId;
+  }
+
+  if (typeof payload.validationSummary !== "string" && typeof payload.summary === "string") {
+    payload.validationSummary = payload.summary;
+  }
+  if (typeof payload.summary !== "string" && typeof payload.validationSummary === "string") {
+    payload.summary = payload.validationSummary;
+  }
+
+  if (!Array.isArray(payload.validationGaps) && Array.isArray(payload.missingCapabilities)) {
+    payload.validationGaps = payload.missingCapabilities;
+  }
+  if (!Array.isArray(payload.missingCapabilities) && Array.isArray(payload.validationGaps)) {
+    payload.missingCapabilities = payload.validationGaps;
+  }
+
+  if (!Array.isArray(payload.validationSignals) && Array.isArray(payload.signals)) {
+    payload.validationSignals = payload.signals;
+  }
+  if (!Array.isArray(payload.signals) && Array.isArray(payload.validationSignals)) {
+    payload.signals = payload.validationSignals;
+  }
+
+  return payload;
+}, consultationProfileSelectionBaseSchema);
 
 export function buildAgentProfileRecommendationJsonSchema(): Record<string, unknown> {
   const properties = {
@@ -281,37 +359,45 @@ export type ProfileRepoSignals = z.infer<typeof profileRepoSignalsSchema>;
 export type AgentProfileRecommendation = z.infer<typeof agentProfileRecommendationSchema>;
 export type ConsultationProfileSelection = z.infer<typeof consultationProfileSelectionSchema>;
 
-function stringArrayMembersEqual(left: string[], right: string[]): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-
-  const leftSorted = [...left].sort();
-  const rightSorted = [...right].sort();
-  return leftSorted.every((value, index) => value === rightSorted[index]);
-}
-
 export function getValidationProfileId(
-  selection: Pick<ConsultationProfileSelection, "profileId" | "validationProfileId"> | undefined,
+  selection:
+    | {
+        profileId?: ConsultationProfileId | undefined;
+        validationProfileId?: ConsultationProfileId | undefined;
+      }
+    | undefined,
 ): string | undefined {
   return selection?.validationProfileId ?? selection?.profileId;
 }
 
 export function getValidationSummary(
-  selection: Pick<ConsultationProfileSelection, "summary" | "validationSummary"> | undefined,
+  selection:
+    | {
+        summary?: string | undefined;
+        validationSummary?: string | undefined;
+      }
+    | undefined,
 ): string | undefined {
   return selection?.validationSummary ?? selection?.summary;
 }
 
 export function getValidationSignals(
-  selection: Pick<ConsultationProfileSelection, "signals" | "validationSignals"> | undefined,
+  selection:
+    | {
+        signals?: string[] | undefined;
+        validationSignals?: string[] | undefined;
+      }
+    | undefined,
 ): string[] {
   return selection?.validationSignals ?? selection?.signals ?? [];
 }
 
 export function getValidationGaps(
   selection:
-    | Pick<ConsultationProfileSelection, "missingCapabilities" | "validationGaps">
+    | {
+        missingCapabilities?: string[] | undefined;
+        validationGaps?: string[] | undefined;
+      }
     | undefined,
 ): string[] {
   return selection?.validationGaps ?? selection?.missingCapabilities ?? [];

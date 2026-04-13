@@ -68,10 +68,11 @@ export async function recommendWinnerWithJudge(
         ...(options.consultationProfile
           ? {
               consultationProfile: {
-                profileId: options.consultationProfile.profileId,
                 confidence: options.consultationProfile.confidence,
-                summary: options.consultationProfile.summary,
-                missingCapabilities: options.consultationProfile.missingCapabilities,
+                validationProfileId: options.consultationProfile.validationProfileId,
+                validationSummary: options.consultationProfile.validationSummary,
+                validationSignals: options.consultationProfile.validationSignals,
+                validationGaps: options.consultationProfile.validationGaps,
               },
             }
           : {}),

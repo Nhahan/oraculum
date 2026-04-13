@@ -330,10 +330,11 @@ if (out) {
       logDir,
       taskPacket: createTaskPacket(),
       consultationProfile: {
-        profileId: "frontend",
+        validationProfileId: "frontend",
         confidence: "medium",
-        summary: "Frontend signals are strongest.",
-        missingCapabilities: ["No e2e or visual deep check was detected."],
+        validationSummary: "Frontend validation evidence is strongest.",
+        validationSignals: ["frontend-config", "e2e-runner"],
+        validationGaps: ["No build validation command was selected."],
       },
       finalists: [
         {
@@ -372,7 +373,19 @@ if (out) {
       "Consultation validation profile: frontend (medium)",
     );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "No e2e or visual deep check was detected.",
+      "Frontend validation evidence is strongest.",
+    );
+    await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "Validation evidence:",
+    );
+    await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "- frontend-config",
+    );
+    await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "- e2e-runner",
+    );
+    await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "No build validation command was selected.",
     );
   });
 
