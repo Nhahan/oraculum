@@ -85,11 +85,17 @@ if (out) {
     expect(executed.manifest.recommendedWinner?.candidateId).toBe("cand-01");
     expect(executed.manifest.recommendedWinner?.confidence).toBe("high");
     expect(executed.manifest.recommendedWinner?.source).toBe("llm-judge");
+    expect(executed.manifest.outcome?.type).toBe("recommended-survivor");
+    expect(executed.manifest.outcome?.verificationLevel).toBe("standard");
+    expect(executed.manifest.updatedAt).toBeTruthy();
+    expect(executed.manifest.updatedAt).not.toBe(executed.manifest.createdAt);
 
     const savedManifest = await readRunManifest(cwd, planned.id);
     expect(savedManifest.status).toBe("completed");
     expect(savedManifest.candidates[0]?.status).toBe("promoted");
     expect(savedManifest.recommendedWinner?.candidateId).toBe("cand-01");
+    expect(savedManifest.outcome?.type).toBe("recommended-survivor");
+    expect(savedManifest.updatedAt).toBe(executed.manifest.updatedAt);
 
     const resultPath = getCandidateAgentResultPath(cwd, planned.id, "cand-01");
     const parsedResult = agentRunResultSchema.parse(

@@ -2,7 +2,10 @@ import { type Command, InvalidArgumentError } from "commander";
 
 import { OraculumError } from "../core/errors.js";
 import type { Adapter } from "../domain/config.js";
-import { buildSetupDiagnosticsResponse } from "../services/chat-native.js";
+import {
+  buildSetupDiagnosticsResponse,
+  filterSetupDiagnosticsResponse,
+} from "../services/chat-native.js";
 import { setupClaudeCodeHost, uninstallClaudeCodeHost } from "../services/claude-chat-native.js";
 import { setupCodexHost, uninstallCodexHost } from "../services/codex-chat-native.js";
 
@@ -65,28 +68,19 @@ export function registerSetupCommand(program: Command): void {
     .option("--json", "emit machine-readable setup diagnostics")
     .option("-r, --runtime <runtime>", "target host runtime", parseRuntime)
     .action(async (options: SetupStatusOptions, command: Command) => {
-      const diagnostics = await buildSetupDiagnosticsResponse(process.cwd());
       const runtime = options.runtime ?? (command.optsWithGlobals().runtime as Adapter | undefined);
-      const hosts = runtime
-        ? diagnostics.hosts.filter((host) => host.host === runtime)
-        : diagnostics.hosts;
+      const diagnostics = filterSetupDiagnosticsResponse(
+        await buildSetupDiagnosticsResponse(process.cwd()),
+        runtime,
+      );
 
       if (options.json) {
-        process.stdout.write(
-          `${JSON.stringify(
-            {
-              ...diagnostics,
-              hosts,
-            },
-            null,
-            2,
-          )}\n`,
-        );
+        process.stdout.write(`${JSON.stringify(diagnostics, null, 2)}\n`);
         return;
       }
 
       process.stdout.write(`${diagnostics.summary}\n`);
-      for (const host of hosts) {
+      for (const host of diagnostics.hosts) {
         if (options.runtime && host.host !== options.runtime) {
           continue;
         }

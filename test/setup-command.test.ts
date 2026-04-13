@@ -1,9 +1,13 @@
 import type { Command } from "commander";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/services/chat-native.js", () => ({
-  buildSetupDiagnosticsResponse: vi.fn(),
-}));
+vi.mock("../src/services/chat-native.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/services/chat-native.js")>();
+  return {
+    ...actual,
+    buildSetupDiagnosticsResponse: vi.fn(),
+  };
+});
 
 import { buildProgram } from "../src/program.js";
 import { buildSetupDiagnosticsResponse } from "../src/services/chat-native.js";
@@ -54,6 +58,7 @@ describe("setup command", () => {
 
     const parsed = JSON.parse(output) as {
       hosts: Array<{ host: string; status: string }>;
+      summary: string;
       targetPrefix: string;
     };
 
@@ -63,6 +68,22 @@ describe("setup command", () => {
       host: "codex",
       status: "ready",
     });
+    expect(parsed.summary).toBe("codex is ready for host-native `orc ...` commands.");
+  });
+
+  it("prints a runtime-scoped plain-text summary when a host filter is provided", async () => {
+    const program = createProgram();
+
+    const output = await captureStdout(async () => {
+      await program.parseAsync(["setup", "status", "--runtime", "claude-code"], {
+        from: "user",
+      });
+    });
+
+    expect(output).toContain(
+      "Run `oraculum setup --runtime claude-code` to finish host-native `orc ...` routing, then use `oraculum setup status --runtime claude-code` to verify the wiring.",
+    );
+    expect(output).not.toContain("Claude Code and Codex are ready");
   });
 });
 

@@ -29,8 +29,10 @@ import {
 } from "../core/paths.js";
 import type { Adapter, ProjectConfig, Strategy } from "../domain/config.js";
 import {
+  buildBlockedPreflightOutcome,
   type CandidateManifest,
   candidateManifestSchema,
+  deriveConsultationOutcomeForManifest,
   type ExportPlan,
   exportPlanSchema,
   latestRunStateSchema,
@@ -38,6 +40,7 @@ import {
   type RunRound,
   runManifestSchema,
 } from "../domain/run.js";
+import { recommendConsultationPreflight } from "./consultation-preflight.js";
 import { recommendConsultationProfile } from "./consultation-profile.js";
 import { loadProjectConfigLayers, pathExists, writeJsonFile } from "./project.js";
 import { parseRunManifestArtifact } from "./run-manifest-artifact.js";
@@ -48,6 +51,13 @@ interface PlanRunOptions {
   taskInput: string;
   agent?: Adapter;
   candidates?: number;
+  preflight?: {
+    allowRuntime?: boolean;
+    claudeBinaryPath?: string;
+    codexBinaryPath?: string;
+    env?: NodeJS.ProcessEnv;
+    timeoutMs?: number;
+  };
   autoProfile?: {
     allowRuntime?: boolean;
     claudeBinaryPath?: string;
@@ -95,21 +105,87 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
   const reportsDir = getReportsDir(projectRoot, runId);
   await mkdir(runDir, { recursive: true });
   await mkdir(reportsDir, { recursive: true });
+  const adapterOptions = buildAdapterFactoryOptions(options.preflight, options.autoProfile);
+
+  const adapter =
+    options.preflight || options.autoProfile
+      ? createAgentAdapter(agent, adapterOptions)
+      : undefined;
+
+  const preflight = options.preflight
+    ? await recommendConsultationPreflight({
+        adapter:
+          adapter ??
+          createAgentAdapter(agent, {
+            ...(options.preflight.claudeBinaryPath
+              ? { claudeBinaryPath: options.preflight.claudeBinaryPath }
+              : {}),
+            ...(options.preflight.codexBinaryPath
+              ? { codexBinaryPath: options.preflight.codexBinaryPath }
+              : {}),
+            ...(options.preflight.env ? { env: options.preflight.env } : {}),
+            ...(options.preflight.timeoutMs !== undefined
+              ? { timeoutMs: options.preflight.timeoutMs }
+              : {}),
+          }),
+        ...(options.preflight.allowRuntime !== undefined
+          ? { allowRuntime: options.preflight.allowRuntime }
+          : {}),
+        configLayers,
+        projectRoot,
+        reportsDir,
+        runId,
+        taskPacket,
+      })
+    : undefined;
+
+  const createdAt = new Date().toISOString();
+  const configPath = getRunConfigPath(projectRoot, runId);
+  await writeJsonFile(configPath, config);
+
+  if (preflight && preflight.preflight.decision !== "proceed") {
+    const manifest: RunManifest = {
+      id: runId,
+      status: "completed",
+      taskPath: resolvedTaskPath,
+      taskPacket: {
+        id: taskPacket.id,
+        title: taskPacket.title,
+        sourceKind: taskPacket.source.kind,
+        sourcePath: taskPacket.source.path,
+      },
+      agent,
+      configPath,
+      candidateCount: 0,
+      createdAt,
+      updatedAt: createdAt,
+      rounds: [],
+      candidates: [],
+      preflight: preflight.preflight,
+      outcome: buildBlockedPreflightOutcome(preflight.preflight),
+    };
+
+    runManifestSchema.parse(manifest);
+    await writeJsonFile(getRunManifestPath(projectRoot, runId), manifest);
+    return manifest;
+  }
 
   const autoProfile = options.autoProfile
     ? await recommendConsultationProfile({
-        adapter: createAgentAdapter(agent, {
-          ...(options.autoProfile.claudeBinaryPath
-            ? { claudeBinaryPath: options.autoProfile.claudeBinaryPath }
-            : {}),
-          ...(options.autoProfile.codexBinaryPath
-            ? { codexBinaryPath: options.autoProfile.codexBinaryPath }
-            : {}),
-          ...(options.autoProfile.env ? { env: options.autoProfile.env } : {}),
-          ...(options.autoProfile.timeoutMs !== undefined
-            ? { timeoutMs: options.autoProfile.timeoutMs }
-            : {}),
-        }),
+        adapter:
+          adapter ??
+          createAgentAdapter(agent, {
+            ...(options.autoProfile.claudeBinaryPath
+              ? { claudeBinaryPath: options.autoProfile.claudeBinaryPath }
+              : {}),
+            ...(options.autoProfile.codexBinaryPath
+              ? { codexBinaryPath: options.autoProfile.codexBinaryPath }
+              : {}),
+            ...(options.autoProfile.env ? { env: options.autoProfile.env } : {}),
+            ...(options.autoProfile.timeoutMs !== undefined
+              ? { timeoutMs: options.autoProfile.timeoutMs }
+              : {}),
+          }),
         ...(options.autoProfile.allowRuntime !== undefined
           ? { allowRuntime: options.autoProfile.allowRuntime }
           : {}),
@@ -118,6 +194,7 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
         projectRoot,
         reportsDir,
         runId,
+        ...(preflight ? { signals: preflight.signals } : {}),
         taskPacket,
       })
     : undefined;
@@ -142,9 +219,7 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
         oracleIds: config.oracles.map((oracle) => oracle.id),
       }
     : undefined;
-  const configPath = getRunConfigPath(projectRoot, runId);
   await writeJsonFile(configPath, config);
-  const createdAt = new Date().toISOString();
 
   const candidates = await Promise.all(
     strategies.map(async (strategy, index) => {
@@ -196,6 +271,7 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
     configPath,
     candidateCount,
     createdAt,
+    updatedAt: createdAt,
     rounds: config.rounds.map<RunRound>((round) => ({
       id: round.id,
       label: round.label,
@@ -205,7 +281,21 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
       eliminatedCount: 0,
     })),
     candidates,
+    ...(preflight ? { preflight: preflight.preflight } : {}),
     ...(profileSelection ? { profileSelection } : {}),
+    outcome: deriveConsultationOutcomeForManifest({
+      status: "planned",
+      candidates,
+      rounds: config.rounds.map<RunRound>((round) => ({
+        id: round.id,
+        label: round.label,
+        status: "pending",
+        verdictCount: 0,
+        survivorCount: 0,
+        eliminatedCount: 0,
+      })),
+      ...(profileSelection ? { profileSelection } : {}),
+    }),
   };
 
   runManifestSchema.parse(manifest);
@@ -251,7 +341,7 @@ export async function prepareExportPlan(
   const resolvedWinnerId = options.winnerId ?? manifest.recommendedWinner?.candidateId;
   if (!resolvedWinnerId) {
     throw new OraculumError(
-      `Consultation "${manifest.id}" does not have a recommended survivor. Pass a candidate id explicitly.`,
+      `Consultation "${manifest.id}" does not have a recommended survivor. Reopen the comparison report first, or provide a candidate id explicitly through a direct tool call.`,
     );
   }
 
@@ -486,4 +576,41 @@ export async function writeLatestExportableRunState(
     runId,
     updatedAt: new Date().toISOString(),
   });
+}
+
+function buildAdapterFactoryOptions(
+  preflight: PlanRunOptions["preflight"],
+  autoProfile: PlanRunOptions["autoProfile"],
+): {
+  claudeBinaryPath?: string;
+  codexBinaryPath?: string;
+  env?: NodeJS.ProcessEnv;
+  timeoutMs?: number;
+} {
+  const options: {
+    claudeBinaryPath?: string;
+    codexBinaryPath?: string;
+    env?: NodeJS.ProcessEnv;
+    timeoutMs?: number;
+  } = {};
+
+  const claudeBinaryPath = preflight?.claudeBinaryPath ?? autoProfile?.claudeBinaryPath;
+  const codexBinaryPath = preflight?.codexBinaryPath ?? autoProfile?.codexBinaryPath;
+  const env = preflight?.env ?? autoProfile?.env;
+  const timeoutMs = preflight?.timeoutMs ?? autoProfile?.timeoutMs;
+
+  if (claudeBinaryPath) {
+    options.claudeBinaryPath = claudeBinaryPath;
+  }
+  if (codexBinaryPath) {
+    options.codexBinaryPath = codexBinaryPath;
+  }
+  if (env) {
+    options.env = env;
+  }
+  if (timeoutMs !== undefined) {
+    options.timeoutMs = timeoutMs;
+  }
+
+  return options;
 }

@@ -37,10 +37,12 @@ import {
   verdictToolResponseSchema,
 } from "../domain/chat-native.js";
 import { type Adapter, adapterSchema } from "../domain/config.js";
+import { buildSavedConsultationStatus, isPreflightBlockedConsultation } from "../domain/run.js";
 import {
   buildConsultationArtifacts,
   buildProjectInitializationResult,
   buildSetupDiagnosticsResponse,
+  filterSetupDiagnosticsResponse,
 } from "./chat-native.js";
 import {
   listRecentConsultations,
@@ -50,7 +52,7 @@ import {
 import { executeRun } from "./execution.js";
 import { materializeExport } from "./exports.js";
 import { ensureProjectInitialized, initializeProject } from "./project.js";
-import { planRun, readLatestRunManifest, readRunManifest } from "./runs.js";
+import { planRun, readLatestRunManifest, readRunManifest, writeLatestRunState } from "./runs.js";
 
 export async function runConsultTool(input: ConsultToolRequest): Promise<ConsultToolResponse> {
   const request = normalizeConsultToolRequest(consultToolRequestSchema.parse(input));
@@ -63,11 +65,28 @@ export async function runConsultTool(input: ConsultToolRequest): Promise<Consult
     taskInput: request.taskInput,
     ...(request.agent ? { agent: request.agent } : {}),
     ...(request.candidates !== undefined ? { candidates: request.candidates } : {}),
+    preflight: {
+      allowRuntime: true,
+      ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
+    },
     autoProfile: {
       allowRuntime: true,
       ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
     },
   });
+  if (isPreflightBlockedConsultation(manifest)) {
+    await writeLatestRunState(resolveProjectRoot(request.cwd), manifest.id);
+    return consultToolResponseSchema.parse({
+      mode: "consult",
+      consultation: manifest,
+      status: buildSavedConsultationStatus(manifest),
+      summary: await renderConsultationSummary(manifest, request.cwd, {
+        surface: "chat-native",
+      }),
+      artifacts: buildConsultationArtifacts(request.cwd, manifest.id),
+      ...(initialized ? { initializedProject: buildProjectInitializationResult(initialized) } : {}),
+    });
+  }
   const execution = await executeRun({
     cwd: request.cwd,
     runId: manifest.id,
@@ -77,6 +96,7 @@ export async function runConsultTool(input: ConsultToolRequest): Promise<Consult
   return consultToolResponseSchema.parse({
     mode: "consult",
     consultation: execution.manifest,
+    status: buildSavedConsultationStatus(execution.manifest),
     summary: await renderConsultationSummary(execution.manifest, request.cwd, {
       surface: "chat-native",
     }),
@@ -104,6 +124,7 @@ export async function runDraftTool(input: DraftToolRequest): Promise<DraftToolRe
   return draftToolResponseSchema.parse({
     mode: "draft",
     consultation: manifest,
+    status: buildSavedConsultationStatus(manifest),
     summary: await renderConsultationSummary(manifest, request.cwd, {
       surface: "chat-native",
     }),
@@ -121,6 +142,7 @@ export async function runVerdictTool(input: VerdictToolRequest): Promise<Verdict
   return verdictToolResponseSchema.parse({
     mode: "verdict",
     consultation: manifest,
+    status: buildSavedConsultationStatus(manifest),
     summary: await renderConsultationSummary(manifest, request.cwd, {
       surface: "chat-native",
     }),
@@ -144,7 +166,7 @@ export async function runVerdictArchiveTool(
 }
 
 export async function runCrownTool(input: CrownToolRequest): Promise<CrownToolResponse> {
-  const request = crownToolRequestSchema.parse(input);
+  const request = normalizeCrownToolRequest(input);
   const result = await materializeExport({
     cwd: request.cwd,
     ...(request.branchName ? { branchName: request.branchName } : {}),
@@ -162,6 +184,19 @@ export async function runCrownTool(input: CrownToolRequest): Promise<CrownToolRe
     recordPath: result.path,
     materialization,
     consultation,
+    status: buildSavedConsultationStatus(consultation),
+  });
+}
+
+function normalizeCrownToolRequest(request: CrownToolRequest): CrownToolRequest {
+  return crownToolRequestSchema.parse({
+    ...request,
+    ...(request.branchName !== undefined
+      ? { branchName: normalizeOptionalStringInput(request.branchName) }
+      : {}),
+    ...(request.materializationLabel !== undefined
+      ? { materializationLabel: normalizeOptionalStringInput(request.materializationLabel) }
+      : {}),
   });
 }
 
@@ -185,7 +220,10 @@ export async function runSetupStatusTool(
 ): Promise<SetupStatusToolResponse> {
   const request = setupStatusToolRequestSchema.parse(input);
 
-  return setupStatusToolResponseSchema.parse(await buildSetupDiagnosticsResponse(request.cwd));
+  return filterSetupDiagnosticsResponse(
+    setupStatusToolResponseSchema.parse(await buildSetupDiagnosticsResponse(request.cwd)),
+    request.host,
+  );
 }
 
 function normalizeConsultToolRequest(request: ConsultToolRequest): ConsultToolRequest {
@@ -211,6 +249,14 @@ function normalizeDraftToolRequest(request: DraftToolRequest): DraftToolRequest 
     ...(parsed.agent ? { agent: parsed.agent } : {}),
     ...(parsed.candidates !== undefined ? { candidates: parsed.candidates } : {}),
   });
+}
+
+function normalizeOptionalStringInput(value: string | undefined): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return value.trim().length > 0 ? value : undefined;
 }
 
 function parseInlineCommandOptions(
@@ -298,17 +344,33 @@ function splitShellLike(value: string): string[] | undefined {
   const tokens: string[] = [];
   let current = "";
   let quote: "'" | '"' | undefined;
-  let escaping = false;
 
-  for (const character of value) {
-    if (escaping) {
-      current += character;
-      escaping = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (!character) {
       continue;
     }
+    const next = value[index + 1];
 
     if (character === "\\") {
-      escaping = true;
+      if (quote) {
+        if (next === quote || next === "\\") {
+          current += next;
+          index += 1;
+          continue;
+        }
+
+        current += character;
+        continue;
+      }
+
+      if (next === '"' || next === "'" || next === "\\" || (next && /\s/u.test(next))) {
+        current += next;
+        index += 1;
+        continue;
+      }
+
+      current += character;
       continue;
     }
 
@@ -337,7 +399,7 @@ function splitShellLike(value: string): string[] | undefined {
     current += character;
   }
 
-  if (escaping || quote) {
+  if (quote) {
     return undefined;
   }
   if (current.length > 0) {

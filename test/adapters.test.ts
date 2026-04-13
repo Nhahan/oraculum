@@ -466,11 +466,16 @@ if (out) {
     const binaryPath = await writeNodeBinary(
       root,
       "fake-claude",
-      `process.stderr.write(JSON.stringify({ argv: process.argv.slice(2) }));
+      `const schemaIndex = process.argv.indexOf("--json-schema");
+const schema = schemaIndex >= 0 ? process.argv[schemaIndex + 1] : "";
+process.stderr.write(JSON.stringify({ argv: process.argv.slice(2), schema }));
 process.stdout.write(JSON.stringify({
-  candidateId: "cand-01",
-  confidence: "medium",
-  summary: "cand-01 is the safest finalist.",
+  type: "result",
+  structured_output: {
+    candidateId: "cand-01",
+    confidence: "medium",
+    summary: "cand-01 is the safest finalist.",
+  },
 }));`,
     );
 
@@ -527,9 +532,12 @@ process.stdout.write(JSON.stringify({
     await expect(readFile(join(logDir, "winner-judge.stderr.txt"), "utf8")).resolves.toContain(
       '"--permission-mode","plan"',
     );
-    await expect(readFile(join(logDir, "winner-judge.stderr.txt"), "utf8")).resolves.toContain(
-      '"--json-schema"',
-    );
+    const stderr = await readFile(join(logDir, "winner-judge.stderr.txt"), "utf8");
+    expect(stderr).toContain('"--json-schema"');
+    const parsedStderr = JSON.parse(stderr) as { schema?: string };
+    expect(parsedStderr.schema).toBeTruthy();
+    const parsedSchema = JSON.parse(parsedStderr.schema ?? "{}") as { type?: string };
+    expect(parsedSchema.type).toBe("object");
   });
 
   it("asks Codex to recommend a consultation profile with an output schema", async () => {
@@ -632,13 +640,16 @@ if (out) {
       "fake-claude",
       `process.stderr.write(JSON.stringify({ argv: process.argv.slice(2) }));
 process.stdout.write(JSON.stringify({
-  profileId: "frontend",
-  confidence: "medium",
-  summary: "Frontend build and e2e signals are present.",
-  candidateCount: 4,
-  strategyIds: ["minimal-change", "safety-first"],
-  selectedCommandIds: ["build-impact", "e2e-deep"],
-  missingCapabilities: [],
+  type: "result",
+  structured_output: {
+    profileId: "frontend",
+    confidence: "medium",
+    summary: "Frontend build and e2e signals are present.",
+    candidateCount: 4,
+    strategyIds: ["minimal-change", "safety-first"],
+    selectedCommandIds: ["build-impact", "e2e-deep"],
+    missingCapabilities: [],
+  },
 }));`,
     );
 
@@ -701,6 +712,107 @@ process.stdout.write(JSON.stringify({
       /generic/u,
     );
   }, 20_000);
+
+  it("asks Codex for structured preflight readiness output", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "preflight-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+process.stdout.write(JSON.stringify({ argv: process.argv.slice(2) }) + "\\n");
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"decision":"needs-clarification","confidence":"medium","summary":"The target document and required sections are unclear.","researchPosture":"repo-only","clarificationQuestion":"Which file should Oraculum update, and what sections are required?"}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const adapter = new CodexAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendPreflight({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      signals: createRepoSignals(),
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation).toEqual({
+      decision: "needs-clarification",
+      confidence: "medium",
+      summary: "The target document and required sections are unclear.",
+      researchPosture: "repo-only",
+      clarificationQuestion: "Which file should Oraculum update, and what sections are required?",
+    });
+    await expect(readFile(join(logDir, "preflight-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "Only decide readiness.",
+    );
+    await expect(readFile(join(logDir, "preflight-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "Detected capabilities:",
+    );
+  });
+
+  it("asks Claude for structured preflight readiness output", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "claude-preflight-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-claude",
+      `process.stderr.write(JSON.stringify({ argv: process.argv.slice(2) }));
+process.stdout.write(JSON.stringify({
+  type: "result",
+  structured_output: {
+    decision: "external-research-required",
+    confidence: "high",
+    summary: "The request depends on external version-specific API behavior.",
+    researchPosture: "external-research-required",
+    researchQuestion: "What does the official API documentation say about the current versioned behavior?"
+  }
+}));`,
+    );
+
+    const adapter = new ClaudeAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendPreflight({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      signals: createRepoSignals(),
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation).toEqual({
+      decision: "external-research-required",
+      confidence: "high",
+      summary: "The request depends on external version-specific API behavior.",
+      researchPosture: "external-research-required",
+      researchQuestion:
+        "What does the official API documentation say about the current versioned behavior?",
+    });
+    await expect(readFile(join(logDir, "preflight-judge.stderr.txt"), "utf8")).resolves.toContain(
+      '"--json-schema"',
+    );
+  });
 
   it("includes workspace command execution context in the profile selection prompt", () => {
     const prompt = buildProfileSelectionPrompt({
@@ -781,6 +893,30 @@ function createTaskPacket() {
       path: "/tmp/task.md",
     },
   });
+}
+
+function createRepoSignals() {
+  return {
+    packageManager: "npm" as const,
+    scripts: ["lint", "test"],
+    dependencies: ["typescript"],
+    files: ["package.json", "README.md"],
+    workspaceRoots: [],
+    workspaceMetadata: [],
+    notes: ["Task input is repo-local."],
+    capabilities: [
+      {
+        kind: "command" as const,
+        value: "lint",
+        source: "root-config" as const,
+        confidence: "high" as const,
+        detail: "Root lint script is present.",
+      },
+    ],
+    provenance: [],
+    skippedCommandCandidates: [],
+    commandCatalog: [],
+  };
 }
 
 async function createTempRoot(): Promise<string> {

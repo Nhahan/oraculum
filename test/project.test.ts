@@ -22,7 +22,12 @@ import {
   projectConfigSchema,
   projectQuickConfigSchema,
 } from "../src/domain/config.js";
-import { exportPlanSchema, latestRunStateSchema, runManifestSchema } from "../src/domain/run.js";
+import {
+  buildSavedConsultationStatus,
+  exportPlanSchema,
+  latestRunStateSchema,
+  runManifestSchema,
+} from "../src/domain/run.js";
 import { executeRun } from "../src/services/execution.js";
 import {
   ensureProjectInitialized,
@@ -350,6 +355,20 @@ describe("project scaffold", () => {
     expect(saved.agent).toBe("codex");
     expect(saved.candidates).toHaveLength(3);
     expect(saved.candidates[0]?.id).toBe("cand-01");
+    expect(saved.updatedAt).toBe(saved.createdAt);
+    expect(saved.outcome).toMatchObject({
+      type: "pending-execution",
+      terminal: false,
+      crownable: false,
+      finalistCount: 0,
+      judgingBasisKind: "unknown",
+      validationPosture: "unknown",
+      missingCapabilityCount: 0,
+    });
+    expect(buildSavedConsultationStatus(saved).nextActions).toEqual([
+      "reopen-verdict",
+      "browse-archive",
+    ]);
   });
 
   it("resolves nested invocation to the nearest initialized Oraculum root", async () => {
@@ -918,6 +937,80 @@ if (out) {
 
     expect(manifest.candidateCount).toBe(1);
     expect(manifest.candidates).toHaveLength(1);
+    expect(manifest.updatedAt).toBe(createdAt);
+    expect(manifest.outcome).toMatchObject({
+      type: "pending-execution",
+      terminal: false,
+      crownable: false,
+    });
+  });
+
+  it("reads blocked preflight manifests without planned candidates", async () => {
+    const cwd = await createInitializedProject();
+    const runId = "run_blocked_preflight";
+    const createdAt = "2026-04-06T00:00:00.000Z";
+    await mkdir(dirname(getRunManifestPath(cwd, runId)), { recursive: true });
+
+    await writeFile(
+      getRunManifestPath(cwd, runId),
+      `${JSON.stringify(
+        {
+          id: runId,
+          status: "completed",
+          taskPath: join(cwd, "tasks", "blocked-task.md"),
+          taskPacket: {
+            id: "task_blocked",
+            title: "Blocked task",
+            sourceKind: "task-note",
+            sourcePath: join(cwd, "tasks", "blocked-task.md"),
+          },
+          agent: "codex",
+          candidateCount: 0,
+          createdAt,
+          updatedAt: createdAt,
+          rounds: [],
+          candidates: [],
+          preflight: {
+            decision: "needs-clarification",
+            confidence: "medium",
+            summary: "The target file is unclear.",
+            researchPosture: "repo-only",
+            clarificationQuestion: "Which file should Oraculum update?",
+          },
+          outcome: {
+            type: "needs-clarification",
+            terminal: true,
+            crownable: false,
+            finalistCount: 0,
+            validationPosture: "unknown",
+            verificationLevel: "none",
+            missingCapabilityCount: 0,
+            judgingBasisKind: "unknown",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const manifest = await readRunManifest(cwd, runId);
+
+    expect(manifest.candidateCount).toBe(0);
+    expect(manifest.candidates).toEqual([]);
+    expect(manifest.preflight).toEqual({
+      decision: "needs-clarification",
+      confidence: "medium",
+      summary: "The target file is unclear.",
+      researchPosture: "repo-only",
+      clarificationQuestion: "Which file should Oraculum update?",
+    });
+    expect(manifest.outcome).toMatchObject({
+      type: "needs-clarification",
+      terminal: true,
+      crownable: false,
+      verificationLevel: "none",
+    });
   });
 });
 

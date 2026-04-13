@@ -9,6 +9,7 @@ import {
   decisionConfidenceSchema,
   type ProfileRepoSignals,
 } from "../domain/profile.js";
+import { type ConsultationPreflight, consultationPreflightSchema } from "../domain/run.js";
 import type { MaterializedTaskPacket } from "../domain/task.js";
 
 export const agentArtifactKindSchema = z.enum([
@@ -150,6 +151,18 @@ export const agentProfileResultSchema = z.object({
   artifacts: z.array(agentArtifactSchema).default([]),
 });
 
+export const agentPreflightResultSchema = z.object({
+  runId: z.string().min(1),
+  adapter: adapterSchema,
+  status: agentRunStatusSchema,
+  startedAt: z.string().min(1),
+  completedAt: z.string().min(1),
+  exitCode: z.number().int(),
+  summary: z.string().min(1),
+  recommendation: consultationPreflightSchema.optional(),
+  artifacts: z.array(agentArtifactSchema).default([]),
+});
+
 export interface AgentRunRequest {
   runId: string;
   candidateId: string;
@@ -166,6 +179,7 @@ export interface AgentAdapter {
 
   runCandidate(request: AgentRunRequest): Promise<AgentRunResult>;
   recommendWinner(request: AgentJudgeRequest): Promise<AgentJudgeResult>;
+  recommendPreflight(request: AgentPreflightRequest): Promise<AgentPreflightResult>;
   recommendProfile(request: AgentProfileRequest): Promise<AgentProfileResult>;
 }
 
@@ -195,6 +209,14 @@ export interface AgentProfileRequest {
   }>;
 }
 
+export interface AgentPreflightRequest {
+  runId: string;
+  projectRoot: string;
+  logDir: string;
+  taskPacket: MaterializedTaskPacket;
+  signals: ProfileRepoSignals;
+}
+
 export interface AgentRepairContext {
   roundId: string;
   attempt: number;
@@ -218,4 +240,31 @@ export type FinalistSummary = z.infer<typeof finalistSummarySchema>;
 export type AgentJudgeRecommendation = z.infer<typeof agentJudgeRecommendationSchema>;
 export type AgentJudgeResult = z.infer<typeof agentJudgeResultSchema>;
 export type AgentProfileResult = z.infer<typeof agentProfileResultSchema>;
+export type AgentPreflightResult = z.infer<typeof agentPreflightResultSchema>;
+export type AgentPreflightRecommendation = ConsultationPreflight;
 export type { AgentProfileRecommendation };
+
+export function buildAgentPreflightJsonSchema(): Record<string, unknown> {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      decision: {
+        type: "string",
+        enum: ["proceed", "needs-clarification", "external-research-required", "abstain"],
+      },
+      confidence: {
+        type: "string",
+        enum: [...decisionConfidenceSchema.options],
+      },
+      summary: { type: "string", minLength: 1 },
+      researchPosture: {
+        type: "string",
+        enum: ["repo-only", "repo-plus-external-docs", "external-research-required"],
+      },
+      clarificationQuestion: { type: "string", minLength: 1 },
+      researchQuestion: { type: "string", minLength: 1 },
+    },
+    required: ["decision", "confidence", "summary", "researchPosture"],
+  };
+}

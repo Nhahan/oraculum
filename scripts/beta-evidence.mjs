@@ -2477,6 +2477,7 @@ const prompt = fs.readFileSync(0, "utf8");
 const args = process.argv.slice(2);
 const candidateMatch = prompt.match(/^Candidate ID: (.+)$/m);
 const candidateId = candidateMatch ? candidateMatch[1].trim() : "cand-01";
+const isPreflight = prompt.includes("You are deciding whether an Oraculum consultation is ready to proceed before any candidate is generated.");
 const isProfile = prompt.includes("You are selecting the best Oraculum consultation profile");
 const isWinner = prompt.includes("You are selecting the best Oraculum finalist.");
 const isRepair = prompt.includes("Repair context:");
@@ -2558,6 +2559,17 @@ function candidateSummary() {
   return "Candidate materialized a patch.";
 }
 
+function preflightPayload() {
+  return {
+    decision: "proceed",
+    confidence: scenario.repoKind === "plain" ? "medium" : "high",
+    summary: scenario.repoKind === "plain"
+      ? "The repository provides enough grounding to begin a repo-only consultation."
+      : "The repository signals are sufficient to start the consultation without external research.",
+    researchPosture: "repo-only",
+  };
+}
+
 function winnerPayload() {
   if (scenario.kind === "abstain" || scenario.kind === "manual-crown") {
     return { decision: "abstain", confidence: "medium", summary: "Survivors are too close to recommend automatically." };
@@ -2585,7 +2597,7 @@ function profilePayload() {
   };
 }
 
-if (!isProfile && !isWinner) {
+if (!isPreflight && !isProfile && !isWinner) {
   if (scenario.kind !== "no-finalist") {
     mutateWorkspace();
   } else {
@@ -2603,20 +2615,28 @@ if (scenario.agent === "codex") {
       out = args[index + 1] || "";
     }
   }
-  process.stdout.write(JSON.stringify({ event: "started", mode: isProfile ? "profile" : isWinner ? "winner" : "candidate" }) + "\\n");
+  process.stdout.write(JSON.stringify({ event: "started", mode: isPreflight ? "preflight" : isProfile ? "profile" : isWinner ? "winner" : "candidate" }) + "\\n");
   if (out) {
-    const payload = isProfile ? profilePayload() : isWinner ? winnerPayload() : candidateSummary();
+    const payload = isPreflight
+      ? preflightPayload()
+      : isProfile
+        ? profilePayload()
+        : isWinner
+          ? winnerPayload()
+          : candidateSummary();
     fs.writeFileSync(out, typeof payload === "string" ? payload : JSON.stringify(payload), "utf8");
   }
   process.stderr.write("");
   process.exit(0);
 }
 
-const payload = isProfile
-  ? { result: profilePayload() }
-  : isWinner
-    ? { result: winnerPayload() }
-    : { result: candidateSummary() };
+const payload = isPreflight
+  ? { result: preflightPayload() }
+  : isProfile
+    ? { result: profilePayload() }
+    : isWinner
+      ? { result: winnerPayload() }
+      : { result: candidateSummary() };
 process.stdout.write(JSON.stringify(payload));
 `;
 }

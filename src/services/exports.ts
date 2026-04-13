@@ -32,6 +32,7 @@ import {
 import {
   type CandidateManifest,
   candidateManifestSchema,
+  deriveConsultationOutcomeForManifest,
   type ExportPlan,
   exportPlanSchema,
   type RunManifest,
@@ -1036,7 +1037,14 @@ async function markCandidateExported(
 
   try {
     await writeJsonFile(candidateManifestPath, exportedCandidate);
-    await writeJsonFile(getRunManifestPath(projectRoot, manifest.id), nextManifest);
+    await writeJsonFile(
+      getRunManifestPath(projectRoot, manifest.id),
+      runManifestSchema.parse({
+        ...nextManifest,
+        updatedAt: new Date().toISOString(),
+        outcome: deriveConsultationOutcomeForManifest(nextManifest),
+      }),
+    );
   } catch (error) {
     const restoreFailures: string[] = [];
 

@@ -110,7 +110,8 @@ export function createOraculumMcpServer(): McpServer {
     "oraculum_crown",
     {
       title: "Oraculum Crown",
-      description: "Crown the recommended or explicitly selected survivor.",
+      description:
+        "Crown the recommended survivor, or materialize an explicitly selected survivor when the tool caller provides candidateId.",
       inputSchema: crownToolRequestSchema,
       outputSchema: crownToolResponseSchema,
     },

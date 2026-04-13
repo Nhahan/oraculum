@@ -11,6 +11,7 @@ import {
   getExportPlanPath,
   getFinalistComparisonJsonPath,
   getFinalistComparisonMarkdownPath,
+  getPreflightReadinessPath,
   getProfileSelectionPath,
   getRunConfigPath,
   getRunDir,
@@ -30,6 +31,7 @@ import {
   initToolResponseSchema,
   type McpToolId,
   mcpToolIdSchema,
+  type SetupStatusToolResponse,
   setupStatusToolRequestSchema,
   setupStatusToolResponseSchema,
   type ToolMetadata,
@@ -117,6 +119,7 @@ export const oraculumMcpToolSurface = [
     machineReadableArtifacts: [
       "run.json",
       "consultation-config.json",
+      "preflight-readiness.json",
       "profile-selection.json",
       "comparison.json",
       "comparison.md",
@@ -184,6 +187,7 @@ export const oraculumMcpToolSurface = [
     machineReadableArtifacts: [
       "run.json",
       "consultation-config.json",
+      "preflight-readiness.json",
       "profile-selection.json",
       "comparison.json",
       "comparison.md",
@@ -214,7 +218,7 @@ export const oraculumMcpToolSurface = [
   {
     id: "oraculum_crown",
     purpose:
-      "Crown the recommended or explicitly selected survivor and materialize it into the project.",
+      "Crown the recommended survivor, or materialize an explicitly selected survivor when a direct tool caller provides candidateId.",
     requestShape: "crownToolRequestSchema",
     responseShape: "crownToolResponseSchema",
     bindings: [
@@ -349,7 +353,7 @@ export const oraculumCommandManifest = [
     id: "crown",
     prefix: "orc",
     path: ["crown"],
-    summary: "Crown the recommended or selected survivor and materialize it in the project.",
+    summary: "Crown the recommended survivor and materialize it in the project.",
     mcpTool: "oraculum_crown",
     requestShape: "crownToolRequestSchema",
     responseShape: "crownToolResponseSchema",
@@ -427,25 +431,37 @@ export function getMcpToolSchemas(toolId: McpToolId): {
 }
 
 export function buildConsultationArtifacts(
-  projectRoot: string,
+  cwd: string,
   consultationId: string,
 ): {
   consultationRoot: string;
-  configPath: string;
+  configPath?: string;
+  preflightReadinessPath?: string;
   profileSelectionPath?: string;
   comparisonJsonPath?: string;
   comparisonMarkdownPath?: string;
   winnerSelectionPath?: string;
   crowningRecordPath?: string;
 } {
+  const projectRoot = resolveProjectRoot(cwd);
+  const preflightReadinessPath = getPreflightReadinessPath(projectRoot, consultationId);
+  const profileSelectionPath = getProfileSelectionPath(projectRoot, consultationId);
+  const comparisonJsonPath = getFinalistComparisonJsonPath(projectRoot, consultationId);
+  const comparisonMarkdownPath = getFinalistComparisonMarkdownPath(projectRoot, consultationId);
+  const winnerSelectionPath = getWinnerSelectionPath(projectRoot, consultationId);
+  const crowningRecordPath = getExportPlanPath(projectRoot, consultationId);
+
   return {
     consultationRoot: getRunDir(projectRoot, consultationId),
-    configPath: getRunConfigPath(projectRoot, consultationId),
-    profileSelectionPath: getProfileSelectionPath(projectRoot, consultationId),
-    comparisonJsonPath: getFinalistComparisonJsonPath(projectRoot, consultationId),
-    comparisonMarkdownPath: getFinalistComparisonMarkdownPath(projectRoot, consultationId),
-    winnerSelectionPath: getWinnerSelectionPath(projectRoot, consultationId),
-    crowningRecordPath: getExportPlanPath(projectRoot, consultationId),
+    ...(existsSync(getRunConfigPath(projectRoot, consultationId))
+      ? { configPath: getRunConfigPath(projectRoot, consultationId) }
+      : {}),
+    ...(existsSync(preflightReadinessPath) ? { preflightReadinessPath } : {}),
+    ...(existsSync(profileSelectionPath) ? { profileSelectionPath } : {}),
+    ...(existsSync(comparisonJsonPath) ? { comparisonJsonPath } : {}),
+    ...(existsSync(comparisonMarkdownPath) ? { comparisonMarkdownPath } : {}),
+    ...(existsSync(winnerSelectionPath) ? { winnerSelectionPath } : {}),
+    ...(existsSync(crowningRecordPath) ? { crowningRecordPath } : {}),
   };
 }
 
@@ -465,8 +481,8 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
   mode: "setup-status";
   cwd: string;
   projectInitialized: boolean;
-  configPath: string;
-  advancedConfigPath: string;
+  configPath?: string;
+  advancedConfigPath?: string;
   targetPrefix: "orc";
   hosts: Array<{
     host: "claude-code" | "codex";
@@ -482,7 +498,7 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
   const configPath = getConfigPath(projectRoot);
   const advancedConfigPath = getAdvancedConfigPath(projectRoot);
   const claudeMcpPath = join(homedir(), ".claude", "mcp.json");
-  const claudePluginRoot = join(homedir(), ".claude");
+  const claudePluginsDir = join(homedir(), ".claude", "plugins");
   const codexConfigPath = join(homedir(), ".codex", "config.toml");
   const codexSkillsDir = join(homedir(), ".codex", "skills");
   const codexRulesDir = join(homedir(), ".codex", "rules");
@@ -492,13 +508,15 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
   const codexArtifactsInstalled = hasCodexArtifactsInstalled(codexSkillsDir, codexRulesDir);
   const claudeStatus = computeHostSetupStatus(claudeRegistered, claudeArtifactsInstalled);
   const codexStatus = computeHostSetupStatus(codexRegistered, codexArtifactsInstalled);
+  const projectInitialized = existsSync(configPath);
+  const advancedConfigPresent = existsSync(advancedConfigPath);
 
   return {
     mode: "setup-status",
     cwd: projectRoot,
-    projectInitialized: existsSync(configPath),
-    configPath,
-    advancedConfigPath,
+    projectInitialized,
+    ...(projectInitialized ? { configPath } : {}),
+    ...(advancedConfigPresent ? { advancedConfigPath } : {}),
     targetPrefix: "orc",
     hosts: [
       {
@@ -512,7 +530,7 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
             : "Run `oraculum setup --runtime claude-code`.",
         notes: [
           `Expected MCP config path: ${claudeMcpPath}`,
-          `Expected Claude plugin root: ${claudePluginRoot}`,
+          `Expected Claude plugin cache root: ${claudePluginsDir}`,
           "Run `oraculum setup --runtime claude-code` to register the MCP server and install the Oraculum plugin.",
         ],
       },
@@ -533,11 +551,62 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
         ],
       },
     ],
-    summary:
-      claudeStatus === "ready" && codexStatus === "ready"
-        ? "Claude Code and Codex are ready for host-native `orc ...` commands."
-        : "Run `oraculum setup --runtime <host>` to finish host-native `orc ...` routing, then use `oraculum setup status` to verify the wiring.",
+    summary: summarizeSetupDiagnosticsHosts([
+      {
+        host: "claude-code",
+        status: claudeStatus,
+        registered: claudeRegistered,
+        artifactsInstalled: claudeArtifactsInstalled,
+      },
+      {
+        host: "codex",
+        status: codexStatus,
+        registered: codexRegistered,
+        artifactsInstalled: codexArtifactsInstalled,
+      },
+    ]),
   };
+}
+
+export function filterSetupDiagnosticsResponse(
+  diagnostics: SetupStatusToolResponse,
+  host?: SetupStatusToolResponse["hosts"][number]["host"],
+): SetupStatusToolResponse {
+  const hosts = host ? diagnostics.hosts.filter((entry) => entry.host === host) : diagnostics.hosts;
+
+  return setupStatusToolResponseSchema.parse({
+    ...diagnostics,
+    hosts,
+    summary: summarizeSetupDiagnosticsHosts(hosts),
+  });
+}
+
+export function summarizeSetupDiagnosticsHosts(
+  hosts: Array<{
+    artifactsInstalled: boolean;
+    host: SetupStatusToolResponse["hosts"][number]["host"];
+    registered: boolean;
+    status: SetupStatusToolResponse["hosts"][number]["status"];
+  }>,
+): string {
+  if (hosts.length === 0) {
+    return "No matching host runtime was found.";
+  }
+
+  if (hosts.length === 1) {
+    const [host] = hosts;
+    if (!host) {
+      return "No matching host runtime was found.";
+    }
+
+    return host.status === "ready"
+      ? `${host.host} is ready for host-native \`orc ...\` commands.`
+      : `Run \`oraculum setup --runtime ${host.host}\` to finish host-native \`orc ...\` routing, then use \`oraculum setup status --runtime ${host.host}\` to verify the wiring.`;
+  }
+
+  return hosts.every((host) => host.status === "ready")
+    ? "Claude Code and Codex are ready for host-native `orc ...` commands."
+    : "Run `oraculum setup --runtime <host>` to finish host-native `orc ...` routing, then use `oraculum setup status` to verify the wiring.";
 }
 
 export function assertToolId(value: string): McpToolId {

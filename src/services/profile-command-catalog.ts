@@ -175,18 +175,29 @@ export function buildCommandCatalog(options: {
   return { commandCatalog, skippedCommandCandidates };
 }
 
+export function hasCapabilityCommand(
+  commandCatalog: ProfileCommandCandidate[],
+  capability: string,
+  roundIds?: ProfileCommandCandidate["roundId"][],
+): boolean {
+  return commandCatalog.some(
+    (command) =>
+      command.capability === capability &&
+      (roundIds === undefined || roundIds.includes(command.roundId)),
+  );
+}
+
 function recordCapabilitySkips(options: {
   commandCatalog: ProfileCommandCandidate[];
   capabilities: ProfileCapabilitySignal[];
   addSkipped: (candidate: ProfileSkippedCommandCandidate) => void;
 }): void {
-  const commandIds = new Set(options.commandCatalog.map((command) => command.id));
   const e2eCapability = options.capabilities.find(
     (capability) =>
       capability.kind === "test-runner" &&
       (capability.value === "playwright" || capability.value === "cypress"),
   );
-  if (e2eCapability && !commandIds.has("e2e-deep")) {
+  if (e2eCapability && !hasCapabilityCommand(options.commandCatalog, "e2e-or-visual", ["deep"])) {
     options.addSkipped({
       id: "e2e-deep",
       label: "End-to-end or visual checks",
@@ -203,9 +214,10 @@ function recordCapabilitySkips(options: {
   );
   if (
     migrationCapability &&
-    !commandIds.has("schema-fast") &&
-    !commandIds.has("migration-impact") &&
-    !commandIds.has("rollback-deep")
+    !hasCapabilityCommand(options.commandCatalog, "schema-validation", ["fast"]) &&
+    !hasCapabilityCommand(options.commandCatalog, "migration-dry-run", ["impact"]) &&
+    !hasCapabilityCommand(options.commandCatalog, "rollback-simulation", ["deep"]) &&
+    !hasCapabilityCommand(options.commandCatalog, "migration-drift", ["deep"])
   ) {
     options.addSkipped({
       id: "migration-impact",

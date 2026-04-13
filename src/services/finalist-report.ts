@@ -13,6 +13,7 @@ import { consultationProfileSelectionSchema } from "../domain/profile.js";
 import {
   type CandidateManifest,
   candidateStatusSchema,
+  consultationVerificationLevelSchema,
   type RunRecommendation,
   runRecommendationSchema,
 } from "../domain/run.js";
@@ -36,6 +37,7 @@ interface WriteFinalistComparisonReportOptions {
   verdictsByCandidate: Map<string, OracleVerdict[]>;
   agent: Adapter;
   consultationProfile?: z.infer<typeof consultationProfileSelectionSchema>;
+  verificationLevel: z.infer<typeof consultationVerificationLevelSchema>;
   managedTreeRules?: ManagedTreeRules;
 }
 
@@ -48,6 +50,7 @@ const comparisonReportSchema = z.object({
   recommendedWinner: runRecommendationSchema.optional(),
   whyThisWon: z.string().min(1).optional(),
   consultationProfile: consultationProfileSelectionSchema.optional(),
+  verificationLevel: consultationVerificationLevelSchema,
   finalists: z.array(
     finalistSummarySchema.extend({
       status: candidateStatusSchema,
@@ -87,6 +90,7 @@ export async function writeFinalistComparisonReport(
     ...(options.recommendedWinner ? { recommendedWinner: options.recommendedWinner } : {}),
     ...(options.recommendedWinner ? { whyThisWon: options.recommendedWinner.summary } : {}),
     ...(options.consultationProfile ? { consultationProfile: options.consultationProfile } : {}),
+    verificationLevel: options.verificationLevel,
     finalists: finalists.map((finalist) => ({
       ...finalist,
       status: candidateById.get(finalist.candidateId)?.status ?? "planned",
@@ -152,6 +156,7 @@ function buildComparisonMarkdown(report: ComparisonReport): string {
     `- Task: ${report.task.title}`,
     `- Agent: ${report.agent}`,
     `- Survivors: ${report.finalistCount}`,
+    `- Verification level: ${report.verificationLevel}`,
   ];
 
   if (report.recommendedWinner) {

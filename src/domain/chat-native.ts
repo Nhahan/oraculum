@@ -6,6 +6,7 @@ import {
   exportPlanSchema,
   optionalNonEmptyStringSchema,
   runManifestSchema,
+  savedConsultationStatusSchema,
 } from "./run.js";
 
 export const commandPrefixSchema = z.literal("orc");
@@ -77,7 +78,8 @@ export const consultToolRequestSchema = z.object({
 
 export const consultationArtifactPathsSchema = z.object({
   consultationRoot: z.string().min(1),
-  configPath: z.string().min(1),
+  configPath: z.string().min(1).optional(),
+  preflightReadinessPath: z.string().min(1).optional(),
   profileSelectionPath: z.string().min(1).optional(),
   comparisonJsonPath: z.string().min(1).optional(),
   comparisonMarkdownPath: z.string().min(1).optional(),
@@ -94,6 +96,7 @@ export const projectInitializationResultSchema = z.object({
 export const consultToolResponseSchema = z.object({
   mode: z.literal("consult"),
   consultation: runManifestSchema,
+  status: savedConsultationStatusSchema,
   summary: z.string().min(1),
   artifacts: consultationArtifactPathsSchema,
   initializedProject: projectInitializationResultSchema.optional(),
@@ -109,6 +112,7 @@ export const draftToolRequestSchema = z.object({
 export const draftToolResponseSchema = z.object({
   mode: z.literal("draft"),
   consultation: runManifestSchema,
+  status: savedConsultationStatusSchema,
   summary: z.string().min(1),
   artifacts: consultationArtifactPathsSchema,
   initializedProject: projectInitializationResultSchema.optional(),
@@ -122,6 +126,7 @@ export const verdictToolRequestSchema = z.object({
 export const verdictToolResponseSchema = z.object({
   mode: z.literal("verdict"),
   consultation: runManifestSchema,
+  status: savedConsultationStatusSchema,
   summary: z.string().min(1),
   artifacts: consultationArtifactPathsSchema,
 });
@@ -139,8 +144,8 @@ export const verdictArchiveToolResponseSchema = z.object({
 
 export const crownToolRequestSchema = z.object({
   cwd: z.string().min(1),
-  branchName: optionalNonEmptyStringSchema,
-  materializationLabel: optionalNonEmptyStringSchema,
+  branchName: z.string().min(1).optional(),
+  materializationLabel: z.string().min(1).optional(),
   consultationId: z.string().min(1).optional(),
   candidateId: z.string().min(1).optional(),
   withReport: z.boolean().default(false),
@@ -180,6 +185,7 @@ export const crownToolResponseSchema = z.object({
   recordPath: z.string().min(1),
   materialization: crownMaterializationSchema,
   consultation: runManifestSchema,
+  status: savedConsultationStatusSchema,
 });
 
 export const initToolRequestSchema = z.object({

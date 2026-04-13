@@ -7,6 +7,7 @@ import {
   type AgentRunResult,
   agentRunResultSchema,
 } from "../adapters/types.js";
+import { OraculumError } from "../core/errors.js";
 import {
   getCandidateAgentResultPath,
   getCandidateBaseSnapshotPath,
@@ -25,6 +26,8 @@ import type { OracleVerdict } from "../domain/oracle.js";
 import {
   type CandidateManifest,
   candidateManifestSchema,
+  deriveConsultationOutcomeForManifest,
+  isPreflightBlockedConsultation,
   type RunManifest,
   type RunRecommendation,
   roundManifestSchema,
@@ -71,7 +74,12 @@ interface CandidateSelectionMetrics {
 
 export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRunResult> {
   const projectRoot = resolveProjectRoot(options.cwd);
-  const manifest = await readRunManifest(projectRoot, options.runId);
+  let manifest = await readRunManifest(projectRoot, options.runId);
+  if (isPreflightBlockedConsultation(manifest)) {
+    throw new OraculumError(
+      `Consultation "${manifest.id}" is blocked by preflight decision "${manifest.preflight?.decision}".`,
+    );
+  }
   const projectConfig = manifest.configPath
     ? projectConfigSchema.parse(JSON.parse(await readFile(manifest.configPath, "utf8")) as unknown)
     : await loadProjectConfig(projectRoot);
@@ -83,7 +91,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
   });
 
   manifest.status = "running";
-  await writeRunManifest(projectRoot, manifest);
+  manifest = await writeRunManifest(projectRoot, manifest);
 
   const candidateResults: AgentRunResult[] = [];
   const executionRecords: CandidateExecutionRecord[] = [];
@@ -199,7 +207,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
       status: "running",
       startedAt,
     };
-    await writeRunManifest(
+    manifest = await writeRunManifest(
       projectRoot,
       runManifestSchema.parse({
         ...manifest,
@@ -403,14 +411,16 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
         )
       : undefined);
 
-  const completedManifest = runManifestSchema.parse({
-    ...manifest,
-    status: "completed",
-    rounds: roundStates,
-    candidates: Array.from(candidateMap.values()),
-    ...(recommendedWinner ? { recommendedWinner } : {}),
-  });
-  await writeRunManifest(projectRoot, completedManifest);
+  const completedManifest = await writeRunManifest(
+    projectRoot,
+    runManifestSchema.parse({
+      ...manifest,
+      status: "completed",
+      rounds: roundStates,
+      candidates: Array.from(candidateMap.values()),
+      ...(recommendedWinner ? { recommendedWinner } : {}),
+    }),
+  );
   await writeFinalistComparisonReport({
     agent: completedManifest.agent,
     candidateResults,
@@ -419,6 +429,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     ...(recommendedWinner ? { recommendedWinner } : {}),
     runId: completedManifest.id,
     taskPacket: completedManifest.taskPacket,
+    verificationLevel: completedManifest.outcome?.verificationLevel ?? "none",
     managedTreeRules: projectConfig.managedTree,
     verdictsByCandidate,
     ...(completedManifest.profileSelection
@@ -588,8 +599,15 @@ function buildPenalty(metrics: CandidateSelectionMetrics | undefined): number {
   );
 }
 
-async function writeRunManifest(projectRoot: string, manifest: RunManifest): Promise<void> {
-  await writeJsonFile(getRunManifestPath(projectRoot, manifest.id), manifest);
+async function writeRunManifest(projectRoot: string, manifest: RunManifest): Promise<RunManifest> {
+  const updatedAt = new Date().toISOString();
+  const persisted = runManifestSchema.parse({
+    ...manifest,
+    updatedAt,
+    outcome: deriveConsultationOutcomeForManifest(manifest),
+  });
+  await writeJsonFile(getRunManifestPath(projectRoot, manifest.id), persisted);
+  return persisted;
 }
 
 async function writeCandidateManifest(

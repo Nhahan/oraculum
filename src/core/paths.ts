@@ -238,6 +238,10 @@ export function getProfileSelectionPath(projectRoot: string, runId: string): str
   return join(getReportsDir(projectRoot, runId), "profile-selection.json");
 }
 
+export function getPreflightReadinessPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "preflight-readiness.json");
+}
+
 export function getRunConfigPath(projectRoot: string, runId: string): string {
   return join(getReportsDir(projectRoot, runId), "consultation-config.json");
 }

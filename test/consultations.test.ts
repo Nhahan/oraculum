@@ -7,11 +7,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   getExportPlanPath,
   getFinalistComparisonMarkdownPath,
+  getPreflightReadinessPath,
   getProfileSelectionPath,
   getRunManifestPath,
   getWinnerSelectionPath,
 } from "../src/core/paths.js";
-import type { RunManifest } from "../src/domain/run.js";
+import { buildSavedConsultationStatus, type RunManifest } from "../src/domain/run.js";
 import {
   listRecentConsultations,
   renderConsultationArchive,
@@ -60,6 +61,9 @@ describe("consultation workflow summaries", () => {
     const summary = await renderConsultationSummary(manifest, cwd);
 
     expect(summary).toContain("Opened: 2026-04-04T00:00:00.000Z");
+    expect(summary).toContain("Outcome: recommended-survivor");
+    expect(summary).toContain("Validation posture: sufficient");
+    expect(summary).toContain("Verification level: lightweight");
     expect(summary).toContain("Entry paths:");
     expect(summary).toContain("- consultation root: .oraculum/runs/run_1");
     expect(summary).toContain(
@@ -87,10 +91,99 @@ describe("consultation workflow summaries", () => {
 
     const summary = await renderConsultationSummary(manifest, cwd);
 
+    expect(summary).toContain("Outcome: pending-execution");
     expect(summary).toContain("- comparison report: not available yet");
     expect(summary).toContain("- winner selection: not available yet");
     expect(summary).toContain("- crowning record: not created yet");
     expect(summary).toContain(`orc verdict ${manifest.id}`);
+  });
+
+  it("renders blocked preflight consultations with readiness guidance", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      preflight: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The target file and expected sections are unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which file should Oraculum update, and what sections are required?",
+      },
+      outcome: {
+        type: "needs-clarification",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "unknown",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(getPreflightReadinessPath(cwd, manifest.id), "{}\n", "utf8");
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const status = buildSavedConsultationStatus(manifest);
+
+    expect(summary).toContain("Preflight: needs-clarification (medium, repo-only)");
+    expect(summary).toContain("Verification level: none");
+    expect(summary).toContain(
+      "No candidates were generated because execution stopped at preflight.",
+    );
+    expect(summary).not.toContain("Candidate states:");
+    expect(summary).toContain(
+      "Clarification needed: Which file should Oraculum update, and what sections are required?",
+    );
+    expect(summary).toContain(
+      "- preflight readiness: .oraculum/runs/run_1/reports/preflight-readiness.json",
+    );
+    expect(summary).toContain(
+      "- answer the preflight clarification question, then rerun `orc consult`.",
+    );
+    expect(status.nextActions).toEqual([
+      "reopen-verdict",
+      "browse-archive",
+      "review-preflight-readiness",
+      "answer-clarification-and-rerun",
+    ]);
+  });
+
+  it("renders blocked preflight consultations distinctly in the archive", async () => {
+    const cwd = await createInitializedProject();
+    const blocked = createManifest("completed", {
+      id: "run_blocked",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      preflight: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The target file is unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which file should Oraculum update?",
+      },
+      outcome: {
+        type: "needs-clarification",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "unknown",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    await writeManifest(cwd, blocked);
+
+    const manifests = await listRecentConsultations(cwd, 10);
+    const archive = renderConsultationArchive(manifests);
+
+    expect(archive).toContain(
+      "- run_blocked | completed | Task | no auto profile | needs clarification",
+    );
   });
 
   it("does not report a promotion record when only a stale export plan file exists", async () => {
@@ -119,9 +212,57 @@ describe("consultation workflow summaries", () => {
     expect(summary).not.toContain("- reopen the crowning record:");
   });
 
+  it("does not claim a profile-selection artifact when the file is missing", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      profileSelection: {
+        profileId: "library",
+        confidence: "high",
+        source: "llm-recommendation",
+        summary: "Library scripts and package export signals are strongest.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change", "test-amplified"],
+        oracleIds: ["lint-fast", "typecheck-fast"],
+        missingCapabilities: [],
+        signals: ["package-export", "lint-script"],
+      },
+    });
+    await writeManifest(cwd, manifest);
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+
+    expect(summary).toContain("- profile selection: not available");
+  });
+
   it("shows profile gaps in the consultation summary when deep validation is incomplete", async () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {
+      rounds: [
+        {
+          id: "fast",
+          label: "Fast",
+          status: "completed",
+          verdictCount: 2,
+          survivorCount: 1,
+          eliminatedCount: 0,
+        },
+        {
+          id: "impact",
+          label: "Impact",
+          status: "completed",
+          verdictCount: 2,
+          survivorCount: 1,
+          eliminatedCount: 0,
+        },
+        {
+          id: "deep",
+          label: "Deep",
+          status: "completed",
+          verdictCount: 1,
+          survivorCount: 1,
+          eliminatedCount: 0,
+        },
+      ],
       profileSelection: {
         profileId: "frontend",
         confidence: "medium",
@@ -138,9 +279,22 @@ describe("consultation workflow summaries", () => {
     await writeFile(getProfileSelectionPath(cwd, manifest.id), "{}\n", "utf8");
 
     const summary = await renderConsultationSummary(manifest, cwd);
+    const status = buildSavedConsultationStatus(manifest);
 
+    expect(summary).toContain("Outcome: finalists-without-recommendation");
+    expect(summary).toContain("Validation posture: validation-gaps");
+    expect(summary).toContain("Verification level: standard");
     expect(summary).toContain("Profile gaps:");
     expect(summary).toContain("- No e2e or visual deep check was detected.");
+    expect(status.verificationLevel).toBe("standard");
+    expect(status.nextActions).toEqual([
+      "reopen-verdict",
+      "browse-archive",
+      "inspect-comparison-report",
+      "rerun-with-different-candidate-count",
+      "review-validation-gaps",
+      "add-repo-local-oracle",
+    ]);
   });
 
   it("shows skipped profile commands from the profile-selection artifact", async () => {
@@ -211,12 +365,20 @@ describe("consultation workflow summaries", () => {
     await writeManifest(cwd, manifest);
 
     const summary = await renderConsultationSummary(manifest, cwd);
+    const status = buildSavedConsultationStatus(manifest);
 
     expect(summary).toContain("No survivor yet. Candidate states:");
     expect(summary).toContain(
       "- review why no candidate survived the oracle rounds: open the comparison report above.",
     );
     expect(summary).not.toContain("oraculum crown");
+    expect(status.verificationLevel).toBe("lightweight");
+    expect(status.nextActions).toEqual([
+      "reopen-verdict",
+      "browse-archive",
+      "inspect-comparison-report",
+      "rerun-with-different-candidate-count",
+    ]);
   });
 
   it("lists recent consultations in descending order", async () => {
@@ -237,9 +399,69 @@ describe("consultation workflow summaries", () => {
 
     expect(manifests.map((manifest) => manifest.id)).toEqual(["run_newer", "run_older"]);
     expect(archive).toContain("Recent consultations:");
-    expect(archive).toContain("- run_newer | planned | Task | no auto profile | no survivor yet");
-    expect(archive).toContain("- run_older | completed | Task | no auto profile | no survivor yet");
+    expect(archive).toContain("- run_newer | planned | Task | no auto profile | pending execution");
+    expect(archive).toContain(
+      "- run_older | completed | Task | no auto profile | finalists without recommendation",
+    );
     expect(archive).toContain("orc verdict run_newer");
+  });
+
+  it("renders distinct terminal archive summaries for finalists without recommendation and validation gaps", async () => {
+    const cwd = await createInitializedProject();
+    const finalists = createManifest("completed", {
+      id: "run_finalists",
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/workspace-a",
+          taskPacketPath: "/tmp/task-packet-a.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+    const validationGaps = createManifest("completed", {
+      id: "run_gaps",
+      candidates: [
+        {
+          id: "cand-02",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "eliminated",
+          workspaceDir: "/tmp/workspace-b",
+          taskPacketPath: "/tmp/task-packet-b.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+      profileSelection: {
+        profileId: "frontend",
+        confidence: "medium",
+        source: "fallback-detection",
+        summary: "Frontend signals are strongest.",
+        candidateCount: 1,
+        strategyIds: ["minimal-change"],
+        oracleIds: ["build-impact"],
+        missingCapabilities: ["No e2e or visual deep check was detected."],
+        signals: ["frontend-framework"],
+      },
+    });
+    await writeManifest(cwd, finalists);
+    await writeManifest(cwd, validationGaps);
+
+    const archive = renderConsultationArchive(await listRecentConsultations(cwd, 10));
+
+    expect(archive).toContain(
+      "- run_finalists | completed | Task | no auto profile | finalists without recommendation",
+    );
+    expect(archive).toContain(
+      "- run_gaps | completed | Task | profile frontend | completed with validation gaps",
+    );
   });
 
   it("keeps legacy manifests without candidateCount visible in recent consultation listings", async () => {
@@ -257,6 +479,12 @@ describe("consultation workflow summaries", () => {
       expect.objectContaining({
         id: "run_legacy",
         candidateCount: 1,
+        updatedAt: "2026-04-05T00:00:00.000Z",
+        outcome: expect.objectContaining({
+          type: "finalists-without-recommendation",
+          terminal: true,
+          crownable: false,
+        }),
       }),
     ]);
   });
@@ -321,6 +549,56 @@ describe("consultation workflow summaries", () => {
     expect(summary).toContain("- crown the recommended survivor: orc crown");
     expect(summary).not.toContain("orc crown <branch-name>");
   });
+
+  it("reports thorough verification when deep coverage completed without gaps", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      rounds: [
+        {
+          id: "fast",
+          label: "Fast",
+          status: "completed",
+          verdictCount: 2,
+          survivorCount: 1,
+          eliminatedCount: 0,
+        },
+        {
+          id: "impact",
+          label: "Impact",
+          status: "completed",
+          verdictCount: 2,
+          survivorCount: 1,
+          eliminatedCount: 0,
+        },
+        {
+          id: "deep",
+          label: "Deep",
+          status: "completed",
+          verdictCount: 1,
+          survivorCount: 1,
+          eliminatedCount: 0,
+        },
+      ],
+      profileSelection: {
+        profileId: "library",
+        confidence: "high",
+        source: "llm-recommendation",
+        summary: "Library validation coverage is explicit.",
+        candidateCount: 1,
+        strategyIds: ["minimal-change"],
+        oracleIds: ["lint-fast", "unit-impact", "full-suite-deep"],
+        missingCapabilities: [],
+        signals: ["library"],
+      },
+    });
+    await writeManifest(cwd, manifest);
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const status = buildSavedConsultationStatus(manifest);
+
+    expect(summary).toContain("Verification level: thorough");
+    expect(status.verificationLevel).toBe("thorough");
+  });
 });
 
 async function createInitializedProject(): Promise<string> {
@@ -368,8 +646,8 @@ function createManifest(
         id: "fast",
         label: "Fast",
         status: status === "completed" ? "completed" : "pending",
-        verdictCount: 0,
-        survivorCount: 0,
+        verdictCount: status === "completed" ? 1 : 0,
+        survivorCount: status === "completed" ? 1 : 0,
         eliminatedCount: 0,
       },
     ],

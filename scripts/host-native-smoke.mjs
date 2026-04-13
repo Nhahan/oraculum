@@ -86,17 +86,19 @@ async function setupRuntime(runtime) {
 
 async function runRuntimeSmoke(tempRoot, runtime, scenario) {
   const projectRoot = join(tempRoot, `${runtime}-${scenario.id}-project`);
+  const evidenceRoot = join(tempRoot, `${runtime}-${scenario.id}-evidence`);
   const expectedValue = `hello from ${runtime} ${scenario.id} host-native smoke`;
   const branchName = `fix/${runtime}-${scenario.id}-host-native-smoke`;
   const candidateAgent = resolveCandidateAgent(runtime);
   await createFixtureProject(projectRoot, scenario, expectedValue, candidateAgent);
+  await mkdir(evidenceRoot, { recursive: true });
 
   const packageConstraint = scenario.packageJson
     ? "Keep the patch minimal. Do not edit tests or .oraculum configuration."
     : "This repository intentionally has no package.json; do not add package.json, npm scripts, or package metadata. Keep the patch minimal. Do not edit .oraculum configuration.";
   const consultPrompt = `orc consult "Change ${scenario.sourcePath} so message() returns exactly ${JSON.stringify(expectedValue)}. ${packageConstraint}"`;
   const consult = await runHost(runtime, projectRoot, consultPrompt);
-  const consultLogPath = join(projectRoot, `${runtime}-consult.jsonl`);
+  const consultLogPath = join(evidenceRoot, `${runtime}-consult.jsonl`);
   await writeFile(consultLogPath, consult.stdout + consult.stderr, "utf8");
   const consultToolCalls = countToolCalls(runtime, consult.stdout + consult.stderr, "consult");
   if (consultToolCalls < 1) {
@@ -104,11 +106,18 @@ async function runRuntimeSmoke(tempRoot, runtime, scenario) {
       `${runtime} consult did not call the Oraculum MCP consult tool.\n${consult.stdout}\n${consult.stderr}`,
     );
   }
+  const unexpectedConsultCrowns = countToolCalls(runtime, consult.stdout + consult.stderr, "crown");
+  if (unexpectedConsultCrowns > 0) {
+    throw new Error(
+      `${runtime} consult unexpectedly called the Oraculum MCP crown tool ${unexpectedConsultCrowns} time(s).\n${consult.stdout}\n${consult.stderr}`,
+    );
+  }
 
   const runId = await readLatestRunId(projectRoot);
 
-  const crown = await runHost(runtime, projectRoot, `orc crown ${branchName}`);
-  const crownLogPath = join(projectRoot, `${runtime}-crown.jsonl`);
+  const crownPrompt = scenario.gitBacked ? `orc crown ${branchName}` : "orc crown";
+  const crown = await runHost(runtime, projectRoot, crownPrompt);
+  const crownLogPath = join(evidenceRoot, `${runtime}-crown.jsonl`);
   await writeFile(crownLogPath, crown.stdout + crown.stderr, "utf8");
   const crownToolCalls = countToolCalls(runtime, crown.stdout + crown.stderr, "crown");
   if (crownToolCalls < 1) {
@@ -118,15 +127,17 @@ async function runRuntimeSmoke(tempRoot, runtime, scenario) {
   }
   assertVerifiedCrownMaterialization(runtime, crown.stdout + crown.stderr);
 
-  const branch = (
-    await runCommand("git", ["branch", "--show-current"], {
-      cwd: projectRoot,
-      label: `${runtime} current branch`,
-      timeoutMs: 30_000,
-    })
-  ).stdout.trim();
-  if (branch !== branchName) {
-    throw new Error(`Expected ${runtime} branch ${branchName}, received ${branch}.`);
+  if (scenario.gitBacked) {
+    const branch = (
+      await runCommand("git", ["branch", "--show-current"], {
+        cwd: projectRoot,
+        label: `${runtime} current branch`,
+        timeoutMs: 30_000,
+      })
+    ).stdout.trim();
+    if (branch !== branchName) {
+      throw new Error(`Expected ${runtime} branch ${branchName}, received ${branch}.`);
+    }
   }
 
   const value = (
@@ -177,11 +188,29 @@ async function runRuntimeSmoke(tempRoot, runtime, scenario) {
     );
   }
 
+  const exportPlan = JSON.parse(
+    await readFile(
+      join(projectRoot, ".oraculum", "runs", runId, "reports", "export-plan.json"),
+      "utf8",
+    ),
+  );
+  if (scenario.gitBacked) {
+    if (exportPlan.mode !== "git-branch" || exportPlan.branchName !== branchName) {
+      throw new Error(
+        `${runtime} expected a git-branch export for ${scenario.id}, received ${JSON.stringify(exportPlan, null, 2)}.`,
+      );
+    }
+  } else if (exportPlan.mode !== "workspace-sync") {
+    throw new Error(
+      `${runtime} expected a workspace-sync export for ${scenario.id}, received ${JSON.stringify(exportPlan, null, 2)}.`,
+    );
+  }
+
   return {
     runtime,
     scenario: scenario.id,
     runId,
-    branchName,
+    branchName: scenario.gitBacked ? branchName : "workspace-sync",
     value,
     candidateAgent,
     candidateCount: hostNativeCandidateCount,
@@ -211,6 +240,7 @@ async function runHost(runtime, projectRoot, prompt) {
         cwd: projectRoot,
         label: `${runtime} ${prompt}`,
         timeoutMs,
+        completeWhen: isClaudeStreamJsonComplete,
       },
     );
   }
@@ -311,31 +341,33 @@ async function createFixtureProject(projectRoot, scenario, expectedValue, candid
     "utf8",
   );
 
-  await runCommand("git", ["init", "-q"], {
-    cwd: projectRoot,
-    label: "git init",
-    timeoutMs: 30_000,
-  });
-  await runCommand("git", ["config", "user.name", "Host Native Smoke"], {
-    cwd: projectRoot,
-    label: "git config user.name",
-    timeoutMs: 30_000,
-  });
-  await runCommand("git", ["config", "user.email", "host-native-smoke@example.com"], {
-    cwd: projectRoot,
-    label: "git config user.email",
-    timeoutMs: 30_000,
-  });
-  await runCommand("git", ["add", "."], {
-    cwd: projectRoot,
-    label: "git add",
-    timeoutMs: 30_000,
-  });
-  await runCommand("git", ["commit", "-qm", "init"], {
-    cwd: projectRoot,
-    label: "git commit",
-    timeoutMs: 30_000,
-  });
+  if (scenario.gitBacked) {
+    await runCommand("git", ["init", "-q"], {
+      cwd: projectRoot,
+      label: "git init",
+      timeoutMs: 30_000,
+    });
+    await runCommand("git", ["config", "user.name", "Host Native Smoke"], {
+      cwd: projectRoot,
+      label: "git config user.name",
+      timeoutMs: 30_000,
+    });
+    await runCommand("git", ["config", "user.email", "host-native-smoke@example.com"], {
+      cwd: projectRoot,
+      label: "git config user.email",
+      timeoutMs: 30_000,
+    });
+    await runCommand("git", ["add", "."], {
+      cwd: projectRoot,
+      label: "git add",
+      timeoutMs: 30_000,
+    });
+    await runCommand("git", ["commit", "-qm", "init"], {
+      cwd: projectRoot,
+      label: "git commit",
+      timeoutMs: 30_000,
+    });
+  }
 }
 
 function resolveScenarios(input) {
@@ -344,11 +376,13 @@ function resolveScenarios(input) {
       {
         id: "node-package",
         sourcePath: "src/message.js",
+        gitBacked: true,
         packageJson: true,
       },
       {
         id: "package-free",
         sourcePath: "src/message.mjs",
+        gitBacked: false,
         packageJson: false,
       },
     ].map((scenario) => [scenario.id, scenario]),
@@ -599,6 +633,7 @@ function runCommand(command, args, options) {
     let stdout = "";
     let stderr = "";
     let closed = false;
+    let settled = false;
     let timedOut = false;
     const child = spawn(command, args, {
       cwd: options.cwd,
@@ -616,17 +651,37 @@ function runCommand(command, args, options) {
 
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
+      if (!settled && options.completeWhen?.(stdout, stderr)) {
+        settled = true;
+        clearTimeout(timeoutId);
+        terminateChild(child);
+        resolve({ stdout, stderr });
+      }
     });
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
+      if (!settled && options.completeWhen?.(stdout, stderr)) {
+        settled = true;
+        clearTimeout(timeoutId);
+        terminateChild(child);
+        resolve({ stdout, stderr });
+      }
     });
     child.on("error", (error) => {
       clearTimeout(timeoutId);
+      if (settled) {
+        return;
+      }
+      settled = true;
       reject(new Error(`Failed to start ${options.label}: ${error.message}`));
     });
     child.on("close", (code, signal) => {
       closed = true;
       clearTimeout(timeoutId);
+      if (settled) {
+        return;
+      }
+      settled = true;
       if (code !== 0) {
         reject(
           new Error(
@@ -647,6 +702,26 @@ function runCommand(command, args, options) {
       resolve({ stdout, stderr });
     });
   });
+}
+
+function isClaudeStreamJsonComplete(stdout, _stderr) {
+  for (const line of stdout.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed?.type === "result") {
+        return true;
+      }
+    } catch {
+      // Ignore mixed plain-text diagnostics while scanning for the terminal JSON event.
+    }
+  }
+
+  return false;
 }
 
 function terminateChild(child) {

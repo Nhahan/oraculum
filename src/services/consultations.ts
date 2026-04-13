@@ -4,6 +4,7 @@ import { relative } from "node:path";
 import {
   getExportPlanPath,
   getFinalistComparisonMarkdownPath,
+  getPreflightReadinessPath,
   getProfileSelectionPath,
   getRunDir,
   getRunManifestPath,
@@ -15,7 +16,11 @@ import {
   type ProfileSkippedCommandCandidate,
   profileRepoSignalsSchema,
 } from "../domain/profile.js";
-import type { RunManifest } from "../domain/run.js";
+import {
+  buildSavedConsultationStatus,
+  isPreflightBlockedConsultation,
+  type RunManifest,
+} from "../domain/run.js";
 
 import { pathExists } from "./project.js";
 import { parseRunManifestArtifact } from "./run-manifest-artifact.js";
@@ -72,6 +77,7 @@ export async function renderConsultationSummary(
 ): Promise<string> {
   void options;
   const projectRoot = resolveProjectRoot(cwd);
+  const status = buildSavedConsultationStatus(manifest);
   const verdictCommand = getSurfaceCommand("verdict");
   const crownCommand = getSurfaceCommand("crown");
   const finalists = manifest.candidates.filter(
@@ -85,7 +91,26 @@ export async function renderConsultationSummary(
     `Agent: ${manifest.agent}`,
     `Candidates: ${manifest.candidateCount}`,
     `Status: ${manifest.status}`,
+    `Outcome: ${status.outcomeType}`,
   ];
+
+  if (status.validationPosture !== "unknown") {
+    lines.push(`Validation posture: ${status.validationPosture}`);
+  }
+  lines.push(`Verification level: ${status.verificationLevel}`);
+
+  if (manifest.preflight && manifest.preflight.decision !== "proceed") {
+    lines.push(
+      `Preflight: ${manifest.preflight.decision} (${manifest.preflight.confidence}, ${manifest.preflight.researchPosture})`,
+      manifest.preflight.summary,
+    );
+    if (manifest.preflight.clarificationQuestion) {
+      lines.push(`Clarification needed: ${manifest.preflight.clarificationQuestion}`);
+    }
+    if (manifest.preflight.researchQuestion) {
+      lines.push(`Research needed: ${manifest.preflight.researchQuestion}`);
+    }
+  }
 
   if (manifest.recommendedWinner) {
     lines.push(
@@ -120,15 +145,24 @@ export async function renderConsultationSummary(
 
   lines.push("Entry paths:");
   const comparisonReportPath = getFinalistComparisonMarkdownPath(projectRoot, manifest.id);
+  const preflightReadinessPath = getPreflightReadinessPath(projectRoot, manifest.id);
+  const profileSelectionPath = getProfileSelectionPath(projectRoot, manifest.id);
   const winnerSelectionPath = getWinnerSelectionPath(projectRoot, manifest.id);
+  const preflightReadinessExists = await pathExists(preflightReadinessPath);
+  const profileSelectionExists = await pathExists(profileSelectionPath);
   const comparisonReportExists = await pathExists(comparisonReportPath);
   const winnerSelectionExists = await pathExists(winnerSelectionPath);
   lines.push(
     `- consultation root: ${toDisplayPath(projectRoot, getRunDir(projectRoot, manifest.id))}`,
   );
   lines.push(
-    manifest.profileSelection
-      ? `- profile selection: ${toDisplayPath(projectRoot, getProfileSelectionPath(projectRoot, manifest.id))}`
+    preflightReadinessExists
+      ? `- preflight readiness: ${toDisplayPath(projectRoot, preflightReadinessPath)}`
+      : "- preflight readiness: not available",
+  );
+  lines.push(
+    profileSelectionExists
+      ? `- profile selection: ${toDisplayPath(projectRoot, profileSelectionPath)}`
       : "- profile selection: not available",
   );
   lines.push(
@@ -153,7 +187,9 @@ export async function renderConsultationSummary(
       : "- crowning record: not created yet",
   );
 
-  if (finalists.length === 0) {
+  if (isPreflightBlockedConsultation(manifest) && manifest.candidates.length === 0) {
+    lines.push("No candidates were generated because execution stopped at preflight.");
+  } else if (finalists.length === 0) {
     lines.push("No survivor yet. Candidate states:");
   } else {
     lines.push("Survivors:");
@@ -170,6 +206,12 @@ export async function renderConsultationSummary(
   lines.push("Next:");
   if (hasCrowningRecord) {
     lines.push(`- reopen the crowning record: ${toDisplayPath(projectRoot, exportPlanPath)}`);
+  } else if (status.outcomeType === "needs-clarification") {
+    lines.push("- answer the preflight clarification question, then rerun `orc consult`.");
+  } else if (status.outcomeType === "external-research-required") {
+    lines.push("- gather the required external evidence, then rerun `orc consult`.");
+  } else if (status.outcomeType === "abstained-before-execution") {
+    lines.push("- revise the task scope or repository setup, then rerun `orc consult`.");
   } else if (manifest.recommendedWinner) {
     const recommendedCandidate = manifest.candidates.find(
       (candidate) => candidate.id === manifest.recommendedWinner?.candidateId,
@@ -212,9 +254,8 @@ export function renderConsultationArchive(
 
   const lines = ["Recent consultations:"];
   for (const manifest of manifests) {
-    const recommendation = manifest.recommendedWinner
-      ? `survivor ${manifest.recommendedWinner.candidateId}`
-      : "no survivor yet";
+    const status = buildSavedConsultationStatus(manifest);
+    const recommendation = renderArchiveOutcomeSummary(manifest, status);
     const profile = manifest.profileSelection
       ? `profile ${manifest.profileSelection.profileId}`
       : "no auto profile";
@@ -226,6 +267,36 @@ export function renderConsultationArchive(
   }
 
   return `${lines.join("\n")}\n`;
+}
+
+function renderArchiveOutcomeSummary(
+  manifest: RunManifest,
+  status: ReturnType<typeof buildSavedConsultationStatus>,
+): string {
+  if (manifest.recommendedWinner) {
+    return `survivor ${manifest.recommendedWinner.candidateId}`;
+  }
+
+  switch (status.outcomeType) {
+    case "pending-execution":
+      return "pending execution";
+    case "running":
+      return "running";
+    case "needs-clarification":
+      return "needs clarification";
+    case "external-research-required":
+      return "external research required";
+    case "abstained-before-execution":
+      return "abstained before execution";
+    case "finalists-without-recommendation":
+      return "finalists without recommendation";
+    case "completed-with-validation-gaps":
+      return "completed with validation gaps";
+    case "no-survivors":
+      return "no survivors";
+    default:
+      return "no survivor yet";
+  }
 }
 
 function toDisplayPath(projectRoot: string, targetPath: string): string {

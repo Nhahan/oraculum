@@ -263,26 +263,43 @@ export async function uninstallClaudeCodeHost(
   const installRoot = join(homeDir, ".oraculum", "chat-native", "claude-code");
   const mcpConfigPath = join(homeDir, ".claude", "mcp.json");
 
-  const marketList = await listClaudeMarketplaces(claudeBinaryPath, claudeArgs, env);
+  let marketplaceRemoved = false;
+  const marketList = await listClaudeMarketplaces(claudeBinaryPath, claudeArgs, env).catch(
+    () => [],
+  );
   const installedMarketplace = marketList.find((entry) => entry.name === CLAUDE_MARKETPLACE_NAME);
   if (installedMarketplace) {
-    await removeClaudeMarketplace(claudeBinaryPath, claudeArgs, env);
+    try {
+      await removeClaudeMarketplace(claudeBinaryPath, claudeArgs, env);
+      marketplaceRemoved = true;
+    } catch {
+      marketplaceRemoved = false;
+    }
   }
 
-  const installedPlugins = await listClaudePlugins(claudeBinaryPath, claudeArgs, env);
+  let pluginRemoved = false;
+  const installedPlugins = await listClaudePlugins(claudeBinaryPath, claudeArgs, env).catch(
+    () => [],
+  );
   const targetPlugin = installedPlugins.find((entry) => entry.name === CLAUDE_PLUGIN_NAME);
   if (targetPlugin) {
-    await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env);
+    try {
+      await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env);
+      pluginRemoved = true;
+    } catch {
+      pluginRemoved = false;
+    }
   }
 
   await removeClaudeMcpConfigEntry(mcpConfigPath);
+  await pruneClaudePluginArtifacts(homeDir);
   await rm(installRoot, { force: true, recursive: true });
 
   return {
     installRoot,
-    marketplaceRemoved: installedMarketplace !== undefined,
+    marketplaceRemoved,
     mcpConfigPath,
-    pluginRemoved: targetPlugin !== undefined,
+    pluginRemoved,
   };
 }
 
@@ -325,6 +342,14 @@ async function removeClaudeMcpConfigEntry(mcpConfigPath: string): Promise<void> 
       : Object.fromEntries(Object.entries(existing).filter(([key]) => key !== "mcpServers"));
   await mkdir(dirname(mcpConfigPath), { recursive: true });
   await writeFile(mcpConfigPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+}
+
+async function pruneClaudePluginArtifacts(homeDir: string): Promise<void> {
+  const pluginsDir = join(homeDir, ".claude", "plugins");
+  await Promise.all([
+    rm(join(pluginsDir, "oraculum"), { force: true, recursive: true }),
+    rm(join(pluginsDir, "@oraculum"), { force: true, recursive: true }),
+  ]);
 }
 
 async function prepareClaudeSetupRoot(options: {
@@ -702,6 +727,15 @@ function buildUsageExamples(entry: CommandManifestEntry): string[] {
 }
 
 function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
+  if (entry.id === "consult") {
+    return [
+      "- This skill is intended for exact-prefix routing inside Claude Code.",
+      "- After the MCP tool returns, relay that tool result and stop.",
+      "- Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command even if the result suggests a next step; wait for explicit user instruction.",
+      "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
+    ];
+  }
+
   if (entry.id === "crown") {
     return [
       "- The first argument is required only when crowning a Git-backed candidate onto a new branch.",
@@ -715,7 +749,8 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
 
   return [
     "- This skill is intended for exact-prefix routing inside Claude Code.",
-    "- After the MCP tool returns, relay Oraculum's result; do not replace the next Oraculum command with ad-hoc shell work.",
+    "- After the MCP tool returns, relay that tool result and stop.",
+    "- Do not automatically invoke another `orc ...` command based on suggested next steps; wait for explicit user instruction.",
     "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
   ];
 }

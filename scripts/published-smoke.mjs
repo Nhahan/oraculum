@@ -84,16 +84,26 @@ async function main() {
       `const fs = require("node:fs");
 const path = require("node:path");
 
-const prompt = fs.readFileSync(0, "utf8");
-const args = process.argv.slice(2);
-const candidateMatch = prompt.match(/^Candidate ID: (.+)$/m);
-const candidateId = candidateMatch ? candidateMatch[1].trim() : "cand-01";
-const isProfile = prompt.includes("You are selecting the best Oraculum consultation profile");
-const isWinner = prompt.includes("You are selecting the best Oraculum finalist.");
+	const prompt = fs.readFileSync(0, "utf8");
+	const args = process.argv.slice(2);
+	const candidateMatch = prompt.match(/^Candidate ID: (.+)$/m);
+	const candidateId = candidateMatch ? candidateMatch[1].trim() : "cand-01";
+	const isPreflight = prompt.includes("You are deciding whether an Oraculum consultation is ready to proceed before any candidate is generated.");
+	const isProfile = prompt.includes("You are selecting the best Oraculum consultation profile");
+	const isWinner = prompt.includes("You are selecting the best Oraculum finalist.");
 
-function profilePayload() {
-  return {
-    profileId: "library",
+	function preflightPayload() {
+	  return {
+	    decision: "proceed",
+	    confidence: "high",
+	    summary: "The repository and task are grounded enough to start the consultation.",
+	    researchPosture: "repo-only",
+	  };
+	}
+
+	function profilePayload() {
+	  return {
+	    profileId: "library",
     confidence: "high",
     summary: "library profile fits the repository signals.",
     candidateCount: 2,
@@ -117,9 +127,9 @@ function mutateWorkspace() {
   fs.writeFileSync(file, next, "utf8");
 }
 
-if (!isProfile && !isWinner) {
-  mutateWorkspace();
-}
+	if (!isPreflight && !isProfile && !isWinner) {
+	  mutateWorkspace();
+	}
 
 let out = "";
 for (let index = 0; index < args.length; index += 1) {
@@ -128,11 +138,17 @@ for (let index = 0; index < args.length; index += 1) {
   }
 }
 
-process.stdout.write(JSON.stringify({ event: "started" }) + "\\n");
-if (out) {
-  const payload = isProfile ? profilePayload() : isWinner ? winnerPayload() : "candidate patch ready";
-  fs.writeFileSync(out, typeof payload === "string" ? payload : JSON.stringify(payload), "utf8");
-}
+	process.stdout.write(JSON.stringify({ event: "started" }) + "\\n");
+	if (out) {
+	  const payload = isPreflight
+	    ? preflightPayload()
+	    : isProfile
+	      ? profilePayload()
+	      : isWinner
+	        ? winnerPayload()
+	        : "candidate patch ready";
+	  fs.writeFileSync(out, typeof payload === "string" ? payload : JSON.stringify(payload), "utf8");
+	}
 process.exit(0);
 `,
     );

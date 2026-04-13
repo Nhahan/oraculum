@@ -7,10 +7,12 @@ import {
   agentProfileRecommendationSchema,
   buildAgentProfileRecommendationJsonSchema,
 } from "../domain/profile.js";
+import { consultationPreflightSchema } from "../domain/run.js";
 
 import { shouldUseWindowsShell } from "./platform.js";
 import {
   buildCandidatePrompt,
+  buildPreflightPrompt,
   buildProfileSelectionPrompt,
   buildWinnerSelectionPrompt,
 } from "./prompt.js";
@@ -19,14 +21,18 @@ import {
   type AgentJudgeRecommendation,
   type AgentJudgeRequest,
   type AgentJudgeResult,
+  type AgentPreflightRequest,
+  type AgentPreflightResult,
   type AgentProfileRequest,
   type AgentProfileResult,
   type AgentRunRequest,
   type AgentRunResult,
   agentJudgeRecommendationSchema,
   agentJudgeResultSchema,
+  agentPreflightResultSchema,
   agentProfileResultSchema,
   agentRunResultSchema,
+  buildAgentPreflightJsonSchema,
 } from "./types.js";
 
 interface CodexAdapterOptions {
@@ -167,6 +173,67 @@ export class CodexAdapter implements AgentAdapter {
     });
   }
 
+  async recommendPreflight(request: AgentPreflightRequest): Promise<AgentPreflightResult> {
+    await mkdir(request.logDir, { recursive: true });
+
+    const prompt = buildPreflightPrompt(request);
+    const promptPath = join(request.logDir, "preflight-judge.prompt.txt");
+    const schemaPath = join(request.logDir, "preflight-judge.schema.json");
+    const stdoutPath = join(request.logDir, "preflight-judge.stdout.jsonl");
+    const stderrPath = join(request.logDir, "preflight-judge.stderr.txt");
+    const finalMessagePath = join(request.logDir, "preflight-judge.final-message.txt");
+    const startedAt = new Date().toISOString();
+
+    await writeFile(promptPath, prompt, "utf8");
+    await writeFile(schemaPath, `${JSON.stringify(buildAgentPreflightJsonSchema(), null, 2)}\n`);
+
+    const result = await runSubprocess({
+      command: this.binaryPath,
+      args: [
+        "-a",
+        "never",
+        "exec",
+        "-s",
+        "read-only",
+        "--skip-git-repo-check",
+        "--json",
+        "--output-schema",
+        schemaPath,
+        "-o",
+        finalMessagePath,
+      ],
+      cwd: request.projectRoot,
+      ...(this.env ? { env: this.env } : {}),
+      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
+      stdin: prompt,
+      timeoutMs: this.timeoutMs,
+    });
+
+    await writeFile(stdoutPath, result.stdout, "utf8");
+    await writeFile(stderrPath, result.stderr, "utf8");
+
+    const finalMessage = await readOptionalFile(finalMessagePath);
+    const judgeOutput = finalMessage ?? result.stdout;
+
+    return agentPreflightResultSchema.parse({
+      runId: request.runId,
+      adapter: this.name,
+      status: result.timedOut ? "timed-out" : result.exitCode === 0 ? "completed" : "failed",
+      startedAt,
+      completedAt: new Date().toISOString(),
+      exitCode: result.exitCode,
+      summary: summarizeAgentOutput(judgeOutput, "Codex preflight readiness finished."),
+      recommendation: extractPreflightRecommendation(judgeOutput),
+      artifacts: [
+        { kind: "prompt", path: promptPath },
+        { kind: "report", path: schemaPath },
+        { kind: "transcript", path: stdoutPath },
+        { kind: "stderr", path: stderrPath },
+        ...(finalMessage ? [{ kind: "report" as const, path: finalMessagePath }] : []),
+      ],
+    });
+  }
+
   async recommendProfile(request: AgentProfileRequest): Promise<AgentProfileResult> {
     await mkdir(request.logDir, { recursive: true });
 
@@ -271,6 +338,19 @@ function extractProfileRecommendation(output: string): AgentProfileRecommendatio
   }
 }
 
+function extractPreflightRecommendation(output: string) {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return consultationPreflightSchema.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
 function extractJsonObject(output: string): Record<string, unknown> | undefined {
   const trimmed = output.trim();
   if (!trimmed) {
@@ -308,6 +388,7 @@ function extractJsonObject(output: string): Record<string, unknown> | undefined 
 
 function buildWinnerRecommendationSchema(): Record<string, unknown> {
   return {
+    type: "object",
     oneOf: [
       {
         type: "object",

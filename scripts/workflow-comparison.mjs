@@ -431,6 +431,7 @@ const prompt = fs.readFileSync(0, "utf8");
 const args = process.argv.slice(2);
 const candidateMatch = prompt.match(/^Candidate ID: (.+)$/m);
 const candidateId = candidateMatch ? candidateMatch[1].trim() : "cand-01";
+const isPreflight = prompt.includes("You are deciding whether an Oraculum consultation is ready to proceed before any candidate is generated.");
 const isProfile = prompt.includes("You are selecting the best Oraculum consultation profile");
 const isWinner = prompt.includes("You are selecting the best Oraculum finalist.");
 
@@ -489,6 +490,15 @@ function applyGoodPatch() {
   write(scenario.targetPath, "export function message() {\\n  return " + JSON.stringify(scenario.expectedValue) + ";\\n}\\n");
 }
 
+function preflightPayload() {
+  return {
+    decision: "proceed",
+    confidence: "high",
+    summary: "The comparison fixture is ready for a repo-only consultation.",
+    researchPosture: "repo-only",
+  };
+}
+
 function profilePayload() {
   return {
     profileId: scenario.profileId,
@@ -505,7 +515,7 @@ function winnerPayload() {
   return { candidateId: "cand-02", confidence: "high", summary: "cand-02 is the only invariant-preserving survivor." };
 }
 
-if (!isProfile && !isWinner) {
+if (!isPreflight && !isProfile && !isWinner) {
   if (candidateId === "cand-01") {
     applyBadPatch();
   } else {
@@ -514,11 +524,17 @@ if (!isProfile && !isWinner) {
 }
 
 const out = outputPath();
-const payload = isProfile ? profilePayload() : isWinner ? winnerPayload() : "Candidate " + candidateId + " materialized.";
+const payload = isPreflight
+  ? preflightPayload()
+  : isProfile
+    ? profilePayload()
+    : isWinner
+      ? winnerPayload()
+      : "Candidate " + candidateId + " materialized.";
 if (out) {
   fs.writeFileSync(out, typeof payload === "string" ? payload : JSON.stringify(payload), "utf8");
 }
-process.stdout.write(JSON.stringify({ event: "completed", scenario: scenarioId, candidateId, mode: isProfile ? "profile" : isWinner ? "winner" : "candidate" }) + "\\n");
+process.stdout.write(JSON.stringify({ event: "completed", scenario: scenarioId, candidateId, mode: isPreflight ? "preflight" : isProfile ? "profile" : isWinner ? "winner" : "candidate" }) + "\\n");
 `;
 }
 

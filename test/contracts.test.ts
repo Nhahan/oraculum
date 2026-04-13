@@ -373,6 +373,24 @@ describe("oracle and adapter contracts", () => {
           artifacts: [],
         });
       },
+      async recommendPreflight(request) {
+        return {
+          runId: request.runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-03T00:00:00.000Z",
+          completedAt: "2026-04-03T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Stub adapter preflight completed.",
+          recommendation: {
+            decision: "proceed",
+            confidence: "medium",
+            summary: "Repository context is sufficient.",
+            researchPosture: "repo-only",
+          },
+          artifacts: [],
+        };
+      },
       async recommendProfile(request) {
         return agentProfileResultSchema.parse({
           runId: request.runId,

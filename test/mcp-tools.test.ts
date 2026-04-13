@@ -12,6 +12,7 @@ vi.mock("../src/services/runs.js", () => ({
   planRun: vi.fn(),
   readLatestRunManifest: vi.fn(),
   readRunManifest: vi.fn(),
+  writeLatestRunState: vi.fn(),
 }));
 
 vi.mock("../src/services/execution.js", () => ({
@@ -34,6 +35,7 @@ vi.mock("../src/services/exports.js", () => ({
 }));
 
 import { runSubprocess } from "../src/core/subprocess.js";
+import { summarizeSetupDiagnosticsHosts } from "../src/services/chat-native.js";
 import {
   listRecentConsultations,
   renderConsultationArchive,
@@ -46,15 +48,22 @@ import {
   runCrownTool,
   runDraftTool,
   runInitTool,
+  runSetupStatusTool,
   runVerdictArchiveTool,
   runVerdictTool,
 } from "../src/services/mcp-tools.js";
 import { ensureProjectInitialized, initializeProject } from "../src/services/project.js";
-import { planRun, readLatestRunManifest, readRunManifest } from "../src/services/runs.js";
+import {
+  planRun,
+  readLatestRunManifest,
+  readRunManifest,
+  writeLatestRunState,
+} from "../src/services/runs.js";
 
 const mockedPlanRun = vi.mocked(planRun);
 const mockedReadLatestRunManifest = vi.mocked(readLatestRunManifest);
 const mockedReadRunManifest = vi.mocked(readRunManifest);
+const mockedWriteLatestRunState = vi.mocked(writeLatestRunState);
 const mockedExecuteRun = vi.mocked(executeRun);
 const mockedEnsureProjectInitialized = vi.mocked(ensureProjectInitialized);
 const mockedInitializeProject = vi.mocked(initializeProject);
@@ -77,6 +86,7 @@ describe("chat-native MCP tools", () => {
     mockedPlanRun.mockReset();
     mockedReadLatestRunManifest.mockReset();
     mockedReadRunManifest.mockReset();
+    mockedWriteLatestRunState.mockReset();
     mockedExecuteRun.mockReset();
     mockedEnsureProjectInitialized.mockReset();
     mockedInitializeProject.mockReset();
@@ -93,6 +103,7 @@ describe("chat-native MCP tools", () => {
     mockedPlanRun.mockResolvedValue(createPlannedManifest());
     mockedReadLatestRunManifest.mockResolvedValue(createCompletedManifest());
     mockedReadRunManifest.mockResolvedValue(createCompletedManifest());
+    mockedWriteLatestRunState.mockResolvedValue(undefined);
     mockedExecuteRun.mockResolvedValue({
       candidateResults: [],
       manifest: createCompletedManifest(),
@@ -132,6 +143,10 @@ describe("chat-native MCP tools", () => {
       taskInput: "tasks/task.md",
       agent: "codex",
       candidates: 2,
+      preflight: {
+        allowRuntime: true,
+        timeoutMs: 1200,
+      },
       autoProfile: {
         allowRuntime: true,
         timeoutMs: 1200,
@@ -148,6 +163,15 @@ describe("chat-native MCP tools", () => {
       { surface: "chat-native" },
     );
     expect(response.mode).toBe("consult");
+    expect(response.status).toMatchObject({
+      consultationId: "run_1",
+      consultationState: "completed",
+      outcomeType: "recommended-survivor",
+      terminal: true,
+      crownable: true,
+      recommendedCandidateId: "cand-01",
+      nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-survivor"],
+    });
   });
 
   it("uses the host runtime as the auto-init quick-start default", async () => {
@@ -164,6 +188,9 @@ describe("chat-native MCP tools", () => {
     expect(mockedPlanRun).toHaveBeenCalledWith({
       cwd: "/tmp/project",
       taskInput: "tasks/task.md",
+      preflight: {
+        allowRuntime: true,
+      },
       autoProfile: {
         allowRuntime: true,
       },
@@ -181,6 +208,10 @@ describe("chat-native MCP tools", () => {
       taskInput: "tasks/fix session.md",
       agent: "codex",
       candidates: 3,
+      preflight: {
+        allowRuntime: true,
+        timeoutMs: 2400,
+      },
       autoProfile: {
         allowRuntime: true,
         timeoutMs: 2400,
@@ -190,6 +221,26 @@ describe("chat-native MCP tools", () => {
       cwd: "/tmp/project",
       runId: "run_1",
       timeoutMs: 2400,
+    });
+  });
+
+  it("preserves Windows-style task paths while parsing inline consult options", async () => {
+    await runConsultTool({
+      cwd: "C:\\repo",
+      taskInput: '"C:\\Users\\me\\task notes\\fix session.md" --agent codex --candidates 2',
+    });
+
+    expect(mockedPlanRun).toHaveBeenCalledWith({
+      cwd: "C:\\repo",
+      taskInput: "C:\\Users\\me\\task notes\\fix session.md",
+      agent: "codex",
+      candidates: 2,
+      preflight: {
+        allowRuntime: true,
+      },
+      autoProfile: {
+        allowRuntime: true,
+      },
     });
   });
 
@@ -250,6 +301,48 @@ describe("chat-native MCP tools", () => {
     expect(response.mode).toBe("draft");
   });
 
+  it("preserves Windows-style task paths while parsing inline draft options", async () => {
+    const response = await runDraftTool({
+      cwd: "C:\\repo",
+      taskInput: "C:\\Users\\me\\tasks\\fix.md --agent claude-code --candidates 1",
+    });
+
+    expect(mockedPlanRun).toHaveBeenCalledWith({
+      cwd: "C:\\repo",
+      taskInput: "C:\\Users\\me\\tasks\\fix.md",
+      agent: "claude-code",
+      candidates: 1,
+      autoProfile: {
+        allowRuntime: false,
+      },
+    });
+    expect(response.mode).toBe("draft");
+  });
+
+  it("returns blocked preflight consultations without executing candidates", async () => {
+    mockedPlanRun.mockResolvedValue(createBlockedPreflightManifest());
+
+    const response = await runConsultTool({
+      cwd: "/tmp/project",
+      taskInput: "tasks/task.md",
+    });
+
+    expect(mockedExecuteRun).not.toHaveBeenCalled();
+    expect(mockedWriteLatestRunState).toHaveBeenCalledWith("/tmp/project", "run_blocked");
+    expect(response.status).toMatchObject({
+      consultationId: "run_blocked",
+      outcomeType: "needs-clarification",
+      terminal: true,
+      preflightDecision: "needs-clarification",
+      nextActions: [
+        "reopen-verdict",
+        "browse-archive",
+        "review-preflight-readiness",
+        "answer-clarification-and-rerun",
+      ],
+    });
+  });
+
   it("reopens verdicts and archives through MCP tools", async () => {
     const verdict = await runVerdictTool({
       cwd: "/tmp/project",
@@ -263,7 +356,32 @@ describe("chat-native MCP tools", () => {
     expect(mockedReadRunManifest).toHaveBeenCalledWith("/tmp/project", "run_9");
     expect(mockedListRecentConsultations).toHaveBeenCalledWith("/tmp/project", 5);
     expect(verdict.mode).toBe("verdict");
+    expect(verdict.status).toMatchObject({
+      consultationId: "run_1",
+      outcomeType: "recommended-survivor",
+      nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-survivor"],
+    });
     expect(archive.mode).toBe("verdict-archive");
+  });
+
+  it("filters setup-status responses to the requested host", async () => {
+    const response = await runSetupStatusTool({
+      cwd: process.cwd(),
+      host: "codex",
+    });
+
+    expect(response.hosts).toHaveLength(1);
+    expect(response.hosts[0]?.host).toBe("codex");
+    expect(response.summary).toBe(
+      summarizeSetupDiagnosticsHosts(
+        response.hosts.map((host) => ({
+          host: host.host,
+          status: host.status,
+          registered: host.registered,
+          artifactsInstalled: host.artifactsInstalled,
+        })),
+      ),
+    );
   });
 
   it("crowns through the MCP tool path", async () => {
@@ -320,6 +438,43 @@ describe("chat-native MCP tools", () => {
       currentBranch: "fix/session-loss",
       changedPaths: ["src/message.js"],
       changedPathCount: 1,
+    });
+  });
+
+  it("normalizes empty crown string inputs before materialization", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oraculum-mcp-crown-empty-"));
+    tempRoots.push(root);
+    const summaryPath = join(root, ".oraculum", "runs", "run_1", "reports", "export-sync.json");
+    await mkdir(join(root, ".oraculum", "runs", "run_1", "reports"), { recursive: true });
+    await writeFile(
+      summaryPath,
+      `${JSON.stringify({ appliedFiles: ["app.txt"], removedFiles: [] }, null, 2)}\n`,
+      "utf8",
+    );
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        mode: "workspace-sync",
+        workspaceDir: "/tmp/workspace",
+        appliedPathCount: 1,
+        removedPathCount: 0,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: join(root, ".oraculum", "runs", "run_1", "reports", "export-plan.json"),
+    });
+
+    await runCrownTool({
+      cwd: root,
+      branchName: "",
+      materializationLabel: "   ",
+      withReport: false,
+    });
+
+    expect(mockedMaterializeExport).toHaveBeenCalledWith({
+      cwd: root,
+      withReport: false,
     });
   });
 
@@ -697,5 +852,42 @@ function createCompletedManifest() {
         createdAt: "2026-04-04T00:00:00.000Z",
       },
     ],
+  };
+}
+
+function createBlockedPreflightManifest() {
+  return {
+    id: "run_blocked",
+    status: "completed" as const,
+    taskPath: "/tmp/task.md",
+    taskPacket: {
+      id: "task",
+      title: "Task",
+      sourceKind: "task-note" as const,
+      sourcePath: "/tmp/task.md",
+    },
+    agent: "codex" as const,
+    configPath: "/tmp/project/.oraculum/runs/run_blocked/reports/consultation-config.json",
+    candidateCount: 0,
+    createdAt: "2026-04-04T00:00:00.000Z",
+    rounds: [],
+    candidates: [],
+    preflight: {
+      decision: "needs-clarification" as const,
+      confidence: "medium" as const,
+      summary: "The target file is unclear.",
+      researchPosture: "repo-only" as const,
+      clarificationQuestion: "Which file should Oraculum update?",
+    },
+    outcome: {
+      type: "needs-clarification" as const,
+      terminal: true,
+      crownable: false,
+      finalistCount: 0,
+      validationPosture: "unknown" as const,
+      verificationLevel: "none" as const,
+      missingCapabilityCount: 0,
+      judgingBasisKind: "unknown" as const,
+    },
   };
 }

@@ -23,7 +23,7 @@ import {
 } from "../domain/profile.js";
 import type { MaterializedTaskPacket } from "../domain/task.js";
 
-import { buildCommandCatalog } from "./profile-command-catalog.js";
+import { buildCommandCatalog, hasCapabilityCommand } from "./profile-command-catalog.js";
 import { collectExplicitCommandCatalog } from "./profile-explicit-command-collector.js";
 import { collectProfileRepoFacts } from "./profile-repo-facts.js";
 import { buildCapabilitySignals, buildSignalProvenance } from "./profile-signals.js";
@@ -37,6 +37,7 @@ interface RecommendConsultationProfileOptions {
   projectRoot: string;
   reportsDir: string;
   runId: string;
+  signals?: ProfileRepoSignals;
   taskPacket: MaterializedTaskPacket;
 }
 
@@ -142,9 +143,11 @@ const PROFILE_COMMAND_SLOTS: Record<ConsultationProfileId, ProfileCommandSlot[]>
 export async function recommendConsultationProfile(
   options: RecommendConsultationProfileOptions,
 ): Promise<RecommendedConsultationProfile> {
-  const signals = await collectProfileRepoSignals(options.projectRoot, {
-    rules: options.baseConfig.managedTree,
-  });
+  const signals =
+    options.signals ??
+    (await collectProfileRepoSignals(options.projectRoot, {
+      rules: options.baseConfig.managedTree,
+    }));
   const fallback = buildFallbackRecommendation(signals, options.taskPacket);
   let llmResult: Awaited<ReturnType<AgentAdapter["recommendProfile"]>> | undefined;
   let llmFailure: string | undefined;
@@ -251,7 +254,7 @@ function applyProfileSelection(options: {
   };
 }
 
-async function collectProfileRepoSignals(
+export async function collectProfileRepoSignals(
   projectRoot: string,
   options: { rules: ProjectConfig["managedTree"] },
 ): Promise<ProfileRepoSignals> {
@@ -324,9 +327,7 @@ function buildSignalNotes(
     capabilities.some(
       (capability) => capability.kind === "intent" && capability.value === "library",
     ) &&
-    commandCatalog.every(
-      (command) => command.id !== "pack-impact" && command.id !== "package-smoke-deep",
-    )
+    !hasCapabilityCommand(commandCatalog, "package-export-smoke", ["impact", "deep"])
   ) {
     notes.push(
       "Package export signals were detected, but no packaging verification command was auto-generated.",

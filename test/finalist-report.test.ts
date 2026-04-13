@@ -132,6 +132,7 @@ describe("finalist comparison reports", () => {
         ],
       ]),
       projectRoot,
+      verificationLevel: "standard",
     });
 
     expect(result.jsonPath).toBe(getFinalistComparisonJsonPath(projectRoot, "run_1"));
@@ -183,6 +184,7 @@ describe("finalist comparison reports", () => {
       candidateResults: [],
       verdictsByCandidate: new Map(),
       projectRoot,
+      verificationLevel: "none",
     });
 
     await expect(

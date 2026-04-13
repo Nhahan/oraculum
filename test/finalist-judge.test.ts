@@ -31,6 +31,9 @@ describe("finalist judge", () => {
         runCandidate: async () => {
           throw new Error("not used");
         },
+        recommendPreflight: async () => {
+          throw new Error("not used");
+        },
         recommendProfile: async () => {
           throw new Error("not used");
         },
@@ -94,6 +97,9 @@ describe("finalist judge", () => {
       adapter: {
         name: "codex",
         runCandidate: async () => {
+          throw new Error("not used");
+        },
+        recommendPreflight: async () => {
           throw new Error("not used");
         },
         recommendProfile: async () => {
@@ -175,6 +181,9 @@ describe("finalist judge", () => {
       adapter: {
         name: "codex",
         runCandidate: async () => {
+          throw new Error("not used");
+        },
+        recommendPreflight: async () => {
           throw new Error("not used");
         },
         recommendProfile: async () => {

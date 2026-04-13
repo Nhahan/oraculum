@@ -160,7 +160,10 @@ describe("Claude Code chat-native packaging", () => {
     const consultSkill = skills.find((file) => file.path.includes("/consult/"));
     expect(consultSkill?.content).toContain('taskInput: "$ARGUMENTS"');
     expect(consultSkill?.content).toContain('agent: "claude-code"');
-    expect(consultSkill?.content).toContain("do not replace the next Oraculum command");
+    expect(consultSkill?.content).toContain("relay that tool result and stop");
+    expect(consultSkill?.content).toContain(
+      "Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command",
+    );
   });
 
   it("writes packaged Claude artifacts into dist during the build", async () => {
@@ -395,5 +398,53 @@ describe("Claude Code setup", () => {
     expect(mcpConfig.mcpServers).toEqual({
       other: { command: "echo", args: ["ok"] },
     });
+  });
+
+  it("best-effort cleans local Claude artifacts when the Claude binary is unavailable", async () => {
+    const { cliPath, homeDir, packagedRoot, statePath } = await createFakeClaudeSetupFixture();
+    await setupClaudeCodeHost({
+      claudeBinaryPath: process.execPath,
+      claudeArgs: [cliPath],
+      env: {
+        ORACULUM_FAKE_CLAUDE_STATE: statePath,
+        ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
+      },
+      homeDir,
+      packagedRoot,
+    });
+    await writeFile(
+      join(homeDir, ".claude", "mcp.json"),
+      `${JSON.stringify(
+        {
+          mcpServers: {
+            oraculum: { command: "node", args: ["cli.js", "mcp", "serve"] },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(join(homeDir, ".claude", "plugins", "oraculum"), { recursive: true });
+    await writeFile(join(homeDir, ".claude", "plugins", "oraculum", "plugin.json"), "{}\n", "utf8");
+
+    const result = await uninstallClaudeCodeHost({
+      claudeBinaryPath: join(homeDir, "missing-claude"),
+      env: {
+        ORACULUM_FAKE_CLAUDE_STATE: statePath,
+        ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
+      },
+      homeDir,
+    });
+
+    await expect(readFile(result.mcpConfigPath, "utf8")).resolves.toContain("{}");
+    await expect(
+      readFile(join(homeDir, ".claude", "plugins", "oraculum", "plugin.json"), "utf8"),
+    ).rejects.toThrow();
+    await expect(
+      readFile(join(result.installRoot, APP_VERSION, ".claude-plugin", "plugin.json"), "utf8"),
+    ).rejects.toThrow();
+    expect(result.marketplaceRemoved).toBe(false);
+    expect(result.pluginRemoved).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { cp, mkdir, readdir, rm } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -136,6 +136,7 @@ export async function uninstallCodexHost(
     codexBinaryPath,
     env,
   });
+  await removeCodexMcpConfigEntry(configPath);
   await pruneManagedCodexSkills(skillsRoot, new Set());
   await pruneManagedCodexRules(rulesRoot, new Set());
   await rm(installRoot, { force: true, recursive: true });
@@ -190,6 +191,11 @@ function renderCodexRules(manifest: readonly CommandManifestEntry[]): string {
 }
 
 function renderCodexSkill(entry: CommandManifestEntry): string {
+  const postToolInstruction =
+    entry.id === "consult"
+      ? "After the MCP tool succeeds, report the verified tool result concisely and stop. Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command even if the result suggests a next step; wait for explicit user instruction."
+      : "After the MCP tool succeeds, report the verified tool result concisely and stop. Do not run Bash, Edit, Write, or ad-hoc follow-up work unless the user explicitly asks.";
+
   return [
     "---",
     `name: ${toCodexSkillDir(entry.id)}`,
@@ -204,7 +210,7 @@ function renderCodexSkill(entry: CommandManifestEntry): string {
     "",
     `Call the MCP tool \`${entry.mcpTool}\`.`,
     "",
-    "After the MCP tool succeeds, report the verified tool result concisely and stop. Do not run Bash, Edit, Write, or ad-hoc follow-up work unless the user explicitly asks.",
+    postToolInstruction,
     "",
     "## Argument Mapping",
     "",
@@ -437,6 +443,49 @@ async function unregisterCodexMcpServer(options: {
     env: options.env,
     timeoutMs: 30_000,
   }).catch(() => undefined);
+}
+
+async function removeCodexMcpConfigEntry(configPath: string): Promise<void> {
+  try {
+    const raw = await readFile(configPath, "utf8");
+    const next = stripCodexMcpServerSection(raw, "mcp_servers.oraculum");
+    if (next !== raw) {
+      await writeFile(configPath, next, "utf8");
+    }
+  } catch {
+    // Leave best-effort uninstall cleanup to the managed artifacts when the config is absent
+    // or unreadable.
+  }
+}
+
+function stripCodexMcpServerSection(content: string, sectionPrefix: string): string {
+  const lines = content.split(/\r?\n/u);
+  const kept: string[] = [];
+  let skipping = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const sectionMatch = /^\[(.+)\]$/u.exec(trimmed);
+    if (sectionMatch) {
+      const sectionName = sectionMatch[1];
+      if (!sectionName) {
+        skipping = false;
+        kept.push(line);
+        continue;
+      }
+      skipping = sectionName === sectionPrefix || sectionName.startsWith(`${sectionPrefix}.`);
+    }
+
+    if (!skipping) {
+      kept.push(line);
+    }
+  }
+
+  while (kept.length > 0 && kept[kept.length - 1]?.trim() === "") {
+    kept.pop();
+  }
+
+  return kept.length > 0 ? `${kept.join("\n")}\n` : "";
 }
 
 function resolveNodeCliInvocation(): { args: string[]; command: string } {
