@@ -1,5 +1,6 @@
 import type { ProfileCommandCandidate } from "../domain/profile.js";
 import { profileStrategyIds } from "../domain/profile.js";
+import type { MaterializedTaskPacket } from "../domain/task.js";
 import type {
   AgentJudgeRequest,
   AgentPreflightRequest,
@@ -14,10 +15,13 @@ export function buildCandidatePrompt(request: AgentRunRequest): string {
     `Strategy: ${request.strategyLabel} (${request.strategyId})`,
     `Task ID: ${request.taskPacket.id}`,
     `Task Title: ${request.taskPacket.title}`,
+    `Task Source: ${request.taskPacket.source.kind} (${request.taskPacket.source.path})`,
     "",
     "Intent:",
     request.taskPacket.intent,
   ];
+
+  appendTaskSourceContext(sections, request.taskPacket);
 
   if (request.taskPacket.nonGoals.length > 0) {
     sections.push("", "Non-goals:", ...request.taskPacket.nonGoals.map((item) => `- ${item}`));
@@ -98,10 +102,13 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
     "",
     `Task ID: ${request.taskPacket.id}`,
     `Task Title: ${request.taskPacket.title}`,
+    `Task Source: ${request.taskPacket.source.kind} (${request.taskPacket.source.path})`,
     "",
     "Intent:",
     request.taskPacket.intent,
   ];
+
+  appendTaskSourceContext(sections, request.taskPacket);
 
   if (request.taskPacket.acceptanceCriteria.length > 0) {
     sections.push(
@@ -200,10 +207,13 @@ export function buildPreflightPrompt(request: AgentPreflightRequest): string {
     "",
     `Task ID: ${request.taskPacket.id}`,
     `Task Title: ${request.taskPacket.title}`,
+    `Task Source: ${request.taskPacket.source.kind} (${request.taskPacket.source.path})`,
     "",
     "Intent:",
     request.taskPacket.intent,
   ];
+
+  appendTaskSourceContext(sections, request.taskPacket);
 
   if (request.taskPacket.nonGoals.length > 0) {
     sections.push("", "Non-goals:", ...request.taskPacket.nonGoals.map((item) => `- ${item}`));
@@ -276,10 +286,13 @@ export function buildProfileSelectionPrompt(request: AgentProfileRequest): strin
     "",
     `Task ID: ${request.taskPacket.id}`,
     `Task Title: ${request.taskPacket.title}`,
+    `Task Source: ${request.taskPacket.source.kind} (${request.taskPacket.source.path})`,
     "",
     "Intent:",
     request.taskPacket.intent,
   ];
+
+  appendTaskSourceContext(sections, request.taskPacket);
 
   if (request.taskPacket.acceptanceCriteria.length > 0) {
     sections.push(
@@ -371,6 +384,20 @@ function formatProfileCommandCandidate(candidate: ProfileCommandCandidate): stri
     ...(candidate.safetyRationale ? [`  Safety rationale: ${candidate.safetyRationale}`] : []),
     `  Invariant: ${candidate.invariant}`,
   ];
+}
+
+function appendTaskSourceContext(sections: string[], taskPacket: MaterializedTaskPacket): void {
+  if (taskPacket.source.kind !== "research-brief") {
+    return;
+  }
+
+  sections.push(
+    "",
+    "Research brief provenance:",
+    "- This task was resumed from a persisted external research brief.",
+    `- Research brief path: ${taskPacket.source.path}`,
+    "- Treat the research summary in the task intent as prior investigation context.",
+  );
 }
 
 function formatProfileCommandProvenance(

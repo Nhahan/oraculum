@@ -6,7 +6,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { ClaudeAdapter } from "../src/adapters/claude.js";
 import { CodexAdapter } from "../src/adapters/codex.js";
-import { buildProfileSelectionPrompt } from "../src/adapters/prompt.js";
+import {
+  buildCandidatePrompt,
+  buildPreflightPrompt,
+  buildProfileSelectionPrompt,
+  buildWinnerSelectionPrompt,
+} from "../src/adapters/prompt.js";
 import { materializedTaskPacketSchema } from "../src/domain/task.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
 
@@ -884,17 +889,83 @@ process.stdout.write(JSON.stringify({
       'Provenance: signal=script:lint source=workspace-config path=packages/app/package.json detail=Workspace script "lint".',
     );
   });
+
+  it("includes research brief provenance in shared prompts", () => {
+    const taskPacket = createTaskPacket({
+      intent: "Continue the original task using the required research context.",
+      source: {
+        kind: "research-brief",
+        path: "/repo/.oraculum/runs/run_1/reports/research-brief.json",
+      },
+    });
+
+    const candidatePrompt = buildCandidatePrompt({
+      runId: "run_1",
+      candidateId: "cand-01",
+      strategyId: "minimal-change",
+      strategyLabel: "Minimal Change",
+      workspaceDir: "/repo/.oraculum/workspaces/cand-01",
+      logDir: "/repo/.oraculum/runs/run_1/candidates/cand-01/logs",
+      taskPacket,
+    });
+    const winnerPrompt = buildWinnerSelectionPrompt({
+      runId: "run_1",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_1/reports",
+      taskPacket,
+      finalists: [],
+    });
+    const preflightPrompt = buildPreflightPrompt({
+      runId: "run_1",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_1/reports",
+      taskPacket,
+      signals: createRepoSignals(),
+    });
+    const profilePrompt = buildProfileSelectionPrompt({
+      runId: "run_1",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_1/reports",
+      taskPacket,
+      signals: createRepoSignals(),
+      profileOptions: [
+        { id: "generic", description: "Generic work." },
+        { id: "library", description: "Library work." },
+        { id: "frontend", description: "Frontend work." },
+        { id: "migration", description: "Migration work." },
+      ],
+    });
+
+    for (const prompt of [candidatePrompt, winnerPrompt, preflightPrompt, profilePrompt]) {
+      expect(prompt).toContain(
+        "Task Source: research-brief (/repo/.oraculum/runs/run_1/reports/research-brief.json)",
+      );
+      expect(prompt).toContain("Research brief provenance:");
+      expect(prompt).toContain(
+        "Treat the research summary in the task intent as prior investigation context.",
+      );
+    }
+  });
 });
 
-function createTaskPacket() {
+function createTaskPacket(
+  overrides: Partial<ReturnType<typeof materializedTaskPacketSchema.parse>> = {},
+) {
   return materializedTaskPacketSchema.parse({
     id: "fix-session-loss",
     title: "Fix session loss",
     intent: "Preserve login state during refresh.",
+    nonGoals: [],
+    acceptanceCriteria: [],
+    risks: [],
+    oracleHints: [],
+    strategyHints: [],
+    contextFiles: [],
     source: {
       kind: "task-note",
       path: "/tmp/task.md",
     },
+    ...overrides,
   });
 }
 
