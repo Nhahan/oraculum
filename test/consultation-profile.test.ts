@@ -487,6 +487,91 @@ if (out) {
     );
   });
 
+  it("detects workspace roots outside the old parent-directory whitelist", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(
+      join(cwd, "tasks", "fix.md"),
+      "# Fix\nKeep nested workspace checks healthy.\n",
+      "utf8",
+    );
+    await mkdir(join(cwd, "modules", "app"), { recursive: true });
+    await writeFile(
+      join(cwd, "modules", "app", "package.json"),
+      `${JSON.stringify(
+        {
+          name: "modules-app",
+          packageManager: "pnpm@10.0.0",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+            test: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_modules_workspace"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter(undefined),
+      allowRuntime: false,
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_modules_workspace"),
+      runId: "run_modules_workspace",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    const artifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_modules_workspace"), "utf8"),
+    ) as {
+      signals: {
+        commandCatalog: Array<{
+          args: string[];
+          command: string;
+          id: string;
+          relativeCwd?: string;
+        }>;
+        notes: string[];
+        workspaceMetadata: Array<{ label: string; manifests: string[]; root: string }>;
+        workspaceRoots: string[];
+      };
+    };
+
+    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
+    expect(artifact.signals.workspaceRoots).toEqual(["modules/app"]);
+    expect(artifact.signals.workspaceMetadata).toEqual([
+      {
+        label: "app",
+        manifests: ["modules/app/package.json"],
+        root: "modules/app",
+      },
+    ]);
+    expect(artifact.signals.commandCatalog).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lint-fast",
+          command: "pnpm",
+          args: ["run", "lint"],
+          relativeCwd: "modules/app",
+        }),
+        expect.objectContaining({
+          id: "full-suite-deep",
+          command: "pnpm",
+          args: ["run", "test"],
+          relativeCwd: "modules/app",
+        }),
+      ]),
+    );
+    expect(artifact.signals.notes).toContain(
+      "No root package.json was found; repository facts come from workspace manifests, files, and task context.",
+    );
+  });
+
   it("surfaces workspace-only package export signals as library intent evidence", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });

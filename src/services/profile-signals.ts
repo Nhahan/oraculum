@@ -16,7 +16,6 @@ import {
   MIGRATION_TOOL_SIGNALS,
   PLAYWRIGHT_CONFIG_PATHS,
   WORKSPACE_MARKER_FILES,
-  WORKSPACE_PARENT_DIRS,
 } from "./profile-detector-data.js";
 import type {
   ProfilePackageJsonManifest,
@@ -29,38 +28,7 @@ export async function detectWorkspaceRoots(
 ): Promise<string[]> {
   const workspaceRoots = new Set<string>();
 
-  for (const parentDir of WORKSPACE_PARENT_DIRS) {
-    const parentPath = join(projectRoot, parentDir);
-    if (!(await pathExists(parentPath))) {
-      continue;
-    }
-    let entries: Dirent[];
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      entries = await readdir(parentPath, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name.startsWith(".")) {
-        continue;
-      }
-      const relativeRoot = `${parentDir}/${entry.name}`;
-      if (!shouldManageProjectPath(relativeRoot, rules)) {
-        continue;
-      }
-      for (const marker of WORKSPACE_MARKER_FILES) {
-        if (!shouldManageProjectPath(`${relativeRoot}/${marker}`, rules)) {
-          continue;
-        }
-        // eslint-disable-next-line no-await-in-loop
-        if (await pathExists(join(projectRoot, relativeRoot, marker))) {
-          workspaceRoots.add(relativeRoot);
-          break;
-        }
-      }
-    }
-  }
+  await collectWorkspaceRoots(projectRoot, "", workspaceRoots, rules);
 
   return [...workspaceRoots].sort((left, right) => left.localeCompare(right));
 }
@@ -422,5 +390,42 @@ async function pathExists(candidatePath: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function collectWorkspaceRoots(
+  projectRoot: string,
+  relativeDir: string,
+  workspaceRoots: Set<string>,
+  rules?: ManagedTreeRules,
+): Promise<void> {
+  const absoluteDir = relativeDir ? join(projectRoot, relativeDir) : projectRoot;
+  let entries: Dirent[];
+  try {
+    entries = await readdir(absoluteDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  const entryNames = new Set(entries.map((entry) => entry.name));
+  if (
+    relativeDir &&
+    WORKSPACE_MARKER_FILES.some(
+      (marker) =>
+        entryNames.has(marker) && shouldManageProjectPath(`${relativeDir}/${marker}`, rules),
+    )
+  ) {
+    workspaceRoots.add(relativeDir);
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith(".")) {
+      continue;
+    }
+    const childRelativeDir = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+    if (!shouldManageProjectPath(childRelativeDir, rules)) {
+      continue;
+    }
+    await collectWorkspaceRoots(projectRoot, childRelativeDir, workspaceRoots, rules);
   }
 }

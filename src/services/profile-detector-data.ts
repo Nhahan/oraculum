@@ -70,8 +70,6 @@ export const MIGRATION_TOOL_SIGNALS = [
 
 export const MIGRATION_TOOL_VALUES = MIGRATION_TOOL_SIGNALS.map((toolSignal) => toolSignal.value);
 
-export const WORKSPACE_PARENT_DIRS = ["apps", "packages", "services", "libs"];
-
 export const WORKSPACE_MARKER_FILES = [
   "package.json",
   "pyproject.toml",
