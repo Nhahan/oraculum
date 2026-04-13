@@ -1270,6 +1270,96 @@ if (out) {
     ).resolves.toContain("fallback-policy");
   });
 
+  it("mentions validation gaps in fallback winner summaries using the selected validation profile", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(
+      join(cwd, "tasks", "judge-failure-with-validation-gaps.md"),
+      "# Judge failure\nUse fallback with validation gaps.\n",
+    );
+    await writeWorkspaceExportableNpmLibraryProfileProject(cwd);
+
+    const fakeProfileCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex-workspace-gap-profile",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"profileId":"library","confidence":"high","summary":"Workspace package scripts and export metadata are present.","candidateCount":3,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","full-suite-deep"],"missingCapabilities":["No package packaging smoke check was detected."]}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const fakeCandidateCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex-judge-failure-with-validation-gaps",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
+  fs.writeFileSync(
+    path.join(process.cwd(), "packages", "lib", "src", "index.js"),
+    'export function greet() {\\n  return "Hello";\\n}\\n',
+    "utf8",
+  );
+}
+if (out) {
+  if (prompt.includes("You are selecting the best Oraculum finalist.")) {
+    fs.writeFileSync(
+      out,
+      '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"this should be ignored"}',
+      "utf8",
+    );
+    process.exit(7);
+  }
+
+  fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/judge-failure-with-validation-gaps.md",
+      agent: "codex",
+      candidates: 1,
+      autoProfile: {
+        codexBinaryPath: fakeProfileCodex,
+        timeoutMs: 5_000,
+      },
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCandidateCodex,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.recommendedWinner?.source).toBe("fallback-policy");
+    expect(executed.manifest.recommendedWinner?.summary).toContain(
+      "selected validation profile (library) still has validation gaps",
+    );
+    expect(executed.manifest.recommendedWinner?.summary).toContain(
+      "No package packaging smoke check was selected.",
+    );
+  });
+
   it("keeps finalists but leaves no recommendation when the judge abstains", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });

@@ -122,8 +122,6 @@ describe("chat-native MCP tools", () => {
       validationSummary: "Package export evidence is strongest.",
       validationSignals: ["package-export"],
       validationGaps: [],
-      profileId: "library",
-      profileMissingCapabilities: [],
       researchPosture: "repo-only",
       artifactAvailability: {
         preflightReadiness: false,
@@ -898,14 +896,18 @@ function createCompletedManifest() {
     status: "completed" as const,
     profileSelection: {
       profileId: "library" as const,
+      validationProfileId: "library" as const,
       confidence: "high" as const,
       source: "llm-recommendation" as const,
       summary: "Package export evidence is strongest.",
+      validationSummary: "Package export evidence is strongest.",
       candidateCount: 4,
       strategyIds: ["minimal-change", "test-amplified"],
       oracleIds: ["lint-fast", "full-suite-deep"],
       missingCapabilities: [],
+      validationGaps: [],
       signals: ["package-export"],
+      validationSignals: ["package-export"],
     },
     recommendedWinner: {
       candidateId: "cand-01",
@@ -961,6 +963,7 @@ function createBlockedPreflightManifest() {
       validationPosture: "unknown" as const,
       verificationLevel: "none" as const,
       missingCapabilityCount: 0,
+      validationGapCount: 0,
       judgingBasisKind: "unknown" as const,
     },
   };

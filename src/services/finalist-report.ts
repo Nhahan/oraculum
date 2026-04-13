@@ -251,7 +251,8 @@ function buildComparisonMarkdown(report: ComparisonReport): string {
   if (report.consultationProfile) {
     const validationProfileId = getValidationProfileId(report.consultationProfile);
     const validationSummary =
-      report.consultationProfile.validationSummary ?? report.consultationProfile.summary;
+      getValidationSummary(report.consultationProfile) ??
+      report.consultationProfile.validationSummary;
     const validationSignals = getValidationSignals(report.consultationProfile);
     const validationGaps = getValidationGaps(report.consultationProfile);
     lines.push(

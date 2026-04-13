@@ -23,6 +23,7 @@ import {
 import { runSubprocess } from "../core/subprocess.js";
 import { projectConfigSchema } from "../domain/config.js";
 import type { OracleVerdict } from "../domain/oracle.js";
+import { getValidationGaps, getValidationProfileId } from "../domain/profile.js";
 import {
   type CandidateManifest,
   candidateManifestSchema,
@@ -549,14 +550,16 @@ function chooseFallbackWinner(
   }
 
   const winnerMetrics = metricsByCandidate.get(winner.id);
-  const hasProfileGaps = Boolean(consultationProfile?.missingCapabilities.length);
+  const validationGaps = getValidationGaps(consultationProfile);
+  const validationProfileId = getValidationProfileId(consultationProfile);
+  const hasProfileGaps = validationGaps.length > 0;
   if (finalists.length === 1) {
     const confidence = hasProfileGaps ? "medium" : "high";
     return {
       candidateId: winner.id,
       confidence,
       summary: hasProfileGaps
-        ? `Selected by fallback policy because ${winner.id} is the only surviving finalist, but the consultation profile still has validation gaps: ${consultationProfile?.missingCapabilities.join("; ")}.`
+        ? `Selected by fallback policy because ${winner.id} is the only surviving finalist, but the selected validation profile${validationProfileId ? ` (${validationProfileId})` : ""} still has validation gaps: ${validationGaps.join("; ")}.`
         : `Selected by fallback policy because ${winner.id} is the only surviving finalist.`,
       source: "fallback-policy",
     };
@@ -581,7 +584,7 @@ function chooseFallbackWinner(
       confidence === "medium"
         ? `Selected by fallback policy from ${finalists.length} finalists using current deterministic signals: fewer warnings/errors, stronger pass coverage, and better artifact coverage.`
         : hasProfileGaps
-          ? `Selected by fallback policy from ${finalists.length} finalists, but deep validation coverage is incomplete: ${consultationProfile?.missingCapabilities.join("; ")}.`
+          ? `Selected by fallback policy from ${finalists.length} finalists, but the selected validation profile${validationProfileId ? ` (${validationProfileId})` : ""} still has validation gaps: ${validationGaps.join("; ")}.`
           : `Selected by fallback policy from ${finalists.length} finalists; finalists were close, so confidence is limited.`,
     source: "fallback-policy",
   };

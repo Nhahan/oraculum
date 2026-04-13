@@ -124,17 +124,55 @@ export const optionalNonEmptyStringSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim().length === 0 ? undefined : value),
   z.string().min(1).optional(),
 );
-export const consultationOutcomeSchema = z.object({
-  type: consultationOutcomeTypeSchema,
-  terminal: z.boolean(),
-  crownable: z.boolean(),
-  finalistCount: z.number().int().min(0),
-  recommendedCandidateId: z.string().min(1).optional(),
-  validationPosture: consultationValidationPostureSchema,
-  verificationLevel: consultationVerificationLevelSchema,
-  missingCapabilityCount: z.number().int().min(0),
-  judgingBasisKind: consultationJudgingBasisKindSchema,
-});
+export const consultationOutcomeSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+
+    const payload = value as Record<string, unknown>;
+    const missingCapabilityCount =
+      typeof payload.missingCapabilityCount === "number"
+        ? payload.missingCapabilityCount
+        : undefined;
+    const validationGapCount =
+      typeof payload.validationGapCount === "number"
+        ? payload.validationGapCount
+        : (missingCapabilityCount ?? 0);
+
+    return {
+      ...payload,
+      missingCapabilityCount: missingCapabilityCount ?? validationGapCount,
+      validationGapCount,
+    };
+  },
+  z
+    .object({
+      type: consultationOutcomeTypeSchema,
+      terminal: z.boolean(),
+      crownable: z.boolean(),
+      finalistCount: z.number().int().min(0),
+      recommendedCandidateId: z.string().min(1).optional(),
+      validationPosture: consultationValidationPostureSchema,
+      verificationLevel: consultationVerificationLevelSchema,
+      missingCapabilityCount: z.number().int().min(0).optional(),
+      validationGapCount: z.number().int().min(0),
+      judgingBasisKind: consultationJudgingBasisKindSchema,
+    })
+    .superRefine((value, context) => {
+      if (
+        value.missingCapabilityCount !== undefined &&
+        value.missingCapabilityCount !== value.validationGapCount
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationGapCount"],
+          message:
+            "validationGapCount must match missingCapabilityCount when both legacy and validation aliases are present.",
+        });
+      }
+    }),
+);
 export const consultationPreflightSchema = z
   .object({
     decision: consultationPreflightDecisionSchema,
@@ -192,40 +230,78 @@ export const consultationResearchBriefSchema = z.object({
   signalSummary: z.array(z.string().min(1)).default([]),
   signalFingerprint: z.string().min(1).optional(),
 });
-export const savedConsultationStatusSchema = z.object({
-  consultationId: z.string().min(1),
-  consultationState: runStatusSchema,
-  outcomeType: consultationOutcomeTypeSchema,
-  terminal: z.boolean(),
-  crownable: z.boolean(),
-  taskSourceKind: taskSourceKindSchema,
-  taskSourcePath: z.string().min(1),
-  taskArtifactKind: z.string().min(1).optional(),
-  targetArtifactPath: z.string().min(1).optional(),
-  researchConfidence: decisionConfidenceSchema.optional(),
-  researchSignalCount: z.number().int().min(0),
-  researchSignalFingerprint: z.string().min(1).optional(),
-  researchBasisDrift: z.boolean().optional(),
-  researchRerunRecommended: z.boolean(),
-  researchRerunInputPath: z.string().min(1).optional(),
-  researchConflictsPresent: z.boolean(),
-  taskOriginSourceKind: taskSourceKindSchema.optional(),
-  taskOriginSourcePath: z.string().min(1).optional(),
-  validationPosture: consultationValidationPostureSchema,
-  validationProfileId: z.string().min(1).optional(),
-  validationSummary: z.string().min(1).optional(),
-  validationSignals: z.array(z.string().min(1)).default([]),
-  validationGaps: z.array(z.string().min(1)).default([]),
-  recommendedCandidateId: z.string().min(1).optional(),
-  finalistCount: z.number().int().min(0),
-  missingCapabilitiesPresent: z.boolean(),
-  judgingBasisKind: consultationJudgingBasisKindSchema,
-  verificationLevel: consultationVerificationLevelSchema,
-  preflightDecision: consultationPreflightDecisionSchema.optional(),
-  researchPosture: consultationResearchPostureSchema,
-  nextActions: z.array(consultationNextActionSchema).default([]),
-  updatedAt: z.string().min(1),
-});
+export const savedConsultationStatusSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+
+    const payload = value as Record<string, unknown>;
+    const missingCapabilitiesPresent =
+      typeof payload.missingCapabilitiesPresent === "boolean"
+        ? payload.missingCapabilitiesPresent
+        : undefined;
+    const validationGapsPresent =
+      typeof payload.validationGapsPresent === "boolean"
+        ? payload.validationGapsPresent
+        : (missingCapabilitiesPresent ?? false);
+
+    return {
+      ...payload,
+      missingCapabilitiesPresent: missingCapabilitiesPresent ?? validationGapsPresent,
+      validationGapsPresent,
+    };
+  },
+  z
+    .object({
+      consultationId: z.string().min(1),
+      consultationState: runStatusSchema,
+      outcomeType: consultationOutcomeTypeSchema,
+      terminal: z.boolean(),
+      crownable: z.boolean(),
+      taskSourceKind: taskSourceKindSchema,
+      taskSourcePath: z.string().min(1),
+      taskArtifactKind: z.string().min(1).optional(),
+      targetArtifactPath: z.string().min(1).optional(),
+      researchConfidence: decisionConfidenceSchema.optional(),
+      researchSignalCount: z.number().int().min(0),
+      researchSignalFingerprint: z.string().min(1).optional(),
+      researchBasisDrift: z.boolean().optional(),
+      researchRerunRecommended: z.boolean(),
+      researchRerunInputPath: z.string().min(1).optional(),
+      researchConflictsPresent: z.boolean(),
+      taskOriginSourceKind: taskSourceKindSchema.optional(),
+      taskOriginSourcePath: z.string().min(1).optional(),
+      validationPosture: consultationValidationPostureSchema,
+      validationProfileId: z.string().min(1).optional(),
+      validationSummary: z.string().min(1).optional(),
+      validationSignals: z.array(z.string().min(1)).default([]),
+      validationGaps: z.array(z.string().min(1)).default([]),
+      recommendedCandidateId: z.string().min(1).optional(),
+      finalistCount: z.number().int().min(0),
+      missingCapabilitiesPresent: z.boolean().optional(),
+      validationGapsPresent: z.boolean(),
+      judgingBasisKind: consultationJudgingBasisKindSchema,
+      verificationLevel: consultationVerificationLevelSchema,
+      preflightDecision: consultationPreflightDecisionSchema.optional(),
+      researchPosture: consultationResearchPostureSchema,
+      nextActions: z.array(consultationNextActionSchema).default([]),
+      updatedAt: z.string().min(1),
+    })
+    .superRefine((value, context) => {
+      if (
+        value.missingCapabilitiesPresent !== undefined &&
+        value.missingCapabilitiesPresent !== value.validationGapsPresent
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["validationGapsPresent"],
+          message:
+            "validationGapsPresent must match missingCapabilitiesPresent when both legacy and validation aliases are present.",
+        });
+      }
+    }),
+);
 
 export const runManifestSchema = z.object({
   id: z.string().min(1),
@@ -292,10 +368,11 @@ export type ExportMode = z.infer<typeof exportModeSchema>;
 interface ConsultationOutcomeInput {
   candidates: Array<Pick<CandidateManifest, "status">>;
   rounds?: Array<Pick<RunRound, "id" | "status" | "verdictCount">>;
-  profileSelection?: Pick<
-    NonNullable<RunManifest["profileSelection"]>,
-    "missingCapabilities" | "oracleIds"
-  >;
+  profileSelection?: {
+    missingCapabilities?: string[] | undefined;
+    validationGaps?: string[] | undefined;
+    oracleIds: string[];
+  };
   recommendedWinner?: Pick<NonNullable<RunManifest["recommendedWinner"]>, "candidateId">;
   status: z.infer<typeof runStatusSchema>;
 }
@@ -305,7 +382,11 @@ interface ConsultationOutcomeManifestInput {
   candidates: Array<Pick<CandidateManifest, "status">>;
   rounds?: Array<Pick<RunRound, "id" | "status" | "verdictCount">> | undefined;
   profileSelection?:
-    | Pick<NonNullable<RunManifest["profileSelection"]>, "missingCapabilities" | "oracleIds">
+    | {
+        missingCapabilities?: string[] | undefined;
+        validationGaps?: string[] | undefined;
+        oracleIds: string[];
+      }
     | undefined;
   recommendedWinner?:
     | Pick<NonNullable<RunManifest["recommendedWinner"]>, "candidateId">
@@ -316,20 +397,16 @@ export function deriveConsultationOutcome(input: ConsultationOutcomeInput): Cons
   const finalistCount = input.candidates.filter(
     (candidate) => candidate.status === "promoted" || candidate.status === "exported",
   ).length;
-  const missingCapabilityCount = input.profileSelection?.missingCapabilities.length ?? 0;
-  const verificationLevel = deriveVerificationLevel(input.rounds, missingCapabilityCount);
+  const validationGapCount = getValidationGaps(input.profileSelection).length;
+  const verificationLevel = deriveVerificationLevel(input.rounds, validationGapCount);
   const judgingBasisKind =
     (input.profileSelection?.oracleIds.length ?? 0) > 0
       ? "repo-local-oracle"
-      : missingCapabilityCount > 0
+      : validationGapCount > 0
         ? "missing-capability"
         : "unknown";
   const validationPosture =
-    missingCapabilityCount > 0
-      ? "validation-gaps"
-      : input.profileSelection
-        ? "sufficient"
-        : "unknown";
+    validationGapCount > 0 ? "validation-gaps" : input.profileSelection ? "sufficient" : "unknown";
 
   if (input.status === "planned") {
     return {
@@ -339,7 +416,7 @@ export function deriveConsultationOutcome(input: ConsultationOutcomeInput): Cons
       finalistCount,
       validationPosture,
       verificationLevel,
-      missingCapabilityCount,
+      validationGapCount,
       judgingBasisKind,
     };
   }
@@ -352,7 +429,7 @@ export function deriveConsultationOutcome(input: ConsultationOutcomeInput): Cons
       finalistCount,
       validationPosture,
       verificationLevel,
-      missingCapabilityCount,
+      validationGapCount,
       judgingBasisKind,
     };
   }
@@ -366,7 +443,7 @@ export function deriveConsultationOutcome(input: ConsultationOutcomeInput): Cons
       recommendedCandidateId: input.recommendedWinner.candidateId,
       validationPosture,
       verificationLevel,
-      missingCapabilityCount,
+      validationGapCount,
       judgingBasisKind,
     };
   }
@@ -379,12 +456,12 @@ export function deriveConsultationOutcome(input: ConsultationOutcomeInput): Cons
       finalistCount,
       validationPosture,
       verificationLevel,
-      missingCapabilityCount,
+      validationGapCount,
       judgingBasisKind,
     };
   }
 
-  if (missingCapabilityCount > 0) {
+  if (validationGapCount > 0) {
     return {
       type: "completed-with-validation-gaps",
       terminal: true,
@@ -392,7 +469,7 @@ export function deriveConsultationOutcome(input: ConsultationOutcomeInput): Cons
       finalistCount,
       validationPosture,
       verificationLevel,
-      missingCapabilityCount,
+      validationGapCount,
       judgingBasisKind,
     };
   }
@@ -404,7 +481,7 @@ export function deriveConsultationOutcome(input: ConsultationOutcomeInput): Cons
     finalistCount,
     validationPosture,
     verificationLevel,
-    missingCapabilityCount,
+    validationGapCount,
     judgingBasisKind,
   };
 }
@@ -494,7 +571,7 @@ export function buildSavedConsultationStatus(manifest: RunManifest): SavedConsul
       ? { recommendedCandidateId: outcome.recommendedCandidateId }
       : {}),
     finalistCount: outcome.finalistCount,
-    missingCapabilitiesPresent: outcome.missingCapabilityCount > 0,
+    validationGapsPresent: outcome.validationGapCount > 0,
     judgingBasisKind: outcome.judgingBasisKind,
     verificationLevel: outcome.verificationLevel,
     ...(manifest.preflight ? { preflightDecision: manifest.preflight.decision } : {}),
@@ -515,7 +592,7 @@ export function buildBlockedPreflightOutcome(
       finalistCount: 0,
       validationPosture: "unknown",
       verificationLevel: "none",
-      missingCapabilityCount: 0,
+      validationGapCount: 0,
       judgingBasisKind: "unknown",
     };
   }
@@ -528,7 +605,7 @@ export function buildBlockedPreflightOutcome(
       finalistCount: 0,
       validationPosture: "validation-gaps",
       verificationLevel: "none",
-      missingCapabilityCount: 0,
+      validationGapCount: 0,
       judgingBasisKind: "unknown",
     };
   }
@@ -540,7 +617,7 @@ export function buildBlockedPreflightOutcome(
     finalistCount: 0,
     validationPosture: "unknown",
     verificationLevel: "none",
-    missingCapabilityCount: 0,
+    validationGapCount: 0,
     judgingBasisKind: "unknown",
   };
 }
@@ -555,7 +632,7 @@ export function isPreflightBlockedConsultation(manifest: Pick<RunManifest, "pref
 
 function deriveVerificationLevel(
   rounds: ConsultationOutcomeInput["rounds"],
-  missingCapabilityCount: number,
+  validationGapCount: number,
 ): z.infer<typeof consultationVerificationLevelSchema> {
   const completedRounds = new Set(
     (rounds ?? [])
@@ -567,7 +644,7 @@ function deriveVerificationLevel(
     return "none";
   }
 
-  if (completedRounds.has("deep") && missingCapabilityCount === 0) {
+  if (completedRounds.has("deep") && validationGapCount === 0) {
     return "thorough";
   }
 
@@ -620,7 +697,7 @@ function buildConsultationNextActions(
       break;
   }
 
-  if (outcome.missingCapabilityCount > 0) {
+  if (outcome.validationGapCount > 0) {
     actions.add("review-validation-gaps");
     actions.add("add-repo-local-oracle");
   }

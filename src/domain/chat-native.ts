@@ -15,6 +15,7 @@ import {
   runManifestSchema,
   savedConsultationStatusSchema,
 } from "./run.js";
+import { stringArrayMembersEqual } from "./schema-compat.js";
 import { taskSourceKindSchema } from "./task.js";
 
 export const commandPrefixSchema = z.literal("orc");
@@ -132,51 +133,106 @@ export const verdictToolRequestSchema = z.object({
   consultationId: z.string().min(1).optional(),
 });
 
-export const verdictReviewSchema = z.object({
-  outcomeType: consultationOutcomeTypeSchema,
-  verificationLevel: consultationVerificationLevelSchema,
-  validationPosture: consultationValidationPostureSchema,
-  judgingBasisKind: consultationJudgingBasisKindSchema,
-  taskSourceKind: taskSourceKindSchema,
-  taskSourcePath: z.string().min(1),
-  taskArtifactKind: z.string().min(1).optional(),
-  targetArtifactPath: z.string().min(1).optional(),
-  researchSummary: z.string().min(1).optional(),
-  researchConfidence: decisionConfidenceSchema.optional(),
-  researchSignalCount: z.number().int().min(0),
-  researchSignalFingerprint: z.string().min(1).optional(),
-  researchBasisDrift: z.boolean().optional(),
-  researchRerunRecommended: z.boolean(),
-  researchRerunInputPath: z.string().min(1).optional(),
-  researchSourceCount: z.number().int().min(0),
-  researchClaimCount: z.number().int().min(0),
-  researchVersionNoteCount: z.number().int().min(0),
-  researchConflictCount: z.number().int().min(0),
-  researchConflictsPresent: z.boolean(),
-  taskOriginSourceKind: taskSourceKindSchema.optional(),
-  taskOriginSourcePath: z.string().min(1).optional(),
-  recommendedCandidateId: z.string().min(1).optional(),
-  finalistIds: z.array(z.string().min(1)).default([]),
-  validationProfileId: z.string().min(1).optional(),
-  validationSummary: z.string().min(1).optional(),
-  validationSignals: z.array(z.string().min(1)).default([]),
-  validationGaps: z.array(z.string().min(1)).default([]),
-  profileId: z.string().min(1).optional(),
-  profileMissingCapabilities: z.array(z.string().min(1)).default([]),
-  preflightDecision: consultationPreflightDecisionSchema.optional(),
-  researchPosture: consultationResearchPostureSchema,
-  clarificationQuestion: z.string().min(1).optional(),
-  researchQuestion: z.string().min(1).optional(),
-  artifactAvailability: z.object({
-    preflightReadiness: z.boolean(),
-    researchBrief: z.boolean(),
-    profileSelection: z.boolean(),
-    comparisonReport: z.boolean(),
-    winnerSelection: z.boolean(),
-    crowningRecord: z.boolean(),
-  }),
-  candidateStateCounts: z.record(z.string().min(1), z.number().int().min(0)),
-});
+export const verdictReviewSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+
+    const payload = { ...(value as Record<string, unknown>) };
+    if (typeof payload.validationProfileId !== "string" && typeof payload.profileId === "string") {
+      payload.validationProfileId = payload.profileId;
+    }
+    if (typeof payload.profileId !== "string" && typeof payload.validationProfileId === "string") {
+      payload.profileId = payload.validationProfileId;
+    }
+    if (
+      !Array.isArray(payload.validationGaps) &&
+      Array.isArray(payload.profileMissingCapabilities)
+    ) {
+      payload.validationGaps = payload.profileMissingCapabilities;
+    }
+    if (
+      !Array.isArray(payload.profileMissingCapabilities) &&
+      Array.isArray(payload.validationGaps)
+    ) {
+      payload.profileMissingCapabilities = payload.validationGaps;
+    }
+
+    return payload;
+  },
+  z
+    .object({
+      outcomeType: consultationOutcomeTypeSchema,
+      verificationLevel: consultationVerificationLevelSchema,
+      validationPosture: consultationValidationPostureSchema,
+      judgingBasisKind: consultationJudgingBasisKindSchema,
+      taskSourceKind: taskSourceKindSchema,
+      taskSourcePath: z.string().min(1),
+      taskArtifactKind: z.string().min(1).optional(),
+      targetArtifactPath: z.string().min(1).optional(),
+      researchSummary: z.string().min(1).optional(),
+      researchConfidence: decisionConfidenceSchema.optional(),
+      researchSignalCount: z.number().int().min(0),
+      researchSignalFingerprint: z.string().min(1).optional(),
+      researchBasisDrift: z.boolean().optional(),
+      researchRerunRecommended: z.boolean(),
+      researchRerunInputPath: z.string().min(1).optional(),
+      researchSourceCount: z.number().int().min(0),
+      researchClaimCount: z.number().int().min(0),
+      researchVersionNoteCount: z.number().int().min(0),
+      researchConflictCount: z.number().int().min(0),
+      researchConflictsPresent: z.boolean(),
+      taskOriginSourceKind: taskSourceKindSchema.optional(),
+      taskOriginSourcePath: z.string().min(1).optional(),
+      recommendedCandidateId: z.string().min(1).optional(),
+      finalistIds: z.array(z.string().min(1)).default([]),
+      validationProfileId: z.string().min(1).optional(),
+      validationSummary: z.string().min(1).optional(),
+      validationSignals: z.array(z.string().min(1)).default([]),
+      validationGaps: z.array(z.string().min(1)).default([]),
+      profileId: z.string().min(1).optional(),
+      profileMissingCapabilities: z.array(z.string().min(1)).optional(),
+      preflightDecision: consultationPreflightDecisionSchema.optional(),
+      researchPosture: consultationResearchPostureSchema,
+      clarificationQuestion: z.string().min(1).optional(),
+      researchQuestion: z.string().min(1).optional(),
+      artifactAvailability: z.object({
+        preflightReadiness: z.boolean(),
+        researchBrief: z.boolean(),
+        profileSelection: z.boolean(),
+        comparisonReport: z.boolean(),
+        winnerSelection: z.boolean(),
+        crowningRecord: z.boolean(),
+      }),
+      candidateStateCounts: z.record(z.string().min(1), z.number().int().min(0)),
+    })
+    .superRefine((value, context) => {
+      if (
+        value.profileId &&
+        value.validationProfileId &&
+        value.profileId !== value.validationProfileId
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["profileId"],
+          message:
+            "profileId must match validationProfileId when both legacy and validation aliases are present.",
+        });
+      }
+      if (
+        value.profileMissingCapabilities &&
+        !stringArrayMembersEqual(value.profileMissingCapabilities, value.validationGaps)
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["profileMissingCapabilities"],
+          message:
+            "profileMissingCapabilities must match validationGaps when both legacy and validation aliases are present.",
+        });
+      }
+    }),
+);
 
 export const verdictToolResponseSchema = z.object({
   mode: z.literal("verdict"),

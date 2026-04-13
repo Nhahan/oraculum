@@ -13,6 +13,7 @@ import {
   getRunManifestPath,
   getWinnerSelectionPath,
 } from "../src/core/paths.js";
+import { verdictReviewSchema } from "../src/domain/chat-native.js";
 import {
   buildSavedConsultationStatus,
   consultationResearchBriefSchema,
@@ -28,6 +29,21 @@ import {
 import { initializeProject } from "../src/services/project.js";
 
 const tempRoots: string[] = [];
+type ProfileSelectionFixture = {
+  profileId: NonNullable<RunManifest["profileSelection"]>["validationProfileId"];
+  confidence: NonNullable<RunManifest["profileSelection"]>["confidence"];
+  source: NonNullable<RunManifest["profileSelection"]>["source"];
+  summary: string;
+  candidateCount: number;
+  strategyIds: string[];
+  oracleIds: string[];
+  missingCapabilities: string[];
+  signals: string[];
+  validationProfileId?: NonNullable<RunManifest["profileSelection"]>["validationProfileId"];
+  validationSummary?: string;
+  validationSignals?: string[];
+  validationGaps?: string[];
+};
 
 afterEach(async () => {
   await Promise.all(
@@ -127,6 +143,7 @@ describe("consultation workflow summaries", () => {
         validationPosture: "unknown",
         verificationLevel: "none",
         missingCapabilityCount: 0,
+        validationGapCount: 0,
         judgingBasisKind: "unknown",
       },
     });
@@ -157,6 +174,7 @@ describe("consultation workflow summaries", () => {
       "review-preflight-readiness",
       "answer-clarification-and-rerun",
     ]);
+    expect(status.validationGapsPresent).toBe(false);
     expect(status.taskSourceKind).toBe("task-note");
     expect(status.taskSourcePath).toBe("/tmp/task.md");
   });
@@ -214,8 +232,6 @@ describe("consultation workflow summaries", () => {
       validationSummary: "Frontend evidence is strongest.",
       validationSignals: ["frontend-framework", "build-script"],
       validationGaps: ["No e2e or visual deep check was detected."],
-      profileId: "frontend",
-      profileMissingCapabilities: ["No e2e or visual deep check was detected."],
       preflightDecision: "proceed",
       researchPosture: "repo-only",
       researchRerunRecommended: false,
@@ -231,6 +247,98 @@ describe("consultation workflow summaries", () => {
         exported: 1,
       },
     });
+  });
+
+  it("backfills and validates legacy verdict review aliases at the schema boundary", () => {
+    const parsed = verdictReviewSchema.parse({
+      outcomeType: "recommended-survivor",
+      verificationLevel: "lightweight",
+      validationPosture: "validation-gaps",
+      judgingBasisKind: "repo-local-oracle",
+      taskSourceKind: "task-note",
+      taskSourcePath: "/tmp/task.md",
+      researchSignalCount: 0,
+      researchRerunRecommended: false,
+      researchSourceCount: 0,
+      researchClaimCount: 0,
+      researchVersionNoteCount: 0,
+      researchConflictCount: 0,
+      researchConflictsPresent: false,
+      finalistIds: ["cand-01"],
+      validationProfileId: "frontend",
+      validationSignals: ["frontend-framework"],
+      validationGaps: ["No build validation command was selected."],
+      researchPosture: "repo-only",
+      artifactAvailability: {
+        preflightReadiness: false,
+        researchBrief: false,
+        profileSelection: false,
+        comparisonReport: false,
+        winnerSelection: false,
+        crowningRecord: false,
+      },
+      candidateStateCounts: {},
+    });
+
+    expect(parsed.profileId).toBe("frontend");
+    expect(parsed.profileMissingCapabilities).toEqual([
+      "No build validation command was selected.",
+    ]);
+
+    expect(() =>
+      verdictReviewSchema.parse({
+        ...parsed,
+        profileId: "library",
+      }),
+    ).toThrow("profileId must match validationProfileId");
+  });
+
+  it("accepts reordered legacy verdict review gap aliases", () => {
+    const parsed = verdictReviewSchema.parse({
+      outcomeType: "recommended-survivor",
+      verificationLevel: "lightweight",
+      validationPosture: "validation-gaps",
+      judgingBasisKind: "repo-local-oracle",
+      taskSourceKind: "task-note",
+      taskSourcePath: "/tmp/task.md",
+      researchSignalCount: 0,
+      researchRerunRecommended: false,
+      researchSourceCount: 0,
+      researchClaimCount: 0,
+      researchVersionNoteCount: 0,
+      researchConflictCount: 0,
+      researchConflictsPresent: false,
+      finalistIds: ["cand-01"],
+      validationProfileId: "frontend",
+      validationSignals: ["frontend-framework"],
+      validationGaps: [
+        "No build validation command was selected.",
+        "No e2e or visual deep check was detected.",
+      ],
+      profileMissingCapabilities: [
+        "No e2e or visual deep check was detected.",
+        "No build validation command was selected.",
+      ],
+      researchPosture: "repo-only",
+      artifactAvailability: {
+        preflightReadiness: false,
+        researchBrief: false,
+        profileSelection: false,
+        comparisonReport: false,
+        winnerSelection: false,
+        crowningRecord: false,
+      },
+      candidateStateCounts: {},
+    });
+
+    expect(parsed.validationGaps).toEqual([
+      "No build validation command was selected.",
+      "No e2e or visual deep check was detected.",
+    ]);
+    expect(parsed.profileMissingCapabilities).toEqual([
+      "No e2e or visual deep check was detected.",
+      "No build validation command was selected.",
+    ]);
   });
 
   it("renders blocked preflight consultations distinctly in the archive", async () => {
@@ -255,6 +363,7 @@ describe("consultation workflow summaries", () => {
         validationPosture: "unknown",
         verificationLevel: "none",
         missingCapabilityCount: 0,
+        validationGapCount: 0,
         judgingBasisKind: "unknown",
       },
     });
@@ -290,6 +399,7 @@ describe("consultation workflow summaries", () => {
         validationPosture: "validation-gaps",
         verificationLevel: "none",
         missingCapabilityCount: 0,
+        validationGapCount: 0,
         judgingBasisKind: "unknown",
       },
     });
@@ -343,6 +453,7 @@ describe("consultation workflow summaries", () => {
     expect(status.researchRerunRecommended).toBe(true);
     expect(status.researchRerunInputPath).toBeUndefined();
     expect(status.researchConflictsPresent).toBe(false);
+    expect(status.validationGapsPresent).toBe(false);
     expect(review.researchPosture).toBe("external-research-required");
     expect(review.researchQuestion).toBe(
       "What does the official API documentation say about the current versioned behavior?",
@@ -946,8 +1057,23 @@ async function writeRawManifest(cwd: string, runId: string, manifest: unknown): 
 
 function createManifest(
   status: "planned" | "completed",
-  overrides: Partial<RunManifest> = {},
+  overrides: Partial<Omit<RunManifest, "profileSelection">> & {
+    profileSelection?: ProfileSelectionFixture;
+  } = {},
 ): RunManifest {
+  const { profileSelection: rawProfileSelection, ...restOverrides } = overrides;
+  const profileSelection = rawProfileSelection
+    ? {
+        ...rawProfileSelection,
+        validationProfileId:
+          rawProfileSelection.validationProfileId ?? rawProfileSelection.profileId,
+        validationSummary: rawProfileSelection.validationSummary ?? rawProfileSelection.summary,
+        validationSignals: rawProfileSelection.validationSignals ?? rawProfileSelection.signals,
+        validationGaps:
+          rawProfileSelection.validationGaps ?? rawProfileSelection.missingCapabilities,
+      }
+    : undefined;
+
   return {
     id: "run_1",
     status,
@@ -984,6 +1110,7 @@ function createManifest(
         createdAt: "2026-04-04T00:00:00.000Z",
       },
     ],
-    ...overrides,
+    ...restOverrides,
+    ...(profileSelection ? { profileSelection } : {}),
   };
 }

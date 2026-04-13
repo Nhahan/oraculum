@@ -25,10 +25,12 @@ import {
 } from "../src/domain/config.js";
 import {
   buildSavedConsultationStatus,
+  consultationOutcomeSchema,
   consultationResearchBriefSchema,
   exportPlanSchema,
   latestRunStateSchema,
   runManifestSchema,
+  savedConsultationStatusSchema,
 } from "../src/domain/run.js";
 import { deriveResearchSignalFingerprint } from "../src/domain/task.js";
 import { executeRun } from "../src/services/execution.js";
@@ -367,6 +369,7 @@ describe("project scaffold", () => {
       judgingBasisKind: "unknown",
       validationPosture: "unknown",
       missingCapabilityCount: 0,
+      validationGapCount: 0,
     });
     expect(buildSavedConsultationStatus(saved).nextActions).toEqual([
       "reopen-verdict",
@@ -376,8 +379,95 @@ describe("project scaffold", () => {
     expect(buildSavedConsultationStatus(saved).validationSummary).toBeUndefined();
     expect(buildSavedConsultationStatus(saved).validationSignals).toEqual([]);
     expect(buildSavedConsultationStatus(saved).validationGaps).toEqual([]);
+    expect(buildSavedConsultationStatus(saved).validationGapsPresent).toBe(false);
     expect(buildSavedConsultationStatus(saved).researchRerunRecommended).toBe(false);
     expect(buildSavedConsultationStatus(saved).researchRerunInputPath).toBeUndefined();
+  });
+
+  it("rejects conflicting legacy and validation outcome gap aliases", () => {
+    expect(() =>
+      consultationOutcomeSchema.parse({
+        type: "pending-execution",
+        terminal: false,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "unknown",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 1,
+        judgingBasisKind: "unknown",
+      }),
+    ).toThrow("validationGapCount must match missingCapabilityCount");
+  });
+
+  it("backfills legacy outcome gap aliases from validation-first payloads", () => {
+    const parsed = consultationOutcomeSchema.parse({
+      type: "pending-execution",
+      terminal: false,
+      crownable: false,
+      finalistCount: 0,
+      validationPosture: "unknown",
+      verificationLevel: "none",
+      validationGapCount: 2,
+      judgingBasisKind: "unknown",
+    });
+
+    expect(parsed.missingCapabilityCount).toBe(2);
+  });
+
+  it("rejects conflicting legacy and validation status gap-presence aliases", () => {
+    expect(() =>
+      savedConsultationStatusSchema.parse({
+        consultationId: "run_1",
+        consultationState: "completed",
+        outcomeType: "no-survivors",
+        terminal: true,
+        crownable: false,
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchConflictsPresent: false,
+        validationPosture: "unknown",
+        validationSignals: [],
+        validationGaps: [],
+        finalistCount: 0,
+        missingCapabilitiesPresent: false,
+        validationGapsPresent: true,
+        judgingBasisKind: "unknown",
+        verificationLevel: "none",
+        researchPosture: "unknown",
+        nextActions: [],
+        updatedAt: "2026-04-04T00:00:00.000Z",
+      }),
+    ).toThrow("validationGapsPresent must match missingCapabilitiesPresent");
+  });
+
+  it("backfills legacy status gap-presence aliases from validation-first payloads", () => {
+    const parsed = savedConsultationStatusSchema.parse({
+      consultationId: "run_1",
+      consultationState: "completed",
+      outcomeType: "no-survivors",
+      terminal: true,
+      crownable: false,
+      taskSourceKind: "task-note",
+      taskSourcePath: "/tmp/task.md",
+      researchSignalCount: 0,
+      researchRerunRecommended: false,
+      researchConflictsPresent: false,
+      validationPosture: "unknown",
+      validationSignals: [],
+      validationGaps: [],
+      finalistCount: 0,
+      validationGapsPresent: false,
+      judgingBasisKind: "unknown",
+      verificationLevel: "none",
+      researchPosture: "unknown",
+      nextActions: [],
+      updatedAt: "2026-04-04T00:00:00.000Z",
+    });
+
+    expect(parsed.missingCapabilitiesPresent).toBe(false);
   });
 
   it("resolves nested invocation to the nearest initialized Oraculum root", async () => {
@@ -1272,6 +1362,7 @@ if (out) {
             validationPosture: "unknown",
             verificationLevel: "none",
             missingCapabilityCount: 0,
+            validationGapCount: 0,
             judgingBasisKind: "unknown",
           },
         },

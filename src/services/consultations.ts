@@ -153,12 +153,14 @@ export async function renderConsultationSummary(
   }
   if (manifest.profileSelection) {
     const validationProfileId = getValidationProfileId(manifest.profileSelection);
-    const validationSummary = getValidationSummary(manifest.profileSelection);
+    const validationSummary =
+      getValidationSummary(manifest.profileSelection) ??
+      manifest.profileSelection.validationSummary;
     const validationSignals = getValidationSignals(manifest.profileSelection);
     const validationGaps = getValidationGaps(manifest.profileSelection);
     lines.push(
       `Auto validation profile: ${validationProfileId} (${manifest.profileSelection.confidence}, ${manifest.profileSelection.source})`,
-      validationSummary ?? manifest.profileSelection.summary,
+      validationSummary,
     );
     if (validationSignals.length > 0) {
       lines.push(`Validation evidence: ${validationSignals.join(", ")}`);
@@ -413,10 +415,6 @@ export function buildVerdictReview(
       : {}),
     validationSignals: getValidationSignals(manifest.profileSelection),
     validationGaps: getValidationGaps(manifest.profileSelection),
-    ...(getValidationProfileId(manifest.profileSelection)
-      ? { profileId: getValidationProfileId(manifest.profileSelection) }
-      : {}),
-    profileMissingCapabilities: getValidationGaps(manifest.profileSelection),
     ...(manifest.preflight?.decision ? { preflightDecision: manifest.preflight.decision } : {}),
     researchPosture: status.researchPosture,
     ...(manifest.preflight?.clarificationQuestion
