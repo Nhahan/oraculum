@@ -661,9 +661,20 @@ if (out) {
     );
     const profileSchema = JSON.parse(
       await readFile(join(logDir, "profile-judge.schema.json"), "utf8"),
-    ) as { anyOf?: unknown[]; properties?: Record<string, unknown> };
-    expect(Array.isArray(profileSchema.anyOf)).toBe(true);
+    ) as { required?: string[]; properties?: Record<string, unknown> };
+    expect(profileSchema.required).toEqual(
+      expect.arrayContaining([
+        "validationProfileId",
+        "validationSummary",
+        "validationGaps",
+        "confidence",
+        "candidateCount",
+        "strategyIds",
+        "selectedCommandIds",
+      ]),
+    );
     expect(profileSchema.properties).toHaveProperty("validationProfileId");
+    expect(profileSchema.properties).toHaveProperty("profileId");
   });
 
   it("asks Claude to recommend a consultation profile with json-schema output", async () => {
@@ -754,6 +765,172 @@ process.stdout.write(JSON.stringify({
     await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toMatch(
       /generic/u,
     );
+  }, 20_000);
+
+  it("ignores unrelated Claude nested objects that do not satisfy the full profile recommendation shape", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "profile-nested-noise-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-claude",
+      `process.stderr.write(JSON.stringify({ argv: process.argv.slice(2) }));
+process.stdout.write(JSON.stringify({
+  type: "result",
+  metadata: {
+    validationProfileId: "frontend",
+    confidence: "medium",
+    validationSummary: "noise only",
+    candidateCount: 4
+  },
+  structured_output: {
+    validationProfileId: "frontend",
+    confidence: "medium",
+    validationSummary: "Frontend build and e2e signals are present.",
+    candidateCount: 4,
+    strategyIds: ["minimal-change", "safety-first"],
+    selectedCommandIds: ["build-impact", "e2e-deep"],
+    validationGaps: []
+  },
+}));`,
+    );
+
+    const adapter = new ClaudeAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendProfile({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      signals: {
+        packageManager: "pnpm",
+        scripts: ["build", "e2e"],
+        dependencies: ["react", "vite"],
+        files: ["package.json", "vite.config.ts", "playwright.config.ts"],
+        workspaceRoots: [],
+        workspaceMetadata: [],
+        notes: [],
+        capabilities: [],
+        provenance: [],
+        skippedCommandCandidates: [],
+        commandCatalog: [
+          {
+            id: "build-impact",
+            roundId: "impact",
+            label: "Build",
+            command: "pnpm",
+            args: ["run", "build"],
+            invariant: "The project should build successfully after the patch.",
+          },
+          {
+            id: "e2e-deep",
+            roundId: "deep",
+            label: "End-to-end checks",
+            command: "pnpm",
+            args: ["run", "e2e"],
+            invariant: "Deep end-to-end validation should pass.",
+          },
+        ],
+      },
+      profileOptions: [
+        { id: "frontend", description: "Frontend work." },
+        { id: "generic", description: "Generic work." },
+      ],
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation?.validationProfileId).toBe("frontend");
+    expect(result.recommendation?.validationSummary).toBe(
+      "Frontend build and e2e signals are present.",
+    );
+    expect(result.recommendation?.selectedCommandIds).toEqual(["build-impact", "e2e-deep"]);
+  }, 20_000);
+
+  it("continues past invalid Claude nested profile objects and reads the next valid recommendation", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "profile-nested-invalid-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-claude",
+      `process.stderr.write(JSON.stringify({ argv: process.argv.slice(2) }));
+process.stdout.write(JSON.stringify({
+  type: "result",
+  metadata: {
+    profileId: "library",
+    validationProfileId: "frontend",
+    confidence: "medium",
+    summary: "conflicting alias payload",
+    validationSummary: "conflicting alias payload",
+    candidateCount: 4,
+    strategyIds: ["minimal-change"],
+    selectedCommandIds: ["lint-fast"],
+    validationGaps: []
+  },
+  structured_output: {
+    validationProfileId: "frontend",
+    confidence: "medium",
+    validationSummary: "Frontend build and e2e signals are present.",
+    candidateCount: 4,
+    strategyIds: ["minimal-change", "safety-first"],
+    selectedCommandIds: ["build-impact", "e2e-deep"],
+    validationGaps: []
+  },
+}));`,
+    );
+
+    const adapter = new ClaudeAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendProfile({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      signals: {
+        packageManager: "pnpm",
+        scripts: ["build", "e2e"],
+        dependencies: ["react", "vite"],
+        files: ["package.json", "vite.config.ts", "playwright.config.ts"],
+        workspaceRoots: [],
+        workspaceMetadata: [],
+        notes: [],
+        capabilities: [],
+        provenance: [],
+        skippedCommandCandidates: [],
+        commandCatalog: [
+          {
+            id: "build-impact",
+            roundId: "impact",
+            label: "Build",
+            command: "pnpm",
+            args: ["run", "build"],
+            invariant: "The project should build successfully after the patch.",
+          },
+          {
+            id: "e2e-deep",
+            roundId: "deep",
+            label: "End-to-end checks",
+            command: "pnpm",
+            args: ["run", "e2e"],
+            invariant: "Deep end-to-end validation should pass.",
+          },
+        ],
+      },
+      profileOptions: [
+        { id: "frontend", description: "Frontend work." },
+        { id: "generic", description: "Generic work." },
+      ],
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation?.validationProfileId).toBe("frontend");
+    expect(result.recommendation?.selectedCommandIds).toEqual(["build-impact", "e2e-deep"]);
   }, 20_000);
 
   it("rejects conflicting legacy and validation profile aliases", async () => {

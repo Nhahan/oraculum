@@ -15,6 +15,7 @@ import {
   type ConsultationProfileId,
   type ConsultationProfileSelection,
   consultationProfileSelectionSchema,
+  getValidationGaps,
   type ProfileCommandCandidate,
   type ProfileRepoSignals,
   type ProfileStrategyId,
@@ -279,15 +280,17 @@ function applyProfileSelection(options: {
     oracles: effectiveOracles,
   });
   const validationSignals = buildSelectionSignalSummary(options.signals);
-  const validationGaps = explicitOracles ? [] : options.recommendation.missingCapabilities;
+  const validationProfileId = options.recommendation.validationProfileId;
+  const validationSummary = options.recommendation.validationSummary;
+  const validationGaps = explicitOracles ? [] : getValidationGaps(options.recommendation);
 
   return {
     config,
     selection: consultationProfileSelectionSchema.parse({
-      validationProfileId: options.recommendation.profileId,
+      validationProfileId,
       confidence: options.recommendation.confidence,
       source: options.source,
-      validationSummary: options.recommendation.summary,
+      validationSummary,
       candidateCount: effectiveCandidateCount,
       strategyIds: effectiveStrategies.map((strategy) => strategy.id),
       oracleIds: effectiveOracles.map((oracle) => oracle.id),
@@ -496,16 +499,22 @@ function buildFallbackRecommendation(
   );
 
   return agentProfileRecommendationSchema.parse({
-    profileId: chosenProfile,
+    validationProfileId: chosenProfile,
     confidence,
-    summary: buildFallbackSummary(chosenProfile, confidence, anchoredProfiles, signals, taskPacket),
+    validationSummary: buildFallbackSummary(
+      chosenProfile,
+      confidence,
+      anchoredProfiles,
+      signals,
+      taskPacket,
+    ),
     candidateCount:
       confidence === "low"
         ? FALLBACK_LOW_CONFIDENCE_CANDIDATE_COUNT
         : FALLBACK_DEFAULT_CANDIDATE_COUNT,
     strategyIds: FALLBACK_STRATEGY_IDS,
     selectedCommandIds,
-    missingCapabilities,
+    validationGaps: missingCapabilities,
   });
 }
 
@@ -669,8 +678,10 @@ function sanitizeRecommendation(
   const selectedCommandIds = [...new Set(filteredCommandIds)];
   const validStrategyIds = new Set(profileStrategyIds);
   const filteredStrategyIds = recommendation.strategyIds.filter((id) => validStrategyIds.has(id));
+  const validationProfileId = recommendation.validationProfileId;
+  const validationSummary = recommendation.validationSummary;
   const validationGaps = inferMissingCapabilities(
-    recommendation.profileId,
+    validationProfileId,
     selectedCommandIds,
     signals.commandCatalog,
     signals.capabilities,
@@ -679,13 +690,12 @@ function sanitizeRecommendation(
   );
 
   return agentProfileRecommendationSchema.parse({
-    ...recommendation,
-    validationProfileId: recommendation.profileId,
-    validationSummary: recommendation.summary,
+    validationProfileId,
     candidateCount: clampCandidateCount(recommendation.candidateCount),
     strategyIds: filteredStrategyIds.length > 0 ? filteredStrategyIds : fallback.strategyIds,
+    confidence: recommendation.confidence,
+    validationSummary,
     selectedCommandIds,
-    missingCapabilities: validationGaps,
     validationGaps,
   });
 }

@@ -13,6 +13,7 @@ import {
 } from "../src/core/paths.js";
 import {
   type AgentProfileRecommendation,
+  agentProfileRecommendationSchema,
   consultationProfileSelectionSchema,
 } from "../src/domain/profile.js";
 import { recommendConsultationProfile } from "../src/services/consultation-profile.js";
@@ -36,6 +37,65 @@ afterEach(async () => {
 });
 
 describe("consultation auto profile", () => {
+  it("backfills legacy aliases from validation-first agent profile recommendations", () => {
+    const parsed = agentProfileRecommendationSchema.parse({
+      validationProfileId: "frontend",
+      confidence: "medium",
+      validationSummary: "Frontend evidence is strongest.",
+      candidateCount: 4,
+      strategyIds: ["minimal-change"],
+      selectedCommandIds: ["lint-fast"],
+      validationGaps: ["No build validation command was selected."],
+    });
+
+    expect(parsed.profileId).toBe("frontend");
+    expect(parsed.summary).toBe("Frontend evidence is strongest.");
+    expect(parsed.missingCapabilities).toEqual(["No build validation command was selected."]);
+  });
+
+  it("rejects conflicting legacy agent profile recommendation aliases", () => {
+    expect(() =>
+      agentProfileRecommendationSchema.parse({
+        profileId: "library",
+        validationProfileId: "frontend",
+        confidence: "medium",
+        summary: "Frontend evidence is strongest.",
+        validationSummary: "Frontend evidence is strongest.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change"],
+        selectedCommandIds: [],
+        missingCapabilities: ["No build validation command was selected."],
+        validationGaps: ["No build validation command was selected."],
+      }),
+    ).toThrow("profileId must match validationProfileId");
+  });
+
+  it("rejects agent profile recommendations that omit selected commands", () => {
+    expect(() =>
+      agentProfileRecommendationSchema.parse({
+        validationProfileId: "frontend",
+        confidence: "medium",
+        validationSummary: "Frontend evidence is strongest.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change"],
+        validationGaps: [],
+      }),
+    ).toThrow();
+  });
+
+  it("rejects agent profile recommendations that omit validation gaps", () => {
+    expect(() =>
+      agentProfileRecommendationSchema.parse({
+        validationProfileId: "frontend",
+        confidence: "medium",
+        validationSummary: "Frontend evidence is strongest.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change"],
+        selectedCommandIds: ["lint-fast"],
+      }),
+    ).toThrow();
+  });
+
   it("backfills legacy aliases from validation-first consultation profile selections", () => {
     const parsed = consultationProfileSelectionSchema.parse({
       validationProfileId: "frontend",
@@ -3035,9 +3095,12 @@ async function writePrismaMigrationPackage(cwd: string): Promise<void> {
 }
 
 function createNoopProfileAdapter(
-  recommendation: AgentProfileRecommendation | undefined,
+  recommendation: AgentProfileRecommendation | Record<string, unknown> | undefined,
   onRecommendProfile?: () => void,
 ): AgentAdapter {
+  const normalizedRecommendation = recommendation
+    ? agentProfileRecommendationSchema.parse(recommendation)
+    : undefined;
   return {
     name: "codex",
     async runCandidate() {
@@ -3054,14 +3117,14 @@ function createNoopProfileAdapter(
       return {
         runId: request.runId,
         adapter: "codex",
-        status: recommendation ? "completed" : "failed",
+        status: normalizedRecommendation ? "completed" : "failed",
         startedAt: "2026-04-07T00:00:00.000Z",
         completedAt: "2026-04-07T00:00:01.000Z",
-        exitCode: recommendation ? 0 : 1,
-        summary: recommendation
+        exitCode: normalizedRecommendation ? 0 : 1,
+        summary: normalizedRecommendation
           ? "Profile recommendation completed."
           : "Profile recommendation skipped.",
-        ...(recommendation ? { recommendation } : {}),
+        ...(normalizedRecommendation ? { recommendation: normalizedRecommendation } : {}),
         artifacts: [],
       };
     },

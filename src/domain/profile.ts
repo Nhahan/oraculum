@@ -119,42 +119,43 @@ export const profileRepoSignalsSchema = z.object({
 
 const agentProfileRecommendationBaseSchema = z
   .object({
-    profileId: consultationProfileIdSchema,
-    validationProfileId: consultationProfileIdSchema.optional(),
+    profileId: consultationProfileIdSchema.optional(),
+    validationProfileId: consultationProfileIdSchema,
     confidence: decisionConfidenceSchema,
-    summary: z.string().min(1),
-    validationSummary: z.string().min(1).optional(),
+    summary: z.string().min(1).optional(),
+    validationSummary: z.string().min(1),
     candidateCount: z.number().int().min(1).max(16),
     strategyIds: z.array(profileStrategyIdSchema).min(1).max(4),
-    selectedCommandIds: z.array(z.string().min(1)).default([]),
-    missingCapabilities: z.array(z.string().min(1)).default([]),
-    validationGaps: z.array(z.string().min(1)).optional(),
+    selectedCommandIds: z.array(z.string().min(1)),
+    missingCapabilities: z.array(z.string().min(1)).optional(),
+    validationGaps: z.array(z.string().min(1)),
   })
   .superRefine((value, context) => {
-    if (value.validationProfileId && value.validationProfileId !== value.profileId) {
+    if (value.profileId && value.validationProfileId !== value.profileId) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["validationProfileId"],
-        message: "validationProfileId must match profileId when both are present.",
+        path: ["profileId"],
+        message: "profileId must match validationProfileId when both are present.",
       });
     }
 
-    if (value.validationSummary && value.validationSummary !== value.summary) {
+    if (value.summary && value.validationSummary !== value.summary) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["validationSummary"],
-        message: "validationSummary must match summary when both are present.",
+        path: ["summary"],
+        message: "summary must match validationSummary when both are present.",
       });
     }
 
     if (
-      value.validationGaps &&
-      !stringArrayMembersEqual(value.validationGaps, value.missingCapabilities)
+      value.missingCapabilities &&
+      !stringArrayMembersEqual(value.missingCapabilities, value.validationGaps)
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["validationGaps"],
-        message: "validationGaps must match missingCapabilities when both are present.",
+        path: ["missingCapabilities"],
+        message:
+          "missingCapabilities must match validationGaps when both legacy and validation aliases are present.",
       });
     }
   });
@@ -336,14 +337,7 @@ export function buildAgentProfileRecommendationJsonSchema(): Record<string, unkn
     type: "object",
     additionalProperties: false,
     properties,
-    anyOf: [
-      {
-        required: [...commonRequired, "profileId", "summary", "missingCapabilities"],
-      },
-      {
-        required: [...commonRequired, "validationProfileId", "validationSummary", "validationGaps"],
-      },
-    ],
+    required: [...commonRequired, "validationProfileId", "validationSummary", "validationGaps"],
   };
 }
 

@@ -299,14 +299,20 @@ function extractProfileRecommendation(stdout: string): AgentProfileRecommendatio
   try {
     const parsed = JSON.parse(trimmed) as Record<string, unknown>;
     if (looksLikeProfileRecommendation(parsed)) {
-      return agentProfileRecommendationSchema.parse(parsed);
+      const topLevel = agentProfileRecommendationSchema.safeParse(parsed);
+      if (topLevel.success) {
+        return topLevel.data;
+      }
     }
 
     for (const value of nestedObjects(parsed)) {
       if (value && typeof value === "object" && !Array.isArray(value)) {
         const nested = value as Record<string, unknown>;
         if (looksLikeProfileRecommendation(nested)) {
-          return agentProfileRecommendationSchema.parse(nested);
+          const recommendation = agentProfileRecommendationSchema.safeParse(nested);
+          if (recommendation.success) {
+            return recommendation.data;
+          }
         }
       }
     }
@@ -320,7 +326,16 @@ function extractProfileRecommendation(stdout: string): AgentProfileRecommendatio
 function looksLikeProfileRecommendation(value: Record<string, unknown>): boolean {
   const hasProfileId = "profileId" in value || "validationProfileId" in value;
   const hasSummary = "summary" in value || "validationSummary" in value;
-  return hasProfileId && hasSummary && "confidence" in value && "candidateCount" in value;
+  const hasValidationGaps = "missingCapabilities" in value || "validationGaps" in value;
+  return (
+    hasProfileId &&
+    hasSummary &&
+    hasValidationGaps &&
+    "confidence" in value &&
+    "candidateCount" in value &&
+    "strategyIds" in value &&
+    "selectedCommandIds" in value
+  );
 }
 
 function extractPreflightRecommendation(stdout: string) {
