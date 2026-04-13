@@ -70,12 +70,7 @@ const GENERATED_ORACLE_TIMEOUT_MS = {
   deep: 10 * 60_000,
 } as const satisfies Record<ProfileCommandCandidate["roundId"], number>;
 
-const PROFILE_STRATEGIES: Record<ConsultationProfileId, ProfileStrategyId[]> = {
-  generic: ["minimal-change", "safety-first"],
-  library: ["minimal-change", "test-amplified", "safety-first"],
-  frontend: ["minimal-change", "safety-first", "test-amplified"],
-  migration: ["safety-first", "structural-refactor", "minimal-change"],
-};
+const FALLBACK_STRATEGY_IDS: ProfileStrategyId[] = ["minimal-change", "safety-first"];
 
 interface ProfileCommandSlot {
   capability: string;
@@ -361,7 +356,11 @@ function buildFallbackRecommendation(
   signals: ProfileRepoSignals,
   taskPacket: MaterializedTaskPacket,
 ): AgentProfileRecommendation {
-  const commandSlots = new Set(signals.commandCatalog.map(commandSlotKey));
+  const commandSlots = new Set(
+    signals.commandCatalog
+      .filter((command) => command.source === "repo-local-script")
+      .map(commandSlotKey),
+  );
   const anchoredProfiles = (
     Object.entries(PROFILE_FALLBACK_ANCHORS) as Array<
       [Exclude<ConsultationProfileId, "generic">, ProfileCommandSlot[]]
@@ -395,7 +394,7 @@ function buildFallbackRecommendation(
       confidence === "low"
         ? Math.min(3, PROFILE_DEFAULT_CANDIDATES[chosenProfile])
         : PROFILE_DEFAULT_CANDIDATES[chosenProfile],
-    strategyIds: PROFILE_STRATEGIES[chosenProfile],
+    strategyIds: FALLBACK_STRATEGY_IDS,
     selectedCommandIds,
     missingCapabilities,
   });
@@ -410,6 +409,7 @@ function buildFallbackSummary(
 ): string {
   const topCommandIds =
     signals.commandCatalog
+      .filter((command) => command.source === "repo-local-script")
       .map((command) => command.id)
       .slice(0, 4)
       .join(", ") || "no executable command evidence";
@@ -534,11 +534,7 @@ function sanitizeRecommendation(
   const filteredCommandIds = recommendation.selectedCommandIds.filter((id) =>
     validCommandIds.has(id),
   );
-  const baselineCommandIds = chooseFallbackCommandIds(
-    [recommendation.profileId],
-    signals.commandCatalog,
-  );
-  const selectedCommandIds = [...new Set([...baselineCommandIds, ...filteredCommandIds])];
+  const selectedCommandIds = [...new Set(filteredCommandIds)];
   const validStrategyIds = new Set(profileStrategyIds);
   const filteredStrategyIds = recommendation.strategyIds.filter((id) => validStrategyIds.has(id));
 

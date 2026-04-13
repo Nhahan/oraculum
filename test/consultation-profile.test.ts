@@ -81,9 +81,10 @@ if (out) {
     expect(savedManifest.profileSelection?.oracleIds).toEqual([
       "lint-fast",
       "typecheck-fast",
-      "pack-impact",
       "full-suite-deep",
-      "package-smoke-deep",
+    ]);
+    expect(savedManifest.profileSelection?.missingCapabilities).toEqual([
+      "No package packaging smoke check was detected.",
     ]);
     const configPath = savedManifest.configPath;
     expect(configPath).toBeDefined();
@@ -105,14 +106,7 @@ if (out) {
       ),
     ).toHaveLength(1);
     expect(savedConfig.oracles?.every((oracle) => typeof oracle.timeoutMs === "number")).toBe(true);
-    const packageSmokeDeep = savedConfig.oracles?.find(
-      (oracle) => oracle.id === "package-smoke-deep",
-    );
-    expect(packageSmokeDeep?.args?.join(" ")).toContain(
-      "process.platform === 'win32' ? 'npm.cmd' : 'npm'",
-    );
-    expect(packageSmokeDeep?.args?.join(" ")).toContain("shell: process.platform === 'win32'");
-    expect(packageSmokeDeep?.safetyRationale).toContain("temporary directory");
+    expect(savedConfig.oracles?.map((oracle) => oracle.id)).not.toContain("package-smoke-deep");
     await expect(readFile(getProfileSelectionPath(cwd, manifest.id), "utf8")).resolves.toContain(
       '"profileId": "library"',
     );
@@ -212,11 +206,19 @@ if (out) {
       taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
     });
 
-    expect(recommendation.config.oracles).toHaveLength(5);
+    expect(recommendation.config.oracles).toHaveLength(3);
     expect(recommendation.config.oracles.every((oracle) => oracle.cwd === "workspace")).toBe(true);
     expect(recommendation.config.oracles.every((oracle) => oracle.timeoutMs !== undefined)).toBe(
       true,
     );
+    expect(recommendation.selection.oracleIds).toEqual([
+      "lint-fast",
+      "typecheck-fast",
+      "full-suite-deep",
+    ]);
+    expect(recommendation.selection.missingCapabilities).toEqual([
+      "No package packaging smoke check was detected.",
+    ]);
   });
 
   it("can skip runtime profile selection and rely on fallback detection for planning-only flows", async () => {
@@ -242,6 +244,7 @@ if (out) {
 
     expect(called).toBe(false);
     expect(recommendation.selection.source).toBe("fallback-detection");
+    expect(recommendation.selection.strategyIds).toEqual(["minimal-change", "safety-first"]);
     await expect(readFile(getProfileSelectionPath(cwd, "run_draft"), "utf8")).resolves.toContain(
       '"llmSkipped": true',
     );
@@ -266,6 +269,7 @@ if (out) {
 
     expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.candidateCount).toBe(3);
+    expect(recommendation.selection.strategyIds).toEqual(["minimal-change", "safety-first"]);
     expect(recommendation.selection.summary).toContain("defaulted to the generic profile");
     expect(recommendation.selection.missingCapabilities).toContain(
       "No repo-local validation command was detected.",
@@ -650,7 +654,7 @@ if (out) {
     );
   });
 
-  it("adds workspace-scoped package tarball checks for a single exportable workspace npm package", async () => {
+  it("keeps workspace packaging smoke checks as evidence without forcing a library fallback profile", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
     await writeFile(
@@ -705,13 +709,8 @@ if (out) {
       };
     };
 
-    expect(recommendation.selection.profileId).toBe("library");
-    expect(recommendation.selection.oracleIds).toEqual([
-      "lint-fast",
-      "pack-impact",
-      "full-suite-deep",
-      "package-smoke-deep",
-    ]);
+    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
     expect(recommendation.selection.missingCapabilities).toEqual([]);
     const lintOracle = recommendation.config.oracles.find((oracle) => oracle.id === "lint-fast");
     const packOracle = recommendation.config.oracles.find((oracle) => oracle.id === "pack-impact");
@@ -726,21 +725,8 @@ if (out) {
       }),
     );
     expect(lintOracle?.safetyRationale).toContain("workspace package.json script");
-    expect(packOracle).toEqual(
-      expect.objectContaining({
-        command: "npm",
-        args: ["pack", "--dry-run"],
-        relativeCwd: "packages/lib",
-      }),
-    );
-    expect(packOracle?.safetyRationale).toContain("selected workspace package");
-    expect(packageSmokeOracle).toEqual(
-      expect.objectContaining({
-        command: "node",
-        relativeCwd: "packages/lib",
-      }),
-    );
-    expect(packageSmokeOracle?.safetyRationale).toContain("temporary tarball directory");
+    expect(packOracle).toBeUndefined();
+    expect(packageSmokeOracle).toBeUndefined();
     expect(artifact.signals.commandCatalog).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -835,7 +821,7 @@ if (out) {
     );
   });
 
-  it("adds a package tarball deep check for exportable libraries during fallback detection", async () => {
+  it("keeps root packaging smoke checks as evidence without forcing a library fallback profile", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
     await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep package exports healthy.\n", "utf8");
@@ -853,8 +839,12 @@ if (out) {
       taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
     });
 
-    expect(recommendation.selection.profileId).toBe("library");
-    expect(recommendation.selection.oracleIds).toContain("package-smoke-deep");
+    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.oracleIds).toEqual([
+      "lint-fast",
+      "typecheck-fast",
+      "full-suite-deep",
+    ]);
     expect(recommendation.selection.missingCapabilities).toEqual([]);
     const artifact = JSON.parse(
       await readFile(getProfileSelectionPath(cwd, "run_library_pack"), "utf8"),
@@ -907,7 +897,7 @@ if (out) {
     expect(artifact.signals.skippedCommandCandidates).toEqual([]);
   });
 
-  it("defaults to the generic profile when fallback anchors conflict across product-specific profiles", async () => {
+  it("uses explicit repo-owned frontend evidence without treating product-owned package smoke as a conflicting anchor", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
     await writeFile(
@@ -949,19 +939,14 @@ if (out) {
       taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
     });
 
-    expect(recommendation.selection.profileId).toBe("generic");
-    expect(recommendation.selection.summary).toContain("profile-specific anchors conflicted");
-    expect(recommendation.selection.oracleIds).toEqual(
-      expect.arrayContaining([
-        "lint-fast",
-        "typecheck-fast",
-        "full-suite-deep",
-        "pack-impact",
-        "package-smoke-deep",
-        "e2e-deep",
-      ]),
-    );
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.profileId).toBe("frontend");
+    expect(recommendation.selection.summary).toContain("detected a unique frontend profile anchor");
+    expect(recommendation.selection.summary).not.toContain("pack-impact");
+    expect(recommendation.selection.summary).not.toContain("package-smoke-deep");
+    expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "typecheck-fast", "e2e-deep"]);
+    expect(recommendation.selection.missingCapabilities).toEqual([
+      "No build validation command was detected.",
+    ]);
   });
 
   it("deduplicates aliased expensive package scripts under a single command candidate", async () => {
@@ -2151,6 +2136,7 @@ if (out) {
 
     expect(recommendation.selection.profileId).toBe("frontend");
     expect(recommendation.selection.oracleIds).toContain("e2e-deep");
+    expect(recommendation.selection.strategyIds).toEqual(["minimal-change", "safety-first"]);
   });
 
   it("uses an explicit repo-local migration script as migration profile evidence", async () => {
@@ -2187,6 +2173,7 @@ if (out) {
 
     expect(recommendation.selection.profileId).toBe("migration");
     expect(recommendation.selection.oracleIds).toContain("migration-impact");
+    expect(recommendation.selection.strategyIds).toEqual(["minimal-change", "safety-first"]);
   });
 
   it("records Prisma migration signals without inventing direct commands", async () => {
