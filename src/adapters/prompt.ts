@@ -135,7 +135,7 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
   if (request.consultationProfile) {
     sections.push(
       "",
-      `Consultation validation profile: ${request.consultationProfile.validationProfileId} (${request.consultationProfile.confidence})`,
+      `Consultation validation posture: ${request.consultationProfile.validationProfileId} (${request.consultationProfile.confidence})`,
       request.consultationProfile.validationSummary,
     );
     if (request.consultationProfile.validationSignals.length > 0) {
@@ -146,7 +146,7 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
     }
     if (request.consultationProfile.validationGaps.length > 0) {
       sections.push(
-        "Validation gaps from the selected profile:",
+        "Validation gaps from the selected posture:",
         ...request.consultationProfile.validationGaps.map((item) => `- ${item}`),
       );
     }
@@ -303,12 +303,13 @@ export function buildPreflightPrompt(request: AgentPreflightRequest): string {
 export function buildProfileSelectionPrompt(request: AgentProfileRequest): string {
   const strategyList = profileStrategyIds.join(", ");
   const sections: string[] = [
-    "You are selecting the best Oraculum consultation profile for the current repository.",
-    "Choose exactly one profile option and synthesize the strongest default tournament settings for this consultation.",
+    "You are selecting the best Oraculum consultation validation posture for the current repository.",
+    "Choose exactly one currently supported validation posture option and synthesize the strongest default tournament settings for this consultation.",
     "Only choose command ids from the provided command catalog. Do not invent commands or command ids.",
     `Choose strategy IDs only from: ${strategyList}.`,
     "Treat validationProfileId as the canonical validation posture field for default tournament settings, not as a claim about the whole repository.",
     "Legacy aliases profileId, summary, and missingCapabilities are accepted for compatibility, but prefer validationProfileId, validationSummary, and validationGaps.",
+    "Treat the supported validation posture options below as a compatibility layer for current default bundles, not as a complete repository taxonomy.",
     'Use validationProfileId "generic" when the repository has no strong command-grounded or repo-local profile evidence.',
     'Return JSON only in this shape: {"validationProfileId":"generic","confidence":"low","validationSummary":"short rationale","candidateCount":3,"strategyIds":["minimal-change","safety-first"],"selectedCommandIds":[],"validationGaps":["none or short notes"]}',
     "",
@@ -340,8 +341,8 @@ export function buildProfileSelectionPrompt(request: AgentProfileRequest): strin
 
   sections.push(
     "",
-    "Profile options:",
-    ...request.profileOptions.map((option) => `- ${option.id}: ${option.description}`),
+    "Supported validation posture options:",
+    ...request.validationPostureOptions.map((option) => `- ${option.id}: ${option.description}`),
     "",
     `Detected package manager: ${request.signals.packageManager}`,
     `Detected scripts: ${request.signals.scripts.join(", ") || "none"}`,

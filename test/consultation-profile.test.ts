@@ -10,6 +10,7 @@ import {
   getConfigPath,
   getProfileSelectionPath,
   getReportsDir,
+  getRunManifestPath,
 } from "../src/core/paths.js";
 import {
   type AgentProfileRecommendation,
@@ -51,6 +52,23 @@ describe("consultation auto profile", () => {
     expect(parsed.profileId).toBe("frontend");
     expect(parsed.summary).toBe("Frontend evidence is strongest.");
     expect(parsed.missingCapabilities).toEqual(["No build validation command was selected."]);
+  });
+
+  it("accepts non-enum validation posture ids at the agent recommendation boundary", () => {
+    const parsed = agentProfileRecommendationSchema.parse({
+      validationProfileId: "docs-review",
+      confidence: "medium",
+      validationSummary: "Docs review evidence is strongest.",
+      candidateCount: 4,
+      strategyIds: ["minimal-change"],
+      selectedCommandIds: [],
+      validationGaps: [],
+    });
+
+    expect(parsed.validationProfileId).toBe("docs-review");
+    expect(parsed.profileId).toBe("docs-review");
+    expect(parsed.validationSummary).toBe("Docs review evidence is strongest.");
+    expect(parsed.summary).toBe("Docs review evidence is strongest.");
   });
 
   it("rejects conflicting legacy agent profile recommendation aliases", () => {
@@ -257,16 +275,56 @@ if (out) {
     expect(savedManifest.profileSelection?.validationGaps).toEqual([
       "No package packaging smoke check was selected.",
     ]);
+    const rawSavedManifest = JSON.parse(
+      await readFile(getRunManifestPath(cwd, manifest.id), "utf8"),
+    ) as {
+      profileSelection?: {
+        profileId?: string;
+        summary?: string;
+        signals?: string[];
+        missingCapabilities?: string[];
+      };
+    };
+    expect(rawSavedManifest.profileSelection).not.toHaveProperty("profileId");
+    expect(rawSavedManifest.profileSelection).not.toHaveProperty("summary");
+    expect(rawSavedManifest.profileSelection).not.toHaveProperty("signals");
+    expect(rawSavedManifest.profileSelection).not.toHaveProperty("missingCapabilities");
     const selectionArtifact = JSON.parse(
       await readFile(getProfileSelectionPath(cwd, manifest.id), "utf8"),
     ) as {
+      recommendation: {
+        profileId?: string;
+        summary?: string;
+        missingCapabilities?: string[];
+      };
+      llmResult?: {
+        recommendation?: {
+          profileId?: string;
+          summary?: string;
+          missingCapabilities?: string[];
+        };
+      };
       appliedSelection: {
+        profileId?: string;
+        summary?: string;
+        signals?: string[];
+        missingCapabilities?: string[];
         validationProfileId: string;
         validationSummary: string;
         validationSignals: string[];
         validationGaps: string[];
       };
     };
+    expect(selectionArtifact.recommendation).not.toHaveProperty("profileId");
+    expect(selectionArtifact.recommendation).not.toHaveProperty("summary");
+    expect(selectionArtifact.recommendation).not.toHaveProperty("missingCapabilities");
+    expect(selectionArtifact.llmResult?.recommendation).not.toHaveProperty("profileId");
+    expect(selectionArtifact.llmResult?.recommendation).not.toHaveProperty("summary");
+    expect(selectionArtifact.llmResult?.recommendation).not.toHaveProperty("missingCapabilities");
+    expect(selectionArtifact.appliedSelection).not.toHaveProperty("profileId");
+    expect(selectionArtifact.appliedSelection).not.toHaveProperty("summary");
+    expect(selectionArtifact.appliedSelection).not.toHaveProperty("signals");
+    expect(selectionArtifact.appliedSelection).not.toHaveProperty("missingCapabilities");
     expect(selectionArtifact.appliedSelection.validationProfileId).toBe("library");
     expect(selectionArtifact.appliedSelection.validationSummary).toBe(
       "Library scripts and package export signals are strongest.",
@@ -433,6 +491,71 @@ if (out) {
     expect(recommendation.selection.profileId).toBe("library");
     expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "typecheck-fast"]);
     expect(recommendation.selection.missingCapabilities).toEqual([]);
+  });
+
+  it("falls back when runtime returns an unsupported validation posture id", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep docs grounded.\n", "utf8");
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "unsupported-runtime-posture",
+          packageManager: "npm@10.0.0",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_unsupported_runtime_posture"), { recursive: true });
+
+    const recommendation = await recommendConsultationProfile({
+      adapter: createNoopProfileAdapter({
+        validationProfileId: "docs-review",
+        confidence: "high",
+        validationSummary: "Docs review signals are strongest.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change"],
+        selectedCommandIds: ["lint-fast"],
+        validationGaps: [],
+      }),
+      baseConfig: await loadProjectConfig(cwd),
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: getReportsDir(cwd, "run_unsupported_runtime_posture"),
+      runId: "run_unsupported_runtime_posture",
+      taskPacket: await loadTaskPacket(join(cwd, "tasks", "fix.md")),
+    });
+
+    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.source).toBe("fallback-detection");
+
+    const selectionArtifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_unsupported_runtime_posture"), "utf8"),
+    ) as {
+      recommendation: {
+        validationProfileId: string;
+        validationSummary: string;
+      };
+      llmResult?: {
+        recommendation?: {
+          validationProfileId: string;
+          validationSummary: string;
+        };
+      };
+    };
+
+    expect(selectionArtifact.recommendation.validationProfileId).toBe("generic");
+    expect(selectionArtifact.recommendation.validationSummary).toContain("Fallback detection");
+    expect(selectionArtifact.llmResult?.recommendation?.validationProfileId).toBe("docs-review");
+    expect(selectionArtifact.llmResult?.recommendation?.validationSummary).toBe(
+      "Docs review signals are strongest.",
+    );
   });
 
   it("keeps explicit quick and advanced settings while still recording the auto profile decision", async () => {
@@ -888,7 +1011,7 @@ if (out) {
     expect(recommendation.selection.candidateCount).toBe(3);
     expect(recommendation.selection.strategyIds).toEqual(["minimal-change", "safety-first"]);
     expect(recommendation.selection.summary).toContain(
-      "defaulted to the generic validation profile",
+      "defaulted to the generic validation posture",
     );
     expect(recommendation.selection.missingCapabilities).toContain(
       "No repo-local validation command was detected.",
@@ -1560,7 +1683,7 @@ if (out) {
 
     expect(recommendation.selection.profileId).toBe("frontend");
     expect(recommendation.selection.summary).toContain(
-      "detected a unique frontend validation anchor",
+      "detected a unique frontend validation posture anchor",
     );
     expect(recommendation.selection.summary).not.toContain("pack-impact");
     expect(recommendation.selection.summary).not.toContain("package-smoke-deep");
@@ -1618,7 +1741,7 @@ if (out) {
 
     expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.summary).toContain(
-      "defaulted to the generic validation profile because profile-specific validation anchors conflicted",
+      "defaulted to the generic validation posture because posture-specific validation anchors conflicted",
     );
     expect(recommendation.selection.oracleIds).toEqual([
       "lint-fast",

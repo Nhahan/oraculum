@@ -22,6 +22,7 @@ import {
   projectQuickConfigSchema,
 } from "../src/domain/config.js";
 import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
+import { profileRepoSignalsSchema } from "../src/domain/profile.js";
 import {
   deriveResearchSignalFingerprint,
   deriveTaskPacketId,
@@ -499,13 +500,13 @@ describe("oracle and adapter contracts", () => {
           exitCode: 0,
           summary: "Stub profile recommendation completed.",
           recommendation: {
-            profileId: "library",
+            validationProfileId: "docs-review",
             confidence: "medium",
-            summary: "Stub profile recommendation.",
+            validationSummary: "Stub profile recommendation.",
             candidateCount: 4,
             strategyIds: ["minimal-change", "test-amplified"],
             selectedCommandIds: [],
-            missingCapabilities: [],
+            validationGaps: [],
           },
           artifacts: [],
         });
@@ -531,6 +532,34 @@ describe("oracle and adapter contracts", () => {
     });
 
     expect(result.status).toBe("completed");
+
+    const profileResult = await adapter.recommendProfile({
+      runId: "run_1",
+      projectRoot: "/tmp/oraculum-project",
+      logDir: "/tmp/oraculum-logs",
+      taskPacket: materializedTaskPacketSchema.parse({
+        id: "session-loss",
+        title: "Fix session loss",
+        intent: "Preserve login state during refresh.",
+        source: {
+          kind: "task-note",
+          path: "/tmp/task.md",
+        },
+      }),
+      signals: profileRepoSignalsSchema.parse({
+        packageManager: "unknown",
+      }),
+      validationPostureOptions: [
+        { id: "generic", description: "Generic validation posture." },
+        { id: "docs-review", description: "Docs review validation posture." },
+      ],
+    });
+
+    expect(profileResult.status).toBe("completed");
+    expect(profileResult.recommendation?.validationProfileId).toBe("docs-review");
+    expect(profileResult.recommendation?.profileId).toBe("docs-review");
+    expect(profileResult.recommendation?.validationSummary).toBe("Stub profile recommendation.");
+    expect(profileResult.recommendation?.summary).toBe("Stub profile recommendation.");
   });
 });
 

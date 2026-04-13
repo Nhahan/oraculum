@@ -4,7 +4,6 @@ import { type Adapter, adapterSchema } from "../domain/config.js";
 import {
   type AgentProfileRecommendation,
   agentProfileRecommendationSchema,
-  type ConsultationProfileId,
   type DecisionConfidence,
   decisionConfidenceSchema,
   type ProfileRepoSignals,
@@ -204,8 +203,8 @@ export interface AgentProfileRequest {
   logDir: string;
   taskPacket: MaterializedTaskPacket;
   signals: ProfileRepoSignals;
-  profileOptions: Array<{
-    id: ConsultationProfileId;
+  validationPostureOptions: Array<{
+    id: string;
     description: string;
   }>;
 }

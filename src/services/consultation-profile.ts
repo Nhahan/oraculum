@@ -16,11 +16,15 @@ import {
   type ConsultationProfileSelection,
   consultationProfileSelectionSchema,
   getValidationGaps,
+  getValidationProfileId,
+  isSupportedConsultationProfileId,
   type ProfileCommandCandidate,
   type ProfileRepoSignals,
   type ProfileStrategyId,
   profileRepoSignalsSchema,
   profileStrategyIds,
+  toCanonicalAgentProfileRecommendation,
+  toCanonicalConsultationProfileSelection,
 } from "../domain/profile.js";
 import type { MaterializedTaskPacket } from "../domain/task.js";
 
@@ -47,9 +51,9 @@ export interface RecommendedConsultationProfile {
   selection: ConsultationProfileSelection;
 }
 
-const PROFILE_DESCRIPTIONS: Record<ConsultationProfileId, string> = {
+const VALIDATION_POSTURE_DESCRIPTIONS: Record<ConsultationProfileId, string> = {
   generic:
-    "Conservative default validation posture when repository evidence is weak or profile-specific checks are not safely grounded.",
+    "Conservative default validation posture when repository evidence is weak or posture-specific checks are not safely grounded.",
   library:
     "Package/export-oriented validation posture. Favor lint/typecheck, deep tests, and packaging checks only when repository evidence supports them.",
   frontend:
@@ -84,8 +88,8 @@ interface MissingCapabilityRule {
   whenNotDetected: string;
 }
 
-// Fallback detection is intentionally conservative. A non-generic profile should only be
-// auto-selected when a single profile has explicit, profile-specific anchor commands.
+// Fallback detection is intentionally conservative. A non-generic posture should only be
+// auto-selected when a single posture has explicit, posture-specific anchor commands.
 // Generic validation commands such as lint/typecheck/test should not silently masquerade as a
 // library/frontend/migration intent when runtime profile selection is unavailable.
 // Package export smoke remains review evidence, but it is product-owned today rather than an
@@ -93,18 +97,19 @@ interface MissingCapabilityRule {
 type FallbackAnchoredProfileId = "frontend" | "migration";
 type FallbackDetectedProfileId = "generic" | FallbackAnchoredProfileId;
 
-const PROFILE_FALLBACK_ANCHORS: Record<FallbackAnchoredProfileId, ProfileCommandSlot[]> = {
-  frontend: [{ roundId: "deep", capability: "e2e-or-visual" }],
-  migration: [
-    { roundId: "fast", capability: "schema-validation" },
-    { roundId: "impact", capability: "migration-dry-run" },
-    { roundId: "deep", capability: "rollback-simulation" },
-    { roundId: "deep", capability: "migration-drift" },
-  ],
-};
+const VALIDATION_POSTURE_FALLBACK_ANCHORS: Record<FallbackAnchoredProfileId, ProfileCommandSlot[]> =
+  {
+    frontend: [{ roundId: "deep", capability: "e2e-or-visual" }],
+    migration: [
+      { roundId: "fast", capability: "schema-validation" },
+      { roundId: "impact", capability: "migration-dry-run" },
+      { roundId: "deep", capability: "rollback-simulation" },
+      { roundId: "deep", capability: "migration-drift" },
+    ],
+  };
 
 // This baseline is only for conservative fallback oracle selection when runtime profile selection
-// is unavailable. Profile-specific fallback pressure comes only from explicit anchor slots.
+// is unavailable. Posture-specific fallback pressure comes only from explicit anchor slots.
 const FALLBACK_BASELINE_COMMAND_SLOTS: ProfileCommandSlot[] = [
   { roundId: "fast", capability: "lint" },
   { roundId: "fast", capability: "typecheck" },
@@ -114,7 +119,7 @@ const FALLBACK_BASELINE_COMMAND_SLOTS: ProfileCommandSlot[] = [
   { roundId: "deep", capability: "full-suite-test" },
 ];
 
-const PROFILE_MISSING_CAPABILITY_RULES: Record<
+const VALIDATION_POSTURE_MISSING_CAPABILITY_RULES: Record<
   Exclude<ConsultationProfileId, "generic">,
   MissingCapabilityRule[]
 > = {
@@ -202,8 +207,8 @@ export async function recommendConsultationProfile(
         logDir: options.reportsDir,
         taskPacket: options.taskPacket,
         signals,
-        profileOptions: (
-          Object.entries(PROFILE_DESCRIPTIONS) as Array<[ConsultationProfileId, string]>
+        validationPostureOptions: (
+          Object.entries(VALIDATION_POSTURE_DESCRIPTIONS) as Array<[ConsultationProfileId, string]>
         ).map(([id, description]) => ({ id, description })),
       });
     } catch (error) {
@@ -215,10 +220,11 @@ export async function recommendConsultationProfile(
     llmResult?.status === "completed" && llmResult.recommendation
       ? sanitizeRecommendation(llmResult.recommendation, signals, fallback)
       : fallback;
-  const source =
-    llmResult?.status === "completed" && llmResult.recommendation
-      ? "llm-recommendation"
-      : "fallback-detection";
+  const usedRuntimeRecommendation =
+    llmResult?.status === "completed" &&
+    llmResult.recommendation &&
+    isSupportedConsultationProfileId(getValidationProfileId(llmResult.recommendation) ?? "");
+  const source = usedRuntimeRecommendation ? "llm-recommendation" : "fallback-detection";
 
   const applied = applyProfileSelection({
     baseConfig: options.baseConfig,
@@ -230,13 +236,22 @@ export async function recommendConsultationProfile(
 
   const profileSelectionPath = getProfileSelectionPath(options.projectRoot, options.runId);
   await mkdir(dirname(profileSelectionPath), { recursive: true });
+  const persistedRecommendation = toCanonicalAgentProfileRecommendation(recommendation);
+  const persistedAppliedSelection = toCanonicalConsultationProfileSelection(applied.selection);
+  const persistedLlmResult =
+    llmResult?.status === "completed" && llmResult.recommendation
+      ? {
+          ...llmResult,
+          recommendation: toCanonicalAgentProfileRecommendation(llmResult.recommendation),
+        }
+      : llmResult;
   await writeJsonFile(profileSelectionPath, {
     signals,
     ...(!allowRuntime ? { llmSkipped: true } : {}),
     ...(llmFailure ? { llmFailure } : {}),
-    llmResult,
-    recommendation,
-    appliedSelection: applied.selection,
+    ...(persistedLlmResult ? { llmResult: persistedLlmResult } : {}),
+    recommendation: persistedRecommendation,
+    appliedSelection: persistedAppliedSelection,
   });
 
   return applied;
@@ -280,7 +295,7 @@ function applyProfileSelection(options: {
     oracles: effectiveOracles,
   });
   const validationSignals = buildSelectionSignalSummary(options.signals);
-  const validationProfileId = options.recommendation.validationProfileId;
+  const validationProfileId = getSupportedValidationPostureId(options.recommendation);
   const validationSummary = options.recommendation.validationSummary;
   const validationGaps = explicitOracles ? [] : getValidationGaps(options.recommendation);
 
@@ -474,7 +489,7 @@ function buildFallbackRecommendation(
       .map(commandSlotKey),
   );
   const anchoredProfiles = (
-    Object.entries(PROFILE_FALLBACK_ANCHORS) as Array<
+    Object.entries(VALIDATION_POSTURE_FALLBACK_ANCHORS) as Array<
       [FallbackAnchoredProfileId, ProfileCommandSlot[]]
     >
   )
@@ -533,15 +548,16 @@ function buildFallbackSummary(
       .join(", ") || "no executable command evidence";
   const rationale =
     profileId !== "generic"
-      ? `detected a unique ${profileId} validation anchor from executable command evidence (${topCommandIds})`
+      ? `detected a unique ${profileId} validation posture anchor from executable command evidence (${topCommandIds})`
       : anchoredProfiles.length > 1
-        ? `defaulted to the generic validation profile because profile-specific validation anchors conflicted (${anchoredProfiles.join(", ")})`
-        : "defaulted to the generic validation profile because no executable profile-specific validation anchor was detected";
+        ? `defaulted to the generic validation posture because posture-specific validation anchors conflicted (${anchoredProfiles.join(", ")})`
+        : "defaulted to the generic validation posture because no executable posture-specific validation anchor was detected";
   return `Fallback detection ${rationale}; confidence=${confidence} for task "${basename(taskPacket.source.path)}".`;
 }
 
 function buildFallbackCommandSlots(profileId: FallbackDetectedProfileId): ProfileCommandSlot[] {
-  const profileAnchors = profileId === "generic" ? [] : PROFILE_FALLBACK_ANCHORS[profileId];
+  const profileAnchors =
+    profileId === "generic" ? [] : VALIDATION_POSTURE_FALLBACK_ANCHORS[profileId];
   const slots =
     profileId === "generic"
       ? FALLBACK_BASELINE_COMMAND_SLOTS
@@ -645,7 +661,7 @@ function inferMissingCapabilities(
     );
   }
   if (profileId !== "generic") {
-    for (const rule of PROFILE_MISSING_CAPABILITY_RULES[profileId]) {
+    for (const rule of VALIDATION_POSTURE_MISSING_CAPABILITY_RULES[profileId]) {
       const hasCatalogEvidence = rule.slots.some(hasCatalogSlot);
       const hasSkippedEvidence = rule.slots.some((slot) => hasSkippedCapability(slot.capability));
       if (
@@ -679,6 +695,9 @@ function sanitizeRecommendation(
   const validStrategyIds = new Set(profileStrategyIds);
   const filteredStrategyIds = recommendation.strategyIds.filter((id) => validStrategyIds.has(id));
   const validationProfileId = recommendation.validationProfileId;
+  if (!isSupportedConsultationProfileId(validationProfileId)) {
+    return fallback;
+  }
   const validationSummary = recommendation.validationSummary;
   const validationGaps = inferMissingCapabilities(
     validationProfileId,
@@ -698,6 +717,16 @@ function sanitizeRecommendation(
     selectedCommandIds,
     validationGaps,
   });
+}
+
+function getSupportedValidationPostureId(
+  recommendation: Pick<AgentProfileRecommendation, "profileId" | "validationProfileId">,
+): ConsultationProfileId {
+  const validationProfileId = getValidationProfileId(recommendation);
+  if (!validationProfileId || !isSupportedConsultationProfileId(validationProfileId)) {
+    throw new Error("Consultation profile recommendation requires a supported validation posture.");
+  }
+  return validationProfileId;
 }
 
 function clampCandidateCount(value: number): number {

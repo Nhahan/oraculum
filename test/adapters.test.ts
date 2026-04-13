@@ -370,7 +370,7 @@ if (out) {
     });
 
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "Consultation validation profile: frontend (medium)",
+      "Consultation validation posture: frontend (medium)",
     );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Frontend validation evidence is strongest.",
@@ -383,6 +383,9 @@ if (out) {
     );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
       "- e2e-runner",
+    );
+    await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "Validation gaps from the selected posture:",
     );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
       "No build validation command was selected.",
@@ -630,7 +633,7 @@ if (out) {
           },
         ],
       },
-      profileOptions: [
+      validationPostureOptions: [
         { id: "library", description: "Library work." },
         { id: "frontend", description: "Frontend work." },
         { id: "migration", description: "Migration work." },
@@ -645,10 +648,13 @@ if (out) {
     expect(result.recommendation?.candidateCount).toBe(12);
     expect(result.recommendation?.selectedCommandIds).toEqual(["lint-fast", "typecheck-fast"]);
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "Profile options:",
+      "Supported validation posture options:",
     );
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Treat validationProfileId as the canonical validation posture field for default tournament settings, not as a claim about the whole repository.",
+    );
+    await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "Treat the supported validation posture options below as a compatibility layer for current default bundles, not as a complete repository taxonomy.",
     );
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Legacy aliases profileId, summary, and missingCapabilities are accepted for compatibility, but prefer validationProfileId, validationSummary, and validationGaps.",
@@ -661,7 +667,10 @@ if (out) {
     );
     const profileSchema = JSON.parse(
       await readFile(join(logDir, "profile-judge.schema.json"), "utf8"),
-    ) as { required?: string[]; properties?: Record<string, unknown> };
+    ) as {
+      required?: string[];
+      properties?: Record<string, { type?: string; enum?: string[] }>;
+    };
     expect(profileSchema.required).toEqual(
       expect.arrayContaining([
         "validationProfileId",
@@ -675,6 +684,14 @@ if (out) {
     );
     expect(profileSchema.properties).toHaveProperty("validationProfileId");
     expect(profileSchema.properties).toHaveProperty("profileId");
+    expect(profileSchema.properties?.validationProfileId).toEqual(
+      expect.objectContaining({ type: "string" }),
+    );
+    expect(profileSchema.properties?.profileId).toEqual(
+      expect.objectContaining({ type: "string" }),
+    );
+    expect(profileSchema.properties?.validationProfileId).not.toHaveProperty("enum");
+    expect(profileSchema.properties?.profileId).not.toHaveProperty("enum");
   });
 
   it("asks Claude to recommend a consultation profile with json-schema output", async () => {
@@ -739,7 +756,7 @@ process.stdout.write(JSON.stringify({
           },
         ],
       },
-      profileOptions: [
+      validationPostureOptions: [
         { id: "library", description: "Library work." },
         { id: "frontend", description: "Frontend work." },
         { id: "migration", description: "Migration work." },
@@ -763,7 +780,7 @@ process.stdout.write(JSON.stringify({
       '"--permission-mode","plan"',
     );
     await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toMatch(
-      /generic/u,
+      /validationProfileId/u,
     );
   }, 20_000);
 
@@ -835,7 +852,7 @@ process.stdout.write(JSON.stringify({
           },
         ],
       },
-      profileOptions: [
+      validationPostureOptions: [
         { id: "frontend", description: "Frontend work." },
         { id: "generic", description: "Generic work." },
       ],
@@ -922,7 +939,7 @@ process.stdout.write(JSON.stringify({
           },
         ],
       },
-      profileOptions: [
+      validationPostureOptions: [
         { id: "frontend", description: "Frontend work." },
         { id: "generic", description: "Generic work." },
       ],
@@ -980,7 +997,7 @@ if (out) {
         skippedCommandCandidates: [],
         commandCatalog: [],
       },
-      profileOptions: [
+      validationPostureOptions: [
         { id: "library", description: "Library work." },
         { id: "frontend", description: "Frontend work." },
       ],
@@ -1037,7 +1054,7 @@ if (out) {
         skippedCommandCandidates: [],
         commandCatalog: [],
       },
-      profileOptions: [
+      validationPostureOptions: [
         { id: "frontend", description: "Frontend work." },
         { id: "generic", description: "Generic work." },
       ],
@@ -1204,7 +1221,7 @@ process.stdout.write(JSON.stringify({
           },
         ],
       },
-      profileOptions: [
+      validationPostureOptions: [
         { id: "generic", description: "Generic work." },
         { id: "library", description: "Library work." },
         { id: "frontend", description: "Frontend work." },
@@ -1284,7 +1301,7 @@ process.stdout.write(JSON.stringify({
       logDir: "/repo/.oraculum/runs/run_1/reports",
       taskPacket,
       signals: createRepoSignals(),
-      profileOptions: [
+      validationPostureOptions: [
         { id: "generic", description: "Generic work." },
         { id: "library", description: "Library work." },
         { id: "frontend", description: "Frontend work." },

@@ -15,6 +15,7 @@ export const profileStrategyIds = [
 export const decisionConfidenceSchema = z.enum(decisionConfidenceLevels);
 export const consultationProfileIdSchema = z.enum(consultationProfileIds);
 export const profileStrategyIdSchema = z.enum(profileStrategyIds);
+export const agentProfileRecommendationIdSchema = z.string().min(1);
 export const packageManagerSchema = z.enum(["npm", "pnpm", "yarn", "bun", "unknown"]);
 export const profileSignalKindSchema = z.enum([
   "intent",
@@ -119,8 +120,8 @@ export const profileRepoSignalsSchema = z.object({
 
 const agentProfileRecommendationBaseSchema = z
   .object({
-    profileId: consultationProfileIdSchema.optional(),
-    validationProfileId: consultationProfileIdSchema,
+    profileId: agentProfileRecommendationIdSchema.optional(),
+    validationProfileId: agentProfileRecommendationIdSchema,
     confidence: decisionConfidenceSchema,
     summary: z.string().min(1).optional(),
     validationSummary: z.string().min(1),
@@ -295,11 +296,9 @@ export function buildAgentProfileRecommendationJsonSchema(): Record<string, unkn
   const properties = {
     profileId: {
       type: "string",
-      enum: [...consultationProfileIds],
     },
     validationProfileId: {
       type: "string",
-      enum: [...consultationProfileIds],
     },
     confidence: {
       type: "string",
@@ -353,6 +352,64 @@ export type ProfileRepoSignals = z.infer<typeof profileRepoSignalsSchema>;
 export type AgentProfileRecommendation = z.infer<typeof agentProfileRecommendationSchema>;
 export type ConsultationProfileSelection = z.infer<typeof consultationProfileSelectionSchema>;
 
+export function toCanonicalAgentProfileRecommendation(recommendation: AgentProfileRecommendation): {
+  validationProfileId: string;
+  confidence: DecisionConfidence;
+  validationSummary: string;
+  candidateCount: number;
+  strategyIds: string[];
+  selectedCommandIds: string[];
+  validationGaps: string[];
+} {
+  const validationProfileId = getValidationProfileId(recommendation);
+  const validationSummary = getValidationSummary(recommendation);
+
+  if (!validationProfileId || !validationSummary) {
+    throw new Error("Canonical agent profile recommendation requires validation profile fields.");
+  }
+
+  return {
+    validationProfileId,
+    confidence: recommendation.confidence,
+    validationSummary,
+    candidateCount: recommendation.candidateCount,
+    strategyIds: recommendation.strategyIds,
+    selectedCommandIds: recommendation.selectedCommandIds,
+    validationGaps: getValidationGaps(recommendation),
+  };
+}
+
+export function toCanonicalConsultationProfileSelection(selection: ConsultationProfileSelection): {
+  validationProfileId: ConsultationProfileId;
+  confidence: DecisionConfidence;
+  source: ConsultationProfileSelection["source"];
+  validationSummary: string;
+  candidateCount: number;
+  strategyIds: string[];
+  oracleIds: string[];
+  validationGaps: string[];
+  validationSignals: string[];
+} {
+  const validationProfileId = getValidationProfileId(selection);
+  const validationSummary = getValidationSummary(selection);
+
+  if (!validationProfileId || !validationSummary) {
+    throw new Error("Canonical consultation profile selection requires validation profile fields.");
+  }
+
+  return {
+    validationProfileId,
+    confidence: selection.confidence,
+    source: selection.source,
+    validationSummary,
+    candidateCount: selection.candidateCount,
+    strategyIds: selection.strategyIds,
+    oracleIds: selection.oracleIds,
+    validationGaps: getValidationGaps(selection),
+    validationSignals: getValidationSignals(selection),
+  };
+}
+
 export function getValidationProfileId(
   selection:
     | {
@@ -360,8 +417,28 @@ export function getValidationProfileId(
         validationProfileId?: ConsultationProfileId | undefined;
       }
     | undefined,
+): ConsultationProfileId | undefined;
+export function getValidationProfileId(
+  selection:
+    | {
+        profileId?: string | undefined;
+        validationProfileId?: string | undefined;
+      }
+    | undefined,
+): string | undefined;
+export function getValidationProfileId(
+  selection:
+    | {
+        profileId?: string | undefined;
+        validationProfileId?: string | undefined;
+      }
+    | undefined,
 ): string | undefined {
   return selection?.validationProfileId ?? selection?.profileId;
+}
+
+export function isSupportedConsultationProfileId(value: string): value is ConsultationProfileId {
+  return consultationProfileIds.includes(value as ConsultationProfileId);
 }
 
 export function getValidationSummary(
