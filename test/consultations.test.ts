@@ -9,10 +9,15 @@ import {
   getFinalistComparisonMarkdownPath,
   getPreflightReadinessPath,
   getProfileSelectionPath,
+  getResearchBriefPath,
   getRunManifestPath,
   getWinnerSelectionPath,
 } from "../src/core/paths.js";
-import { buildSavedConsultationStatus, type RunManifest } from "../src/domain/run.js";
+import {
+  buildSavedConsultationStatus,
+  consultationResearchBriefSchema,
+  type RunManifest,
+} from "../src/domain/run.js";
 import {
   buildVerdictReview,
   listRecentConsultations,
@@ -165,6 +170,12 @@ describe("consultation workflow summaries", () => {
         missingCapabilities: ["No e2e or visual deep check was detected."],
         signals: ["frontend-framework", "build-script"],
       },
+      preflight: {
+        decision: "proceed",
+        confidence: "high",
+        summary: "Repository evidence is sufficient to execute immediately.",
+        researchPosture: "repo-only",
+      },
       recommendedWinner: {
         candidateId: "cand-01",
         confidence: "high",
@@ -189,8 +200,11 @@ describe("consultation workflow summaries", () => {
       finalistIds: ["cand-01"],
       profileId: "frontend",
       profileMissingCapabilities: ["No e2e or visual deep check was detected."],
+      preflightDecision: "proceed",
+      researchPosture: "repo-only",
       artifactAvailability: {
         preflightReadiness: true,
+        researchBrief: false,
         profileSelection: true,
         comparisonReport: true,
         winnerSelection: true,
@@ -235,6 +249,70 @@ describe("consultation workflow summaries", () => {
     expect(archive).toContain(
       "- run_blocked | completed | Task | no auto profile | needs clarification",
     );
+  });
+
+  it("renders external research preflight artifacts and writes a structured research brief", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      preflight: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Current versioned API behavior must be verified against official documentation.",
+        researchPosture: "external-research-required",
+        researchQuestion:
+          "What does the official API documentation say about the current versioned behavior?",
+      },
+      outcome: {
+        type: "external-research-required",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "validation-gaps",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(getPreflightReadinessPath(cwd, manifest.id), "{}\n", "utf8");
+    await writeFile(
+      getResearchBriefPath(cwd, manifest.id),
+      `${JSON.stringify(
+        consultationResearchBriefSchema.parse({
+          decision: "external-research-required",
+          question:
+            "What does the official API documentation say about the current versioned behavior?",
+          researchPosture: "external-research-required",
+          summary:
+            "Current versioned API behavior must be verified against official documentation.",
+          task: manifest.taskPacket,
+          notes: ["Official docs are required before proceeding."],
+          signalSummary: ["language:javascript"],
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const review = buildVerdictReview(manifest, {
+      preflightReadinessPath: getPreflightReadinessPath(cwd, manifest.id),
+      researchBriefPath: getResearchBriefPath(cwd, manifest.id),
+    });
+
+    expect(summary).toContain("- research brief: .oraculum/runs/run_1/reports/research-brief.json");
+    expect(summary).toContain(
+      "Research needed: What does the official API documentation say about the current versioned behavior?",
+    );
+    expect(review.researchPosture).toBe("external-research-required");
+    expect(review.researchQuestion).toBe(
+      "What does the official API documentation say about the current versioned behavior?",
+    );
+    expect(review.artifactAvailability.researchBrief).toBe(true);
   });
 
   it("does not report a promotion record when only a stale export plan file exists", async () => {

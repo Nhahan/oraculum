@@ -2,10 +2,11 @@ import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { AgentAdapter } from "../adapters/types.js";
-import { getPreflightReadinessPath } from "../core/paths.js";
+import { getPreflightReadinessPath, getResearchBriefPath } from "../core/paths.js";
 import {
   type ConsultationPreflight,
   consultationPreflightSchema,
+  consultationResearchBriefSchema,
   consultationResearchPostureSchema,
 } from "../domain/run.js";
 import type { MaterializedTaskPacket } from "../domain/task.js";
@@ -69,6 +70,28 @@ export async function recommendConsultationPreflight(
     llmResult,
     recommendation: preflight,
   });
+  if (preflight.decision === "external-research-required" && preflight.researchQuestion) {
+    const researchBriefPath = getResearchBriefPath(options.projectRoot, options.runId);
+    await writeJsonFile(
+      researchBriefPath,
+      consultationResearchBriefSchema.parse({
+        decision: "external-research-required",
+        question: preflight.researchQuestion,
+        researchPosture: preflight.researchPosture,
+        summary: preflight.summary,
+        task: {
+          id: options.taskPacket.id,
+          title: options.taskPacket.title,
+          sourceKind: options.taskPacket.source.kind,
+          sourcePath: options.taskPacket.source.path,
+        },
+        notes: signals.notes,
+        signalSummary: signals.capabilities.map(
+          (capability) => `${capability.kind}:${capability.value}`,
+        ),
+      }),
+    );
+  }
 
   return {
     preflight: consultationPreflightSchema.parse(preflight),

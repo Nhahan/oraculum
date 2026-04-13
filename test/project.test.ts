@@ -12,6 +12,7 @@ import {
   getFinalistComparisonMarkdownPath,
   getLatestExportableRunStatePath,
   getLatestRunStatePath,
+  getResearchBriefPath,
   getRunManifestPath,
   getRunsDir,
   getWinnerSelectionPath,
@@ -24,6 +25,7 @@ import {
 } from "../src/domain/config.js";
 import {
   buildSavedConsultationStatus,
+  consultationResearchBriefSchema,
   exportPlanSchema,
   latestRunStateSchema,
   runManifestSchema,
@@ -551,6 +553,52 @@ if (out) {
     await expect(readLatestExportableRunId(cwd)).rejects.toThrow(
       "No crownable consultation found yet",
     );
+  });
+
+  it("writes a research brief artifact when preflight requires external research", async () => {
+    const cwd = await createInitializedProject();
+    await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"decision":"external-research-required","confidence":"high","summary":"Official versioned API docs are required before execution.","researchPosture":"external-research-required","researchQuestion":"What does the official API documentation say about the current versioned behavior?"}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const manifest = await planRun({
+      cwd,
+      taskInput: "tasks/fix-session-loss.md",
+      agent: "codex",
+      preflight: {
+        codexBinaryPath: fakeCodex,
+        timeoutMs: 5_000,
+      },
+    });
+
+    expect(manifest.preflight?.decision).toBe("external-research-required");
+    const researchBrief = consultationResearchBriefSchema.parse(
+      JSON.parse(await readFile(getResearchBriefPath(cwd, manifest.id), "utf8")) as unknown,
+    );
+    expect(researchBrief).toMatchObject({
+      decision: "external-research-required",
+      researchPosture: "external-research-required",
+      question:
+        "What does the official API documentation say about the current versioned behavior?",
+      task: manifest.taskPacket,
+    });
   });
 
   it("guides missing project config toward host-native init first", async () => {

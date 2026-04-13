@@ -152,6 +152,15 @@ export const consultationPreflightSchema = z
       });
     }
   });
+export const consultationResearchBriefSchema = z.object({
+  decision: z.literal("external-research-required"),
+  question: z.string().min(1),
+  researchPosture: consultationResearchPostureSchema,
+  summary: z.string().min(1),
+  task: taskPacketSummarySchema,
+  notes: z.array(z.string().min(1)).default([]),
+  signalSummary: z.array(z.string().min(1)).default([]),
+});
 export const savedConsultationStatusSchema = z.object({
   consultationId: z.string().min(1),
   consultationState: runStatusSchema,
@@ -224,6 +233,7 @@ export type RunRound = z.infer<typeof roundManifestSchema>;
 export type RunRecommendation = z.infer<typeof runRecommendationSchema>;
 export type ConsultationOutcome = z.infer<typeof consultationOutcomeSchema>;
 export type ConsultationPreflight = z.infer<typeof consultationPreflightSchema>;
+export type ConsultationResearchBrief = z.infer<typeof consultationResearchBriefSchema>;
 export type SavedConsultationStatus = z.infer<typeof savedConsultationStatusSchema>;
 export type ConsultationNextAction = z.infer<typeof consultationNextActionSchema>;
 export type ExportPlan = z.infer<typeof exportPlanSchema>;

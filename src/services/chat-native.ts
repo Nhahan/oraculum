@@ -13,6 +13,7 @@ import {
   getFinalistComparisonMarkdownPath,
   getPreflightReadinessPath,
   getProfileSelectionPath,
+  getResearchBriefPath,
   getRunConfigPath,
   getRunDir,
   getWinnerSelectionPath,
@@ -120,6 +121,7 @@ export const oraculumMcpToolSurface = [
       "run.json",
       "consultation-config.json",
       "preflight-readiness.json",
+      "research-brief.json",
       "profile-selection.json",
       "comparison.json",
       "comparison.md",
@@ -188,6 +190,7 @@ export const oraculumMcpToolSurface = [
       "run.json",
       "consultation-config.json",
       "preflight-readiness.json",
+      "research-brief.json",
       "profile-selection.json",
       "comparison.json",
       "comparison.md",
@@ -437,6 +440,7 @@ export function buildConsultationArtifacts(
   consultationRoot: string;
   configPath?: string;
   preflightReadinessPath?: string;
+  researchBriefPath?: string;
   profileSelectionPath?: string;
   comparisonJsonPath?: string;
   comparisonMarkdownPath?: string;
@@ -445,6 +449,7 @@ export function buildConsultationArtifacts(
 } {
   const projectRoot = resolveProjectRoot(cwd);
   const preflightReadinessPath = getPreflightReadinessPath(projectRoot, consultationId);
+  const researchBriefPath = getResearchBriefPath(projectRoot, consultationId);
   const profileSelectionPath = getProfileSelectionPath(projectRoot, consultationId);
   const comparisonJsonPath = getFinalistComparisonJsonPath(projectRoot, consultationId);
   const comparisonMarkdownPath = getFinalistComparisonMarkdownPath(projectRoot, consultationId);
@@ -457,6 +462,7 @@ export function buildConsultationArtifacts(
       ? { configPath: getRunConfigPath(projectRoot, consultationId) }
       : {}),
     ...(existsSync(preflightReadinessPath) ? { preflightReadinessPath } : {}),
+    ...(existsSync(researchBriefPath) ? { researchBriefPath } : {}),
     ...(existsSync(profileSelectionPath) ? { profileSelectionPath } : {}),
     ...(existsSync(comparisonJsonPath) ? { comparisonJsonPath } : {}),
     ...(existsSync(comparisonMarkdownPath) ? { comparisonMarkdownPath } : {}),

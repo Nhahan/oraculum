@@ -9,6 +9,7 @@ import {
   getExportPlanPath,
   getFinalistComparisonMarkdownPath,
   getPreflightReadinessPath,
+  getResearchBriefPath,
   getRunConfigPath,
   getRunDir,
 } from "../src/core/paths.js";
@@ -123,6 +124,7 @@ describe("chat-native MCP surface", () => {
     await mkdir(join(getRunDir(projectRoot, consultationId), "reports"), { recursive: true });
     await writeFile(getRunConfigPath(projectRoot, consultationId), "{}\n", "utf8");
     await writeFile(getPreflightReadinessPath(projectRoot, consultationId), "{}\n", "utf8");
+    await writeFile(getResearchBriefPath(projectRoot, consultationId), "{}\n", "utf8");
     await writeFile(getFinalistComparisonMarkdownPath(projectRoot, consultationId), "# report\n");
     await writeFile(getExportPlanPath(projectRoot, consultationId), "{}\n", "utf8");
 
@@ -134,6 +136,7 @@ describe("chat-native MCP surface", () => {
     expect(parsed.preflightReadinessPath).toBe(
       getPreflightReadinessPath(projectRoot, consultationId),
     );
+    expect(parsed.researchBriefPath).toBe(getResearchBriefPath(projectRoot, consultationId));
     expect(parsed.comparisonMarkdownPath).toBe(
       getFinalistComparisonMarkdownPath(projectRoot, consultationId),
     );
@@ -152,6 +155,7 @@ describe("chat-native MCP surface", () => {
     await mkdir(join(getRunDir(projectRoot, consultationId), "reports"), { recursive: true });
     await writeFile(getRunConfigPath(projectRoot, consultationId), "{}\n", "utf8");
     await writeFile(getPreflightReadinessPath(projectRoot, consultationId), "{}\n", "utf8");
+    await writeFile(getResearchBriefPath(projectRoot, consultationId), "{}\n", "utf8");
 
     const artifacts = buildConsultationArtifacts(nestedCwd, consultationId);
     const parsed = consultToolResponseSchema.shape.artifacts.parse(artifacts);
@@ -161,6 +165,7 @@ describe("chat-native MCP surface", () => {
     expect(parsed.preflightReadinessPath).toBe(
       getPreflightReadinessPath(projectRoot, consultationId),
     );
+    expect(parsed.researchBriefPath).toBe(getResearchBriefPath(projectRoot, consultationId));
   });
 
   it("omits artifact paths that do not exist on disk", async () => {
@@ -176,6 +181,7 @@ describe("chat-native MCP surface", () => {
     expect(parsed.consultationRoot).toBe(getRunDir(projectRoot, consultationId));
     expect(parsed.configPath).toBeUndefined();
     expect(parsed.preflightReadinessPath).toBeUndefined();
+    expect(parsed.researchBriefPath).toBeUndefined();
     expect(parsed.profileSelectionPath).toBeUndefined();
     expect(parsed.comparisonMarkdownPath).toBeUndefined();
     expect(parsed.crowningRecordPath).toBeUndefined();

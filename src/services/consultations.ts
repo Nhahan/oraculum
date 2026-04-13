@@ -6,6 +6,7 @@ import {
   getFinalistComparisonMarkdownPath,
   getPreflightReadinessPath,
   getProfileSelectionPath,
+  getResearchBriefPath,
   getRunDir,
   getRunManifestPath,
   getRunsDir,
@@ -147,9 +148,11 @@ export async function renderConsultationSummary(
   lines.push("Entry paths:");
   const comparisonReportPath = getFinalistComparisonMarkdownPath(projectRoot, manifest.id);
   const preflightReadinessPath = getPreflightReadinessPath(projectRoot, manifest.id);
+  const researchBriefPath = getResearchBriefPath(projectRoot, manifest.id);
   const profileSelectionPath = getProfileSelectionPath(projectRoot, manifest.id);
   const winnerSelectionPath = getWinnerSelectionPath(projectRoot, manifest.id);
   const preflightReadinessExists = await pathExists(preflightReadinessPath);
+  const researchBriefExists = await pathExists(researchBriefPath);
   const profileSelectionExists = await pathExists(profileSelectionPath);
   const comparisonReportExists = await pathExists(comparisonReportPath);
   const winnerSelectionExists = await pathExists(winnerSelectionPath);
@@ -160,6 +163,11 @@ export async function renderConsultationSummary(
     preflightReadinessExists
       ? `- preflight readiness: ${toDisplayPath(projectRoot, preflightReadinessPath)}`
       : "- preflight readiness: not available",
+  );
+  lines.push(
+    researchBriefExists
+      ? `- research brief: ${toDisplayPath(projectRoot, researchBriefPath)}`
+      : "- research brief: not available",
   );
   lines.push(
     profileSelectionExists
@@ -243,6 +251,7 @@ export function buildVerdictReview(
   manifest: RunManifest,
   artifacts: {
     preflightReadinessPath?: string;
+    researchBriefPath?: string;
     profileSelectionPath?: string;
     comparisonJsonPath?: string;
     comparisonMarkdownPath?: string;
@@ -274,6 +283,7 @@ export function buildVerdictReview(
     ...(manifest.profileSelection ? { profileId: manifest.profileSelection.profileId } : {}),
     profileMissingCapabilities: manifest.profileSelection?.missingCapabilities ?? [],
     ...(manifest.preflight?.decision ? { preflightDecision: manifest.preflight.decision } : {}),
+    researchPosture: status.researchPosture,
     ...(manifest.preflight?.clarificationQuestion
       ? { clarificationQuestion: manifest.preflight.clarificationQuestion }
       : {}),
@@ -282,6 +292,7 @@ export function buildVerdictReview(
       : {}),
     artifactAvailability: {
       preflightReadiness: Boolean(artifacts.preflightReadinessPath),
+      researchBrief: Boolean(artifacts.researchBriefPath),
       profileSelection: Boolean(artifacts.profileSelectionPath),
       comparisonReport: Boolean(artifacts.comparisonJsonPath || artifacts.comparisonMarkdownPath),
       winnerSelection: Boolean(artifacts.winnerSelectionPath),

@@ -111,8 +111,10 @@ describe("chat-native MCP tools", () => {
       finalistIds: ["cand-01"],
       profileId: "library",
       profileMissingCapabilities: [],
+      researchPosture: "repo-only",
       artifactAvailability: {
         preflightReadiness: false,
+        researchBrief: false,
         profileSelection: false,
         comparisonReport: false,
         winnerSelection: false,
