@@ -67,6 +67,7 @@ The npm/Node distribution model is an implementation and packaging fact for Orac
 
 - Humans set intent and judge tradeoffs; agents execute loops.
 - Before editing, read the full affected files plus the immediate contracts, call sites, and tests; do not patch from partial context.
+- Treat implementation as continuous review: after each non-trivial edit, re-read the touched scope plus its immediate contracts, read/write paths, and tests, and fix local drift before moving on.
 - Any new field, state, path, flag, or schema must be wired through read/write paths, CLI/API boundaries, persistence, and tests, with boundary validation and explicit terminal states for host/process/workspace failures.
 - For execution, state, isolation, subprocess, or artifact changes, add or update failure-path tests, not just happy-path tests.
 - Cross-platform support is mandatory: avoid POSIX-only shell, signal, or path assumptions in user-facing flows; prefer Node APIs or explicit `command + args` execution and keep CI coverage across supported operating systems.
@@ -80,6 +81,8 @@ The npm/Node distribution model is an implementation and packaging fact for Orac
 - Pass artifacts forward: `spec -> plan -> implementation -> review -> test -> release`.
 - Before committing or pushing, run `npm run check` and `git diff --check`, plus targeted validation for any touched flow.
 - Review is iterative, not one-shot: after substantial implementation or after fixing findings, re-read the affected files in full and rerun validation before claiming the tree is clean. A full code review means reviewing the current working tree line-by-line, not relying on earlier conclusions once code has changed.
+- A review/audit/polish request is standing authorization for `review -> fix -> re-review -> validate` on the current scope. Do not wait for repeated user prompts unless blocked by a real ambiguity, product decision, or conflicting repo change.
+- End the loop only when no material findings remain, the user redirects, or further progress is genuinely blocked.
 - Use fresh-context review/QA when independent judgment matters.
 - Parallel workers require isolated workspaces and explicit coordination.
 - Borrow the references' command/hook/state-machine discipline, but adapt it to `candidate -> oracle -> witness -> crowning`, not generic team orchestration.
