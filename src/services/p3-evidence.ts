@@ -16,6 +16,7 @@ import {
   getResearchBriefPath,
   getRunDir,
   getRunManifestPath,
+  getSecondOpinionWinnerSelectionPath,
   getWinnerSelectionPath,
   resolveProjectRoot,
 } from "../core/paths.js";
@@ -2081,6 +2082,7 @@ async function resolveConsultationArtifacts(
   comparisonJsonPath?: string;
   comparisonMarkdownPath?: string;
   winnerSelectionPath?: string;
+  secondOpinionWinnerSelectionPath?: string;
   crowningRecordPath?: string;
 }> {
   const [
@@ -2092,6 +2094,7 @@ async function resolveConsultationArtifacts(
     comparisonJsonPath,
     comparisonMarkdownPath,
     winnerSelectionPath,
+    secondOpinionWinnerSelectionPath,
   ] = await Promise.all([
     existingPath(getPreflightReadinessPath(projectRoot, runId)),
     existingPath(getClarifyFollowUpPath(projectRoot, runId)),
@@ -2101,6 +2104,7 @@ async function resolveConsultationArtifacts(
     existingPath(getFinalistComparisonJsonPath(projectRoot, runId)),
     existingNonEmptyTextPath(getFinalistComparisonMarkdownPath(projectRoot, runId)),
     existingPath(getWinnerSelectionPath(projectRoot, runId)),
+    existingPath(getSecondOpinionWinnerSelectionPath(projectRoot, runId)),
   ]);
 
   return {
@@ -2112,6 +2116,7 @@ async function resolveConsultationArtifacts(
     ...(comparisonJsonPath ? { comparisonJsonPath } : {}),
     ...(comparisonMarkdownPath ? { comparisonMarkdownPath } : {}),
     ...(winnerSelectionPath ? { winnerSelectionPath } : {}),
+    ...(secondOpinionWinnerSelectionPath ? { secondOpinionWinnerSelectionPath } : {}),
   };
 }
 

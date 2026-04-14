@@ -12,6 +12,7 @@ import {
   getFinalistComparisonMarkdownPath,
   getP3EvidencePath,
   getRunManifestPath,
+  getSecondOpinionWinnerSelectionPath,
   getWinnerSelectionPath,
 } from "../src/core/paths.js";
 import type { RunManifest } from "../src/domain/run.js";
@@ -20,6 +21,7 @@ import {
   consultationPreflightReadinessArtifactSchema,
 } from "../src/domain/run.js";
 import { failureAnalysisSchema } from "../src/services/failure-analysis.js";
+import { secondOpinionWinnerSelectionArtifactSchema } from "../src/services/finalist-judge.js";
 import { comparisonReportSchema } from "../src/services/finalist-report.js";
 import {
   collectP3Evidence,
@@ -598,6 +600,38 @@ describe("P3 evidence collection", () => {
         judgingCriteria: ["Preserve release-plan structure", "Avoid unverified requirements"],
       },
     });
+    await writeSecondOpinionWinnerSelection(cwd, "run_low_confidence", {
+      runId: "run_low_confidence",
+      advisoryOnly: true,
+      adapter: "claude-code",
+      triggerKinds: ["low-confidence"],
+      triggerReasons: ["Primary finalist recommendation is low-confidence."],
+      primaryRecommendation: {
+        source: "llm-judge",
+        decision: "select",
+        candidateId: "cand-low",
+        confidence: "low",
+        summary: "cand-low wins narrowly under the current judging criteria.",
+      },
+      result: {
+        runId: "run_low_confidence",
+        adapter: "claude-code",
+        status: "completed",
+        startedAt: "2026-04-05T00:00:03.000Z",
+        completedAt: "2026-04-05T00:00:04.000Z",
+        exitCode: 0,
+        summary: "Second-opinion judge abstained.",
+        recommendation: {
+          decision: "abstain",
+          confidence: "medium",
+          summary: "The evidence is still too weak to recommend a finalist safely.",
+        },
+        artifacts: [],
+      },
+      agreement: "disagrees-select-vs-abstain",
+      advisorySummary:
+        "Second-opinion judge abstained, while the primary path selected a finalist.",
+    });
     await writeComparisonArtifacts(cwd, "run_low_confidence");
 
     const { path, report } = await writeP3EvidenceReport(cwd);
@@ -613,7 +647,7 @@ describe("P3 evidence collection", () => {
         consultationsWithComparisonReport: 2,
         consultationsWithWinnerSelection: 2,
         consultationsWithFailureAnalysis: 1,
-        consultationsWithManualReviewRecommendation: 1,
+        consultationsWithManualReviewRecommendation: 2,
       }),
     );
     expect(saved.finalistSelectionPressure.artifactCoverage).toEqual(
@@ -623,7 +657,7 @@ describe("P3 evidence collection", () => {
         casesWithComparisonReport: 4,
         casesWithWinnerSelection: 4,
         casesWithFailureAnalysis: 3,
-        casesWithManualReviewRecommendation: 3,
+        casesWithManualReviewRecommendation: 4,
       }),
     );
     expect(saved.finalistSelectionPressure.metadataCoverage).toEqual(
@@ -713,14 +747,15 @@ describe("P3 evidence collection", () => {
           runId: "run_low_confidence",
           candidateIds: ["cand-low"],
           confidence: "low",
+          manualReviewRecommended: true,
         }),
       ]),
     );
     expect(summary).toContain(
-      "Artifact coverage: preflight-readiness=0 preflight-fallback=0 clarify-follow-up=0 comparison=2 winner-selection=2 failure-analysis=1 research-brief=0 manual-review=1",
+      "Artifact coverage: preflight-readiness=0 preflight-fallback=0 clarify-follow-up=0 comparison=2 winner-selection=2 failure-analysis=1 research-brief=0 manual-review=2",
     );
     expect(summary).toContain(
-      "Finalist evidence coverage: targets=4 comparison=4 winner-selection=4 failure-analysis=3 research-brief=0 manual-review=3",
+      "Finalist evidence coverage: targets=4 comparison=4 winner-selection=4 failure-analysis=3 research-brief=0 manual-review=4",
     );
     expect(summary).toContain(
       "Finalist metadata: validation-gaps=0 research-current=0 research-stale=0 research-unknown=2 research-conflicts=0 rerun=0 judging-criteria=2",
@@ -1782,6 +1817,19 @@ async function writeWinnerSelection(
   await writeFile(
     getWinnerSelectionPath(cwd, runId),
     `${JSON.stringify(agentJudgeResultSchema.parse(value), null, 2)}\n`,
+    "utf8",
+  );
+}
+
+async function writeSecondOpinionWinnerSelection(
+  cwd: string,
+  runId: string,
+  value: z.input<typeof secondOpinionWinnerSelectionArtifactSchema>,
+): Promise<void> {
+  await mkdir(join(cwd, ".oraculum", "runs", runId, "reports"), { recursive: true });
+  await writeFile(
+    getSecondOpinionWinnerSelectionPath(cwd, runId),
+    `${JSON.stringify(secondOpinionWinnerSelectionArtifactSchema.parse(value), null, 2)}\n`,
     "utf8",
   );
 }
