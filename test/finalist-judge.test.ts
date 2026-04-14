@@ -789,6 +789,70 @@ describe("finalist judge", () => {
         advisorySummary: "length-mismatched trigger artifact",
       }),
     ).toThrow(/triggerReasons must align 1:1 with triggerKinds/i);
+
+    expect(() =>
+      secondOpinionWinnerSelectionArtifactSchema.parse({
+        runId: "run_schema_5",
+        advisoryOnly: true,
+        adapter: "claude-code",
+        triggerKinds: ["low-confidence"],
+        triggerReasons: ["Primary judge confidence was low."],
+        primaryRecommendation: {
+          source: "llm-judge",
+          decision: "select",
+          candidateId: "cand-01",
+          confidence: "low",
+          summary: "cand-01 stayed ahead.",
+        },
+        result: {
+          runId: "run_schema_5",
+          adapter: "claude-code",
+          status: "completed",
+          startedAt: "2026-04-05T00:00:00.000Z",
+          completedAt: "2026-04-05T00:00:01.000Z",
+          exitCode: 0,
+          summary: "second opinion returned no recommendation",
+          artifacts: [],
+        },
+        agreement: "unavailable",
+        advisorySummary: "completed unavailable artifact",
+      }),
+    ).toThrow(/cannot be completed when second-opinion agreement is unavailable/i);
+
+    expect(() =>
+      secondOpinionWinnerSelectionArtifactSchema.parse({
+        runId: "run_schema_6",
+        advisoryOnly: true,
+        adapter: "claude-code",
+        triggerKinds: ["low-confidence"],
+        triggerReasons: ["Primary judge confidence was low."],
+        primaryRecommendation: {
+          source: "llm-judge",
+          decision: "select",
+          candidateId: "cand-01",
+          confidence: "low",
+          summary: "cand-01 stayed ahead.",
+        },
+        result: {
+          runId: "run_schema_6",
+          adapter: "claude-code",
+          status: "failed",
+          startedAt: "2026-04-05T00:00:00.000Z",
+          completedAt: "2026-04-05T00:00:01.000Z",
+          exitCode: 1,
+          summary: "second opinion failed after producing stale payload",
+          recommendation: {
+            decision: "select",
+            candidateId: "cand-02",
+            confidence: "medium",
+            summary: "stale recommendation should be rejected",
+          },
+          artifacts: [],
+        },
+        agreement: "unavailable",
+        advisorySummary: "failed unavailable artifact with stale recommendation",
+      }),
+    ).toThrow(/result\.recommendation must be omitted/i);
   });
 });
 

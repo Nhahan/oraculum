@@ -652,12 +652,12 @@ describe("P3 evidence collection", () => {
     );
     expect(saved.finalistSelectionPressure.artifactCoverage).toEqual(
       expect.objectContaining({
-        caseCount: 4,
-        casesWithTargetArtifact: 4,
-        casesWithComparisonReport: 4,
-        casesWithWinnerSelection: 4,
+        caseCount: 5,
+        casesWithTargetArtifact: 5,
+        casesWithComparisonReport: 5,
+        casesWithWinnerSelection: 5,
         casesWithFailureAnalysis: 3,
-        casesWithManualReviewRecommendation: 4,
+        casesWithManualReviewRecommendation: 5,
       }),
     );
     expect(saved.finalistSelectionPressure.metadataCoverage).toEqual(
@@ -672,11 +672,12 @@ describe("P3 evidence collection", () => {
         consultationsWithJudgingCriteria: 2,
       }),
     );
-    expect(saved.finalistSelectionPressure.totalCases).toBe(4);
+    expect(saved.finalistSelectionPressure.totalCases).toBe(5);
     expect(saved.finalistSelectionPressure.finalistsWithoutRecommendationCases).toBe(1);
     expect(saved.finalistSelectionPressure.judgeAbstainCases).toBe(1);
     expect(saved.finalistSelectionPressure.manualCrowningCases).toBe(1);
     expect(saved.finalistSelectionPressure.lowConfidenceRecommendationCases).toBe(1);
+    expect(saved.finalistSelectionPressure.secondOpinionDisagreementCases).toBe(1);
     expect(saved.finalistSelectionPressure.repeatedTasks).toHaveLength(0);
     expect(saved.finalistSelectionPressure.repeatedSources).toHaveLength(0);
     expect(saved.finalistSelectionPressure.repeatedTargets).toEqual([
@@ -760,13 +761,26 @@ describe("P3 evidence collection", () => {
             ),
           }),
         }),
+        expect.objectContaining({
+          kind: "second-opinion-disagreement",
+          runId: "run_low_confidence",
+          candidateIds: ["cand-low"],
+          confidence: "low",
+          manualReviewRecommended: true,
+          artifactPaths: expect.objectContaining({
+            secondOpinionWinnerSelectionPath: getSecondOpinionWinnerSelectionPath(
+              cwd,
+              "run_low_confidence",
+            ),
+          }),
+        }),
       ]),
     );
     expect(summary).toContain(
       "Artifact coverage: preflight-readiness=0 preflight-fallback=0 clarify-follow-up=0 comparison=2 winner-selection=2 failure-analysis=1 research-brief=0 manual-review=2",
     );
     expect(summary).toContain(
-      "Finalist evidence coverage: targets=4 comparison=4 winner-selection=4 failure-analysis=3 research-brief=0 manual-review=4",
+      "Finalist evidence coverage: targets=5 comparison=5 winner-selection=5 failure-analysis=3 research-brief=0 manual-review=5",
     );
     expect(summary).toContain(
       "Finalist metadata: validation-gaps=0 research-current=0 research-stale=0 research-unknown=2 research-conflicts=0 rerun=0 judging-criteria=2",
@@ -783,7 +797,9 @@ describe("P3 evidence collection", () => {
     );
     expect(summary).toContain("Minimal Change: 2 consultations");
     expect(summary).toContain(`Artifact: ${path}`);
-    expect(summary).toContain("Finalist selection pressure: total=4");
+    expect(summary).toContain(
+      "Finalist selection pressure: total=5 finalists-without-recommendation=1 judge-abstain=1 manual-crowning=1 low-confidence=1 second-opinion-disagreement=1",
+    );
   });
 
   it("tracks clarify metadata from stale research and unresolved conflicts", async () => {
@@ -956,6 +972,507 @@ describe("P3 evidence collection", () => {
         consultationCount: 1,
       }),
     ]);
+    expect(report.finalistSelectionPressure.coverageBlindSpots).toContain(
+      "Some finalist-selection pressure cases are missing advisory second-opinion artifacts.",
+    );
+  });
+
+  it("reports missing clarify follow-up only on the latest repeated scope without persisted guidance", async () => {
+    const cwd = await createInitializedProject();
+
+    await writeManifest(
+      cwd,
+      createManifest("run_clarify_gap_1", {
+        taskPacket: {
+          id: "task",
+          title: "Draft release checklist",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/release-checklist.md",
+          artifactKind: "document",
+          targetArtifactPath: "docs/RELEASE_CHECKLIST.md",
+        },
+        candidateCount: 0,
+        rounds: [],
+        candidates: [],
+        preflight: {
+          decision: "needs-clarification",
+          confidence: "medium",
+          summary: "The release checklist sections are unclear.",
+          researchPosture: "repo-only",
+          clarificationQuestion: "Which checklist sections are required?",
+        },
+        outcome: {
+          type: "needs-clarification",
+          terminal: true,
+          crownable: false,
+          finalistCount: 0,
+          validationPosture: "unknown",
+          verificationLevel: "none",
+          validationGapCount: 0,
+          judgingBasisKind: "unknown",
+        },
+      }),
+    );
+    await writePreflightReadinessArtifact(cwd, "run_clarify_gap_1", {
+      llmFailure: "host timeout",
+      recommendation: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The release checklist sections are unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which checklist sections are required?",
+      },
+    });
+
+    await writeManifest(
+      cwd,
+      createManifest("run_clarify_gap_2", {
+        createdAt: "2026-04-06T00:00:00.000Z",
+        taskPacket: {
+          id: "task",
+          title: "Finalize release checklist",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/release-checklist-v2.md",
+          artifactKind: "document",
+          targetArtifactPath: "docs/RELEASE_CHECKLIST.md",
+        },
+        candidateCount: 0,
+        rounds: [],
+        candidates: [],
+        preflight: {
+          decision: "needs-clarification",
+          confidence: "medium",
+          summary: "The release checklist sections are still unclear.",
+          researchPosture: "repo-only",
+          clarificationQuestion: "Which checklist sections are required?",
+        },
+        outcome: {
+          type: "needs-clarification",
+          terminal: true,
+          crownable: false,
+          finalistCount: 0,
+          validationPosture: "unknown",
+          verificationLevel: "none",
+          validationGapCount: 0,
+          judgingBasisKind: "unknown",
+        },
+      }),
+    );
+    await writePreflightReadinessArtifact(cwd, "run_clarify_gap_2", {
+      llmFailure: "host timeout",
+      recommendation: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The release checklist sections are still unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which checklist sections are required?",
+      },
+    });
+
+    const report = await collectP3Evidence(cwd);
+
+    expect(report.clarifyPressure.coverageBlindSpots).not.toContain(
+      "Repeated clarify pressure is missing persisted clarify-follow-up artifacts.",
+    );
+    expect(report.clarifyPressure.coverageGapRuns).toEqual([]);
+    expect(report.clarifyPressure.missingArtifactBreakdown).toEqual([]);
+  });
+
+  it("keeps expecting clarify follow-up artifacts on later repeated runs after the first persisted follow-up", async () => {
+    const cwd = await createInitializedProject();
+
+    for (const [runId, createdAt] of [
+      ["run_clarify_followup_1", "2026-04-14T00:00:00.000Z"],
+      ["run_clarify_followup_2", "2026-04-14T00:01:00.000Z"],
+      ["run_clarify_followup_3", "2026-04-14T00:02:00.000Z"],
+      ["run_clarify_followup_4", "2026-04-14T00:03:00.000Z"],
+    ] as const) {
+      await writeManifest(
+        cwd,
+        createManifest(runId, {
+          createdAt,
+          taskPacket: {
+            id: "task",
+            title: "Clarify rollout checklist",
+            sourceKind: "task-note",
+            sourcePath: "/tmp/rollout-checklist.md",
+            artifactKind: "document",
+            targetArtifactPath: "docs/ROLLOUT_CHECKLIST.md",
+          },
+          candidateCount: 0,
+          rounds: [],
+          candidates: [],
+          preflight: {
+            decision: "needs-clarification",
+            confidence: "medium",
+            summary: "The rollout checklist details are still unclear.",
+            researchPosture: "repo-only",
+            clarificationQuestion: "Which rollout checklist sections are required?",
+          },
+          outcome: {
+            type: "needs-clarification",
+            terminal: true,
+            crownable: false,
+            finalistCount: 0,
+            validationPosture: "unknown",
+            verificationLevel: "none",
+            validationGapCount: 0,
+            judgingBasisKind: "unknown",
+          },
+        }),
+      );
+      await writePreflightReadinessArtifact(cwd, runId, {
+        recommendation: {
+          decision: "needs-clarification",
+          confidence: "medium",
+          summary: "The rollout checklist details are still unclear.",
+          researchPosture: "repo-only",
+          clarificationQuestion: "Which rollout checklist sections are required?",
+        },
+      });
+    }
+
+    await writeClarifyFollowUp(cwd, "run_clarify_followup_3", {
+      runId: "run_clarify_followup_3",
+      adapter: "codex",
+      decision: "needs-clarification",
+      scopeKeyType: "target-artifact",
+      scopeKey: "docs/ROLLOUT_CHECKLIST.md",
+      repeatedCaseCount: 3,
+      repeatedKinds: ["clarify-needed"],
+      recurringReasons: ["Which rollout checklist sections are required?"],
+      summary: "The same clarify blocker repeated across rollout checklist runs.",
+      keyQuestion: "Which rollout checklist sections are required?",
+      missingResultContract: "The rollout checklist still lacks a concrete result contract.",
+      missingJudgingBasis: "The judging basis for the checklist is still implicit.",
+    });
+
+    const report = await collectP3Evidence(cwd);
+
+    expect(report.clarifyPressure.coverageBlindSpots).toContain(
+      "Repeated clarify pressure is missing persisted clarify-follow-up artifacts.",
+    );
+    expect(report.clarifyPressure.coverageGapRuns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: "run_clarify_followup_4",
+          missingArtifactKinds: ["clarify-follow-up"],
+        }),
+      ]),
+    );
+    expect(report.clarifyPressure.coverageGapRuns).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: "run_clarify_followup_3",
+          missingArtifactKinds: ["clarify-follow-up"],
+        }),
+      ]),
+    );
+    expect(report.clarifyPressure.missingArtifactBreakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          artifactKind: "clarify-follow-up",
+          consultationCount: 1,
+        }),
+      ]),
+    );
+  });
+
+  it("orders repeated clarify follow-up expectations by run sequence instead of completion timestamp", async () => {
+    const cwd = await createInitializedProject();
+    const runIds = [
+      "run_20260415010101_aaaabbbb",
+      "run_20260415010102_bbbbcccc",
+      "run_20260415010103_ccccdddd",
+    ] as const;
+    const createdAts = [
+      "2026-04-15T00:00:03.000Z",
+      "2026-04-15T00:00:02.000Z",
+      "2026-04-15T00:00:01.000Z",
+    ] as const;
+
+    for (const [index, runId] of runIds.entries()) {
+      await writeManifest(
+        cwd,
+        createManifest(runId, {
+          createdAt: createdAts[index] ?? "2026-04-15T00:00:00.000Z",
+          candidateCount: 0,
+          rounds: [],
+          recommendedWinner: undefined,
+          taskPacket: {
+            id: "task",
+            title: "Clarify rollout sequencing",
+            sourceKind: "task-note",
+            sourcePath: "/tmp/rollout-sequencing.md",
+            artifactKind: "document",
+            targetArtifactPath: "docs/ROLLOUT_SEQUENCE.md",
+          },
+          candidates: [],
+          outcome: {
+            type: "needs-clarification",
+            terminal: true,
+            crownable: false,
+            finalistCount: 0,
+            validationPosture: "unknown",
+            verificationLevel: "none",
+            validationGapCount: 0,
+            judgingBasisKind: "unknown",
+          },
+          preflight: {
+            decision: "needs-clarification",
+            confidence: "medium",
+            summary: "The rollout sequence is still ambiguous.",
+            researchPosture: "repo-only",
+            clarificationQuestion: "Which rollout phases are mandatory before release?",
+          },
+        }),
+      );
+      await writePreflightReadinessArtifact(cwd, runId, {
+        recommendation: {
+          decision: "needs-clarification",
+          confidence: "medium",
+          summary: "The rollout sequence is still ambiguous.",
+          researchPosture: "repo-only",
+          clarificationQuestion: "Which rollout phases are mandatory before release?",
+        },
+      });
+    }
+
+    const report = await collectP3Evidence(cwd);
+
+    expect(report.clarifyPressure.coverageGapRuns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: "run_20260415010103_ccccdddd",
+          missingArtifactKinds: ["clarify-follow-up"],
+        }),
+      ]),
+    );
+    expect(report.clarifyPressure.coverageGapRuns).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: "run_20260415010101_aaaabbbb",
+          missingArtifactKinds: ["clarify-follow-up"],
+        }),
+      ]),
+    );
+  });
+
+  it("tracks second-opinion disagreement even when the primary winner is not low-confidence", async () => {
+    const cwd = await createInitializedProject();
+
+    await writeManifest(
+      cwd,
+      createManifest("run_high_confidence_disagreement", {
+        taskPacket: {
+          id: "task",
+          title: "Finalize rollout plan",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/rollout-plan.md",
+          artifactKind: "document",
+          targetArtifactPath: "docs/ROLLOUT_PLAN.md",
+        },
+        candidates: [createCandidate("cand-01", "promoted")],
+        outcome: {
+          type: "recommended-survivor",
+          terminal: true,
+          crownable: true,
+          finalistCount: 1,
+          validationPosture: "sufficient",
+          verificationLevel: "standard",
+          validationGapCount: 0,
+          judgingBasisKind: "repo-local-oracle",
+          recommendedCandidateId: "cand-01",
+        },
+        recommendedWinner: {
+          candidateId: "cand-01",
+          confidence: "high",
+          summary: "cand-01 is the recommended survivor.",
+          source: "llm-judge",
+        },
+      }),
+    );
+    await writeWinnerSelection(cwd, "run_high_confidence_disagreement", {
+      runId: "run_high_confidence_disagreement",
+      adapter: "codex",
+      status: "completed",
+      startedAt: "2026-04-06T00:00:00.000Z",
+      completedAt: "2026-04-06T00:00:01.000Z",
+      exitCode: 0,
+      summary: "cand-01 is the recommended survivor.",
+      recommendation: {
+        decision: "select",
+        candidateId: "cand-01",
+        confidence: "high",
+        summary: "cand-01 preserves the rollout structure with lower risk.",
+      },
+      artifacts: [],
+    });
+    await writeSecondOpinionWinnerSelection(cwd, "run_high_confidence_disagreement", {
+      runId: "run_high_confidence_disagreement",
+      advisoryOnly: true,
+      adapter: "claude-code",
+      triggerKinds: ["validation-gaps"],
+      triggerReasons: ["Manual review is still recommended before crowning."],
+      primaryRecommendation: {
+        source: "llm-judge",
+        decision: "select",
+        candidateId: "cand-01",
+        confidence: "high",
+        summary: "cand-01 preserves the rollout structure with lower risk.",
+      },
+      result: {
+        runId: "run_high_confidence_disagreement",
+        adapter: "claude-code",
+        status: "completed",
+        startedAt: "2026-04-06T00:00:02.000Z",
+        completedAt: "2026-04-06T00:00:03.000Z",
+        exitCode: 0,
+        summary: "Second-opinion judge abstained pending operator review.",
+        recommendation: {
+          decision: "abstain",
+          confidence: "medium",
+          summary:
+            "The result should stay in manual review until the remaining concerns are closed.",
+        },
+        artifacts: [],
+      },
+      agreement: "disagrees-select-vs-abstain",
+      advisorySummary: "Second-opinion judge withheld approval for direct crowning.",
+    });
+    await writeComparisonArtifacts(cwd, "run_high_confidence_disagreement");
+
+    const report = await collectP3Evidence(cwd);
+    const summary = renderP3EvidenceSummary(report);
+
+    expect(report.finalistSelectionPressure.totalCases).toBe(1);
+    expect(report.finalistSelectionPressure.lowConfidenceRecommendationCases).toBe(0);
+    expect(report.finalistSelectionPressure.secondOpinionDisagreementCases).toBe(1);
+    expect(report.finalistSelectionPressure.coverageGapRuns).toEqual([]);
+    expect(report.finalistSelectionPressure.cases).toEqual([
+      expect.objectContaining({
+        kind: "second-opinion-disagreement",
+        runId: "run_high_confidence_disagreement",
+        candidateIds: ["cand-01"],
+        confidence: "high",
+        manualReviewRecommended: true,
+        artifactPaths: expect.objectContaining({
+          secondOpinionWinnerSelectionPath: getSecondOpinionWinnerSelectionPath(
+            cwd,
+            "run_high_confidence_disagreement",
+          ),
+        }),
+      }),
+    ]);
+    expect(summary).toContain("second-opinion-disagreement=1");
+  });
+
+  it("tracks second-opinion unavailability as finalist pressure", async () => {
+    const cwd = await createInitializedProject();
+
+    await writeManifest(
+      cwd,
+      createManifest("run_unavailable_second_opinion", {
+        taskPacket: {
+          id: "task",
+          title: "Finalize release notes",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/release-notes.md",
+          artifactKind: "document",
+          targetArtifactPath: "docs/RELEASE_NOTES.md",
+        },
+        candidates: [createCandidate("cand-01", "promoted")],
+        outcome: {
+          type: "recommended-survivor",
+          terminal: true,
+          crownable: true,
+          finalistCount: 1,
+          validationPosture: "sufficient",
+          verificationLevel: "standard",
+          validationGapCount: 0,
+          judgingBasisKind: "repo-local-oracle",
+          recommendedCandidateId: "cand-01",
+        },
+        recommendedWinner: {
+          candidateId: "cand-01",
+          confidence: "high",
+          summary: "cand-01 keeps the release notes consistent.",
+          source: "llm-judge",
+        },
+      }),
+    );
+    await writeWinnerSelection(cwd, "run_unavailable_second_opinion", {
+      runId: "run_unavailable_second_opinion",
+      adapter: "codex",
+      status: "completed",
+      startedAt: "2026-04-06T00:00:00.000Z",
+      completedAt: "2026-04-06T00:00:01.000Z",
+      exitCode: 0,
+      summary: "cand-01 is the recommended survivor.",
+      recommendation: {
+        decision: "select",
+        candidateId: "cand-01",
+        confidence: "high",
+        summary: "cand-01 keeps the release notes consistent.",
+      },
+      artifacts: [],
+    });
+    await writeSecondOpinionWinnerSelection(cwd, "run_unavailable_second_opinion", {
+      runId: "run_unavailable_second_opinion",
+      advisoryOnly: true,
+      adapter: "claude-code",
+      triggerKinds: ["low-confidence"],
+      triggerReasons: ["Primary judge confidence was low."],
+      primaryRecommendation: {
+        source: "llm-judge",
+        decision: "select",
+        candidateId: "cand-01",
+        confidence: "high",
+        summary: "cand-01 keeps the release notes consistent.",
+      },
+      result: {
+        runId: "run_unavailable_second_opinion",
+        adapter: "claude-code",
+        status: "failed",
+        startedAt: "2026-04-06T00:00:02.000Z",
+        completedAt: "2026-04-06T00:00:03.000Z",
+        exitCode: 1,
+        summary: "Second-opinion judge was unavailable.",
+        artifacts: [],
+      },
+      agreement: "unavailable",
+      advisorySummary: "Second-opinion judge was unavailable, so manual review is still required.",
+    });
+    await writeComparisonArtifacts(cwd, "run_unavailable_second_opinion");
+
+    const report = await collectP3Evidence(cwd);
+    const summary = renderP3EvidenceSummary(report);
+
+    expect(report.finalistSelectionPressure.secondOpinionDisagreementCases).toBe(1);
+    expect(report.finalistSelectionPressure.coverageGapRuns).toEqual([]);
+    expect(report.finalistSelectionPressure.cases).toEqual([
+      expect.objectContaining({
+        kind: "second-opinion-disagreement",
+        runId: "run_unavailable_second_opinion",
+        manualReviewRecommended: true,
+        artifactPaths: expect.objectContaining({
+          secondOpinionWinnerSelectionPath: getSecondOpinionWinnerSelectionPath(
+            cwd,
+            "run_unavailable_second_opinion",
+          ),
+        }),
+      }),
+    ]);
+    expect(report.finalistSelectionPressure.inspectionQueue).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          artifactKind: "winner-selection-second-opinion",
+          runId: "run_unavailable_second_opinion",
+          path: getSecondOpinionWinnerSelectionPath(cwd, "run_unavailable_second_opinion"),
+        }),
+      ]),
+    );
+    expect(summary).toContain("second-opinion-disagreement=1");
   });
 
   it("keeps pressure-local blind spots visible when unrelated consultations have stronger artifacts", async () => {
@@ -1164,7 +1681,7 @@ describe("P3 evidence collection", () => {
     );
     await writeFile(
       getFinalistComparisonMarkdownPath(cwd, "run_markdown_only_comparison"),
-      "# Finalist Comparison\n\nCandidate notes.\n",
+      "# Finalist Comparison\n\n- Run: run_markdown_only_comparison\n\nCandidate notes.\n",
       "utf8",
     );
     await writeWinnerSelection(cwd, "run_markdown_only_comparison", {
@@ -1251,6 +1768,88 @@ describe("P3 evidence collection", () => {
     expect(report.artifactCoverage.consultationsWithComparisonReport).toBe(1);
     expect(report.finalistSelectionPressure.artifactCoverage).toEqual(
       expect.objectContaining({
+        casesWithComparisonReport: 3,
+      }),
+    );
+    expect(report.finalistSelectionPressure.coverageBlindSpots).not.toContain(
+      "Some finalist-selection pressure cases are missing comparison reports.",
+    );
+  });
+
+  it("counts valid json-only comparison reports as finalist evidence coverage", async () => {
+    const cwd = await createInitializedProject();
+
+    await writeManifest(
+      cwd,
+      createManifest("run_json_only_comparison", {
+        taskPacket: {
+          id: "task",
+          title: "Compare rollout finalists",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/rollout-finalists.md",
+          artifactKind: "document",
+          targetArtifactPath: "docs/ROLLOUT.md",
+        },
+        candidateCount: 2,
+        candidates: [createCandidate("cand-a", "promoted"), createCandidate("cand-b", "promoted")],
+        outcome: {
+          type: "finalists-without-recommendation",
+          terminal: true,
+          crownable: false,
+          finalistCount: 2,
+          validationPosture: "sufficient",
+          verificationLevel: "standard",
+          validationGapCount: 0,
+          judgingBasisKind: "repo-local-oracle",
+        },
+      }),
+    );
+    await writeWinnerSelection(cwd, "run_json_only_comparison", {
+      runId: "run_json_only_comparison",
+      adapter: "codex",
+      status: "completed",
+      startedAt: "2026-04-05T00:00:00.000Z",
+      completedAt: "2026-04-05T00:00:01.000Z",
+      exitCode: 0,
+      summary: "Judge abstained because the finalists remain too close.",
+      recommendation: {
+        decision: "abstain",
+        confidence: "medium",
+        summary: "The finalists remain too close to recommend safely.",
+      },
+      artifacts: [],
+    });
+    await writeFile(
+      getFinalistComparisonJsonPath(cwd, "run_json_only_comparison"),
+      `${JSON.stringify(
+        comparisonReportSchema.parse({
+          runId: "run_json_only_comparison",
+          generatedAt: "2026-04-05T00:00:02.000Z",
+          agent: "codex",
+          task: {
+            id: "task",
+            title: "Compare rollout finalists",
+            sourceKind: "task-note",
+            sourcePath: "/tmp/rollout-finalists.md",
+          },
+          targetResultLabel: "recommended result",
+          finalistCount: 2,
+          researchRerunRecommended: false,
+          verificationLevel: "standard",
+          finalists: [],
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const report = await collectP3Evidence(cwd);
+
+    expect(report.artifactCoverage.consultationsWithComparisonReport).toBe(1);
+    expect(report.finalistSelectionPressure.artifactCoverage).toEqual(
+      expect.objectContaining({
+        caseCount: 3,
         casesWithComparisonReport: 3,
       }),
     );
@@ -2257,7 +2856,11 @@ async function writeComparisonArtifacts(cwd: string, runId: string): Promise<voi
     )}\n`,
     "utf8",
   );
-  await writeFile(getFinalistComparisonMarkdownPath(cwd, runId), "# Finalist Comparison\n", "utf8");
+  await writeFile(
+    getFinalistComparisonMarkdownPath(cwd, runId),
+    `# Finalist Comparison\n\n- Run: ${runId}\n`,
+    "utf8",
+  );
 }
 
 async function writeClarifyFollowUp(
@@ -2283,6 +2886,7 @@ async function writePreflightReadinessArtifact(
     join(cwd, ".oraculum", "runs", runId, "reports", "preflight-readiness.json"),
     `${JSON.stringify(
       consultationPreflightReadinessArtifactSchema.parse({
+        runId,
         signals: {
           packageManager: "npm",
           scripts: [],

@@ -127,6 +127,7 @@ describe("task packet contracts", () => {
       taskPath,
       `${JSON.stringify(
         {
+          runId: "run_research_brief_contract",
           decision: "external-research-required",
           question: "What does the official API documentation say about the current behavior?",
           confidence: "high",
@@ -214,6 +215,42 @@ describe("task packet contracts", () => {
     expect(packet.contextFiles).toEqual([join(root, "fix-session-loss.md")]);
   });
 
+  it("rejects legacy research briefs that omit runId", async () => {
+    const root = await createTempProject();
+    const taskPath = join(root, "research-brief.json");
+    await writeFile(
+      taskPath,
+      `${JSON.stringify(
+        {
+          decision: "external-research-required",
+          question: "What does the official API documentation say about the current behavior?",
+          confidence: "high",
+          researchPosture: "external-research-required",
+          summary: "Review the official versioned API docs before execution.",
+          task: {
+            id: "session-loss",
+            title: "Fix session loss",
+            sourceKind: "task-note",
+            sourcePath: join(root, "fix-session-loss.md"),
+            artifactKind: "document",
+            targetArtifactPath: "docs/SESSION_PLAN.md",
+          },
+          sources: [],
+          claims: [],
+          versionNotes: [],
+          unresolvedConflicts: [],
+          notes: [],
+          signalSummary: [],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    await expect(loadTaskPacket(taskPath)).rejects.toThrow();
+  });
+
   it("resolves relative source paths in authored research briefs against the brief location", async () => {
     const root = await createTempProject();
     const tasksDir = join(root, "tasks");
@@ -223,6 +260,7 @@ describe("task packet contracts", () => {
       taskPath,
       `${JSON.stringify(
         {
+          runId: "run_relative_research_brief_contract",
           decision: "external-research-required",
           question: "Which rollout note is current?",
           confidence: "medium",

@@ -353,6 +353,7 @@ describe("chat-native MCP surface", () => {
       getResearchBriefPath(projectRoot, consultationId),
       `${JSON.stringify(
         consultationResearchBriefSchema.parse({
+          runId: consultationId,
           decision: "external-research-required",
           question: "What does the official API documentation say?",
           researchPosture: "external-research-required",
@@ -388,7 +389,11 @@ describe("chat-native MCP surface", () => {
       )}\n`,
       "utf8",
     );
-    await writeFile(getFinalistComparisonMarkdownPath(projectRoot, consultationId), "# report\n");
+    await writeFile(
+      getFinalistComparisonMarkdownPath(projectRoot, consultationId),
+      `# Finalist Comparison\n\n- Run: ${consultationId}\n`,
+      "utf8",
+    );
     await writeFile(
       getWinnerSelectionPath(projectRoot, consultationId),
       `${JSON.stringify(
@@ -457,6 +462,7 @@ describe("chat-native MCP surface", () => {
       getProfileSelectionPath(projectRoot, consultationId),
       `${JSON.stringify(
         consultationProfileSelectionArtifactSchema.parse({
+          runId: consultationId,
           signals: {
             packageManager: "npm",
             scripts: [],
@@ -579,6 +585,7 @@ describe("chat-native MCP surface", () => {
       getResearchBriefPath(projectRoot, consultationId),
       `${JSON.stringify(
         consultationResearchBriefSchema.parse({
+          runId: consultationId,
           decision: "external-research-required",
           question: "What does the vendor documentation say?",
           researchPosture: "external-research-required",
@@ -961,6 +968,7 @@ async function writePreflightReadinessArtifact(
     getPreflightReadinessPath(projectRoot, consultationId),
     `${JSON.stringify(
       consultationPreflightReadinessArtifactSchema.parse({
+        runId: consultationId,
         signals: {
           packageManager: "npm",
           scripts: [],

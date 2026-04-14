@@ -513,7 +513,11 @@ describe("project scaffold", () => {
       },
     );
 
-    expect(status.nextActions).toEqual(["reopen-verdict", "browse-archive"]);
+    expect(status.nextActions).toEqual([
+      "reopen-verdict",
+      "browse-archive",
+      "perform-manual-review",
+    ]);
   });
 
   it("omits direct crown when a crowning record already exists", () => {
@@ -564,6 +568,61 @@ describe("project scaffold", () => {
     );
 
     expect(status.nextActions).toEqual(["reopen-verdict", "browse-archive"]);
+  });
+
+  it("keeps manual review explicit when a crowning record already exists", () => {
+    const status = buildSavedConsultationStatus(
+      {
+        id: "run_1",
+        status: "completed",
+        taskPath: "/tmp/task.md",
+        taskPacket: {
+          id: "task",
+          title: "Task",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/task.md",
+        },
+        agent: "codex",
+        candidateCount: 1,
+        createdAt: "2026-04-05T00:00:00.000Z",
+        rounds: [],
+        candidates: [
+          {
+            id: "cand-01",
+            strategyId: "minimal-change",
+            strategyLabel: "Minimal Change",
+            status: "exported",
+            workspaceDir: "/tmp/cand-01",
+            taskPacketPath: "/tmp/cand-01/task.json",
+            repairCount: 0,
+            repairedRounds: [],
+            createdAt: "2026-04-05T00:00:00.000Z",
+          },
+        ],
+        outcome: {
+          type: "recommended-survivor",
+          terminal: true,
+          crownable: true,
+          finalistCount: 1,
+          validationPosture: "sufficient",
+          verificationLevel: "standard",
+          missingCapabilityCount: 0,
+          validationGapCount: 0,
+          judgingBasisKind: "repo-local-oracle",
+          recommendedCandidateId: "cand-01",
+        },
+      },
+      {
+        crowningRecordAvailable: true,
+        manualReviewRequired: true,
+      },
+    );
+
+    expect(status.nextActions).toEqual([
+      "reopen-verdict",
+      "browse-archive",
+      "perform-manual-review",
+    ]);
   });
 
   it("rejects conflicting legacy and validation outcome gap aliases", () => {
@@ -2466,6 +2525,7 @@ if (out) {
       getResearchBriefPath(cwd, "run_research"),
       `${JSON.stringify(
         {
+          runId: "run_research",
           decision: "external-research-required",
           question:
             "What does the official API documentation say about the current versioned behavior?",
@@ -2532,6 +2592,7 @@ if (out) {
       getResearchBriefPath(cwd, "run_research"),
       `${JSON.stringify(
         {
+          runId: "run_research",
           decision: "external-research-required",
           question:
             "What does the official API documentation say about the current versioned behavior?",
@@ -2574,6 +2635,7 @@ if (out) {
   it("rejects persisted research briefs whose conflict handling disagrees with unresolved conflicts", () => {
     expect(() =>
       consultationResearchBriefSchema.parse({
+        runId: "run_invalid_conflict_handling",
         decision: "external-research-required",
         question: "What does the official API documentation say?",
         confidence: "medium",
@@ -2606,6 +2668,7 @@ if (out) {
       getResearchBriefPath(cwd, "run_research"),
       `${JSON.stringify(
         {
+          runId: "run_research",
           decision: "external-research-required",
           question:
             "What does the official API documentation say about the current versioned behavior?",
@@ -2659,6 +2722,7 @@ if (out) {
       getResearchBriefPath(cwd, "run_research"),
       `${JSON.stringify(
         {
+          runId: "run_research",
           decision: "external-research-required",
           question:
             "What does the official API documentation say about the current versioned behavior?",
