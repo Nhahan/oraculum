@@ -93,7 +93,13 @@ export const agentJudgeRecommendationSchema = z.preprocess(
       return value;
     }
 
-    const payload = value as Record<string, unknown>;
+    const payload = { ...(value as Record<string, unknown>) };
+    if (payload.candidateId === null) {
+      delete payload.candidateId;
+    }
+    if (payload.judgingCriteria === null) {
+      delete payload.judgingCriteria;
+    }
     if (
       payload.decision === undefined &&
       typeof payload.candidateId === "string" &&

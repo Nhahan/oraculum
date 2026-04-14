@@ -388,37 +388,21 @@ function buildWinnerRecommendationSchema(): Record<string, unknown> {
 
   return {
     type: "object",
-    oneOf: [
-      {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          decision: { type: "string", const: "select" },
-          candidateId: { type: "string", minLength: 1 },
-          confidence: {
-            type: "string",
-            enum: ["low", "medium", "high"],
-          },
-          summary: { type: "string", minLength: 1 },
-          judgingCriteria: judgingCriteriaProperty,
-        },
-        required: ["decision", "candidateId", "confidence", "summary"],
+    additionalProperties: false,
+    properties: {
+      decision: {
+        type: "string",
+        enum: ["select", "abstain"],
       },
-      {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          decision: { type: "string", const: "abstain" },
-          confidence: {
-            type: "string",
-            enum: ["low", "medium", "high"],
-          },
-          summary: { type: "string", minLength: 1 },
-          judgingCriteria: judgingCriteriaProperty,
-        },
-        required: ["decision", "confidence", "summary"],
+      candidateId: { type: "string", minLength: 1 },
+      confidence: {
+        type: "string",
+        enum: ["low", "medium", "high"],
       },
-    ],
+      summary: { type: "string", minLength: 1 },
+      judgingCriteria: judgingCriteriaProperty,
+    },
+    required: ["decision", "confidence", "summary"],
   };
 }
 function pickObject(parsed: Record<string, unknown>): Record<string, unknown> | undefined {

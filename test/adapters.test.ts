@@ -293,6 +293,25 @@ if (out) {
     await expect(readFile(join(logDir, "winner-judge.schema.json"), "utf8")).resolves.toContain(
       '"judgingCriteria"',
     );
+    const winnerSchema = JSON.parse(
+      await readFile(join(logDir, "winner-judge.schema.json"), "utf8"),
+    ) as {
+      oneOf?: Array<{
+        required?: string[];
+      }>;
+    };
+    expect(winnerSchema.oneOf?.[0]?.required).toEqual(
+      expect.arrayContaining([
+        "decision",
+        "candidateId",
+        "confidence",
+        "summary",
+        "judgingCriteria",
+      ]),
+    );
+    expect(winnerSchema.oneOf?.[1]?.required).toEqual(
+      expect.arrayContaining(["decision", "confidence", "summary", "judgingCriteria"]),
+    );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Change summary: mode=git-diff, changed=2, created=1, removed=0, modified=1, +14, -3",
     );
@@ -405,6 +424,81 @@ if (out) {
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
       '"judgingCriteria":["criterion"]',
     );
+  });
+
+  it("accepts null optional judging criteria from Codex structured output", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "judge-null-criteria-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"decision":"abstain","confidence":"low","summary":"No finalist is clearly safest.","judgingCriteria":null}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const adapter = new CodexAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendWinner({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      finalists: [
+        {
+          candidateId: "cand-01",
+          strategyLabel: "Minimal Change",
+          summary: "Small diff.",
+          artifactKinds: ["report"],
+          changedPaths: ["README.md"],
+          changeSummary: {
+            mode: "git-diff",
+            changedPathCount: 1,
+            createdPathCount: 0,
+            removedPathCount: 0,
+            modifiedPathCount: 1,
+            addedLineCount: 2,
+            deletedLineCount: 1,
+          },
+          witnessRollup: {
+            witnessCount: 0,
+            warningOrHigherCount: 0,
+            repairableCount: 0,
+            repairHints: [],
+            riskSummaries: [],
+            keyWitnesses: [],
+          },
+          repairSummary: {
+            attemptCount: 0,
+            repairedRounds: [],
+          },
+          verdicts: [],
+        },
+      ],
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation).toEqual({
+      decision: "abstain",
+      confidence: "low",
+      summary: "No finalist is clearly safest.",
+    });
   });
 
   it("parses a structured abstention from Codex winner selection", async () => {
@@ -579,10 +673,15 @@ process.stdout.write(JSON.stringify({
     expect(parsedStderr.schema).toBeTruthy();
     const parsedSchema = JSON.parse(parsedStderr.schema ?? "{}") as {
       type?: string;
-      oneOf?: Array<{ properties?: Record<string, unknown> }>;
+      properties?: Record<string, unknown>;
+      required?: string[];
     };
     expect(parsedSchema.type).toBe("object");
-    expect(parsedSchema.oneOf?.[0]?.properties).toHaveProperty("judgingCriteria");
+    expect(parsedSchema.properties).toHaveProperty("judgingCriteria");
+    expect(parsedSchema.properties).toHaveProperty("candidateId");
+    expect(parsedSchema.required).toEqual(
+      expect.arrayContaining(["decision", "confidence", "summary"]),
+    );
   });
 
   it("asks Codex to recommend a consultation profile with an output schema", async () => {
@@ -709,10 +808,69 @@ if (out) {
       expect.objectContaining({ type: "string" }),
     );
     expect(profileSchema.properties?.profileId).toEqual(
-      expect.objectContaining({ type: "string" }),
+      expect.objectContaining({
+        anyOf: expect.arrayContaining([
+          expect.objectContaining({ type: "string" }),
+          expect.objectContaining({ type: "null" }),
+        ]),
+      }),
     );
     expect(profileSchema.properties?.validationProfileId).not.toHaveProperty("enum");
-    expect(profileSchema.properties?.profileId).not.toHaveProperty("enum");
+    expect(profileSchema.required).toEqual(
+      expect.arrayContaining(["profileId", "summary", "missingCapabilities"]),
+    );
+  });
+
+  it("accepts null optional profile aliases from Codex structured output", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "profile-null-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"profileId":null,"validationProfileId":"generic","confidence":"low","summary":null,"validationSummary":"Use the generic posture.","candidateCount":3,"strategyIds":["minimal-change","safety-first"],"selectedCommandIds":[],"missingCapabilities":null,"validationGaps":[]}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const adapter = new CodexAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendProfile({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      signals: createRepoSignals(),
+      validationPostureOptions: [
+        { id: "generic", description: "Generic work." },
+        { id: "frontend", description: "Frontend work." },
+      ],
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation).toEqual(
+      expect.objectContaining({
+        profileId: "generic",
+        validationProfileId: "generic",
+        summary: "Use the generic posture.",
+        validationSummary: "Use the generic posture.",
+      }),
+    );
   });
 
   it("asks Claude to recommend a consultation profile with json-schema output", async () => {
@@ -1141,6 +1299,68 @@ if (out) {
     await expect(readFile(join(logDir, "preflight-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Detected capabilities:",
     );
+    const preflightSchema = JSON.parse(
+      await readFile(join(logDir, "preflight-judge.schema.json"), "utf8"),
+    ) as {
+      required?: string[];
+    };
+    expect(preflightSchema.required).toEqual(
+      expect.arrayContaining([
+        "decision",
+        "confidence",
+        "summary",
+        "researchPosture",
+        "clarificationQuestion",
+        "researchQuestion",
+      ]),
+    );
+  });
+
+  it("accepts null optional preflight fields from Codex structured output", async () => {
+    const root = await createTempRoot();
+    const logDir = join(root, "preflight-null-logs");
+
+    const binaryPath = await writeNodeBinary(
+      root,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"decision":"needs-clarification","confidence":"high","summary":"The document contract is still unresolved.","researchPosture":"repo-only","clarificationQuestion":"Which audience and required sections should this document target?","researchQuestion":null}',
+    "utf8",
+  );
+}
+`,
+    );
+
+    const adapter = new CodexAdapter({
+      binaryPath,
+      timeoutMs: 5_000,
+    });
+
+    const result = await adapter.recommendPreflight({
+      runId: "run_1",
+      projectRoot: root,
+      logDir,
+      taskPacket: createTaskPacket(),
+      signals: createRepoSignals(),
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.recommendation).toEqual({
+      decision: "needs-clarification",
+      confidence: "high",
+      summary: "The document contract is still unresolved.",
+      researchPosture: "repo-only",
+      clarificationQuestion: "Which audience and required sections should this document target?",
+    });
   });
 
   it("asks Claude for structured preflight readiness output", async () => {

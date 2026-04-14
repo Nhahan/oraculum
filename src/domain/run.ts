@@ -358,33 +358,52 @@ export const consultationOutcomeSchema = z.preprocess(
       }
     }),
 );
-export const consultationPreflightSchema = z
-  .object({
-    decision: consultationPreflightDecisionSchema,
-    confidence: decisionConfidenceSchema,
-    summary: z.string().min(1),
-    researchPosture: consultationResearchPostureSchema,
-    researchBasisDrift: z.boolean().optional(),
-    clarificationQuestion: z.string().min(1).optional(),
-    researchQuestion: z.string().min(1).optional(),
-  })
-  .superRefine((value, context) => {
-    if (value.decision === "needs-clarification" && !value.clarificationQuestion) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["clarificationQuestion"],
-        message: "clarificationQuestion is required when decision is needs-clarification.",
-      });
+export const consultationPreflightSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
     }
 
-    if (value.decision === "external-research-required" && !value.researchQuestion) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["researchQuestion"],
-        message: "researchQuestion is required when decision is external-research-required.",
-      });
+    const payload = { ...(value as Record<string, unknown>) };
+    if (payload.researchBasisDrift === null) {
+      delete payload.researchBasisDrift;
     }
-  });
+    if (payload.clarificationQuestion === null) {
+      delete payload.clarificationQuestion;
+    }
+    if (payload.researchQuestion === null) {
+      delete payload.researchQuestion;
+    }
+    return payload;
+  },
+  z
+    .object({
+      decision: consultationPreflightDecisionSchema,
+      confidence: decisionConfidenceSchema,
+      summary: z.string().min(1),
+      researchPosture: consultationResearchPostureSchema,
+      researchBasisDrift: z.boolean().optional(),
+      clarificationQuestion: z.string().min(1).optional(),
+      researchQuestion: z.string().min(1).optional(),
+    })
+    .superRefine((value, context) => {
+      if (value.decision === "needs-clarification" && !value.clarificationQuestion) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["clarificationQuestion"],
+          message: "clarificationQuestion is required when decision is needs-clarification.",
+        });
+      }
+
+      if (value.decision === "external-research-required" && !value.researchQuestion) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["researchQuestion"],
+          message: "researchQuestion is required when decision is external-research-required.",
+        });
+      }
+    }),
+);
 export const consultationResearchBriefSchema = z.preprocess(
   (value) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) {

@@ -169,6 +169,25 @@ export const agentProfileRecommendationSchema = z.preprocess((value) => {
   const payload = value as Record<string, unknown>;
   const normalized: Record<string, unknown> = { ...payload };
 
+  if (normalized.profileId === null) {
+    delete normalized.profileId;
+  }
+  if (normalized.validationProfileId === null) {
+    delete normalized.validationProfileId;
+  }
+  if (normalized.summary === null) {
+    delete normalized.summary;
+  }
+  if (normalized.validationSummary === null) {
+    delete normalized.validationSummary;
+  }
+  if (normalized.missingCapabilities === null) {
+    delete normalized.missingCapabilities;
+  }
+  if (normalized.validationGaps === null) {
+    delete normalized.validationGaps;
+  }
+
   if (
     typeof normalized.profileId !== "string" &&
     typeof normalized.validationProfileId === "string"

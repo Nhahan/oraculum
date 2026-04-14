@@ -124,7 +124,10 @@ export class CodexAdapter implements AgentAdapter {
     const startedAt = new Date().toISOString();
 
     await writeFile(promptPath, prompt, "utf8");
-    await writeFile(schemaPath, `${JSON.stringify(buildWinnerRecommendationSchema(), null, 2)}\n`);
+    await writeFile(
+      schemaPath,
+      `${JSON.stringify(buildCodexWinnerRecommendationSchema(), null, 2)}\n`,
+    );
 
     const result = await runSubprocess({
       command: this.binaryPath,
@@ -185,7 +188,7 @@ export class CodexAdapter implements AgentAdapter {
     const startedAt = new Date().toISOString();
 
     await writeFile(promptPath, prompt, "utf8");
-    await writeFile(schemaPath, `${JSON.stringify(buildAgentPreflightJsonSchema(), null, 2)}\n`);
+    await writeFile(schemaPath, `${JSON.stringify(buildCodexPreflightJsonSchema(), null, 2)}\n`);
 
     const result = await runSubprocess({
       command: this.binaryPath,
@@ -248,7 +251,7 @@ export class CodexAdapter implements AgentAdapter {
     await writeFile(promptPath, prompt, "utf8");
     await writeFile(
       schemaPath,
-      `${JSON.stringify(buildAgentProfileRecommendationJsonSchema(), null, 2)}\n`,
+      `${JSON.stringify(buildCodexProfileRecommendationJsonSchema(), null, 2)}\n`,
     );
 
     const result = await runSubprocess({
@@ -386,7 +389,13 @@ function extractJsonObject(output: string): Record<string, unknown> | undefined 
   return undefined;
 }
 
-function buildWinnerRecommendationSchema(): Record<string, unknown> {
+function buildCodexNullableSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  return {
+    anyOf: [schema, { type: "null" }],
+  };
+}
+
+function buildCodexWinnerRecommendationSchema(): Record<string, unknown> {
   const judgingCriteriaProperty = {
     type: "array",
     items: {
@@ -411,9 +420,9 @@ function buildWinnerRecommendationSchema(): Record<string, unknown> {
             enum: ["low", "medium", "high"],
           },
           summary: { type: "string", minLength: 1 },
-          judgingCriteria: judgingCriteriaProperty,
+          judgingCriteria: buildCodexNullableSchema(judgingCriteriaProperty),
         },
-        required: ["decision", "candidateId", "confidence", "summary"],
+        required: ["decision", "candidateId", "confidence", "summary", "judgingCriteria"],
       },
       {
         type: "object",
@@ -425,10 +434,43 @@ function buildWinnerRecommendationSchema(): Record<string, unknown> {
             enum: ["low", "medium", "high"],
           },
           summary: { type: "string", minLength: 1 },
-          judgingCriteria: judgingCriteriaProperty,
+          judgingCriteria: buildCodexNullableSchema(judgingCriteriaProperty),
         },
-        required: ["decision", "confidence", "summary"],
+        required: ["decision", "confidence", "summary", "judgingCriteria"],
       },
     ],
+  };
+}
+
+function buildCodexPreflightJsonSchema(): Record<string, unknown> {
+  const base = buildAgentPreflightJsonSchema() as {
+    properties: Record<string, Record<string, unknown>>;
+  };
+
+  return {
+    ...base,
+    properties: {
+      ...base.properties,
+      clarificationQuestion: buildCodexNullableSchema(base.properties.clarificationQuestion ?? {}),
+      researchQuestion: buildCodexNullableSchema(base.properties.researchQuestion ?? {}),
+    },
+    required: Object.keys(base.properties),
+  };
+}
+
+function buildCodexProfileRecommendationJsonSchema(): Record<string, unknown> {
+  const base = buildAgentProfileRecommendationJsonSchema() as {
+    properties: Record<string, Record<string, unknown>>;
+  };
+
+  return {
+    ...base,
+    properties: {
+      ...base.properties,
+      profileId: buildCodexNullableSchema(base.properties.profileId ?? {}),
+      summary: buildCodexNullableSchema(base.properties.summary ?? {}),
+      missingCapabilities: buildCodexNullableSchema(base.properties.missingCapabilities ?? {}),
+    },
+    required: Object.keys(base.properties),
   };
 }
