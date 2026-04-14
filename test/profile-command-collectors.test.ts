@@ -223,6 +223,102 @@ describe("profile explicit command collector", () => {
     );
   });
 
+  it("does not treat tool-specific e2e script names as built-in semantic aliases", async () => {
+    const cwd = await createTempRoot();
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          packageManager: "npm@10.0.0",
+          scripts: {
+            playwright: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const facts = await collectProfileRepoFacts(cwd);
+    const result = await collectExplicitCommandCatalog({
+      facts,
+      projectRoot: cwd,
+    });
+
+    expect(result.commandCatalog).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "e2e-deep" })]),
+    );
+  });
+
+  it("does not treat tool-specific migration script names as built-in semantic aliases", async () => {
+    const cwd = await createTempRoot();
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          packageManager: "npm@10.0.0",
+          scripts: {
+            "prisma-migrate-status": 'node -e "process.exit(0)"',
+            "prisma-validate": 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const facts = await collectProfileRepoFacts(cwd);
+    const result = await collectExplicitCommandCatalog({
+      facts,
+      projectRoot: cwd,
+    });
+
+    expect(result.commandCatalog).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "migration-impact" }),
+        expect.objectContaining({ id: "schema-fast" }),
+      ]),
+    );
+  });
+
+  it("does not treat semantic shorthand script names as built-in command vocabulary", async () => {
+    const cwd = await createTempRoot();
+    await writeFile(
+      join(cwd, "package.json"),
+      `${JSON.stringify(
+        {
+          packageManager: "npm@10.0.0",
+          scripts: {
+            smoke: 'node -e "process.exit(0)"',
+            "migration-status": 'node -e "process.exit(0)"',
+            "schema-check": 'node -e "process.exit(0)"',
+            check: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const facts = await collectProfileRepoFacts(cwd);
+    const result = await collectExplicitCommandCatalog({
+      facts,
+      projectRoot: cwd,
+    });
+
+    expect(result.commandCatalog).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "e2e-deep" }),
+        expect.objectContaining({ id: "migration-impact" }),
+        expect.objectContaining({ id: "schema-fast" }),
+        expect.objectContaining({ id: "full-suite-deep" }),
+      ]),
+    );
+  });
+
   it("collects an unambiguous workspace package script with a workspace-relative cwd", async () => {
     const cwd = await createTempRoot();
     await writeFile(

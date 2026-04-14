@@ -54,7 +54,7 @@ export const EXPLICIT_COMMAND_DEFINITIONS: ExplicitCommandDefinition[] = [
     roundId: "fast",
     label: "Schema validation",
     capability: "schema-validation",
-    aliases: ["schema-check", "check-schema", "db-schema", "schema-validation", "prisma-validate"],
+    aliases: ["schema-validation"],
     invariant: "Schema definitions should validate cleanly.",
   },
   {
@@ -86,14 +86,7 @@ export const EXPLICIT_COMMAND_DEFINITIONS: ExplicitCommandDefinition[] = [
     roundId: "impact",
     label: "Migration dry-run",
     capability: "migration-dry-run",
-    aliases: [
-      "migration-dry-run",
-      "migrate-dry-run",
-      "db-dry-run",
-      "migration-status",
-      "migrate-status",
-      "prisma-migrate-status",
-    ],
+    aliases: ["migration-dry-run", "migrate-dry-run", "db-dry-run"],
     invariant: "Migration planning or dry-run should succeed.",
   },
   {
@@ -101,16 +94,7 @@ export const EXPLICIT_COMMAND_DEFINITIONS: ExplicitCommandDefinition[] = [
     roundId: "deep",
     label: "End-to-end or visual checks",
     capability: "e2e-or-visual",
-    aliases: [
-      "e2e",
-      "test-e2e",
-      "playwright",
-      "cypress",
-      "visual",
-      "test-visual",
-      "test-smoke",
-      "smoke",
-    ],
+    aliases: ["e2e", "test-e2e"],
     invariant: "Deep end-to-end or visual validation should pass.",
   },
   {
@@ -118,7 +102,7 @@ export const EXPLICIT_COMMAND_DEFINITIONS: ExplicitCommandDefinition[] = [
     roundId: "deep",
     label: "Full test suite",
     capability: "full-suite-test",
-    aliases: ["test", "test-full", "test-ci", "ci-test", "verify", "check"],
+    aliases: ["test", "test-full", "test-ci", "ci-test", "verify"],
     invariant: "The full test suite should pass before crowning.",
   },
   {

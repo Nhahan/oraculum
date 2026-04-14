@@ -386,12 +386,13 @@ function buildSignalNotes(
   const notes: string[] = [];
   if (
     capabilities.some(
-      (capability) => capability.kind === "intent" && capability.value === "library",
+      (capability) =>
+        capability.kind === "build-system" && capability.value === "package-export-metadata",
     ) &&
     !hasCapabilityCommand(commandCatalog, "package-export-smoke", ["impact", "deep"])
   ) {
     notes.push(
-      "Package export signals were detected, but no packaging verification command was auto-generated.",
+      "Package export metadata signals were detected, but no packaging verification command was auto-generated.",
     );
   }
   if (packageManager === "unknown") {
@@ -443,16 +444,19 @@ function buildSelectionSignalSummary(
     add("repo-migration-anchor");
   }
   if (
-    hasCapability((capability) => capability.kind === "intent" && capability.value === "library")
+    hasCapability(
+      (capability) =>
+        capability.kind === "build-system" && capability.value === "package-export-metadata",
+    )
   ) {
-    add("package-export");
+    add("package-export-metadata");
   }
   if (
     hasCapability(
       (capability) => capability.kind === "build-system" && capability.value === "frontend-config",
     )
   ) {
-    add("frontend-config");
+    add("frontend-config-evidence");
   }
   if (
     hasCapability(
@@ -461,10 +465,10 @@ function buildSelectionSignalSummary(
         (capability.value === "playwright" || capability.value === "cypress"),
     )
   ) {
-    add("e2e-runner");
+    add("e2e-runner-evidence");
   }
   if (hasCapability((capability) => capability.kind === "migration-tool")) {
-    add("migration-tool");
+    add("migration-tool-evidence");
   }
   if (signals.workspaceRoots.length > 0) {
     add("workspace");

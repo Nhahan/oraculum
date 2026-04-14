@@ -204,8 +204,8 @@ export function buildCapabilitySignals(options: {
   }
   if (hasPackageExportMetadata(options.packageJson)) {
     add({
-      kind: "intent",
-      value: "library",
+      kind: "build-system",
+      value: "package-export-metadata",
       source: "root-config",
       path: "package.json",
       confidence: "high",
@@ -217,8 +217,8 @@ export function buildCapabilitySignals(options: {
       continue;
     }
     add({
-      kind: "intent",
-      value: "library",
+      kind: "build-system",
+      value: "package-export-metadata",
       source: "workspace-config",
       path: workspaceManifest.manifestPath,
       confidence: "high",
@@ -312,7 +312,13 @@ export function buildCapabilitySignals(options: {
       });
     }
   }
-  if (capabilities.every((capability) => capability.kind !== "intent")) {
+  const hasPostureEvidence = capabilities.some(
+    (capability) =>
+      (capability.kind === "build-system" && capability.value === "package-export-metadata") ||
+      (capability.kind === "build-system" && capability.value === "frontend-config") ||
+      capability.kind === "migration-tool",
+  );
+  if (capabilities.every((capability) => capability.kind !== "intent") && !hasPostureEvidence) {
     add({
       kind: "intent",
       value: "unknown",

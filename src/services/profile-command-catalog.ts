@@ -156,7 +156,7 @@ export function buildCommandCatalog(options: {
         reason: "ambiguous-workspace-command",
         detail,
         provenance: {
-          signal: "package-export",
+          signal: "build-system:package-export-metadata",
           source: packageExportTargets.some((target) => target.source === "workspace-config")
             ? "workspace-config"
             : "root-config",
@@ -204,7 +204,7 @@ function recordCapabilitySkips(options: {
       capability: "e2e-or-visual",
       reason: "missing-explicit-command",
       detail:
-        "A test-runner capability was detected, but no repo-local e2e/smoke script or explicit oracle exposes the executable command.",
+        "Test-runner evidence was detected, but no repo-local e2e/smoke script or explicit oracle exposes the executable command.",
       provenance: capabilityProvenance(e2eCapability),
     });
   }
@@ -225,7 +225,7 @@ function recordCapabilitySkips(options: {
       capability: "migration-dry-run",
       reason: "missing-explicit-command",
       detail:
-        "A migration-tool capability was detected, but no repo-local migration validation script or explicit oracle exposes the executable command.",
+        "Migration-tool evidence was detected, but no repo-local migration validation script or explicit oracle exposes the executable command.",
       provenance: capabilityProvenance(migrationCapability),
     });
   }
@@ -236,7 +236,7 @@ function packageMetadataProvenance(target: {
   source: ProfileSignalProvenance["source"];
 }): ProfileSignalProvenance {
   return {
-    signal: "package-export",
+    signal: "build-system:package-export-metadata",
     source: target.source,
     path: target.path,
     detail:

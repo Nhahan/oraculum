@@ -270,7 +270,7 @@ if (out) {
     );
     expect(savedManifest.profileSelection?.validationSignals).toEqual([
       "repo-local-validation",
-      "package-export",
+      "package-export-metadata",
     ]);
     expect(savedManifest.profileSelection?.validationGaps).toEqual([
       "No package packaging smoke check was selected.",
@@ -331,7 +331,7 @@ if (out) {
     );
     expect(selectionArtifact.appliedSelection.validationSignals).toEqual([
       "repo-local-validation",
-      "package-export",
+      "package-export-metadata",
     ]);
     expect(selectionArtifact.appliedSelection.validationGaps).toEqual([
       "No package packaging smoke check was selected.",
@@ -1371,11 +1371,18 @@ if (out) {
     expect(recommendation.selection.profileId).toBe("generic");
     expect(artifact.signals.capabilities).toContainEqual(
       expect.objectContaining({
-        kind: "intent",
-        value: "library",
+        kind: "build-system",
+        value: "package-export-metadata",
         source: "workspace-config",
         path: "packages/lib/package.json",
         detail: "Workspace package export metadata is present.",
+      }),
+    );
+    expect(artifact.signals.capabilities).not.toContainEqual(
+      expect.objectContaining({
+        kind: "intent",
+        source: "fallback-inference",
+        value: "unknown",
       }),
     );
     expect(artifact.signals.skippedCommandCandidates).toEqual(
@@ -1477,6 +1484,7 @@ if (out) {
           relativeCwd: "packages/lib",
           provenance: expect.objectContaining({
             path: "packages/lib/package.json",
+            signal: "build-system:package-export-metadata",
             source: "workspace-config",
           }),
         }),
@@ -1486,6 +1494,7 @@ if (out) {
           relativeCwd: "packages/lib",
           provenance: expect.objectContaining({
             path: "packages/lib/package.json",
+            signal: "build-system:package-export-metadata",
             source: "workspace-config",
           }),
         }),
@@ -1493,7 +1502,7 @@ if (out) {
     );
     expect(artifact.signals.skippedCommandCandidates).toEqual([]);
     expect(artifact.signals.notes).not.toContain(
-      "Package export signals were detected, but no packaging verification command was auto-generated.",
+      "Package export metadata signals were detected, but no packaging verification command was auto-generated.",
     );
   });
 
@@ -1553,11 +1562,17 @@ if (out) {
           id: "pack-impact",
           reason: "ambiguous-workspace-command",
           detail: expect.stringContaining("packages/lib-a/package.json"),
+          provenance: expect.objectContaining({
+            signal: "build-system:package-export-metadata",
+          }),
         }),
         expect.objectContaining({
           id: "package-smoke-deep",
           reason: "ambiguous-workspace-command",
           detail: expect.stringContaining("packages/lib-b/package.json"),
+          provenance: expect.objectContaining({
+            signal: "build-system:package-export-metadata",
+          }),
         }),
       ]),
     );
@@ -1607,7 +1622,10 @@ if (out) {
     };
     expect(artifact.signals.capabilities).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ kind: "intent", value: "library" }),
+        expect.objectContaining({
+          kind: "build-system",
+          value: "package-export-metadata",
+        }),
         expect.objectContaining({ kind: "language", value: "javascript" }),
         expect.objectContaining({ kind: "command", value: "lint" }),
       ]),
@@ -1631,6 +1649,9 @@ if (out) {
         capability: "package-export-smoke",
         id: "package-smoke-deep",
         pathPolicy: "inherit",
+        provenance: expect.objectContaining({
+          signal: "build-system:package-export-metadata",
+        }),
         safety: "product-owned-temporary",
         source: "product-owned",
         safetyRationale: expect.stringContaining("temporary directory"),
@@ -2823,6 +2844,8 @@ if (out) {
     expect(artifact.signals.skippedCommandCandidates).toContainEqual(
       expect.objectContaining({
         capability: "e2e-or-visual",
+        detail:
+          "Test-runner evidence was detected, but no repo-local e2e/smoke script or explicit oracle exposes the executable command.",
         id: "e2e-deep",
         reason: "missing-explicit-command",
         provenance: expect.objectContaining({
@@ -2871,7 +2894,7 @@ if (out) {
 
     expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.signals).toEqual(
-      expect.arrayContaining(["frontend-config", "e2e-runner"]),
+      expect.arrayContaining(["frontend-config-evidence", "e2e-runner-evidence"]),
     );
     expect(recommendation.selection.oracleIds).not.toContain("e2e-deep");
     const e2eOracle = recommendation.config.oracles.find((oracle) => oracle.id === "e2e-deep");
@@ -3041,6 +3064,8 @@ if (out) {
     expect(artifact.signals.skippedCommandCandidates).toContainEqual(
       expect.objectContaining({
         capability: "migration-dry-run",
+        detail:
+          "Migration-tool evidence was detected, but no repo-local migration validation script or explicit oracle exposes the executable command.",
         id: "migration-impact",
         reason: "missing-explicit-command",
         provenance: expect.objectContaining({
