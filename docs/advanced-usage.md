@@ -170,6 +170,14 @@ If you want a replayable snapshot, omit `--no-write` and Oraculum will persist:
 .oraculum/p3-evidence.json
 ```
 
+Operational cadence:
+
+- rerun `npm run evidence:p3 -- --no-write` after workflow-shape changes
+- rerun it again after saved consultations have accumulated meaningfully
+- keep P3 closed while both promotion signals remain `hold`
+- only consider the deeper clarify path when clarify pressure repeats on the same scope
+- only consider the second-opinion judge when judge abstain, manual crowning, or low-confidence winner selection repeats on the same scope
+
 ## Verdict Evidence And Judging Criteria
 
 `orc verdict` stays read-only, but the saved artifacts now carry more machine-readable evidence than the default summary prints.
