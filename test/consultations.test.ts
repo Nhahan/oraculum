@@ -12,6 +12,7 @@ import {
   getProfileSelectionPath,
   getResearchBriefPath,
   getRunManifestPath,
+  getSecondOpinionWinnerSelectionPath,
   getWinnerSelectionPath,
 } from "../src/core/paths.js";
 import { verdictReviewSchema } from "../src/domain/chat-native.js";
@@ -542,6 +543,8 @@ describe("consultation workflow summaries", () => {
         "cand-01 is the recommended promotion.",
       ],
       weakestEvidence: ["No e2e or visual deep check was detected."],
+      secondOpinionTriggerKinds: [],
+      secondOpinionTriggerReasons: [],
       recommendationSummary: "cand-01 is the recommended promotion.",
       manualReviewRecommended: false,
       manualCrowningCandidateIds: [],
@@ -559,6 +562,7 @@ describe("consultation workflow summaries", () => {
         profileSelection: true,
         comparisonReport: true,
         winnerSelection: true,
+        secondOpinionWinnerSelection: false,
         crowningRecord: false,
       },
       candidateStateCounts: {
@@ -1026,6 +1030,49 @@ describe("consultation workflow summaries", () => {
         candidateStateCounts: {},
       }),
     ).toThrow("completed-with-validation-gaps reviews must recommend manual review");
+  });
+
+  it("rejects recommended-survivor reviews that hide second-opinion disagreement without manual review", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "recommended-survivor",
+        verificationLevel: "lightweight",
+        validationPosture: "sufficient",
+        judgingBasisKind: "repo-local-oracle",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        recommendedCandidateId: "cand-01",
+        finalistIds: ["cand-01"],
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        secondOpinionAdapter: "claude-code",
+        secondOpinionAgreement: "disagrees-select-vs-abstain",
+        secondOpinionSummary:
+          "Second-opinion judge abstained, while the primary path selected a finalist.",
+        secondOpinionDecision: "abstain",
+        secondOpinionTriggerKinds: ["many-changed-paths"],
+        secondOpinionTriggerReasons: ["A finalist changed 3 paths, meeting the threshold."],
+        manualReviewRecommended: false,
+        researchPosture: "repo-only",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: true,
+          winnerSelection: true,
+          secondOpinionWinnerSelection: true,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {
+          promoted: 1,
+        },
+      }),
+    ).toThrow("recommended-survivor reviews must recommend manual review");
   });
 
   it("rejects verdict reviews whose outcome summary disagrees with the outcome and task context", () => {
@@ -1628,6 +1675,106 @@ describe("consultation workflow summaries", () => {
       "Covers the documented scope without contradicting repo constraints.",
       "Leaves the PRD internally consistent and reviewable.",
     ]);
+  });
+
+  it("surfaces second-opinion disagreement in verdict review and blocks direct crown guidance", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_second_opinion_review",
+      outcome: {
+        type: "recommended-survivor",
+        finalistCount: 1,
+        terminal: true,
+        crownable: true,
+        validationGapCount: 0,
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        judgingBasisKind: "repo-local-oracle",
+        recommendedCandidateId: "cand-01",
+      },
+      recommendedWinner: {
+        candidateId: "cand-01",
+        confidence: "high",
+        summary: "cand-01 is the recommended promotion.",
+        source: "llm-judge",
+      },
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/workspace",
+          taskPacketPath: "/tmp/task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(
+      getSecondOpinionWinnerSelectionPath(cwd, manifest.id),
+      `${JSON.stringify(
+        {
+          runId: manifest.id,
+          advisoryOnly: true,
+          adapter: "claude-code",
+          triggerKinds: ["many-changed-paths"],
+          triggerReasons: ["A finalist changed 3 paths, meeting the second-opinion threshold (1)."],
+          primaryRecommendation: {
+            source: "llm-judge",
+            decision: "select",
+            candidateId: "cand-01",
+            confidence: "high",
+            summary: "cand-01 is the recommended promotion.",
+          },
+          result: {
+            runId: manifest.id,
+            adapter: "claude-code",
+            status: "completed",
+            startedAt: "2026-04-04T00:00:00.000Z",
+            completedAt: "2026-04-04T00:00:01.000Z",
+            exitCode: 0,
+            summary: "Second opinion abstained.",
+            recommendation: {
+              decision: "abstain",
+              confidence: "medium",
+              summary: "Manual review is safer before crowning.",
+            },
+            artifacts: [],
+          },
+          agreement: "disagrees-select-vs-abstain",
+          advisorySummary:
+            "Second-opinion judge abstained, while the primary path selected a finalist.",
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const review = await buildVerdictReview(manifest, {
+      secondOpinionWinnerSelectionPath: getSecondOpinionWinnerSelectionPath(cwd, manifest.id),
+    });
+
+    expect(summary).toContain(
+      "- second-opinion winner selection: .oraculum/runs/run_second_opinion_review/reports/winner-selection.second-opinion.json",
+    );
+    expect(summary).toContain("Second-opinion judge: claude-code (disagrees-select-vs-abstain)");
+    expect(summary).toContain(
+      "- perform manual review before materializing the recommended result.",
+    );
+    expect(summary).not.toContain("- crown the recommended survivor: orc crown <branch-name>");
+    expect(review.secondOpinionAdapter).toBe("claude-code");
+    expect(review.secondOpinionAgreement).toBe("disagrees-select-vs-abstain");
+    expect(review.secondOpinionDecision).toBe("abstain");
+    expect(review.manualReviewRecommended).toBe(true);
+    expect(review.weakestEvidence).toContain(
+      "Second-opinion judge abstained, while the primary path selected a finalist.",
+    );
+    expect(review.artifactAvailability.secondOpinionWinnerSelection).toBe(true);
   });
 
   it("renders blocked preflight consultations distinctly in the archive", async () => {

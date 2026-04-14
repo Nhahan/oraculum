@@ -21,7 +21,7 @@ import {
   resolveProjectRoot,
 } from "../core/paths.js";
 import { runSubprocess } from "../core/subprocess.js";
-import { projectConfigSchema } from "../domain/config.js";
+import { type Adapter, projectConfigSchema } from "../domain/config.js";
 import type { OracleVerdict } from "../domain/oracle.js";
 import {
   getValidationGaps,
@@ -42,7 +42,7 @@ import { materializedTaskPacketSchema } from "../domain/task.js";
 
 import { captureManagedProjectSnapshot } from "./base-snapshots.js";
 import { writeFailureAnalysis } from "./failure-analysis.js";
-import { recommendWinnerWithJudge } from "./finalist-judge.js";
+import { recommendSecondOpinionWithJudge, recommendWinnerWithJudge } from "./finalist-judge.js";
 import { writeFinalistComparisonReport } from "./finalist-report.js";
 import { evaluateCandidateRound } from "./oracles.js";
 import { loadProjectConfig, writeJsonFile } from "./project.js";
@@ -89,12 +89,25 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
   const projectConfig = manifest.configPath
     ? projectConfigSchema.parse(JSON.parse(await readFile(manifest.configPath, "utf8")) as unknown)
     : await loadProjectConfig(projectRoot);
-  const adapter = createAgentAdapter(manifest.agent, {
+  const adapterFactoryOptions = {
     ...(options.claudeBinaryPath ? { claudeBinaryPath: options.claudeBinaryPath } : {}),
     ...(options.codexBinaryPath ? { codexBinaryPath: options.codexBinaryPath } : {}),
     ...(options.env ? { env: options.env } : {}),
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
-  });
+  };
+  const adapter = createAgentAdapter(manifest.agent, adapterFactoryOptions);
+  const secondOpinionAdapterName = projectConfig.judge.secondOpinion.enabled
+    ? resolveSecondOpinionAdapterName(
+        manifest.agent,
+        projectConfig.adapters,
+        projectConfig.judge.secondOpinion.adapter,
+      )
+    : undefined;
+  const secondOpinionAdapter = secondOpinionAdapterName
+    ? secondOpinionAdapterName === manifest.agent
+      ? adapter
+      : createAgentAdapter(secondOpinionAdapterName, adapterFactoryOptions)
+    : undefined;
 
   manifest.status = "running";
   manifest = await writeRunManifest(projectRoot, manifest);
@@ -413,6 +426,22 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
           manifest.profileSelection,
         )
       : undefined);
+  if (taskPacket && secondOpinionAdapter && projectConfig.judge.secondOpinion.enabled) {
+    await recommendSecondOpinionWithJudge({
+      adapter: secondOpinionAdapter,
+      candidateResults,
+      candidates: Array.from(candidateMap.values()),
+      ...(manifest.profileSelection ? { consultationProfile: manifest.profileSelection } : {}),
+      managedTreeRules: projectConfig.managedTree,
+      ...(judgeOutcome.judgeResult ? { primaryJudgeResult: judgeOutcome.judgeResult } : {}),
+      ...(recommendedWinner ? { primaryRecommendation: recommendedWinner } : {}),
+      projectRoot,
+      runId: manifest.id,
+      secondOpinion: projectConfig.judge.secondOpinion,
+      taskPacket,
+      verdictsByCandidate,
+    });
+  }
 
   const completedManifest = await writeRunManifest(projectRoot, {
     ...manifest,
@@ -453,6 +482,19 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     candidateResults,
     manifest: completedManifest,
   };
+}
+
+function resolveSecondOpinionAdapterName(
+  primaryAdapter: Adapter,
+  enabledAdapters: Adapter[],
+  configuredAdapter: Adapter | undefined,
+): Adapter {
+  if (configuredAdapter && enabledAdapters.includes(configuredAdapter)) {
+    return configuredAdapter;
+  }
+
+  const alternateAdapter = primaryAdapter === "claude-code" ? "codex" : "claude-code";
+  return enabledAdapters.includes(alternateAdapter) ? alternateAdapter : primaryAdapter;
 }
 
 function hasRepairableVerdicts(verdicts: OracleVerdict[]): boolean {

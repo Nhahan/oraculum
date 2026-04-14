@@ -17,6 +17,7 @@ import {
   getResearchBriefPath,
   getRunConfigPath,
   getRunDir,
+  getSecondOpinionWinnerSelectionPath,
   getWinnerSelectionPath,
   resolveProjectRoot,
 } from "../core/paths.js";
@@ -128,6 +129,7 @@ export const oraculumMcpToolSurface = [
       "comparison.json",
       "comparison.md",
       "winner-selection.json",
+      "winner-selection.second-opinion.json",
     ],
   },
   {
@@ -198,6 +200,7 @@ export const oraculumMcpToolSurface = [
       "comparison.json",
       "comparison.md",
       "winner-selection.json",
+      "winner-selection.second-opinion.json",
       "export-plan.json",
     ],
   },
@@ -449,6 +452,7 @@ export function buildConsultationArtifacts(
   comparisonJsonPath?: string;
   comparisonMarkdownPath?: string;
   winnerSelectionPath?: string;
+  secondOpinionWinnerSelectionPath?: string;
   crowningRecordPath?: string;
 } {
   const projectRoot = resolveProjectRoot(cwd);
@@ -459,6 +463,10 @@ export function buildConsultationArtifacts(
   const comparisonJsonPath = getFinalistComparisonJsonPath(projectRoot, consultationId);
   const comparisonMarkdownPath = getFinalistComparisonMarkdownPath(projectRoot, consultationId);
   const winnerSelectionPath = getWinnerSelectionPath(projectRoot, consultationId);
+  const secondOpinionWinnerSelectionPath = getSecondOpinionWinnerSelectionPath(
+    projectRoot,
+    consultationId,
+  );
   const crowningRecordPath = getExportPlanPath(projectRoot, consultationId);
 
   return {
@@ -473,6 +481,7 @@ export function buildConsultationArtifacts(
     ...(existsSync(comparisonJsonPath) ? { comparisonJsonPath } : {}),
     ...(existsSync(comparisonMarkdownPath) ? { comparisonMarkdownPath } : {}),
     ...(existsSync(winnerSelectionPath) ? { winnerSelectionPath } : {}),
+    ...(existsSync(secondOpinionWinnerSelectionPath) ? { secondOpinionWinnerSelectionPath } : {}),
     ...(existsSync(crowningRecordPath) ? { crowningRecordPath } : {}),
   };
 }

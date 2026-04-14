@@ -13,6 +13,7 @@ import {
   getRunDir,
   getRunManifestPath,
   getRunsDir,
+  getSecondOpinionWinnerSelectionPath,
   getWinnerSelectionPath,
   resolveProjectRoot,
 } from "../core/paths.js";
@@ -38,7 +39,7 @@ import {
   describeRecommendedTaskResultLabel,
   describeTaskResultLabel,
 } from "../domain/task.js";
-
+import { secondOpinionWinnerSelectionArtifactSchema } from "./finalist-judge.js";
 import { comparisonReportSchema } from "./finalist-report.js";
 import { pathExists } from "./project.js";
 import { parseRunManifestArtifact } from "./run-manifest-artifact.js";
@@ -172,6 +173,14 @@ export async function renderConsultationSummary(
   });
   const hasExplicitResultIntent =
     Boolean(manifest.taskPacket.artifactKind) || Boolean(manifest.taskPacket.targetArtifactPath);
+  const secondOpinionWinnerSelectionPath = getSecondOpinionWinnerSelectionPath(
+    projectRoot,
+    manifest.id,
+  );
+  const secondOpinionWinnerSelectionExists = await pathExists(secondOpinionWinnerSelectionPath);
+  const secondOpinionWinnerSelection = await readSecondOpinionWinnerSelectionResult(
+    secondOpinionWinnerSelectionExists ? secondOpinionWinnerSelectionPath : undefined,
+  );
 
   if (manifest.preflight && manifest.preflight.decision !== "proceed") {
     lines.push(
@@ -196,6 +205,12 @@ export async function renderConsultationSummary(
     );
   } else if (recommendedCandidateId) {
     lines.push(`Recommended ${recommendedResultLabel}: ${recommendedCandidateId}`);
+  }
+  if (secondOpinionWinnerSelection) {
+    lines.push(
+      `Second-opinion judge: ${secondOpinionWinnerSelection.adapter} (${secondOpinionWinnerSelection.agreement})`,
+      secondOpinionWinnerSelection.advisorySummary,
+    );
   }
   if (manifest.profileSelection) {
     const validationProfileId = getValidationProfileId(manifest.profileSelection);
@@ -277,6 +292,11 @@ export async function renderConsultationSummary(
       ? `- winner selection: ${toDisplayPath(projectRoot, winnerSelectionPath)}`
       : "- winner selection: not available yet",
   );
+  lines.push(
+    secondOpinionWinnerSelectionExists
+      ? `- second-opinion winner selection: ${toDisplayPath(projectRoot, secondOpinionWinnerSelectionPath)}`
+      : "- second-opinion winner selection: not available",
+  );
 
   const exportPlanPath = getExportPlanPath(projectRoot, manifest.id);
   const hasExportedCandidate = manifest.candidates.some(
@@ -343,6 +363,15 @@ export async function renderConsultationSummary(
     }
   } else if (status.outcomeType === "abstained-before-execution") {
     lines.push("- revise the task scope or repository setup, then rerun `orc consult`.");
+  } else if (
+    recommendedCandidateId &&
+    secondOpinionWinnerSelection &&
+    secondOpinionWinnerSelection.agreement !== "agrees-select"
+  ) {
+    lines.push(
+      `- inspect the second-opinion judge before crowning: ${toDisplayPath(projectRoot, secondOpinionWinnerSelectionPath)}.`,
+    );
+    lines.push("- perform manual review before materializing the recommended result.");
   } else if (recommendedCandidateId) {
     const recommendedCandidate = manifest.candidates.find(
       (candidate) => candidate.id === recommendedCandidateId,
@@ -404,12 +433,16 @@ export async function buildVerdictReview(
     comparisonJsonPath?: string;
     comparisonMarkdownPath?: string;
     winnerSelectionPath?: string;
+    secondOpinionWinnerSelectionPath?: string;
     crowningRecordPath?: string;
   },
 ): Promise<VerdictReview> {
   const status = buildSavedConsultationStatus(manifest);
   const comparisonReport = await readComparisonReport(artifacts.comparisonJsonPath);
   const winnerSelection = await readWinnerSelectionResult(artifacts.winnerSelectionPath);
+  const secondOpinionWinnerSelection = await readSecondOpinionWinnerSelectionResult(
+    artifacts.secondOpinionWinnerSelectionPath,
+  );
   const researchRerunInputPath =
     manifest.taskPacket.sourceKind === "research-brief"
       ? manifest.taskPacket.sourcePath
@@ -439,6 +472,7 @@ export async function buildVerdictReview(
     comparisonReport,
     manifest,
     reviewFinalistIds,
+    secondOpinionWinnerSelection,
     status,
     validationSignals,
     validationSummary,
@@ -456,6 +490,7 @@ export async function buildVerdictReview(
   const weakestEvidence = buildReviewWeakestEvidence({
     manifest,
     recommendationAbsenceReason,
+    secondOpinionWinnerSelection,
     status,
     validationGaps,
   });
@@ -465,7 +500,11 @@ export async function buildVerdictReview(
     status.outcomeType === "finalists-without-recommendation" ||
     status.outcomeType === "completed-with-validation-gaps" ||
     status.outcomeType === "needs-clarification" ||
-    status.outcomeType === "external-research-required";
+    status.outcomeType === "external-research-required" ||
+    (status.outcomeType === "recommended-survivor" &&
+      Boolean(
+        secondOpinionWinnerSelection && secondOpinionWinnerSelection.agreement !== "agrees-select",
+      ));
   const manualCrowningReason =
     manualCrowningCandidateIds.length > 0
       ? "Finalists survived without a recorded recommendation; manual crowning requires operator judgment."
@@ -538,9 +577,27 @@ export async function buildVerdictReview(
     finalistIds: reviewFinalistIds,
     strongestEvidence,
     weakestEvidence,
+    secondOpinionTriggerKinds: secondOpinionWinnerSelection?.triggerKinds ?? [],
+    secondOpinionTriggerReasons: secondOpinionWinnerSelection?.triggerReasons ?? [],
     ...(judgingCriteria?.length ? { judgingCriteria } : {}),
     ...(recommendationSummary ? { recommendationSummary } : {}),
     ...(recommendationAbsenceReason ? { recommendationAbsenceReason } : {}),
+    ...(secondOpinionWinnerSelection
+      ? {
+          secondOpinionAdapter: secondOpinionWinnerSelection.adapter,
+          secondOpinionAgreement: secondOpinionWinnerSelection.agreement,
+          secondOpinionSummary: secondOpinionWinnerSelection.advisorySummary,
+        }
+      : {}),
+    ...(secondOpinionWinnerSelection?.result?.recommendation?.decision
+      ? { secondOpinionDecision: secondOpinionWinnerSelection.result.recommendation.decision }
+      : {}),
+    ...(secondOpinionWinnerSelection?.result?.recommendation?.candidateId
+      ? { secondOpinionCandidateId: secondOpinionWinnerSelection.result.recommendation.candidateId }
+      : {}),
+    ...(secondOpinionWinnerSelection?.result?.recommendation?.confidence
+      ? { secondOpinionConfidence: secondOpinionWinnerSelection.result.recommendation.confidence }
+      : {}),
     manualReviewRecommended,
     manualCrowningCandidateIds,
     ...(manualCrowningReason ? { manualCrowningReason } : {}),
@@ -565,6 +622,7 @@ export async function buildVerdictReview(
       profileSelection: Boolean(artifacts.profileSelectionPath),
       comparisonReport: Boolean(artifacts.comparisonJsonPath || artifacts.comparisonMarkdownPath),
       winnerSelection: Boolean(artifacts.winnerSelectionPath),
+      secondOpinionWinnerSelection: Boolean(artifacts.secondOpinionWinnerSelectionPath),
       crowningRecord: Boolean(artifacts.crowningRecordPath),
     },
     candidateStateCounts,
@@ -575,6 +633,9 @@ function buildReviewStrongestEvidence(options: {
   comparisonReport: z.infer<typeof comparisonReportSchema> | undefined;
   manifest: RunManifest;
   reviewFinalistIds: string[];
+  secondOpinionWinnerSelection:
+    | z.infer<typeof secondOpinionWinnerSelectionArtifactSchema>
+    | undefined;
   status: ReturnType<typeof buildSavedConsultationStatus>;
   validationSignals: string[];
   validationSummary: string | undefined;
@@ -592,6 +653,13 @@ function buildReviewStrongestEvidence(options: {
   }
   if (options.manifest.taskPacket.researchContext?.summary) {
     add(options.manifest.taskPacket.researchContext.summary);
+  }
+  if (
+    options.secondOpinionWinnerSelection &&
+    (options.secondOpinionWinnerSelection.agreement === "agrees-select" ||
+      options.secondOpinionWinnerSelection.agreement === "agrees-abstain")
+  ) {
+    add(options.secondOpinionWinnerSelection.advisorySummary);
   }
   if (options.status.outcomeType === "recommended-survivor") {
     add(options.comparisonReport?.whyThisWon);
@@ -615,6 +683,9 @@ function buildReviewStrongestEvidence(options: {
 function buildReviewWeakestEvidence(options: {
   manifest: RunManifest;
   recommendationAbsenceReason: string | undefined;
+  secondOpinionWinnerSelection:
+    | z.infer<typeof secondOpinionWinnerSelectionArtifactSchema>
+    | undefined;
   status: ReturnType<typeof buildSavedConsultationStatus>;
   validationGaps: string[];
 }): string[] {
@@ -633,6 +704,13 @@ function buildReviewWeakestEvidence(options: {
   }
   if ((options.manifest.taskPacket.researchContext?.unresolvedConflicts.length ?? 0) > 0) {
     add("External research contains unresolved conflicts.");
+  }
+  if (
+    options.secondOpinionWinnerSelection &&
+    options.secondOpinionWinnerSelection.agreement !== "agrees-select" &&
+    options.secondOpinionWinnerSelection.agreement !== "agrees-abstain"
+  ) {
+    add(options.secondOpinionWinnerSelection.advisorySummary);
   }
   if (options.status.outcomeType === "no-survivors") {
     add("No finalists survived the oracle rounds.");
@@ -706,6 +784,22 @@ async function readWinnerSelectionResult(
   try {
     return agentJudgeResultSchema.parse(
       JSON.parse(await readFile(winnerSelectionPath, "utf8")) as unknown,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+async function readSecondOpinionWinnerSelectionResult(
+  secondOpinionWinnerSelectionPath: string | undefined,
+): Promise<z.infer<typeof secondOpinionWinnerSelectionArtifactSchema> | undefined> {
+  if (!secondOpinionWinnerSelectionPath) {
+    return undefined;
+  }
+
+  try {
+    return secondOpinionWinnerSelectionArtifactSchema.parse(
+      JSON.parse(await readFile(secondOpinionWinnerSelectionPath, "utf8")) as unknown,
     );
   } catch {
     return undefined;

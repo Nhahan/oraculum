@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { adapterSchema } from "./config.js";
+import { adapterSchema, secondOpinionJudgeTriggerSchema } from "./config.js";
 import { decisionConfidenceSchema } from "./profile.js";
 import {
   consultationJudgingBasisKindSchema,
@@ -119,6 +119,7 @@ export const consultationArtifactPathsSchema = z.object({
   comparisonJsonPath: z.string().min(1).optional(),
   comparisonMarkdownPath: z.string().min(1).optional(),
   winnerSelectionPath: z.string().min(1).optional(),
+  secondOpinionWinnerSelectionPath: z.string().min(1).optional(),
   crowningRecordPath: z.string().min(1).optional(),
 });
 
@@ -247,6 +248,22 @@ export const verdictReviewSchema = z.preprocess(
       judgingCriteria: z.array(z.string().min(1)).min(1).max(5).optional(),
       recommendationSummary: z.string().min(1).optional(),
       recommendationAbsenceReason: z.string().min(1).optional(),
+      secondOpinionAdapter: adapterSchema.optional(),
+      secondOpinionAgreement: z
+        .enum([
+          "agrees-select",
+          "agrees-abstain",
+          "disagrees-candidate",
+          "disagrees-select-vs-abstain",
+          "unavailable",
+        ])
+        .optional(),
+      secondOpinionSummary: z.string().min(1).optional(),
+      secondOpinionDecision: z.enum(["select", "abstain"]).optional(),
+      secondOpinionCandidateId: z.string().min(1).optional(),
+      secondOpinionConfidence: decisionConfidenceSchema.optional(),
+      secondOpinionTriggerKinds: z.array(secondOpinionJudgeTriggerSchema).default([]),
+      secondOpinionTriggerReasons: z.array(z.string().min(1)).default([]),
       manualReviewRecommended: z.boolean().default(false),
       manualCrowningCandidateIds: z.array(z.string().min(1)).default([]),
       manualCrowningReason: z.string().min(1).optional(),
@@ -267,6 +284,7 @@ export const verdictReviewSchema = z.preprocess(
         profileSelection: z.boolean(),
         comparisonReport: z.boolean(),
         winnerSelection: z.boolean(),
+        secondOpinionWinnerSelection: z.boolean().default(false),
         crowningRecord: z.boolean(),
       }),
       candidateStateCounts: z.record(z.string().min(1), z.number().int().min(0)),
@@ -495,6 +513,107 @@ export const verdictReviewSchema = z.preprocess(
           code: z.ZodIssueCode.custom,
           path: ["manualReviewRecommended"],
           message: `${value.outcomeType} reviews must recommend manual review.`,
+        });
+      }
+
+      if (
+        value.secondOpinionAgreement &&
+        !value.artifactAvailability.secondOpinionWinnerSelection
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["artifactAvailability", "secondOpinionWinnerSelection"],
+          message:
+            "secondOpinionWinnerSelection artifact availability must be true when second-opinion review fields are present.",
+        });
+      }
+
+      if (
+        value.artifactAvailability.secondOpinionWinnerSelection &&
+        !value.secondOpinionAgreement
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["secondOpinionAgreement"],
+          message:
+            "secondOpinionAgreement is required when a second-opinion winner-selection artifact is available.",
+        });
+      }
+
+      if (value.secondOpinionAgreement) {
+        if (!value.secondOpinionAdapter) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["secondOpinionAdapter"],
+            message:
+              "secondOpinionAdapter is required when second-opinion review fields are present.",
+          });
+        }
+        if (!value.secondOpinionSummary) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["secondOpinionSummary"],
+            message:
+              "secondOpinionSummary is required when second-opinion review fields are present.",
+          });
+        }
+        if (value.secondOpinionTriggerKinds.length === 0) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["secondOpinionTriggerKinds"],
+            message:
+              "secondOpinionTriggerKinds must be present when second-opinion review fields are present.",
+          });
+        }
+        if (value.secondOpinionTriggerReasons.length === 0) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["secondOpinionTriggerReasons"],
+            message:
+              "secondOpinionTriggerReasons must be present when second-opinion review fields are present.",
+          });
+        }
+      }
+
+      if (value.secondOpinionDecision === "select" && !value.secondOpinionCandidateId) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["secondOpinionCandidateId"],
+          message: "secondOpinionCandidateId is required when secondOpinionDecision is select.",
+        });
+      }
+
+      if (value.secondOpinionDecision !== "select" && value.secondOpinionCandidateId) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["secondOpinionCandidateId"],
+          message: "secondOpinionCandidateId is only allowed when secondOpinionDecision is select.",
+        });
+      }
+
+      if (
+        value.secondOpinionAgreement === "unavailable" &&
+        value.secondOpinionDecision !== undefined
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["secondOpinionDecision"],
+          message:
+            "secondOpinionDecision cannot be present when secondOpinionAgreement is unavailable.",
+        });
+      }
+
+      if (
+        value.outcomeType === "recommended-survivor" &&
+        value.secondOpinionAgreement &&
+        value.secondOpinionAgreement !== "agrees-select" &&
+        !value.manualReviewRecommended
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["manualReviewRecommended"],
+          message:
+            "recommended-survivor reviews must recommend manual review when the second opinion disagrees or is unavailable.",
         });
       }
 

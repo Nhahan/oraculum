@@ -98,6 +98,15 @@ describe("project scaffold", () => {
       `${JSON.stringify(
         {
           version: 1,
+          judge: {
+            secondOpinion: {
+              enabled: true,
+              adapter: "claude-code",
+              triggers: ["judge-abstain", "many-changed-paths"],
+              minChangedPaths: 2,
+              minChangedLines: 120,
+            },
+          },
           oracles: [
             {
               id: "lint-fast",
@@ -122,6 +131,13 @@ describe("project scaffold", () => {
     expect(config.rounds).toHaveLength(3);
     expect(config.strategies).toHaveLength(4);
     expect(config.oracles[0]?.id).toBe("lint-fast");
+    expect(config.judge.secondOpinion).toMatchObject({
+      enabled: true,
+      adapter: "claude-code",
+      triggers: ["judge-abstain", "many-changed-paths"],
+      minChangedPaths: 2,
+      minChangedLines: 120,
+    });
     expect(
       projectAdvancedConfigSchema.parse(
         JSON.parse(await readFile(getAdvancedConfigPath(cwd), "utf8")) as unknown,

@@ -18,6 +18,7 @@ import {
   getLatestExportableRunStatePath,
   getLatestRunStatePath,
   getRunManifestPath,
+  getSecondOpinionWinnerSelectionPath,
 } from "../src/core/paths.js";
 import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
 import { executeRun } from "../src/services/execution.js";
@@ -143,6 +144,99 @@ if (out) {
     await expect(
       readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
     ).resolves.toContain("Finalist Comparison");
+  }, 20_000);
+
+  it("keeps the primary winner recommendation while persisting an advisory second opinion", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(
+      join(cwd, "tasks", "second-opinion.md"),
+      "# Second opinion\nCheck the judge.\n",
+    );
+    await writeFile(
+      getAdvancedConfigPath(cwd),
+      `${JSON.stringify(
+        {
+          version: 1,
+          judge: {
+            secondOpinion: {
+              enabled: true,
+              adapter: "claude-code",
+              triggers: ["many-changed-paths"],
+              minChangedPaths: 1,
+              minChangedLines: 200,
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex-second-opinion",
+      `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
+  fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
+}
+if (out) {
+  const body = prompt.includes("You are selecting the best Oraculum finalist.")
+    ? '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 remains the primary recommendation."}'
+    : "Codex finished candidate patch";
+  fs.writeFileSync(out, body, "utf8");
+}
+`,
+    );
+    const fakeClaude = await writeNodeBinary(
+      cwd,
+      "fake-claude-second-opinion",
+      `const fs = require("node:fs");
+const prompt = fs.readFileSync(0, "utf8");
+if (prompt.includes("You are selecting the best Oraculum finalist.")) {
+  process.stdout.write(JSON.stringify({
+    decision: "abstain",
+    confidence: "medium",
+    summary: "A second opinion would wait for manual review before crowning."
+  }));
+} else {
+  process.stdout.write(JSON.stringify({ summary: "unused" }));
+}
+`,
+    );
+
+    const planned = await planRun({
+      cwd,
+      taskInput: "tasks/second-opinion.md",
+      agent: "codex",
+      candidates: 1,
+    });
+
+    const executed = await executeRun({
+      cwd,
+      runId: planned.id,
+      codexBinaryPath: fakeCodex,
+      claudeBinaryPath: fakeClaude,
+      timeoutMs: 5_000,
+    });
+
+    expect(executed.manifest.recommendedWinner?.candidateId).toBe("cand-01");
+    expect(executed.manifest.recommendedWinner?.source).toBe("llm-judge");
+    await expect(
+      readFile(getSecondOpinionWinnerSelectionPath(cwd, planned.id), "utf8"),
+    ).resolves.toContain('"agreement": "disagrees-select-vs-abstain"');
+    await expect(
+      readFile(getSecondOpinionWinnerSelectionPath(cwd, planned.id), "utf8"),
+    ).resolves.toContain('"adapter": "claude-code"');
   }, 20_000);
 
   it("eliminates candidates when the adapter exits non-zero", async () => {

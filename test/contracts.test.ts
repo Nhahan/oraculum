@@ -230,6 +230,15 @@ describe("oracle and adapter contracts", () => {
   it("accepts advanced operator settings separately from quick-start defaults", () => {
     const advanced = projectAdvancedConfigSchema.parse({
       version: 1,
+      judge: {
+        secondOpinion: {
+          enabled: true,
+          adapter: "claude-code",
+          triggers: ["judge-abstain", "low-confidence"],
+          minChangedPaths: 3,
+          minChangedLines: 120,
+        },
+      },
       managedTree: {
         includePaths: ["dist", "target/docs"],
         excludePaths: ["build"],
@@ -253,6 +262,13 @@ describe("oracle and adapter contracts", () => {
     expect(advanced.oracles?.[0]?.args).toEqual(["run", "lint"]);
     expect(advanced.managedTree?.includePaths).toEqual(["dist", "target/docs"]);
     expect(advanced.repair?.maxAttemptsPerRound).toBe(1);
+    expect(advanced.judge?.secondOpinion).toMatchObject({
+      enabled: true,
+      adapter: "claude-code",
+      triggers: ["judge-abstain", "low-confidence"],
+      minChangedPaths: 3,
+      minChangedLines: 120,
+    });
   });
 
   it("rejects unsafe managed tree include and exclude paths", () => {

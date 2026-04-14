@@ -183,10 +183,49 @@ Operational cadence:
 `orc verdict` stays read-only, but the saved artifacts now carry more machine-readable evidence than the default summary prints.
 
 - `winner-selection.json` can include artifact-aware `judgingCriteria` when the task has an explicit target result.
+- `winner-selection.second-opinion.json` records an optional advisory second-opinion judge when advanced operator policy enables it.
 - `verdict review` replays strongest evidence, weakest evidence, recommendation absence reasons, and manual review or manual crowning handoff fields.
 - comparison reports and verdict review also surface research basis status, research conflict handling, and failure-analysis availability when those artifacts exist.
 
 This keeps the default path short while leaving richer review material in the advanced path.
+
+## Optional Second-Opinion Judge
+
+Keep this off by default. Turn it on only after `npm run evidence:p3 -- --no-write` shows recurring finalist-selection pressure on the same scope.
+
+```json
+{
+  "version": 1,
+  "judge": {
+    "secondOpinion": {
+      "enabled": true,
+      "adapter": "claude-code",
+      "triggers": ["judge-abstain", "low-confidence", "many-changed-paths"],
+      "minChangedPaths": 8,
+      "minChangedLines": 200
+    }
+  }
+}
+```
+
+Advanced policy lives in:
+
+```text
+.oraculum/advanced.json
+```
+
+Contract notes:
+
+- the default consultation path stays single-judge and cheap
+- the second opinion is advisory-only and does not replace the primary recommendation automatically
+- Oraculum persists the advisory artifact at:
+
+```text
+.oraculum/runs/<consultation-id>/reports/winner-selection.second-opinion.json
+```
+
+- `orc verdict` and saved summaries surface agreement, disagreement, and unavailable second-opinion outcomes
+- if a recommended result has a disagreeing or unavailable second opinion, verdict review flips to manual-review guidance before crowning
 
 ## Explicit Init
 

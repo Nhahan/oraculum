@@ -234,6 +234,10 @@ export function getWinnerSelectionPath(projectRoot: string, runId: string): stri
   return join(getReportsDir(projectRoot, runId), "winner-selection.json");
 }
 
+export function getSecondOpinionWinnerSelectionPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "winner-selection.second-opinion.json");
+}
+
 export function getProfileSelectionPath(projectRoot: string, runId: string): string {
   return join(getReportsDir(projectRoot, runId), "profile-selection.json");
 }
@@ -260,6 +264,10 @@ export function getRunConfigPath(projectRoot: string, runId: string): string {
 
 export function getWinnerJudgeLogsDir(projectRoot: string, runId: string): string {
   return join(getReportsDir(projectRoot, runId), "judge");
+}
+
+export function getSecondOpinionWinnerJudgeLogsDir(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "judge", "second-opinion");
 }
 
 export function getWorkspaceDir(projectRoot: string, runId: string, candidateId: string): string {

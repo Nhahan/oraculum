@@ -121,6 +121,8 @@ describe("chat-native MCP tools", () => {
       finalistIds: ["cand-01"],
       strongestEvidence: [],
       weakestEvidence: [],
+      secondOpinionTriggerKinds: [],
+      secondOpinionTriggerReasons: [],
       manualReviewRecommended: false,
       manualCrowningCandidateIds: [],
       validationProfileId: "library",
@@ -135,6 +137,7 @@ describe("chat-native MCP tools", () => {
         profileSelection: false,
         comparisonReport: false,
         winnerSelection: false,
+        secondOpinionWinnerSelection: false,
         crowningRecord: false,
       },
       candidateStateCounts: {

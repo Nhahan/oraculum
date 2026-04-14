@@ -10,6 +10,15 @@ export const oracleScopeSchema = z.enum(["workspace", "project"]);
 export const oracleEnforcementSchema = z.enum(["hard", "repairable", "signal"]);
 export const oracleConfidenceSchema = z.enum(["low", "medium", "high"]);
 export const oraclePathPolicySchema = z.enum(["local-only", "inherit"]);
+export const secondOpinionJudgeTriggerSchema = z.enum([
+  "judge-abstain",
+  "low-confidence",
+  "fallback-policy",
+  "validation-gaps",
+  "many-changed-paths",
+  "large-diff",
+  "warning-evidence",
+]);
 export const oracleRelativeCwdSchema = z
   .string()
   .min(1)
@@ -52,6 +61,28 @@ export const managedTreeRulesSchema = z
   .object({
     includePaths: z.array(managedTreeRelativePathSchema).default([]),
     excludePaths: z.array(managedTreeRelativePathSchema).default([]),
+  })
+  .strict();
+export const secondOpinionJudgeConfigSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    adapter: adapterSchema.optional(),
+    triggers: z
+      .array(secondOpinionJudgeTriggerSchema)
+      .min(1)
+      .default(["judge-abstain", "low-confidence", "fallback-policy"]),
+    minChangedPaths: z.number().int().min(1).max(10_000).default(8),
+    minChangedLines: z.number().int().min(1).max(1_000_000).default(200),
+  })
+  .strict();
+export const judgePolicySchema = z
+  .object({
+    secondOpinion: secondOpinionJudgeConfigSchema.default({
+      enabled: false,
+      triggers: ["judge-abstain", "low-confidence", "fallback-policy"],
+      minChangedPaths: 8,
+      minChangedLines: 200,
+    }),
   })
   .strict();
 
@@ -108,6 +139,14 @@ const runtimeProjectConfigBaseSchema = z
     rounds: z.array(roundSchema).min(1),
     oracles: z.array(repoOracleSchema).default([]),
     repair: repairPolicySchema,
+    judge: judgePolicySchema.default({
+      secondOpinion: {
+        enabled: false,
+        triggers: ["judge-abstain", "low-confidence", "fallback-policy"],
+        minChangedPaths: 8,
+        minChangedLines: 200,
+      },
+    }),
     managedTree: managedTreeRulesSchema.default({ includePaths: [], excludePaths: [] }),
   })
   .strict();
@@ -160,6 +199,7 @@ export const projectAdvancedConfigSchema = z
     rounds: z.array(roundSchema).min(1).optional(),
     oracles: z.array(repoOracleSchema).optional(),
     repair: repairPolicySchema.optional(),
+    judge: judgePolicySchema.optional(),
     managedTree: managedTreeRulesSchema.optional(),
   })
   .strict();
@@ -170,8 +210,11 @@ export type OracleScope = z.infer<typeof oracleScopeSchema>;
 export type OracleEnforcement = z.infer<typeof oracleEnforcementSchema>;
 export type OracleConfidence = z.infer<typeof oracleConfidenceSchema>;
 export type OraclePathPolicy = z.infer<typeof oraclePathPolicySchema>;
+export type SecondOpinionJudgeTrigger = z.infer<typeof secondOpinionJudgeTriggerSchema>;
 export type RepairPolicy = z.infer<typeof repairPolicySchema>;
 export type ManagedTreeRules = z.infer<typeof managedTreeRulesSchema>;
+export type SecondOpinionJudgeConfig = z.infer<typeof secondOpinionJudgeConfigSchema>;
+export type JudgePolicy = z.infer<typeof judgePolicySchema>;
 export type Strategy = z.infer<typeof strategySchema>;
 export type Round = z.infer<typeof roundSchema>;
 export type RepoOracle = z.infer<typeof repoOracleSchema>;
@@ -227,6 +270,14 @@ export const defaultProjectConfig: ProjectConfig = {
   repair: {
     enabled: true,
     maxAttemptsPerRound: 1,
+  },
+  judge: {
+    secondOpinion: {
+      enabled: false,
+      triggers: ["judge-abstain", "low-confidence", "fallback-policy"],
+      minChangedPaths: 8,
+      minChangedLines: 200,
+    },
   },
   managedTree: {
     includePaths: [],

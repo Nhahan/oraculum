@@ -13,6 +13,7 @@ import {
   getResearchBriefPath,
   getRunConfigPath,
   getRunDir,
+  getSecondOpinionWinnerSelectionPath,
 } from "../src/core/paths.js";
 import {
   consultToolResponseSchema,
@@ -290,6 +291,11 @@ describe("chat-native MCP surface", () => {
     await writeFile(getResearchBriefPath(projectRoot, consultationId), "{}\n", "utf8");
     await writeFile(getFailureAnalysisPath(projectRoot, consultationId), "{}\n", "utf8");
     await writeFile(getFinalistComparisonMarkdownPath(projectRoot, consultationId), "# report\n");
+    await writeFile(
+      getSecondOpinionWinnerSelectionPath(projectRoot, consultationId),
+      "{}\n",
+      "utf8",
+    );
     await writeFile(getExportPlanPath(projectRoot, consultationId), "{}\n", "utf8");
 
     const artifacts = buildConsultationArtifacts(projectRoot, consultationId);
@@ -304,6 +310,9 @@ describe("chat-native MCP surface", () => {
     expect(parsed.failureAnalysisPath).toBe(getFailureAnalysisPath(projectRoot, consultationId));
     expect(parsed.comparisonMarkdownPath).toBe(
       getFinalistComparisonMarkdownPath(projectRoot, consultationId),
+    );
+    expect(parsed.secondOpinionWinnerSelectionPath).toBe(
+      getSecondOpinionWinnerSelectionPath(projectRoot, consultationId),
     );
     expect(parsed.crowningRecordPath).toBe(getExportPlanPath(projectRoot, consultationId));
     expect(parsed.profileSelectionPath).toBeUndefined();
@@ -333,6 +342,7 @@ describe("chat-native MCP surface", () => {
     );
     expect(parsed.researchBriefPath).toBe(getResearchBriefPath(projectRoot, consultationId));
     expect(parsed.failureAnalysisPath).toBe(getFailureAnalysisPath(projectRoot, consultationId));
+    expect(parsed.secondOpinionWinnerSelectionPath).toBeUndefined();
   });
 
   it("omits artifact paths that do not exist on disk", async () => {
@@ -352,6 +362,7 @@ describe("chat-native MCP surface", () => {
     expect(parsed.failureAnalysisPath).toBeUndefined();
     expect(parsed.profileSelectionPath).toBeUndefined();
     expect(parsed.comparisonMarkdownPath).toBeUndefined();
+    expect(parsed.secondOpinionWinnerSelectionPath).toBeUndefined();
     expect(parsed.crowningRecordPath).toBeUndefined();
   });
 

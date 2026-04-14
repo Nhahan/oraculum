@@ -147,6 +147,7 @@ export async function loadProjectConfigLayers(cwd: string): Promise<ProjectConfi
         ...(advanced?.rounds ? { rounds: advanced.rounds } : {}),
         ...(advanced?.oracles ? { oracles: advanced.oracles } : {}),
         ...(advanced?.repair ? { repair: advanced.repair } : {}),
+        ...(advanced?.judge ? { judge: advanced.judge } : {}),
         ...(advanced?.managedTree ? { managedTree: advanced.managedTree } : {}),
       }),
     };
@@ -170,6 +171,7 @@ export async function loadProjectConfigLayers(cwd: string): Promise<ProjectConfi
       ...(advanced?.rounds ? { rounds: advanced.rounds } : {}),
       ...(advanced?.oracles ? { oracles: advanced.oracles } : {}),
       ...(advanced?.repair ? { repair: advanced.repair } : {}),
+      ...(advanced?.judge ? { judge: advanced.judge } : {}),
       ...(advanced?.managedTree ? { managedTree: advanced.managedTree } : {}),
     }),
   };
