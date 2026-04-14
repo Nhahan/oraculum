@@ -144,9 +144,25 @@ If bounded repair or finalist judgment fails to converge, Oraculum may also writ
 
 That artifact is for investigation, not auto-retry. It summarizes why execution stalled, which candidates failed repeatedly, and what evidence should be inspected before rerunning or manually crowning.
 
+## Repeated Clarify Follow-Up
+
+When the same scope repeatedly lands in `needs-clarification` or `external-research-required`, Oraculum can persist a bounded follow-up artifact under:
+
+```text
+.oraculum/runs/<consultation-id>/reports/clarify-follow-up.json
+```
+
+That artifact does not replace the blocked preflight decision. It records:
+
+- one key clarify question
+- one missing result contract statement
+- one missing judging basis statement
+
+`orc verdict` and saved consultation summaries replay that artifact into rerun guidance so the operator can answer the bounded question before reopening the consultation.
+
 ## P3 Evidence Review
 
-P3 follow-ups stay evidence-gated. Before opening a deeper clarify path or a second-opinion judge, collect pressure from saved consultations first:
+P3 intelligence stays evidence-gated even after the first shipped baselines. Before widening the clarify path further or making second-opinion judging more aggressive, collect pressure from saved consultations first:
 
 ```bash
 npm run evidence:p3 -- --no-write
@@ -175,8 +191,8 @@ Operational cadence:
 - rerun `npm run evidence:p3 -- --no-write` after workflow-shape changes
 - rerun it again after saved consultations have accumulated meaningfully
 - keep P3 closed while both promotion signals remain `hold`
-- only consider the deeper clarify path when clarify pressure repeats on the same scope
-- only consider the second-opinion judge when judge abstain, manual crowning, or low-confidence winner selection repeats on the same scope
+- only deepen clarify behavior further when clarify pressure repeats on the same scope
+- only widen second-opinion judging when judge abstain, manual crowning, or low-confidence winner selection repeats on the same scope
 
 ## Verdict Evidence And Judging Criteria
 
