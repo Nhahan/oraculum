@@ -31,6 +31,7 @@
     "evidence:beta:matrix": "npm run build && node scripts/beta-evidence.mjs --mode=matrix",
     "evidence:polyglot": "npm run build && node scripts/beta-evidence.mjs --mode=polyglot",
     "evidence:host-native": "npm run build && node scripts/host-native-smoke.mjs",
+    "evidence:p3": "npm run build && node scripts/p3-evidence.mjs",
     "evidence:workflow-comparison": "npm run build && node scripts/workflow-comparison.mjs",
     "evidence:smoke": "npm run evidence:published-smoke && npm run evidence:release-smoke",
     "evidence:published-smoke": "node scripts/published-smoke.mjs",

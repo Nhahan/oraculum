@@ -144,6 +144,32 @@ If bounded repair or finalist judgment fails to converge, Oraculum may also writ
 
 That artifact is for investigation, not auto-retry. It summarizes why execution stalled, which candidates failed repeatedly, and what evidence should be inspected before rerunning or manually crowning.
 
+## P3 Evidence Review
+
+P3 follow-ups stay evidence-gated. Before opening a deeper clarify path or a second-opinion judge, collect pressure from saved consultations first:
+
+```bash
+npm run evidence:p3 -- --no-write
+```
+
+The collector scans saved consultations and summarizes:
+
+- clarify pressure
+- finalist-selection pressure
+- repeated task, source-path, target-artifact, finalist strategy-mix, and host-crossing pressure trajectories
+- recurring blocker reasons
+- validation-posture, research-basis, research-conflict, research-rerun, and judging-criteria metadata coverage
+- artifact coverage and blind spots, including pressure-local gaps such as missing comparison reports or research briefs
+- missing-artifact breakdowns per pressure lane
+- an inspection queue showing which saved artifacts should be opened next, with run-manifest fallback entries when the expected artifact was never written
+- a bounded `hold` vs `open-P3` promotion signal
+
+If you want a replayable snapshot, omit `--no-write` and Oraculum will persist:
+
+```text
+.oraculum/p3-evidence.json
+```
+
 ## Verdict Evidence And Judging Criteria
 
 `orc verdict` stays read-only, but the saved artifacts now carry more machine-readable evidence than the default summary prints.

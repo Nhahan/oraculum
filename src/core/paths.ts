@@ -250,6 +250,10 @@ export function getFailureAnalysisPath(projectRoot: string, runId: string): stri
   return join(getReportsDir(projectRoot, runId), "failure-analysis.json");
 }
 
+export function getP3EvidencePath(projectRoot: string): string {
+  return join(getOraculumDir(projectRoot), "p3-evidence.json");
+}
+
 export function getRunConfigPath(projectRoot: string, runId: string): string {
   return join(getReportsDir(projectRoot, runId), "consultation-config.json");
 }
