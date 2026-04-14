@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { extname } from "node:path";
+import { dirname, extname, isAbsolute, normalize, resolve as resolvePath } from "node:path";
 
 import { type ConsultationResearchBrief, consultationResearchBriefSchema } from "../domain/run.js";
 import {
@@ -18,7 +18,7 @@ export async function loadTaskPacket(taskPath: string): Promise<MaterializedTask
     const parsed = JSON.parse(content) as unknown;
     const withSource = materializedTaskPacketSchema.safeParse(parsed);
     if (withSource.success) {
-      return withSource.data;
+      return canonicalizeMaterializedTaskPacketSource(taskPath, withSource.data);
     }
 
     const researchBrief = consultationResearchBriefSchema.safeParse(parsed);
@@ -57,6 +57,7 @@ function materializeResearchBriefTaskPacket(
   taskPath: string,
   researchBrief: ConsultationResearchBrief,
 ): MaterializedTaskPacket {
+  const normalizedSourcePath = resolveTaskPacketSourcePath(taskPath, researchBrief.task.sourcePath);
   const contextLines = [
     `Continue the original task using the required research context.`,
     `Original task: ${researchBrief.task.title}`,
@@ -130,12 +131,39 @@ function materializeResearchBriefTaskPacket(
     risks: [],
     oracleHints: [],
     strategyHints: [],
-    contextFiles: [researchBrief.task.sourcePath],
+    contextFiles: [normalizedSourcePath],
     source: {
       kind: "research-brief",
       path: taskPath,
       originKind: researchBrief.task.sourceKind,
-      originPath: researchBrief.task.sourcePath,
+      originPath: normalizedSourcePath,
     },
   });
+}
+
+function canonicalizeMaterializedTaskPacketSource(
+  taskPath: string,
+  taskPacket: MaterializedTaskPacket,
+): MaterializedTaskPacket {
+  const normalizedSourcePath = resolveTaskPacketSourcePath(taskPath, taskPacket.source.path);
+  const normalizedOriginPath = taskPacket.source.originPath
+    ? resolveTaskPacketSourcePath(taskPath, taskPacket.source.originPath)
+    : undefined;
+
+  return materializedTaskPacketSchema.parse({
+    ...taskPacket,
+    source: {
+      ...taskPacket.source,
+      path: normalizedSourcePath,
+      ...(normalizedOriginPath ? { originPath: normalizedOriginPath } : {}),
+    },
+  });
+}
+
+function resolveTaskPacketSourcePath(taskPath: string, sourcePath: string): string {
+  if (isAbsolute(sourcePath)) {
+    return normalize(sourcePath);
+  }
+
+  return normalize(resolvePath(dirname(taskPath), sourcePath));
 }

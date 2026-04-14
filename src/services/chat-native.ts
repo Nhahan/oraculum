@@ -4,25 +4,8 @@ import { join } from "node:path";
 
 import type { ZodTypeAny } from "zod";
 
-import { agentJudgeResultSchema } from "../adapters/types.js";
 import { APP_VERSION } from "../core/constants.js";
-import {
-  getAdvancedConfigPath,
-  getClarifyFollowUpPath,
-  getConfigPath,
-  getExportPlanPath,
-  getFailureAnalysisPath,
-  getFinalistComparisonJsonPath,
-  getFinalistComparisonMarkdownPath,
-  getPreflightReadinessPath,
-  getProfileSelectionPath,
-  getResearchBriefPath,
-  getRunConfigPath,
-  getRunDir,
-  getSecondOpinionWinnerSelectionPath,
-  getWinnerSelectionPath,
-  resolveProjectRoot,
-} from "../core/paths.js";
+import { getAdvancedConfigPath, getConfigPath, resolveProjectRoot } from "../core/paths.js";
 import {
   type CommandManifestEntry,
   commandManifestEntrySchema,
@@ -46,19 +29,12 @@ import {
   verdictToolRequestSchema,
   verdictToolResponseSchema,
 } from "../domain/chat-native.js";
-import { consultationProfileSelectionArtifactSchema } from "../domain/profile.js";
-import {
-  consultationClarifyFollowUpSchema,
-  consultationPreflightReadinessArtifactSchema,
-  consultationResearchBriefSchema,
-  exportPlanSchema,
-} from "../domain/run.js";
 import { getExpectedCodexRuleFileName, getExpectedCodexSkillDirs } from "./codex-chat-native.js";
-import { failureAnalysisSchema } from "./failure-analysis.js";
-import { secondOpinionWinnerSelectionArtifactSchema } from "./finalist-judge.js";
-import { comparisonReportSchema } from "./finalist-report.js";
+import {
+  resolveConsultationArtifactsSync,
+  toAvailableConsultationArtifactPaths,
+} from "./consultation-artifacts.js";
 import type { InitializeProjectResult } from "./project.js";
-import { hasNonEmptyTextArtifactSync } from "./project.js";
 
 export const oraculumMcpSchemas = {
   oraculum_consult: {
@@ -474,72 +450,9 @@ export function buildConsultationArtifacts(
   secondOpinionWinnerSelectionPath?: string;
   crowningRecordPath?: string;
 } {
-  const projectRoot = resolveProjectRoot(cwd);
-  const preflightReadinessPath = getPreflightReadinessPath(projectRoot, consultationId);
-  const clarifyFollowUpPath = getClarifyFollowUpPath(projectRoot, consultationId);
-  const researchBriefPath = getResearchBriefPath(projectRoot, consultationId);
-  const failureAnalysisPath = getFailureAnalysisPath(projectRoot, consultationId);
-  const profileSelectionPath = getProfileSelectionPath(projectRoot, consultationId);
-  const comparisonJsonPath = getFinalistComparisonJsonPath(projectRoot, consultationId);
-  const comparisonMarkdownPath = getFinalistComparisonMarkdownPath(projectRoot, consultationId);
-  const winnerSelectionPath = getWinnerSelectionPath(projectRoot, consultationId);
-  const secondOpinionWinnerSelectionPath = getSecondOpinionWinnerSelectionPath(
-    projectRoot,
-    consultationId,
+  return toAvailableConsultationArtifactPaths(
+    resolveConsultationArtifactsSync(cwd, consultationId, options),
   );
-  const crowningRecordPath = getExportPlanPath(projectRoot, consultationId);
-  const hasExportedCandidate = options?.hasExportedCandidate ?? false;
-
-  return {
-    consultationRoot: getRunDir(projectRoot, consultationId),
-    ...(existsSync(getRunConfigPath(projectRoot, consultationId))
-      ? { configPath: getRunConfigPath(projectRoot, consultationId) }
-      : {}),
-    ...(hasValidJsonArtifact(preflightReadinessPath, consultationPreflightReadinessArtifactSchema)
-      ? { preflightReadinessPath }
-      : {}),
-    ...(hasValidJsonArtifact(clarifyFollowUpPath, consultationClarifyFollowUpSchema)
-      ? { clarifyFollowUpPath }
-      : {}),
-    ...(hasValidJsonArtifact(researchBriefPath, consultationResearchBriefSchema)
-      ? { researchBriefPath }
-      : {}),
-    ...(hasValidJsonArtifact(failureAnalysisPath, failureAnalysisSchema)
-      ? { failureAnalysisPath }
-      : {}),
-    ...(hasValidJsonArtifact(profileSelectionPath, consultationProfileSelectionArtifactSchema)
-      ? { profileSelectionPath }
-      : {}),
-    ...(hasValidJsonArtifact(comparisonJsonPath, comparisonReportSchema)
-      ? { comparisonJsonPath }
-      : {}),
-    ...(hasNonEmptyTextArtifactSync(comparisonMarkdownPath) ? { comparisonMarkdownPath } : {}),
-    ...(hasValidJsonArtifact(winnerSelectionPath, agentJudgeResultSchema)
-      ? { winnerSelectionPath }
-      : {}),
-    ...(hasValidJsonArtifact(
-      secondOpinionWinnerSelectionPath,
-      secondOpinionWinnerSelectionArtifactSchema,
-    )
-      ? { secondOpinionWinnerSelectionPath }
-      : {}),
-    ...(hasExportedCandidate && hasValidJsonArtifact(crowningRecordPath, exportPlanSchema)
-      ? { crowningRecordPath }
-      : {}),
-  };
-}
-
-function hasValidJsonArtifact(path: string, schema: ZodTypeAny): boolean {
-  if (!existsSync(path)) {
-    return false;
-  }
-
-  try {
-    schema.parse(JSON.parse(readFileSync(path, "utf8")) as unknown);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export function buildProjectInitializationResult(result: InitializeProjectResult): {

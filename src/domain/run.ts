@@ -1314,6 +1314,7 @@ export function buildSavedConsultationStatus(
   manifest: RunManifest,
   options?: {
     comparisonReportAvailable?: boolean;
+    crowningRecordAvailable?: boolean;
     manualReviewRequired?: boolean;
   },
 ): SavedConsultationStatus {
@@ -1321,6 +1322,9 @@ export function buildSavedConsultationStatus(
   const nextActions = buildConsultationNextActions(outcome, {
     ...(options?.comparisonReportAvailable !== undefined
       ? { comparisonReportAvailable: options.comparisonReportAvailable }
+      : {}),
+    ...(options?.crowningRecordAvailable !== undefined
+      ? { crowningRecordAvailable: options.crowningRecordAvailable }
       : {}),
     ...(options?.manualReviewRequired !== undefined
       ? { manualReviewRequired: options.manualReviewRequired }
@@ -1533,6 +1537,7 @@ function buildConsultationNextActions(
   outcome: ConsultationOutcome,
   options?: {
     comparisonReportAvailable?: boolean;
+    crowningRecordAvailable?: boolean;
     manualReviewRequired?: boolean;
     researchBasisDrift?: boolean;
   },
@@ -1554,7 +1559,7 @@ function buildConsultationNextActions(
       actions.add("revise-task-and-rerun");
       break;
     case "recommended-survivor":
-      if (options?.manualReviewRequired !== true) {
+      if (options?.manualReviewRequired !== true && options?.crowningRecordAvailable !== true) {
         actions.add("crown-recommended-result");
       }
       break;

@@ -44,11 +44,15 @@ import {
   isPreflightBlockedConsultation,
 } from "../domain/run.js";
 import {
-  buildConsultationArtifacts,
   buildProjectInitializationResult,
   buildSetupDiagnosticsResponse,
   filterSetupDiagnosticsResponse,
 } from "./chat-native.js";
+import {
+  type ConsultationArtifactState,
+  resolveConsultationArtifacts,
+  toAvailableConsultationArtifactPaths,
+} from "./consultation-artifacts.js";
 import {
   buildVerdictReview,
   listRecentConsultations,
@@ -57,7 +61,6 @@ import {
 } from "./consultations.js";
 import { executeRun } from "./execution.js";
 import { materializeExport } from "./exports.js";
-import { secondOpinionWinnerSelectionArtifactSchema } from "./finalist-judge.js";
 import { ensureProjectInitialized, initializeProject } from "./project.js";
 import { planRun, readLatestRunManifest, readRunManifest, writeLatestRunState } from "./runs.js";
 
@@ -81,7 +84,7 @@ export async function runConsultTool(input: ConsultToolRequest): Promise<Consult
       ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
     },
   });
-  const blockedArtifacts = buildToolConsultationArtifacts(request.cwd, manifest);
+  const blockedArtifacts = await resolveToolConsultationArtifacts(request.cwd, manifest);
   if (isPreflightBlockedConsultation(manifest)) {
     await writeLatestRunState(resolveProjectRoot(request.cwd), manifest.id);
     return consultToolResponseSchema.parse({
@@ -91,7 +94,7 @@ export async function runConsultTool(input: ConsultToolRequest): Promise<Consult
       summary: await renderConsultationSummary(manifest, request.cwd, {
         surface: "chat-native",
       }),
-      artifacts: blockedArtifacts,
+      artifacts: toAvailableConsultationArtifactPaths(blockedArtifacts),
       ...(initialized ? { initializedProject: buildProjectInitializationResult(initialized) } : {}),
     });
   }
@@ -100,7 +103,7 @@ export async function runConsultTool(input: ConsultToolRequest): Promise<Consult
     runId: manifest.id,
     ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
   });
-  const executedArtifacts = buildToolConsultationArtifacts(request.cwd, execution.manifest);
+  const executedArtifacts = await resolveToolConsultationArtifacts(request.cwd, execution.manifest);
 
   return consultToolResponseSchema.parse({
     mode: "consult",
@@ -109,7 +112,7 @@ export async function runConsultTool(input: ConsultToolRequest): Promise<Consult
     summary: await renderConsultationSummary(execution.manifest, request.cwd, {
       surface: "chat-native",
     }),
-    artifacts: executedArtifacts,
+    artifacts: toAvailableConsultationArtifactPaths(executedArtifacts),
     ...(initialized ? { initializedProject: buildProjectInitializationResult(initialized) } : {}),
   });
 }
@@ -129,7 +132,7 @@ export async function runDraftTool(input: DraftToolRequest): Promise<DraftToolRe
       allowRuntime: false,
     },
   });
-  const artifacts = buildToolConsultationArtifacts(request.cwd, manifest);
+  const artifacts = await resolveToolConsultationArtifacts(request.cwd, manifest);
 
   return draftToolResponseSchema.parse({
     mode: "draft",
@@ -138,7 +141,7 @@ export async function runDraftTool(input: DraftToolRequest): Promise<DraftToolRe
     summary: await renderConsultationSummary(manifest, request.cwd, {
       surface: "chat-native",
     }),
-    artifacts,
+    artifacts: toAvailableConsultationArtifactPaths(artifacts),
     ...(initialized ? { initializedProject: buildProjectInitializationResult(initialized) } : {}),
   });
 }
@@ -148,7 +151,7 @@ export async function runVerdictTool(input: VerdictToolRequest): Promise<Verdict
   const manifest = request.consultationId
     ? await readRunManifest(request.cwd, request.consultationId)
     : await readLatestRunManifest(request.cwd);
-  const artifacts = buildToolConsultationArtifacts(request.cwd, manifest);
+  const artifacts = await resolveToolConsultationArtifacts(request.cwd, manifest);
 
   return verdictToolResponseSchema.parse({
     mode: "verdict",
@@ -158,7 +161,7 @@ export async function runVerdictTool(input: VerdictToolRequest): Promise<Verdict
     summary: await renderConsultationSummary(manifest, request.cwd, {
       surface: "chat-native",
     }),
-    artifacts,
+    artifacts: toAvailableConsultationArtifactPaths(artifacts),
   });
 }
 
@@ -190,7 +193,7 @@ export async function runCrownTool(input: CrownToolRequest): Promise<CrownToolRe
     ...(request.candidateId ? { winnerId: request.candidateId } : {}),
   });
   const consultation = await readRunManifest(request.cwd, result.plan.runId);
-  const artifacts = buildToolConsultationArtifacts(request.cwd, consultation);
+  const artifacts = await resolveToolConsultationArtifacts(request.cwd, consultation);
   const materialization = await buildCrownMaterialization(request.cwd, result.plan);
 
   return crownToolResponseSchema.parse({
@@ -203,11 +206,11 @@ export async function runCrownTool(input: CrownToolRequest): Promise<CrownToolRe
   });
 }
 
-function buildToolConsultationArtifacts(
+async function resolveToolConsultationArtifacts(
   cwd: string,
   consultation: Awaited<ReturnType<typeof readRunManifest>>,
 ) {
-  return buildConsultationArtifacts(cwd, consultation.id, {
+  return resolveConsultationArtifacts(cwd, consultation.id, {
     hasExportedCandidate: consultation.candidates.some(
       (candidate) => candidate.status === "exported",
     ),
@@ -216,37 +219,13 @@ function buildToolConsultationArtifacts(
 
 async function buildArtifactAwareConsultationStatus(
   consultation: Awaited<ReturnType<typeof readRunManifest>>,
-  artifacts: ReturnType<typeof buildConsultationArtifacts>,
+  artifacts: ConsultationArtifactState,
 ) {
-  const secondOpinionRequiresManualReview = await readSecondOpinionRequiresManualReview(
-    artifacts.secondOpinionWinnerSelectionPath,
-  );
-
   return buildSavedConsultationStatus(consultation, {
-    comparisonReportAvailable: Boolean(
-      artifacts.comparisonJsonPath || artifacts.comparisonMarkdownPath,
-    ),
-    ...(secondOpinionRequiresManualReview !== undefined
-      ? { manualReviewRequired: secondOpinionRequiresManualReview }
-      : {}),
+    comparisonReportAvailable: artifacts.comparisonReportAvailable,
+    crowningRecordAvailable: artifacts.crowningRecordAvailable,
+    ...(artifacts.manualReviewRequired ? { manualReviewRequired: true } : {}),
   });
-}
-
-async function readSecondOpinionRequiresManualReview(
-  path: string | undefined,
-): Promise<boolean | undefined> {
-  if (!path) {
-    return undefined;
-  }
-
-  try {
-    const artifact = secondOpinionWinnerSelectionArtifactSchema.parse(
-      JSON.parse(await readFile(path, "utf8")) as unknown,
-    );
-    return artifact.agreement !== "agrees-select";
-  } catch {
-    return undefined;
-  }
 }
 
 function normalizeCrownToolRequest(request: CrownToolRequest): CrownToolRequest {

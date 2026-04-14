@@ -22,8 +22,9 @@ import {
   type MaterializedTaskPacket,
 } from "../domain/task.js";
 
+import { normalizeConsultationScopePath } from "./consultation-artifacts.js";
 import { collectProfileRepoSignals } from "./consultation-profile.js";
-import { collectP3Evidence, normalizeEvidenceScopePath } from "./p3-evidence.js";
+import { collectP3Evidence } from "./p3-evidence.js";
 import { type ProjectConfigLayers, writeJsonFile } from "./project.js";
 
 interface RecommendConsultationPreflightOptions {
@@ -265,7 +266,7 @@ async function resolveClarifyPressureContext(
   }
 
   const targetArtifactPath = taskPacket.targetArtifactPath
-    ? normalizeEvidenceScopePath(projectRoot, taskPacket.targetArtifactPath)
+    ? normalizeConsultationScopePath(projectRoot, taskPacket.targetArtifactPath)
     : undefined;
   const matchingTargetCases = targetArtifactPath
     ? report.clarifyPressure.cases.filter((item) => item.targetArtifactPath === targetArtifactPath)
@@ -274,7 +275,7 @@ async function resolveClarifyPressureContext(
     return buildClarifyPressureContext("target-artifact", targetArtifactPath, matchingTargetCases);
   }
 
-  const sourcePath = normalizeEvidenceScopePath(
+  const sourcePath = normalizeConsultationScopePath(
     projectRoot,
     taskPacket.source.originPath ?? taskPacket.source.path,
   );

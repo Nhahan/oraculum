@@ -1,32 +1,18 @@
-import { mkdir, readFile } from "node:fs/promises";
-import { isAbsolute, normalize, relative } from "node:path";
+import { mkdir } from "node:fs/promises";
 
 import { z } from "zod";
 
-import { agentJudgeResultSchema } from "../adapters/types.js";
 import {
-  getClarifyFollowUpPath,
-  getFailureAnalysisPath,
-  getFinalistComparisonJsonPath,
-  getFinalistComparisonMarkdownPath,
   getOraculumDir,
   getP3EvidencePath,
-  getPreflightReadinessPath,
-  getProfileSelectionPath,
-  getResearchBriefPath,
   getRunDir,
   getRunManifestPath,
-  getSecondOpinionWinnerSelectionPath,
-  getWinnerSelectionPath,
   resolveProjectRoot,
 } from "../core/paths.js";
 import { adapterSchema } from "../domain/config.js";
 import { decisionConfidenceSchema } from "../domain/profile.js";
 import {
-  consultationClarifyFollowUpSchema,
   consultationOutcomeTypeSchema,
-  consultationPreflightReadinessArtifactSchema,
-  consultationResearchBriefSchema,
   consultationValidationPostureSchema,
 } from "../domain/run.js";
 import {
@@ -35,10 +21,12 @@ import {
   taskSourceKindSchema,
 } from "../domain/task.js";
 
+import {
+  normalizeConsultationScopePath,
+  resolveConsultationArtifacts,
+} from "./consultation-artifacts.js";
 import { buildVerdictReview, listRecentConsultations } from "./consultations.js";
-import { failureAnalysisSchema } from "./failure-analysis.js";
-import { comparisonReportSchema } from "./finalist-report.js";
-import { hasNonEmptyTextArtifact, pathExists, writeJsonFile } from "./project.js";
+import { writeJsonFile } from "./project.js";
 
 const p3EvidenceCaseKindSchema = z.enum([
   "clarify-needed",
@@ -77,6 +65,7 @@ const p3EvidenceCaseSchema = z.object({
       researchBriefPath: z.string().min(1).optional(),
       failureAnalysisPath: z.string().min(1).optional(),
       winnerSelectionPath: z.string().min(1).optional(),
+      secondOpinionWinnerSelectionPath: z.string().min(1).optional(),
       comparisonJsonPath: z.string().min(1).optional(),
       comparisonMarkdownPath: z.string().min(1).optional(),
     })
@@ -154,6 +143,7 @@ const p3MissingArtifactKindSchema = z.enum([
   "clarify-follow-up",
   "research-brief",
   "winner-selection",
+  "winner-selection-second-opinion",
   "comparison-report",
   "failure-analysis",
 ]);
@@ -191,6 +181,7 @@ const p3InspectionItemSchema = z.object({
     "clarify-follow-up",
     "research-brief",
     "winner-selection",
+    "winner-selection-second-opinion",
     "comparison-json",
     "comparison-markdown",
     "failure-analysis",
@@ -320,24 +311,6 @@ export const p3EvidenceReportSchema = z.object({
 
 export type P3EvidenceReport = z.infer<typeof p3EvidenceReportSchema>;
 
-export function normalizeEvidenceScopePath(projectRoot: string, path: string): string {
-  if (!isAbsolute(path)) {
-    return normalize(path);
-  }
-
-  const relativePath = relative(projectRoot, path);
-  if (
-    relativePath.length === 0 ||
-    relativePath === "." ||
-    relativePath.startsWith("..") ||
-    isAbsolute(relativePath)
-  ) {
-    return path;
-  }
-
-  return relativePath;
-}
-
 export async function collectP3Evidence(cwd: string): Promise<P3EvidenceReport> {
   const projectRoot = resolveProjectRoot(cwd);
   const manifests = await listRecentConsultations(projectRoot, Number.MAX_SAFE_INTEGER);
@@ -356,19 +329,19 @@ export async function collectP3Evidence(cwd: string): Promise<P3EvidenceReport> 
 
   for (const manifest of manifests) {
     const normalizedTargetArtifactPath = manifest.taskPacket.targetArtifactPath
-      ? normalizeEvidenceScopePath(projectRoot, manifest.taskPacket.targetArtifactPath)
+      ? normalizeConsultationScopePath(projectRoot, manifest.taskPacket.targetArtifactPath)
       : undefined;
-    const normalizedTaskSourcePath = normalizeEvidenceScopePath(
+    const normalizedTaskSourcePath = normalizeConsultationScopePath(
       projectRoot,
       manifest.taskPacket.originPath ?? manifest.taskPacket.sourcePath,
     );
     const artifacts = await resolveConsultationArtifacts(projectRoot, manifest.id);
-    const preflightReadiness = await readPreflightReadiness(artifacts.preflightReadinessPath);
-    const clarifyFollowUp = await readClarifyFollowUp(artifacts.clarifyFollowUpPath);
-    const researchBrief = await readResearchBrief(artifacts.researchBriefPath);
-    const comparisonReport = await readComparisonReport(artifacts.comparisonJsonPath);
-    const winnerSelection = await readWinnerSelection(artifacts.winnerSelectionPath);
-    const failureAnalysis = await readFailureAnalysis(artifacts.failureAnalysisPath);
+    const preflightReadiness = artifacts.preflightReadiness;
+    const clarifyFollowUp = artifacts.clarifyFollowUp;
+    const researchBrief = artifacts.researchBrief;
+    const comparisonReport = artifacts.comparisonReport;
+    const winnerSelection = artifacts.winnerSelection;
+    const failureAnalysis = artifacts.failureAnalysis;
     if (preflightReadiness) {
       artifactCoverage.consultationsWithPreflightReadiness += 1;
     }
@@ -378,7 +351,7 @@ export async function collectP3Evidence(cwd: string): Promise<P3EvidenceReport> 
     if (clarifyFollowUp) {
       artifactCoverage.consultationsWithClarifyFollowUp += 1;
     }
-    if (comparisonReport || artifacts.comparisonMarkdownPath) {
+    if (artifacts.comparisonReportAvailable) {
       artifactCoverage.consultationsWithComparisonReport += 1;
     }
     if (winnerSelection) {
@@ -422,6 +395,11 @@ export async function collectP3Evidence(cwd: string): Promise<P3EvidenceReport> 
         ...(researchBrief ? { researchBriefPath: artifacts.researchBriefPath } : {}),
         ...(failureAnalysis ? { failureAnalysisPath: artifacts.failureAnalysisPath } : {}),
         ...(winnerSelection ? { winnerSelectionPath: artifacts.winnerSelectionPath } : {}),
+        ...(artifacts.secondOpinionWinnerSelection
+          ? {
+              secondOpinionWinnerSelectionPath: artifacts.secondOpinionWinnerSelectionPath,
+            }
+          : {}),
         ...(comparisonReport ? { comparisonJsonPath: artifacts.comparisonJsonPath } : {}),
         ...(artifacts.comparisonMarkdownPath
           ? { comparisonMarkdownPath: artifacts.comparisonMarkdownPath }
@@ -1748,6 +1726,16 @@ function buildFinalistInspectionQueue(
             : undefined,
       },
       {
+        artifactKind: "winner-selection-second-opinion",
+        path: (item) => item.artifactPaths.secondOpinionWinnerSelectionPath,
+        reason: (item) =>
+          item.manualReviewRecommended
+            ? "Inspect the advisory second-opinion judge before deciding whether the finalist pressure warrants escalation."
+            : item.kind === "low-confidence-recommendation"
+              ? "Inspect the advisory second-opinion judge for the low-confidence finalist decision."
+              : undefined,
+      },
+      {
         artifactKind: "comparison-json",
         path: (item) => item.artifactPaths.comparisonJsonPath,
         reason: () => "Inspect finalist evidence and outcome comparisons in machine-readable form.",
@@ -1999,6 +1987,12 @@ function getFinalistMissingArtifacts(
   if (item.kind === "judge-abstain" && !item.artifactPaths.failureAnalysisPath) {
     missingArtifacts.push("failure-analysis");
   }
+  if (
+    item.kind === "low-confidence-recommendation" &&
+    !item.artifactPaths.secondOpinionWinnerSelectionPath
+  ) {
+    missingArtifacts.push("winner-selection-second-opinion");
+  }
 
   return missingArtifacts;
 }
@@ -2051,154 +2045,6 @@ function scoreEvidenceCaseKind(kind: z.infer<typeof p3EvidenceCaseKindSchema>): 
       return 2;
     case "judge-abstain":
       return 3;
-  }
-}
-
-async function readPreflightReadiness(
-  path: string | undefined,
-): Promise<z.infer<typeof consultationPreflightReadinessArtifactSchema> | undefined> {
-  if (!path) {
-    return undefined;
-  }
-
-  try {
-    return consultationPreflightReadinessArtifactSchema.parse(
-      JSON.parse(await readFile(path, "utf8")) as unknown,
-    );
-  } catch {
-    return undefined;
-  }
-}
-
-async function resolveConsultationArtifacts(
-  projectRoot: string,
-  runId: string,
-): Promise<{
-  preflightReadinessPath?: string;
-  clarifyFollowUpPath?: string;
-  researchBriefPath?: string;
-  failureAnalysisPath?: string;
-  profileSelectionPath?: string;
-  comparisonJsonPath?: string;
-  comparisonMarkdownPath?: string;
-  winnerSelectionPath?: string;
-  secondOpinionWinnerSelectionPath?: string;
-  crowningRecordPath?: string;
-}> {
-  const [
-    preflightReadinessPath,
-    clarifyFollowUpPath,
-    researchBriefPath,
-    failureAnalysisPath,
-    profileSelectionPath,
-    comparisonJsonPath,
-    comparisonMarkdownPath,
-    winnerSelectionPath,
-    secondOpinionWinnerSelectionPath,
-  ] = await Promise.all([
-    existingPath(getPreflightReadinessPath(projectRoot, runId)),
-    existingPath(getClarifyFollowUpPath(projectRoot, runId)),
-    existingPath(getResearchBriefPath(projectRoot, runId)),
-    existingPath(getFailureAnalysisPath(projectRoot, runId)),
-    existingPath(getProfileSelectionPath(projectRoot, runId)),
-    existingPath(getFinalistComparisonJsonPath(projectRoot, runId)),
-    existingNonEmptyTextPath(getFinalistComparisonMarkdownPath(projectRoot, runId)),
-    existingPath(getWinnerSelectionPath(projectRoot, runId)),
-    existingPath(getSecondOpinionWinnerSelectionPath(projectRoot, runId)),
-  ]);
-
-  return {
-    ...(preflightReadinessPath ? { preflightReadinessPath } : {}),
-    ...(clarifyFollowUpPath ? { clarifyFollowUpPath } : {}),
-    ...(researchBriefPath ? { researchBriefPath } : {}),
-    ...(failureAnalysisPath ? { failureAnalysisPath } : {}),
-    ...(profileSelectionPath ? { profileSelectionPath } : {}),
-    ...(comparisonJsonPath ? { comparisonJsonPath } : {}),
-    ...(comparisonMarkdownPath ? { comparisonMarkdownPath } : {}),
-    ...(winnerSelectionPath ? { winnerSelectionPath } : {}),
-    ...(secondOpinionWinnerSelectionPath ? { secondOpinionWinnerSelectionPath } : {}),
-  };
-}
-
-async function existingPath(path: string): Promise<string | undefined> {
-  return (await pathExists(path)) ? path : undefined;
-}
-
-async function existingNonEmptyTextPath(path: string): Promise<string | undefined> {
-  return (await hasNonEmptyTextArtifact(path)) ? path : undefined;
-}
-
-async function readWinnerSelection(
-  path: string | undefined,
-): Promise<z.infer<typeof agentJudgeResultSchema> | undefined> {
-  if (!path) {
-    return undefined;
-  }
-
-  try {
-    return agentJudgeResultSchema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
-  } catch {
-    return undefined;
-  }
-}
-
-async function readClarifyFollowUp(
-  path: string | undefined,
-): Promise<z.infer<typeof consultationClarifyFollowUpSchema> | undefined> {
-  if (!path) {
-    return undefined;
-  }
-
-  try {
-    return consultationClarifyFollowUpSchema.parse(
-      JSON.parse(await readFile(path, "utf8")) as unknown,
-    );
-  } catch {
-    return undefined;
-  }
-}
-
-async function readResearchBrief(
-  path: string | undefined,
-): Promise<z.infer<typeof consultationResearchBriefSchema> | undefined> {
-  if (!path) {
-    return undefined;
-  }
-
-  try {
-    return consultationResearchBriefSchema.parse(
-      JSON.parse(await readFile(path, "utf8")) as unknown,
-    );
-  } catch {
-    return undefined;
-  }
-}
-
-async function readComparisonReport(
-  path: string | undefined,
-): Promise<z.infer<typeof comparisonReportSchema> | undefined> {
-  if (!path) {
-    return undefined;
-  }
-
-  try {
-    return comparisonReportSchema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
-  } catch {
-    return undefined;
-  }
-}
-
-async function readFailureAnalysis(
-  path: string | undefined,
-): Promise<z.infer<typeof failureAnalysisSchema> | undefined> {
-  if (!path) {
-    return undefined;
-  }
-
-  try {
-    return failureAnalysisSchema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
-  } catch {
-    return undefined;
   }
 }
 
