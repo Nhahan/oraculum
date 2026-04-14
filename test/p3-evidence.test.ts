@@ -924,6 +924,94 @@ describe("P3 evidence collection", () => {
     expect(report.clarifyPressure.promotionSignal.reasons).toEqual([]);
   });
 
+  it("tracks same-kind cross-host clarify trajectories on the same scope", async () => {
+    const cwd = await createInitializedProject();
+
+    await writeManifest(
+      cwd,
+      createManifest("run_clarify_same_kind_1", {
+        createdAt: "2026-04-05T00:00:00.000Z",
+        agent: "codex",
+        taskPacket: {
+          id: "task",
+          title: "Draft weekly evidence note",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/p3-weekly-a.md",
+          artifactKind: "document",
+          targetArtifactPath: "docs/P3_WEEKLY.md",
+        },
+        candidateCount: 0,
+        rounds: [],
+        candidates: [],
+        preflight: {
+          decision: "needs-clarification",
+          confidence: "high",
+          summary: "The audience and required sections are unclear.",
+          researchPosture: "repo-only",
+          clarificationQuestion: "Which audience and required sections should this note target?",
+        },
+        outcome: {
+          type: "needs-clarification",
+          terminal: true,
+          crownable: false,
+          finalistCount: 0,
+          validationPosture: "unknown",
+          verificationLevel: "none",
+          validationGapCount: 0,
+          judgingBasisKind: "unknown",
+        },
+      }),
+    );
+
+    await writeManifest(
+      cwd,
+      createManifest("run_clarify_same_kind_2", {
+        createdAt: "2026-04-06T00:00:00.000Z",
+        agent: "claude-code",
+        taskPacket: {
+          id: "task",
+          title: "Fill weekly evidence note",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/p3-weekly-b.md",
+          artifactKind: "document",
+          targetArtifactPath: "docs/P3_WEEKLY.md",
+        },
+        candidateCount: 0,
+        rounds: [],
+        candidates: [],
+        preflight: {
+          decision: "needs-clarification",
+          confidence: "medium",
+          summary: "The same document contract is still unresolved.",
+          researchPosture: "repo-only",
+          clarificationQuestion: "Which audience and required sections should this note target?",
+        },
+        outcome: {
+          type: "needs-clarification",
+          terminal: true,
+          crownable: false,
+          finalistCount: 0,
+          validationPosture: "unknown",
+          verificationLevel: "none",
+          validationGapCount: 0,
+          judgingBasisKind: "unknown",
+        },
+      }),
+    );
+
+    const report = await collectP3Evidence(cwd);
+
+    expect(report.clarifyPressure.pressureTrajectories).toEqual([
+      expect.objectContaining({
+        keyType: "target-artifact",
+        key: "docs/P3_WEEKLY.md",
+        occurrenceCount: 2,
+        agents: ["claude-code", "codex"],
+        distinctKinds: ["clarify-needed"],
+      }),
+    ]);
+  });
+
   it("tracks repeated finalist strategy sets across consultations", async () => {
     const cwd = await createInitializedProject();
 

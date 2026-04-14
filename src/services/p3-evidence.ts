@@ -170,7 +170,7 @@ const p3PressureTrajectorySchema = z.object({
   latestOpenedAt: z.string().min(1),
   daySpanDays: z.number().int().min(0),
   agents: z.array(adapterSchema).min(1),
-  distinctKinds: z.array(p3EvidenceCaseKindSchema).min(2),
+  distinctKinds: z.array(p3EvidenceCaseKindSchema).min(1),
   containsEscalation: z.boolean(),
   runs: z.array(p3PressureTrajectoryRunSchema).min(2),
 });
