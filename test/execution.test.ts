@@ -12,6 +12,7 @@ import {
   getCandidateRepairAttemptResultPath,
   getCandidateVerdictPath,
   getCandidateWitnessPath,
+  getFailureAnalysisPath,
   getFinalistComparisonJsonPath,
   getFinalistComparisonMarkdownPath,
   getLatestExportableRunStatePath,
@@ -1418,6 +1419,18 @@ if (out) {
     await expect(
       readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
     ).resolves.not.toContain("fallback-policy");
+    const failureAnalysis = JSON.parse(
+      await readFile(getFailureAnalysisPath(cwd, planned.id), "utf8"),
+    ) as {
+      trigger: string;
+      summary: string;
+      recommendedAction: string;
+      candidates: Array<{ candidateId: string }>;
+    };
+    expect(failureAnalysis.trigger).toBe("judge-abstained");
+    expect(failureAnalysis.summary).toContain("judge abstained");
+    expect(failureAnalysis.recommendedAction).toBe("investigate-root-cause-before-rerun");
+    expect(failureAnalysis.candidates[0]?.candidateId).toBe("cand-01");
   });
 
   it("runs a bounded repair loop for repairable verdicts before promoting a finalist", async () => {

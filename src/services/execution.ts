@@ -41,6 +41,7 @@ import {
 import { materializedTaskPacketSchema } from "../domain/task.js";
 
 import { captureManagedProjectSnapshot } from "./base-snapshots.js";
+import { writeFailureAnalysis } from "./failure-analysis.js";
 import { recommendWinnerWithJudge } from "./finalist-judge.js";
 import { writeFinalistComparisonReport } from "./finalist-report.js";
 import { evaluateCandidateRound } from "./oracles.js";
@@ -435,6 +436,13 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     ...(completedManifest.profileSelection
       ? { consultationProfile: completedManifest.profileSelection }
       : {}),
+  });
+  await writeFailureAnalysis({
+    judgeAbstained: !judgeOutcome.recommendation && !judgeOutcome.fallbackAllowed,
+    manifest: completedManifest,
+    maxRepairAttemptsPerRound: projectConfig.repair.maxAttemptsPerRound,
+    projectRoot,
+    verdictsByCandidate,
   });
   await writeLatestRunState(projectRoot, completedManifest.id);
   if (completedManifest.recommendedWinner) {

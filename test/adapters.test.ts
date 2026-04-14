@@ -180,7 +180,7 @@ process.stdout.write(JSON.stringify({ event: "started", argv: process.argv.slice
 if (out) {
   fs.writeFileSync(
     out,
-    '{"decision":"select","candidateId":"cand-02","confidence":"medium","summary":"cand-02 preserved the strongest evidence."}',
+    '{"decision":"select","candidateId":"cand-02","confidence":"medium","summary":"cand-02 preserved the strongest evidence.","judgingCriteria":["Leaves the target artifact internally consistent."]}',
     "utf8",
   );
 }
@@ -278,6 +278,9 @@ if (out) {
     expect(result.status).toBe("completed");
     expect(result.recommendation?.candidateId).toBe("cand-02");
     expect(result.recommendation?.confidence).toBe("medium");
+    expect(result.recommendation?.judgingCriteria).toEqual([
+      "Leaves the target artifact internally consistent.",
+    ]);
     await expect(
       readFile(join(logDir, "winner-judge.final-message.txt"), "utf8"),
     ).resolves.toContain('"decision":"select"');
@@ -286,6 +289,9 @@ if (out) {
     );
     await expect(readFile(join(logDir, "winner-judge.stdout.jsonl"), "utf8")).resolves.toContain(
       '"read-only"',
+    );
+    await expect(readFile(join(logDir, "winner-judge.schema.json"), "utf8")).resolves.toContain(
+      '"judgingCriteria"',
     );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Change summary: mode=git-diff, changed=2, created=1, removed=0, modified=1, +14, -3",
@@ -328,12 +334,15 @@ if (out) {
       runId: "run_1",
       projectRoot: root,
       logDir,
-      taskPacket: createTaskPacket(),
+      taskPacket: createTaskPacket({
+        artifactKind: "document",
+        targetArtifactPath: "docs/PRD.md",
+      }),
       consultationProfile: {
         validationProfileId: "frontend",
         confidence: "medium",
         validationSummary: "Frontend validation evidence is strongest.",
-        validationSignals: ["frontend-config", "e2e-runner"],
+        validationSignals: ["frontend-config-evidence", "e2e-runner-evidence"],
         validationGaps: ["No build validation command was selected."],
       },
       finalists: [
@@ -379,16 +388,22 @@ if (out) {
       "Validation evidence:",
     );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "- frontend-config",
+      "- frontend-config-evidence",
     );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "- e2e-runner",
+      "- e2e-runner-evidence",
     );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Validation gaps from the selected posture:",
     );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
       "No build validation command was selected.",
+    );
+    await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "Artifact-aware judging checklist:",
+    );
+    await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
+      '"judgingCriteria":["criterion"]',
     );
   });
 
@@ -499,6 +514,7 @@ process.stdout.write(JSON.stringify({
     candidateId: "cand-01",
     confidence: "medium",
     summary: "cand-01 is the safest finalist.",
+    judgingCriteria: ["Leaves the target artifact internally consistent."],
   },
 }));`,
     );
@@ -552,6 +568,7 @@ process.stdout.write(JSON.stringify({
       candidateId: "cand-01",
       confidence: "medium",
       summary: "cand-01 is the safest finalist.",
+      judgingCriteria: ["Leaves the target artifact internally consistent."],
     });
     await expect(readFile(join(logDir, "winner-judge.stderr.txt"), "utf8")).resolves.toContain(
       '"--permission-mode","plan"',
@@ -560,8 +577,12 @@ process.stdout.write(JSON.stringify({
     expect(stderr).toContain('"--json-schema"');
     const parsedStderr = JSON.parse(stderr) as { schema?: string };
     expect(parsedStderr.schema).toBeTruthy();
-    const parsedSchema = JSON.parse(parsedStderr.schema ?? "{}") as { type?: string };
+    const parsedSchema = JSON.parse(parsedStderr.schema ?? "{}") as {
+      type?: string;
+      oneOf?: Array<{ properties?: Record<string, unknown> }>;
+    };
     expect(parsedSchema.type).toBe("object");
+    expect(parsedSchema.oneOf?.[0]?.properties).toHaveProperty("judgingCriteria");
   });
 
   it("asks Codex to recommend a consultation profile with an output schema", async () => {
@@ -1263,6 +1284,7 @@ process.stdout.write(JSON.stringify({
         ],
         versionNotes: ["Behavior changed in v3.2 compared with the legacy session API."],
         unresolvedConflicts: ["The repo comments still describe the pre-v3.2 refresh flow."],
+        conflictHandling: "manual-review-required",
       },
       source: {
         kind: "research-brief",
@@ -1329,6 +1351,7 @@ process.stdout.write(JSON.stringify({
         "- Summary: Review the official versioned API docs before execution.",
       );
       expect(prompt).toContain("- Confidence: high");
+      expect(prompt).toContain("- Conflict handling: manual-review-required");
       expect(prompt).toContain("Research signal basis:");
       expect(prompt).toContain("- language:javascript");
       expect(prompt).toContain(

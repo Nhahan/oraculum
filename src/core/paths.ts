@@ -246,6 +246,10 @@ export function getResearchBriefPath(projectRoot: string, runId: string): string
   return join(getReportsDir(projectRoot, runId), "research-brief.json");
 }
 
+export function getFailureAnalysisPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "failure-analysis.json");
+}
+
 export function getRunConfigPath(projectRoot: string, runId: string): string {
   return join(getReportsDir(projectRoot, runId), "consultation-config.json");
 }

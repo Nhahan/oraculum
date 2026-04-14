@@ -12,6 +12,7 @@ import {
   getFinalistComparisonMarkdownPath,
   getLatestExportableRunStatePath,
   getLatestRunStatePath,
+  getPreflightReadinessPath,
   getResearchBriefPath,
   getRunManifestPath,
   getRunsDir,
@@ -414,6 +415,92 @@ describe("project scaffold", () => {
     });
 
     expect(parsed.missingCapabilityCount).toBe(2);
+  });
+
+  it("normalizes legacy crown-recommended-survivor next actions to crown-recommended-result", () => {
+    const parsed = savedConsultationStatusSchema.parse({
+      consultationId: "run_1",
+      consultationState: "completed",
+      outcomeType: "recommended-survivor",
+      terminal: true,
+      crownable: true,
+      taskSourceKind: "task-note",
+      taskSourcePath: "/tmp/task.md",
+      researchSignalCount: 0,
+      researchRerunRecommended: false,
+      researchConflictsPresent: false,
+      validationPosture: "sufficient",
+      finalistCount: 1,
+      validationGapsPresent: false,
+      judgingBasisKind: "repo-local-oracle",
+      verificationLevel: "lightweight",
+      researchPosture: "repo-only",
+      nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-survivor"],
+      recommendedCandidateId: "cand-01",
+      validationSignals: [],
+      validationGaps: [],
+      updatedAt: "2026-04-05T00:00:00.000Z",
+    });
+
+    expect(parsed.nextActions).toEqual([
+      "reopen-verdict",
+      "browse-archive",
+      "crown-recommended-result",
+    ]);
+  });
+
+  it("backfills researchConflictHandling from persisted research status signals", () => {
+    const conflicted = savedConsultationStatusSchema.parse({
+      consultationId: "run_1",
+      consultationState: "completed",
+      outcomeType: "external-research-required",
+      terminal: true,
+      crownable: false,
+      taskSourceKind: "task-note",
+      taskSourcePath: "/tmp/task.md",
+      researchSignalCount: 0,
+      researchRerunRecommended: true,
+      researchConflictsPresent: true,
+      validationPosture: "validation-gaps",
+      finalistCount: 0,
+      validationGapsPresent: false,
+      judgingBasisKind: "missing-capability",
+      verificationLevel: "none",
+      researchPosture: "external-research-required",
+      nextActions: ["gather-external-research-and-rerun"],
+      validationSignals: [],
+      validationGaps: [],
+      updatedAt: "2026-04-05T00:00:00.000Z",
+    });
+
+    const current = savedConsultationStatusSchema.parse({
+      consultationId: "run_2",
+      consultationState: "completed",
+      outcomeType: "recommended-survivor",
+      terminal: true,
+      crownable: true,
+      taskSourceKind: "research-brief",
+      taskSourcePath: "/tmp/research-brief.json",
+      researchSignalCount: 1,
+      researchSignalFingerprint: "fingerprint",
+      researchRerunRecommended: false,
+      researchConflictsPresent: false,
+      validationPosture: "sufficient",
+      finalistCount: 1,
+      validationGapsPresent: false,
+      judgingBasisKind: "repo-local-oracle",
+      verificationLevel: "lightweight",
+      researchPosture: "repo-plus-external-docs",
+      nextActions: ["reopen-verdict", "crown-recommended-result"],
+      recommendedCandidateId: "cand-01",
+      validationSignals: [],
+      validationGaps: [],
+      updatedAt: "2026-04-05T00:00:00.000Z",
+    });
+
+    expect(conflicted.researchConflictHandling).toBe("manual-review-required");
+    expect(conflicted.researchBasisStatus).toBe("current");
+    expect(current.researchConflictHandling).toBe("accepted");
   });
 
   it("rejects outcome payloads that omit both legacy and validation gap counts", () => {
@@ -2184,6 +2271,7 @@ if (out) {
     expect(researchBrief.claims).toEqual([]);
     expect(researchBrief.versionNotes).toEqual([]);
     expect(researchBrief.unresolvedConflicts).toEqual([]);
+    expect(researchBrief.conflictHandling).toBe("accepted");
     expect(researchBrief.signalSummary.length).toBeGreaterThan(0);
     expect(researchBrief.signalFingerprint).toBe(
       deriveResearchSignalFingerprint(researchBrief.signalSummary),
@@ -2241,6 +2329,7 @@ if (out) {
         question:
           "What does the official API documentation say about the current versioned behavior?",
         summary: "Review the official versioned API docs before execution.",
+        conflictHandling: "accepted",
         signalSummary: ["Detected explicit lint and test scripts."],
         signalFingerprint: deriveResearchSignalFingerprint([
           "Detected explicit lint and test scripts.",
@@ -2302,6 +2391,33 @@ if (out) {
     );
   });
 
+  it("rejects persisted research briefs whose conflict handling disagrees with unresolved conflicts", () => {
+    expect(() =>
+      consultationResearchBriefSchema.parse({
+        decision: "external-research-required",
+        question: "What does the official API documentation say?",
+        confidence: "medium",
+        researchPosture: "repo-plus-external-docs",
+        summary: "Review the official versioned API docs before execution.",
+        task: {
+          id: "task",
+          title: "Task",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/task.md",
+        },
+        sources: [],
+        claims: [],
+        versionNotes: [],
+        unresolvedConflicts: ["The repo comments still describe the pre-v3.2 refresh flow."],
+        conflictHandling: "accepted",
+        notes: [],
+        signalSummary: [],
+      }),
+    ).toThrow(
+      "conflictHandling must match unresolvedConflicts: use manual-review-required when conflicts exist, otherwise accepted.",
+    );
+  });
+
   it("records research basis drift when a persisted research brief carries a stale fingerprint", async () => {
     const cwd = await createInitializedProject();
     await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
@@ -2342,6 +2458,16 @@ if (out) {
 
     expect(manifest.preflight?.decision).toBe("proceed");
     expect(manifest.preflight?.researchBasisDrift).toBe(true);
+    const readiness = JSON.parse(
+      await readFile(getPreflightReadinessPath(cwd, manifest.id), "utf8"),
+    ) as {
+      researchBasis?: {
+        status?: string;
+        refreshAction?: string;
+      };
+    };
+    expect(readiness.researchBasis?.status).toBe("stale");
+    expect(readiness.researchBasis?.refreshAction).toBe("refresh-before-rerun");
   });
 
   it("preserves the original task provenance when a reused research brief still needs external research", async () => {

@@ -150,7 +150,7 @@ export async function runVerdictTool(input: VerdictToolRequest): Promise<Verdict
     mode: "verdict",
     consultation: manifest,
     status: buildSavedConsultationStatus(manifest),
-    review: buildVerdictReview(manifest, artifacts),
+    review: await buildVerdictReview(manifest, artifacts),
     summary: await renderConsultationSummary(manifest, request.cwd, {
       surface: "chat-native",
     }),

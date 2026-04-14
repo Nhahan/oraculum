@@ -123,6 +123,7 @@ function materializeResearchBriefTaskPacket(
       claims: researchBrief.claims,
       versionNotes: researchBrief.versionNotes,
       unresolvedConflicts: researchBrief.unresolvedConflicts,
+      conflictHandling: researchBrief.conflictHandling,
     },
     nonGoals: [],
     acceptanceCriteria: [],

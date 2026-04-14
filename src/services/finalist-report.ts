@@ -26,6 +26,8 @@ import {
   runRecommendationSchema,
 } from "../domain/run.js";
 import {
+  deriveResearchBasisStatus,
+  deriveResearchConflictHandling,
   describeRecommendedTaskResultLabel,
   type TaskPacketSummary,
   taskPacketSummarySchema,
@@ -49,7 +51,7 @@ interface WriteFinalistComparisonReportOptions {
   managedTreeRules?: ManagedTreeRules;
 }
 
-const comparisonReportSchema = z.object({
+export const comparisonReportSchema = z.object({
   runId: z.string().min(1),
   generatedAt: z.string().min(1),
   agent: z.string().min(1),
@@ -62,6 +64,8 @@ const comparisonReportSchema = z.object({
   validationSummary: z.string().min(1).optional(),
   validationSignals: z.array(z.string().min(1)).default([]),
   validationGaps: z.array(z.string().min(1)).default([]),
+  researchBasisStatus: z.enum(["current", "stale", "unknown"]).default("unknown"),
+  researchConflictHandling: z.enum(["accepted", "manual-review-required"]).optional(),
   researchBasisDrift: z.boolean().optional(),
   researchRerunRecommended: z.boolean(),
   researchRerunInputPath: z.string().min(1).optional(),
@@ -123,6 +127,17 @@ export async function writeFinalistComparisonReport(
       : {}),
     validationSignals: getValidationSignals(options.consultationProfile),
     validationGaps: getValidationGaps(options.consultationProfile),
+    researchBasisStatus: deriveResearchBasisStatus({
+      researchContext: options.taskPacket.researchContext,
+      researchBasisDrift: options.preflight?.researchBasisDrift,
+    }),
+    ...(options.taskPacket.researchContext
+      ? {
+          researchConflictHandling:
+            options.taskPacket.researchContext.conflictHandling ??
+            deriveResearchConflictHandling(options.taskPacket.researchContext.unresolvedConflicts),
+        }
+      : {}),
     ...(options.preflight?.researchBasisDrift !== undefined
       ? { researchBasisDrift: options.preflight.researchBasisDrift }
       : {}),
@@ -232,9 +247,13 @@ function buildComparisonMarkdown(report: ComparisonReport, projectRoot: string):
     lines.push(`- Research confidence: ${report.task.researchContext.confidence}`);
   }
   if (report.task.researchContext) {
+    lines.push(`- Research basis status: ${report.researchBasisStatus}`);
     lines.push(`- Research signal basis: ${report.task.researchContext.signalSummary.length}`);
     if (report.task.researchContext.signalFingerprint) {
       lines.push(`- Research signal fingerprint: ${report.task.researchContext.signalFingerprint}`);
+    }
+    if (report.researchConflictHandling) {
+      lines.push(`- Research conflict handling: ${report.researchConflictHandling}`);
     }
     lines.push(`- Research sources: ${report.task.researchContext.sources.length}`);
     lines.push(`- Research claims: ${report.task.researchContext.claims.length}`);

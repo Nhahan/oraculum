@@ -1,8 +1,11 @@
 import { readdir, readFile } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
+import type { z } from "zod";
 
+import { agentJudgeResultSchema } from "../adapters/types.js";
 import {
   getExportPlanPath,
+  getFailureAnalysisPath,
   getFinalistComparisonMarkdownPath,
   getPreflightReadinessPath,
   getProfileSelectionPath,
@@ -24,11 +27,19 @@ import {
 } from "../domain/profile.js";
 import {
   buildSavedConsultationStatus,
+  describeConsultationJudgingBasisSummary,
+  describeConsultationOutcomeSummary,
   isPreflightBlockedConsultation,
   type RunManifest,
 } from "../domain/run.js";
-import { describeRecommendedTaskResultLabel, describeTaskResultLabel } from "../domain/task.js";
+import {
+  deriveResearchBasisStatus,
+  deriveResearchConflictHandling,
+  describeRecommendedTaskResultLabel,
+  describeTaskResultLabel,
+} from "../domain/task.js";
 
+import { comparisonReportSchema } from "./finalist-report.js";
 import { pathExists } from "./project.js";
 import { parseRunManifestArtifact } from "./run-manifest-artifact.js";
 
@@ -116,6 +127,18 @@ export async function renderConsultationSummary(
     `Candidates: ${manifest.candidateCount}`,
     `Status: ${manifest.status}`,
     `Outcome: ${status.outcomeType}`,
+    `Outcome detail: ${describeConsultationOutcomeSummary({
+      outcomeType: status.outcomeType,
+      ...(manifest.taskPacket.artifactKind
+        ? { taskArtifactKind: manifest.taskPacket.artifactKind }
+        : {}),
+      ...(manifest.taskPacket.targetArtifactPath
+        ? {
+            targetArtifactPath: toDisplayPath(projectRoot, manifest.taskPacket.targetArtifactPath),
+          }
+        : {}),
+    })}`,
+    `Judging basis: ${describeConsultationJudgingBasisSummary(status.judgingBasisKind)}`,
   );
 
   if (status.validationPosture !== "unknown") {
@@ -128,8 +151,12 @@ export async function renderConsultationSummary(
   if (status.researchSignalFingerprint) {
     lines.push(`Research signal fingerprint: ${status.researchSignalFingerprint}`);
   }
+  lines.push(`Research basis status: ${status.researchBasisStatus}`);
   if (status.researchBasisDrift !== undefined) {
     lines.push(`Research basis drift: ${status.researchBasisDrift ? "detected" : "not detected"}`);
+  }
+  if (status.researchConflictHandling) {
+    lines.push(`Research conflict handling: ${status.researchConflictHandling}`);
   }
   const recommendedResultLabel = describeTaskResultLabel({
     ...(manifest.taskPacket.artifactKind ? { artifactKind: manifest.taskPacket.artifactKind } : {}),
@@ -206,12 +233,14 @@ export async function renderConsultationSummary(
 
   lines.push("Entry paths:");
   const comparisonReportPath = getFinalistComparisonMarkdownPath(projectRoot, manifest.id);
+  const failureAnalysisPath = getFailureAnalysisPath(projectRoot, manifest.id);
   const preflightReadinessPath = getPreflightReadinessPath(projectRoot, manifest.id);
   const researchBriefPath = getResearchBriefPath(projectRoot, manifest.id);
   const profileSelectionPath = getProfileSelectionPath(projectRoot, manifest.id);
   const winnerSelectionPath = getWinnerSelectionPath(projectRoot, manifest.id);
   const preflightReadinessExists = await pathExists(preflightReadinessPath);
   const researchBriefExists = await pathExists(researchBriefPath);
+  const failureAnalysisExists = await pathExists(failureAnalysisPath);
   const profileSelectionExists = await pathExists(profileSelectionPath);
   const comparisonReportExists = await pathExists(comparisonReportPath);
   const winnerSelectionExists = await pathExists(winnerSelectionPath);
@@ -227,6 +256,11 @@ export async function renderConsultationSummary(
     researchBriefExists
       ? `- research brief: ${toDisplayPath(projectRoot, researchBriefPath)}`
       : "- research brief: not available",
+  );
+  lines.push(
+    failureAnalysisExists
+      ? `- failure analysis: ${toDisplayPath(projectRoot, failureAnalysisPath)}`
+      : "- failure analysis: not available",
   );
   lines.push(
     profileSelectionExists
@@ -284,6 +318,10 @@ export async function renderConsultationSummary(
   });
   if (hasCrowningRecord) {
     lines.push(`- reopen the crowning record: ${toDisplayPath(projectRoot, exportPlanPath)}`);
+  } else if (failureAnalysisExists) {
+    lines.push(
+      `- investigate the persisted failure analysis: ${toDisplayPath(projectRoot, failureAnalysisPath)}.`,
+    );
   } else if (status.outcomeType === "needs-clarification") {
     lines.push("- answer the preflight clarification question, then rerun `orc consult`.");
   } else if (status.outcomeType === "external-research-required") {
@@ -356,19 +394,22 @@ function resolveResearchBriefInputPath(options: {
   return undefined;
 }
 
-export function buildVerdictReview(
+export async function buildVerdictReview(
   manifest: RunManifest,
   artifacts: {
     preflightReadinessPath?: string;
     researchBriefPath?: string;
+    failureAnalysisPath?: string;
     profileSelectionPath?: string;
     comparisonJsonPath?: string;
     comparisonMarkdownPath?: string;
     winnerSelectionPath?: string;
     crowningRecordPath?: string;
   },
-): VerdictReview {
+): Promise<VerdictReview> {
   const status = buildSavedConsultationStatus(manifest);
+  const comparisonReport = await readComparisonReport(artifacts.comparisonJsonPath);
+  const winnerSelection = await readWinnerSelectionResult(artifacts.winnerSelectionPath);
   const researchRerunInputPath =
     manifest.taskPacket.sourceKind === "research-brief"
       ? manifest.taskPacket.sourcePath
@@ -391,12 +432,60 @@ export function buildVerdictReview(
     status.recommendedCandidateId
       ? [status.recommendedCandidateId]
       : finalistIds;
+  const validationSummary = getValidationSummary(manifest.profileSelection);
+  const validationSignals = getValidationSignals(manifest.profileSelection);
+  const validationGaps = getValidationGaps(manifest.profileSelection);
+  const strongestEvidence = buildReviewStrongestEvidence({
+    comparisonReport,
+    manifest,
+    reviewFinalistIds,
+    status,
+    validationSignals,
+    validationSummary,
+  });
+  const recommendationSummary =
+    status.outcomeType === "recommended-survivor"
+      ? (comparisonReport?.whyThisWon ?? manifest.recommendedWinner?.summary)
+      : undefined;
+  const judgingCriteria = winnerSelection?.recommendation?.judgingCriteria;
+  const recommendationAbsenceReason = buildRecommendationAbsenceReason({
+    status,
+    validationGaps,
+    winnerSelection,
+  });
+  const weakestEvidence = buildReviewWeakestEvidence({
+    manifest,
+    recommendationAbsenceReason,
+    status,
+    validationGaps,
+  });
+  const manualCrowningCandidateIds =
+    status.outcomeType === "finalists-without-recommendation" ? reviewFinalistIds : [];
+  const manualReviewRecommended =
+    status.outcomeType === "finalists-without-recommendation" ||
+    status.outcomeType === "completed-with-validation-gaps" ||
+    status.outcomeType === "needs-clarification" ||
+    status.outcomeType === "external-research-required";
+  const manualCrowningReason =
+    manualCrowningCandidateIds.length > 0
+      ? "Finalists survived without a recorded recommendation; manual crowning requires operator judgment."
+      : undefined;
 
   return {
     outcomeType: status.outcomeType,
+    outcomeSummary: describeConsultationOutcomeSummary({
+      outcomeType: status.outcomeType,
+      ...(manifest.taskPacket.artifactKind
+        ? { taskArtifactKind: manifest.taskPacket.artifactKind }
+        : {}),
+      ...(manifest.taskPacket.targetArtifactPath
+        ? { targetArtifactPath: manifest.taskPacket.targetArtifactPath }
+        : {}),
+    }),
     verificationLevel: status.verificationLevel,
     validationPosture: status.validationPosture,
     judgingBasisKind: status.judgingBasisKind,
+    judgingBasisSummary: describeConsultationJudgingBasisSummary(status.judgingBasisKind),
     taskSourceKind: manifest.taskPacket.sourceKind,
     taskSourcePath: manifest.taskPacket.sourcePath,
     ...(manifest.taskPacket.artifactKind
@@ -410,6 +499,17 @@ export function buildVerdictReview(
       : {}),
     ...(manifest.taskPacket.researchContext?.confidence
       ? { researchConfidence: manifest.taskPacket.researchContext.confidence }
+      : {}),
+    researchBasisStatus: deriveResearchBasisStatus({
+      researchContext: manifest.taskPacket.researchContext,
+      researchBasisDrift: manifest.preflight?.researchBasisDrift,
+    }),
+    ...(manifest.taskPacket.researchContext
+      ? {
+          researchConflictHandling:
+            manifest.taskPacket.researchContext.conflictHandling ??
+            deriveResearchConflictHandling(manifest.taskPacket.researchContext.unresolvedConflicts),
+        }
       : {}),
     researchSignalCount: manifest.taskPacket.researchContext?.signalSummary.length ?? 0,
     ...(manifest.taskPacket.researchContext?.signalFingerprint
@@ -436,14 +536,20 @@ export function buildVerdictReview(
       ? { recommendedCandidateId: status.recommendedCandidateId }
       : {}),
     finalistIds: reviewFinalistIds,
+    strongestEvidence,
+    weakestEvidence,
+    ...(judgingCriteria?.length ? { judgingCriteria } : {}),
+    ...(recommendationSummary ? { recommendationSummary } : {}),
+    ...(recommendationAbsenceReason ? { recommendationAbsenceReason } : {}),
+    manualReviewRecommended,
+    manualCrowningCandidateIds,
+    ...(manualCrowningReason ? { manualCrowningReason } : {}),
     ...(getValidationProfileId(manifest.profileSelection)
       ? { validationProfileId: getValidationProfileId(manifest.profileSelection) }
       : {}),
-    ...(getValidationSummary(manifest.profileSelection)
-      ? { validationSummary: getValidationSummary(manifest.profileSelection) }
-      : {}),
-    validationSignals: getValidationSignals(manifest.profileSelection),
-    validationGaps: getValidationGaps(manifest.profileSelection),
+    ...(validationSummary ? { validationSummary } : {}),
+    validationSignals,
+    validationGaps,
     ...(manifest.preflight?.decision ? { preflightDecision: manifest.preflight.decision } : {}),
     researchPosture: status.researchPosture,
     ...(manifest.preflight?.clarificationQuestion
@@ -455,6 +561,7 @@ export function buildVerdictReview(
     artifactAvailability: {
       preflightReadiness: Boolean(artifacts.preflightReadinessPath),
       researchBrief: Boolean(artifacts.researchBriefPath),
+      failureAnalysis: Boolean(artifacts.failureAnalysisPath),
       profileSelection: Boolean(artifacts.profileSelectionPath),
       comparisonReport: Boolean(artifacts.comparisonJsonPath || artifacts.comparisonMarkdownPath),
       winnerSelection: Boolean(artifacts.winnerSelectionPath),
@@ -462,6 +569,147 @@ export function buildVerdictReview(
     },
     candidateStateCounts,
   };
+}
+
+function buildReviewStrongestEvidence(options: {
+  comparisonReport: z.infer<typeof comparisonReportSchema> | undefined;
+  manifest: RunManifest;
+  reviewFinalistIds: string[];
+  status: ReturnType<typeof buildSavedConsultationStatus>;
+  validationSignals: string[];
+  validationSummary: string | undefined;
+}): string[] {
+  const evidence: string[] = [];
+  const add = (item: string | undefined) => {
+    if (item && !evidence.includes(item)) {
+      evidence.push(item);
+    }
+  };
+
+  add(options.validationSummary);
+  for (const signal of options.validationSignals.slice(0, 3)) {
+    add(`Validation evidence: ${signal}`);
+  }
+  if (options.manifest.taskPacket.researchContext?.summary) {
+    add(options.manifest.taskPacket.researchContext.summary);
+  }
+  if (options.status.outcomeType === "recommended-survivor") {
+    add(options.comparisonReport?.whyThisWon);
+    add(options.manifest.recommendedWinner?.summary);
+    const recommendedFinalist = options.comparisonReport?.finalists.find(
+      (finalist) => finalist.candidateId === options.status.recommendedCandidateId,
+    );
+    add(recommendedFinalist?.summary);
+  } else if (
+    options.status.outcomeType === "finalists-without-recommendation" &&
+    options.reviewFinalistIds.length > 0
+  ) {
+    add(
+      `${options.reviewFinalistIds.length} finalist${options.reviewFinalistIds.length === 1 ? "" : "s"} survived the oracle rounds.`,
+    );
+  }
+
+  return evidence;
+}
+
+function buildReviewWeakestEvidence(options: {
+  manifest: RunManifest;
+  recommendationAbsenceReason: string | undefined;
+  status: ReturnType<typeof buildSavedConsultationStatus>;
+  validationGaps: string[];
+}): string[] {
+  const evidence: string[] = [];
+  const add = (item: string | undefined) => {
+    if (item && !evidence.includes(item)) {
+      evidence.push(item);
+    }
+  };
+
+  for (const gap of options.validationGaps) {
+    add(gap);
+  }
+  if (options.manifest.preflight?.researchBasisDrift) {
+    add("Persisted research evidence no longer matches the current repository signal basis.");
+  }
+  if ((options.manifest.taskPacket.researchContext?.unresolvedConflicts.length ?? 0) > 0) {
+    add("External research contains unresolved conflicts.");
+  }
+  if (options.status.outcomeType === "no-survivors") {
+    add("No finalists survived the oracle rounds.");
+  }
+  if (
+    options.status.outcomeType === "completed-with-validation-gaps" &&
+    options.validationGaps.length === 0
+  ) {
+    add("Execution completed with unresolved validation gaps.");
+  }
+  add(options.recommendationAbsenceReason);
+
+  return evidence;
+}
+
+function buildRecommendationAbsenceReason(options: {
+  status: ReturnType<typeof buildSavedConsultationStatus>;
+  validationGaps: string[];
+  winnerSelection: z.infer<typeof agentJudgeResultSchema> | undefined;
+}): string | undefined {
+  switch (options.status.outcomeType) {
+    case "recommended-survivor":
+      return undefined;
+    case "finalists-without-recommendation":
+      if (options.winnerSelection?.recommendation?.decision === "abstain") {
+        return options.winnerSelection.recommendation.summary;
+      }
+      return "Finalists survived, but no recommendation was recorded.";
+    case "completed-with-validation-gaps":
+      return options.validationGaps.length > 0
+        ? `Validation gaps remain: ${options.validationGaps.join("; ")}.`
+        : "Execution completed with unresolved validation gaps.";
+    case "no-survivors":
+      return "No finalists survived the oracle rounds.";
+    case "needs-clarification":
+      return "Execution stopped because operator clarification is still required.";
+    case "external-research-required":
+      return "Execution stopped because bounded external research is still required.";
+    case "abstained-before-execution":
+      return "Execution was declined before candidate generation.";
+    case "pending-execution":
+      return "Candidate execution has not started yet.";
+    case "running":
+      return "Candidate execution is still in progress.";
+  }
+}
+
+async function readComparisonReport(
+  comparisonJsonPath: string | undefined,
+): Promise<z.infer<typeof comparisonReportSchema> | undefined> {
+  if (!comparisonJsonPath) {
+    return undefined;
+  }
+
+  try {
+    return comparisonReportSchema.parse(
+      JSON.parse(await readFile(comparisonJsonPath, "utf8")) as unknown,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+async function readWinnerSelectionResult(
+  winnerSelectionPath: string | undefined,
+): Promise<z.infer<typeof agentJudgeResultSchema> | undefined> {
+  if (!winnerSelectionPath) {
+    return undefined;
+  }
+
+  try {
+    return agentJudgeResultSchema.parse(
+      JSON.parse(await readFile(winnerSelectionPath, "utf8")) as unknown,
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 export function renderConsultationArchive(

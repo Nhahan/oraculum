@@ -64,6 +64,7 @@ describe("finalist comparison reports", () => {
           ],
           versionNotes: ["Behavior changed in v3.2 compared with the legacy session API."],
           unresolvedConflicts: ["The repo comments still describe the pre-v3.2 refresh flow."],
+          conflictHandling: "manual-review-required",
         },
         originKind: "task-note",
         originPath: join(projectRoot, "task.md"),
@@ -93,8 +94,8 @@ describe("finalist comparison reports", () => {
         oracleIds: ["lint-fast", "full-suite-deep"],
         missingCapabilities: [],
         validationGaps: [],
-        signals: ["intent:library"],
-        validationSignals: ["intent:library"],
+        signals: ["build-system:package-export-metadata"],
+        validationSignals: ["build-system:package-export-metadata"],
       },
       candidates: [
         {
@@ -198,6 +199,8 @@ describe("finalist comparison reports", () => {
       validationSummary?: string;
       validationSignals: string[];
       validationGaps: string[];
+      researchBasisStatus: string;
+      researchConflictHandling?: string;
       researchBasisDrift?: boolean;
       researchRerunRecommended: boolean;
       researchRerunInputPath?: string;
@@ -215,8 +218,10 @@ describe("finalist comparison reports", () => {
     expect(comparisonJson.task.researchContext).toBeTruthy();
     expect(comparisonJson.validationProfileId).toBe("library");
     expect(comparisonJson.validationSummary).toBe("Package export evidence is strongest.");
-    expect(comparisonJson.validationSignals).toEqual(["intent:library"]);
+    expect(comparisonJson.validationSignals).toEqual(["build-system:package-export-metadata"]);
     expect(comparisonJson.validationGaps).toEqual([]);
+    expect(comparisonJson.researchBasisStatus).toBe("stale");
+    expect(comparisonJson.researchConflictHandling).toBe("manual-review-required");
     expect(comparisonJson.researchBasisDrift).toBe(true);
     expect(comparisonJson.researchRerunRecommended).toBe(true);
     expect(comparisonJson.researchRerunInputPath).toBeUndefined();
@@ -234,6 +239,7 @@ describe("finalist comparison reports", () => {
       "- Research summary: Review the official versioned API docs before execution.",
     );
     expect(markdown).toContain("- Research confidence: medium");
+    expect(markdown).toContain("- Research basis status: stale");
     expect(markdown).toContain("- Research signal basis: 1");
     expect(markdown).toContain(
       `- Research signal fingerprint: ${deriveResearchSignalFingerprint(["language:javascript"])}`,
@@ -242,11 +248,12 @@ describe("finalist comparison reports", () => {
     expect(markdown).toContain("- Research claims: 1");
     expect(markdown).toContain("- Research version notes: 1");
     expect(markdown).toContain("- Research conflicts: 1");
+    expect(markdown).toContain("- Research conflict handling: manual-review-required");
     expect(markdown).toContain("- Research basis drift: detected");
     expect(markdown).toContain("- Task origin: task-note (task.md)");
     expect(markdown).toContain("## Consultation Validation Posture");
     expect(markdown).toContain("- Validation posture: library");
-    expect(markdown).toContain("- Validation evidence: intent:library");
+    expect(markdown).toContain("- Validation evidence: build-system:package-export-metadata");
     expect(markdown).toContain("- Why this won: cand-01 best matches the task intent.");
     expect(markdown).toContain("Repair attempts: 1 (impact)");
     expect(markdown).toContain("Review the session restore API surface.");
@@ -345,6 +352,7 @@ describe("finalist comparison reports", () => {
           claims: [],
           versionNotes: [],
           unresolvedConflicts: [],
+          conflictHandling: "accepted",
         },
       },
       preflight: {

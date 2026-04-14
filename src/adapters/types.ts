@@ -114,6 +114,7 @@ export const agentJudgeRecommendationSchema = z.preprocess(
       candidateId: z.string().min(1).optional(),
       confidence: decisionConfidenceSchema,
       summary: z.string().min(1),
+      judgingCriteria: z.array(z.string().min(1)).min(1).max(5).optional(),
     })
     .superRefine((value, context) => {
       if (value.decision === "select" && !value.candidateId) {

@@ -387,6 +387,16 @@ function extractJsonObject(output: string): Record<string, unknown> | undefined 
 }
 
 function buildWinnerRecommendationSchema(): Record<string, unknown> {
+  const judgingCriteriaProperty = {
+    type: "array",
+    items: {
+      type: "string",
+      minLength: 1,
+    },
+    minItems: 1,
+    maxItems: 5,
+  };
+
   return {
     type: "object",
     oneOf: [
@@ -401,6 +411,7 @@ function buildWinnerRecommendationSchema(): Record<string, unknown> {
             enum: ["low", "medium", "high"],
           },
           summary: { type: "string", minLength: 1 },
+          judgingCriteria: judgingCriteriaProperty,
         },
         required: ["decision", "candidateId", "confidence", "summary"],
       },
@@ -414,6 +425,7 @@ function buildWinnerRecommendationSchema(): Record<string, unknown> {
             enum: ["low", "medium", "high"],
           },
           summary: { type: "string", minLength: 1 },
+          judgingCriteria: judgingCriteriaProperty,
         },
         required: ["decision", "confidence", "summary"],
       },

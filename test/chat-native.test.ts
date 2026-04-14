@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { APP_VERSION } from "../src/core/constants.js";
 import {
   getExportPlanPath,
+  getFailureAnalysisPath,
   getFinalistComparisonMarkdownPath,
   getPreflightReadinessPath,
   getResearchBriefPath,
@@ -287,6 +288,7 @@ describe("chat-native MCP surface", () => {
     await writeFile(getRunConfigPath(projectRoot, consultationId), "{}\n", "utf8");
     await writeFile(getPreflightReadinessPath(projectRoot, consultationId), "{}\n", "utf8");
     await writeFile(getResearchBriefPath(projectRoot, consultationId), "{}\n", "utf8");
+    await writeFile(getFailureAnalysisPath(projectRoot, consultationId), "{}\n", "utf8");
     await writeFile(getFinalistComparisonMarkdownPath(projectRoot, consultationId), "# report\n");
     await writeFile(getExportPlanPath(projectRoot, consultationId), "{}\n", "utf8");
 
@@ -299,6 +301,7 @@ describe("chat-native MCP surface", () => {
       getPreflightReadinessPath(projectRoot, consultationId),
     );
     expect(parsed.researchBriefPath).toBe(getResearchBriefPath(projectRoot, consultationId));
+    expect(parsed.failureAnalysisPath).toBe(getFailureAnalysisPath(projectRoot, consultationId));
     expect(parsed.comparisonMarkdownPath).toBe(
       getFinalistComparisonMarkdownPath(projectRoot, consultationId),
     );
@@ -318,6 +321,7 @@ describe("chat-native MCP surface", () => {
     await writeFile(getRunConfigPath(projectRoot, consultationId), "{}\n", "utf8");
     await writeFile(getPreflightReadinessPath(projectRoot, consultationId), "{}\n", "utf8");
     await writeFile(getResearchBriefPath(projectRoot, consultationId), "{}\n", "utf8");
+    await writeFile(getFailureAnalysisPath(projectRoot, consultationId), "{}\n", "utf8");
 
     const artifacts = buildConsultationArtifacts(nestedCwd, consultationId);
     const parsed = consultToolResponseSchema.shape.artifacts.parse(artifacts);
@@ -328,6 +332,7 @@ describe("chat-native MCP surface", () => {
       getPreflightReadinessPath(projectRoot, consultationId),
     );
     expect(parsed.researchBriefPath).toBe(getResearchBriefPath(projectRoot, consultationId));
+    expect(parsed.failureAnalysisPath).toBe(getFailureAnalysisPath(projectRoot, consultationId));
   });
 
   it("omits artifact paths that do not exist on disk", async () => {
@@ -344,6 +349,7 @@ describe("chat-native MCP surface", () => {
     expect(parsed.configPath).toBeUndefined();
     expect(parsed.preflightReadinessPath).toBeUndefined();
     expect(parsed.researchBriefPath).toBeUndefined();
+    expect(parsed.failureAnalysisPath).toBeUndefined();
     expect(parsed.profileSelectionPath).toBeUndefined();
     expect(parsed.comparisonMarkdownPath).toBeUndefined();
     expect(parsed.crowningRecordPath).toBeUndefined();
@@ -550,7 +556,7 @@ function createCrownToolResponse(candidateId: string) {
       researchPosture: "repo-only",
       researchRerunRecommended: false,
       researchConflictsPresent: false,
-      nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-survivor"],
+      nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-result"],
       recommendedCandidateId: candidateId,
       validationSignals: [],
       validationGaps: [],

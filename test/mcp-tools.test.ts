@@ -102,7 +102,7 @@ describe("chat-native MCP tools", () => {
 
     mockedEnsureProjectInitialized.mockResolvedValue(undefined);
     mockedListRecentConsultations.mockResolvedValue([createCompletedManifest()]);
-    mockedBuildVerdictReview.mockReturnValue({
+    mockedBuildVerdictReview.mockResolvedValue({
       outcomeType: "recommended-survivor",
       verificationLevel: "lightweight",
       validationPosture: "sufficient",
@@ -116,8 +116,13 @@ describe("chat-native MCP tools", () => {
       researchVersionNoteCount: 0,
       researchConflictCount: 0,
       researchConflictsPresent: false,
+      researchBasisStatus: "unknown",
       recommendedCandidateId: "cand-01",
       finalistIds: ["cand-01"],
+      strongestEvidence: [],
+      weakestEvidence: [],
+      manualReviewRecommended: false,
+      manualCrowningCandidateIds: [],
       validationProfileId: "library",
       validationSummary: "Package export evidence is strongest.",
       validationSignals: ["package-export"],
@@ -126,6 +131,7 @@ describe("chat-native MCP tools", () => {
       artifactAvailability: {
         preflightReadiness: false,
         researchBrief: false,
+        failureAnalysis: false,
         profileSelection: false,
         comparisonReport: false,
         winnerSelection: false,
@@ -215,7 +221,7 @@ describe("chat-native MCP tools", () => {
       validationGaps: [],
       researchRerunRecommended: false,
       recommendedCandidateId: "cand-01",
-      nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-survivor"],
+      nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-result"],
     });
   });
 
@@ -413,7 +419,7 @@ describe("chat-native MCP tools", () => {
       validationSignals: ["package-export"],
       validationGaps: [],
       researchRerunRecommended: false,
-      nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-survivor"],
+      nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-result"],
     });
     expect(verdict.review).toMatchObject({
       outcomeType: "recommended-survivor",

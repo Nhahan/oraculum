@@ -9,6 +9,8 @@ import {
   consultationResearchPostureSchema,
   consultationValidationPostureSchema,
   consultationVerificationLevelSchema,
+  describeConsultationJudgingBasisSummary,
+  describeConsultationOutcomeSummary,
   exportMaterializationModeSchema,
   exportModeSchema,
   exportPlanSchema,
@@ -18,7 +20,12 @@ import {
   savedConsultationStatusSchema,
 } from "./run.js";
 import { stringArrayMembersEqual } from "./schema-compat.js";
-import { taskSourceKindSchema } from "./task.js";
+import {
+  deriveResearchConflictHandling,
+  taskResearchBasisStatusSchema,
+  taskResearchConflictHandlingSchema,
+  taskSourceKindSchema,
+} from "./task.js";
 
 function getBlockedReviewOutcomeType(
   decision: z.infer<typeof consultationPreflightDecisionSchema>,
@@ -107,6 +114,7 @@ export const consultationArtifactPathsSchema = z.object({
   configPath: z.string().min(1).optional(),
   preflightReadinessPath: z.string().min(1).optional(),
   researchBriefPath: z.string().min(1).optional(),
+  failureAnalysisPath: z.string().min(1).optional(),
   profileSelectionPath: z.string().min(1).optional(),
   comparisonJsonPath: z.string().min(1).optional(),
   comparisonMarkdownPath: z.string().min(1).optional(),
@@ -175,21 +183,51 @@ export const verdictReviewSchema = z.preprocess(
     ) {
       payload.profileMissingCapabilities = payload.validationGaps;
     }
+    const hasPersistedResearchContext =
+      (typeof payload.researchSignalCount === "number" && payload.researchSignalCount > 0) ||
+      typeof payload.researchSignalFingerprint === "string" ||
+      typeof payload.researchConfidence === "string" ||
+      typeof payload.researchRerunInputPath === "string" ||
+      typeof payload.researchSummary === "string" ||
+      (typeof payload.researchSourceCount === "number" && payload.researchSourceCount > 0) ||
+      (typeof payload.researchClaimCount === "number" && payload.researchClaimCount > 0) ||
+      (typeof payload.researchVersionNoteCount === "number" &&
+        payload.researchVersionNoteCount > 0) ||
+      (typeof payload.researchConflictCount === "number" && payload.researchConflictCount > 0) ||
+      payload.researchConflictsPresent === true ||
+      typeof payload.researchConflictHandling === "string";
+    if (typeof payload.researchConflictHandling !== "string" && hasPersistedResearchContext) {
+      payload.researchConflictHandling = deriveResearchConflictHandling(
+        payload.researchConflictsPresent === true ? ["persisted-conflict"] : [],
+      );
+    }
+    if (typeof payload.researchBasisStatus !== "string") {
+      payload.researchBasisStatus =
+        payload.researchBasisDrift === true
+          ? "stale"
+          : hasPersistedResearchContext
+            ? "current"
+            : "unknown";
+    }
 
     return payload;
   },
   z
     .object({
       outcomeType: consultationOutcomeTypeSchema,
+      outcomeSummary: z.string().min(1).optional(),
       verificationLevel: consultationVerificationLevelSchema,
       validationPosture: consultationValidationPostureSchema,
       judgingBasisKind: consultationJudgingBasisKindSchema,
+      judgingBasisSummary: z.string().min(1).optional(),
       taskSourceKind: taskSourceKindSchema,
       taskSourcePath: z.string().min(1),
       taskArtifactKind: z.string().min(1).optional(),
       targetArtifactPath: z.string().min(1).optional(),
       researchSummary: z.string().min(1).optional(),
       researchConfidence: decisionConfidenceSchema.optional(),
+      researchBasisStatus: taskResearchBasisStatusSchema,
+      researchConflictHandling: taskResearchConflictHandlingSchema.optional(),
       researchSignalCount: z.number().int().min(0),
       researchSignalFingerprint: z.string().min(1).optional(),
       researchBasisDrift: z.boolean().optional(),
@@ -204,6 +242,14 @@ export const verdictReviewSchema = z.preprocess(
       taskOriginSourcePath: z.string().min(1).optional(),
       recommendedCandidateId: z.string().min(1).optional(),
       finalistIds: z.array(z.string().min(1)).default([]),
+      strongestEvidence: z.array(z.string().min(1)).default([]),
+      weakestEvidence: z.array(z.string().min(1)).default([]),
+      judgingCriteria: z.array(z.string().min(1)).min(1).max(5).optional(),
+      recommendationSummary: z.string().min(1).optional(),
+      recommendationAbsenceReason: z.string().min(1).optional(),
+      manualReviewRecommended: z.boolean().default(false),
+      manualCrowningCandidateIds: z.array(z.string().min(1)).default([]),
+      manualCrowningReason: z.string().min(1).optional(),
       validationProfileId: z.string().min(1).optional(),
       validationSummary: z.string().min(1).optional(),
       validationSignals: z.array(z.string().min(1)).default([]),
@@ -217,6 +263,7 @@ export const verdictReviewSchema = z.preprocess(
       artifactAvailability: z.object({
         preflightReadiness: z.boolean(),
         researchBrief: z.boolean(),
+        failureAnalysis: z.boolean().default(false),
         profileSelection: z.boolean(),
         comparisonReport: z.boolean(),
         winnerSelection: z.boolean(),
@@ -252,6 +299,67 @@ export const verdictReviewSchema = z.preprocess(
         });
       }
 
+      if (
+        value.outcomeSummary &&
+        value.outcomeSummary !==
+          describeConsultationOutcomeSummary({
+            outcomeType: value.outcomeType,
+            ...(value.taskArtifactKind ? { taskArtifactKind: value.taskArtifactKind } : {}),
+            ...(value.targetArtifactPath ? { targetArtifactPath: value.targetArtifactPath } : {}),
+          })
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["outcomeSummary"],
+          message: "outcomeSummary must match outcomeType and task artifact context when present.",
+        });
+      }
+
+      if (
+        value.judgingBasisSummary &&
+        value.judgingBasisSummary !==
+          describeConsultationJudgingBasisSummary(value.judgingBasisKind)
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["judgingBasisSummary"],
+          message: "judgingBasisSummary must match judgingBasisKind when present.",
+        });
+      }
+
+      if (value.researchBasisStatus === "stale" && value.researchBasisDrift !== true) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["researchBasisStatus"],
+          message: "researchBasisStatus stale requires researchBasisDrift to be true.",
+        });
+      }
+
+      if (
+        value.researchConflictHandling === "manual-review-required" &&
+        !value.researchConflictsPresent
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["researchConflictHandling"],
+          message:
+            "researchConflictHandling manual-review-required requires researchConflictsPresent to be true.",
+        });
+      }
+
+      if (
+        value.researchConflictsPresent &&
+        value.researchConflictHandling &&
+        value.researchConflictHandling !== "manual-review-required"
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["researchConflictHandling"],
+          message:
+            "researchConflictHandling must be manual-review-required when researchConflictsPresent is true.",
+        });
+      }
+
       if (value.outcomeType === "recommended-survivor" && !value.recommendedCandidateId) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
@@ -266,6 +374,23 @@ export const verdictReviewSchema = z.preprocess(
           path: ["recommendedCandidateId"],
           message:
             "recommendedCandidateId is only allowed when outcomeType is recommended-survivor.",
+        });
+      }
+
+      if (value.outcomeType === "recommended-survivor" && value.recommendationAbsenceReason) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["recommendationAbsenceReason"],
+          message: "recommended-survivor reviews cannot include recommendationAbsenceReason.",
+        });
+      }
+
+      if (value.outcomeType !== "recommended-survivor" && value.recommendationSummary) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["recommendationSummary"],
+          message:
+            "recommendationSummary is only allowed when outcomeType is recommended-survivor.",
         });
       }
 
@@ -313,6 +438,63 @@ export const verdictReviewSchema = z.preprocess(
           code: z.ZodIssueCode.custom,
           path: ["finalistIds"],
           message: `${value.outcomeType} reviews require finalistIds to be empty.`,
+        });
+      }
+
+      if (
+        value.outcomeType !== "finalists-without-recommendation" &&
+        value.manualCrowningCandidateIds.length > 0
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["manualCrowningCandidateIds"],
+          message:
+            "manualCrowningCandidateIds are only allowed when outcomeType is finalists-without-recommendation.",
+        });
+      }
+
+      if (
+        value.outcomeType === "finalists-without-recommendation" &&
+        value.manualCrowningCandidateIds.length > 0 &&
+        !stringArrayMembersEqual(value.manualCrowningCandidateIds, value.finalistIds)
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["manualCrowningCandidateIds"],
+          message:
+            "manualCrowningCandidateIds must match finalistIds when manual crowning is exposed.",
+        });
+      }
+
+      if (value.manualCrowningCandidateIds.length > 0 && !value.manualReviewRecommended) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["manualReviewRecommended"],
+          message:
+            "manualReviewRecommended must be true when manual crowning candidates are exposed.",
+        });
+      }
+
+      if (value.manualCrowningReason && value.manualCrowningCandidateIds.length === 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["manualCrowningReason"],
+          message:
+            "manualCrowningReason is only allowed when manual crowning candidates are exposed.",
+        });
+      }
+
+      if (
+        (value.outcomeType === "finalists-without-recommendation" ||
+          value.outcomeType === "completed-with-validation-gaps" ||
+          value.outcomeType === "needs-clarification" ||
+          value.outcomeType === "external-research-required") &&
+        !value.manualReviewRecommended
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["manualReviewRecommended"],
+          message: `${value.outcomeType} reviews must recommend manual review.`,
         });
       }
 

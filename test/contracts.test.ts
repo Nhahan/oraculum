@@ -178,6 +178,7 @@ describe("task packet contracts", () => {
       question: "What does the official API documentation say about the current behavior?",
       summary: "Review the official versioned API docs before execution.",
       confidence: "high",
+      conflictHandling: "manual-review-required",
       signalSummary: ["Detected package.json and explicit lint/test scripts."],
       signalFingerprint: deriveResearchSignalFingerprint([
         "Detected package.json and explicit lint/test scripts.",
@@ -468,6 +469,7 @@ describe("oracle and adapter contracts", () => {
             candidateId: request.finalists[0]?.candidateId ?? "cand-01",
             confidence: "medium",
             summary: "Stub judge recommendation.",
+            judgingCriteria: ["Matches the explicit target result contract."],
           },
           artifacts: [],
         });

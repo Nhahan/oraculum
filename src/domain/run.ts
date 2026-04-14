@@ -9,7 +9,15 @@ import {
   getValidationSignals,
   getValidationSummary,
 } from "./profile.js";
-import { taskPacketSummarySchema, taskSourceKindSchema } from "./task.js";
+import {
+  deriveResearchBasisStatus,
+  deriveResearchConflictHandling,
+  describeRecommendedTaskResultLabel,
+  taskPacketSummarySchema,
+  taskResearchBasisStatusSchema,
+  taskResearchConflictHandlingSchema,
+  taskSourceKindSchema,
+} from "./task.js";
 
 export const candidateStatusSchema = z.enum([
   "planned",
@@ -63,21 +71,24 @@ export const consultationResearchPostureSchema = z.enum([
   "external-research-required",
   "unknown",
 ]);
-export const consultationNextActionSchema = z.enum([
-  "reopen-verdict",
-  "browse-archive",
-  "review-preflight-readiness",
-  "answer-clarification-and-rerun",
-  "gather-external-research-and-rerun",
-  "rerun-with-research-brief",
-  "refresh-stale-research-and-rerun",
-  "revise-task-and-rerun",
-  "crown-recommended-survivor",
-  "inspect-comparison-report",
-  "review-validation-gaps",
-  "add-repo-local-oracle",
-  "rerun-with-different-candidate-count",
-]);
+export const consultationNextActionSchema = z.preprocess(
+  (value) => (value === "crown-recommended-survivor" ? "crown-recommended-result" : value),
+  z.enum([
+    "reopen-verdict",
+    "browse-archive",
+    "review-preflight-readiness",
+    "answer-clarification-and-rerun",
+    "gather-external-research-and-rerun",
+    "rerun-with-research-brief",
+    "refresh-stale-research-and-rerun",
+    "revise-task-and-rerun",
+    "crown-recommended-result",
+    "inspect-comparison-report",
+    "review-validation-gaps",
+    "add-repo-local-oracle",
+    "rerun-with-different-candidate-count",
+  ]),
+);
 
 export const candidateManifestSchema = z.object({
   id: z.string().min(1),
@@ -374,36 +385,68 @@ export const consultationPreflightSchema = z
       });
     }
   });
-export const consultationResearchBriefSchema = z.object({
-  decision: z.literal("external-research-required"),
-  question: z.string().min(1),
-  confidence: decisionConfidenceSchema.optional(),
-  researchPosture: consultationResearchPostureSchema,
-  summary: z.string().min(1),
-  task: taskPacketSummarySchema,
-  sources: z
-    .array(
-      z.object({
-        kind: z.enum(["repo-doc", "official-doc", "curated-doc", "other"]),
-        title: z.string().min(1),
-        locator: z.string().min(1),
-      }),
-    )
-    .default([]),
-  claims: z
-    .array(
-      z.object({
-        statement: z.string().min(1),
-        sourceLocators: z.array(z.string().min(1)).default([]),
-      }),
-    )
-    .default([]),
-  versionNotes: z.array(z.string().min(1)).default([]),
-  unresolvedConflicts: z.array(z.string().min(1)).default([]),
-  notes: z.array(z.string().min(1)).default([]),
-  signalSummary: z.array(z.string().min(1)).default([]),
-  signalFingerprint: z.string().min(1).optional(),
-});
+export const consultationResearchBriefSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
+
+    const payload = value as Record<string, unknown>;
+    const unresolvedConflicts = Array.isArray(payload.unresolvedConflicts)
+      ? payload.unresolvedConflicts.filter((entry): entry is string => typeof entry === "string")
+      : [];
+
+    return {
+      ...payload,
+      ...(typeof payload.conflictHandling === "string"
+        ? {}
+        : { conflictHandling: deriveResearchConflictHandling(unresolvedConflicts) }),
+    };
+  },
+  z
+    .object({
+      decision: z.literal("external-research-required"),
+      question: z.string().min(1),
+      confidence: decisionConfidenceSchema.optional(),
+      researchPosture: consultationResearchPostureSchema,
+      summary: z.string().min(1),
+      task: taskPacketSummarySchema,
+      sources: z
+        .array(
+          z.object({
+            kind: z.enum(["repo-doc", "official-doc", "curated-doc", "other"]),
+            title: z.string().min(1),
+            locator: z.string().min(1),
+          }),
+        )
+        .default([]),
+      claims: z
+        .array(
+          z.object({
+            statement: z.string().min(1),
+            sourceLocators: z.array(z.string().min(1)).default([]),
+          }),
+        )
+        .default([]),
+      versionNotes: z.array(z.string().min(1)).default([]),
+      unresolvedConflicts: z.array(z.string().min(1)).default([]),
+      conflictHandling: taskResearchConflictHandlingSchema,
+      notes: z.array(z.string().min(1)).default([]),
+      signalSummary: z.array(z.string().min(1)).default([]),
+      signalFingerprint: z.string().min(1).optional(),
+    })
+    .superRefine((value, context) => {
+      const expectedHandling = deriveResearchConflictHandling(value.unresolvedConflicts);
+      if (value.conflictHandling !== expectedHandling) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["conflictHandling"],
+          message:
+            "conflictHandling must match unresolvedConflicts: use manual-review-required when conflicts exist, otherwise accepted.",
+        });
+      }
+    }),
+);
 export const savedConsultationStatusSchema = z.preprocess(
   (value) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -419,6 +462,29 @@ export const savedConsultationStatusSchema = z.preprocess(
       typeof payload.validationGapsPresent === "boolean"
         ? payload.validationGapsPresent
         : undefined;
+    const hasPersistedResearchContext =
+      (typeof payload.researchSignalCount === "number" && payload.researchSignalCount > 0) ||
+      typeof payload.researchSignalFingerprint === "string" ||
+      typeof payload.researchConfidence === "string" ||
+      typeof payload.researchRerunInputPath === "string" ||
+      payload.researchConflictsPresent === true ||
+      typeof payload.researchConflictHandling === "string";
+    const researchConflictHandling =
+      typeof payload.researchConflictHandling === "string"
+        ? payload.researchConflictHandling
+        : hasPersistedResearchContext
+          ? deriveResearchConflictHandling(
+              payload.researchConflictsPresent === true ? ["persisted-conflict"] : [],
+            )
+          : undefined;
+    const researchBasisStatus =
+      typeof payload.researchBasisStatus === "string"
+        ? payload.researchBasisStatus
+        : payload.researchBasisDrift === true
+          ? "stale"
+          : hasPersistedResearchContext
+            ? "current"
+            : "unknown";
 
     return {
       ...payload,
@@ -432,6 +498,8 @@ export const savedConsultationStatusSchema = z.preprocess(
         : validationGapsPresent !== undefined
           ? { missingCapabilitiesPresent: validationGapsPresent }
           : {}),
+      researchBasisStatus,
+      ...(researchConflictHandling ? { researchConflictHandling } : {}),
     };
   },
   z
@@ -446,6 +514,8 @@ export const savedConsultationStatusSchema = z.preprocess(
       taskArtifactKind: z.string().min(1).optional(),
       targetArtifactPath: z.string().min(1).optional(),
       researchConfidence: decisionConfidenceSchema.optional(),
+      researchBasisStatus: taskResearchBasisStatusSchema,
+      researchConflictHandling: taskResearchConflictHandlingSchema.optional(),
       researchSignalCount: z.number().int().min(0),
       researchSignalFingerprint: z.string().min(1).optional(),
       researchBasisDrift: z.boolean().optional(),
@@ -505,6 +575,39 @@ export const savedConsultationStatusSchema = z.preprocess(
           code: z.ZodIssueCode.custom,
           path: ["validationGapsPresent"],
           message: "validationGapsPresent must be true when detailed validationGaps are present.",
+        });
+      }
+
+      if (value.researchBasisStatus === "stale" && value.researchBasisDrift !== true) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["researchBasisStatus"],
+          message: "researchBasisStatus stale requires researchBasisDrift to be true.",
+        });
+      }
+
+      if (
+        value.researchConflictHandling === "manual-review-required" &&
+        !value.researchConflictsPresent
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["researchConflictHandling"],
+          message:
+            "researchConflictHandling manual-review-required requires researchConflictsPresent to be true.",
+        });
+      }
+
+      if (
+        value.researchConflictsPresent &&
+        value.researchConflictHandling &&
+        value.researchConflictHandling !== "manual-review-required"
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["researchConflictHandling"],
+          message:
+            "researchConflictHandling must be manual-review-required when researchConflictsPresent is true.",
         });
       }
 
@@ -1160,6 +1263,10 @@ export function buildSavedConsultationStatus(manifest: RunManifest): SavedConsul
   const researchRerunRecommended =
     outcome.type === "external-research-required" ||
     manifest.preflight?.researchBasisDrift === true;
+  const researchBasisStatus = deriveResearchBasisStatus({
+    researchContext: manifest.taskPacket.researchContext,
+    researchBasisDrift: manifest.preflight?.researchBasisDrift,
+  });
 
   return savedConsultationStatusSchema.parse({
     consultationId: manifest.id,
@@ -1177,6 +1284,14 @@ export function buildSavedConsultationStatus(manifest: RunManifest): SavedConsul
       : {}),
     ...(manifest.taskPacket.researchContext?.confidence
       ? { researchConfidence: manifest.taskPacket.researchContext.confidence }
+      : {}),
+    researchBasisStatus,
+    ...(manifest.taskPacket.researchContext
+      ? {
+          researchConflictHandling:
+            manifest.taskPacket.researchContext.conflictHandling ??
+            deriveResearchConflictHandling(manifest.taskPacket.researchContext.unresolvedConflicts),
+        }
       : {}),
     researchSignalCount: manifest.taskPacket.researchContext?.signalSummary.length ?? 0,
     ...(manifest.taskPacket.researchContext?.signalFingerprint
@@ -1216,6 +1331,57 @@ export function buildSavedConsultationStatus(manifest: RunManifest): SavedConsul
     nextActions,
     updatedAt: manifest.updatedAt ?? manifest.createdAt,
   });
+}
+
+export function describeConsultationOutcomeSummary(options: {
+  outcomeType: z.infer<typeof consultationOutcomeTypeSchema>;
+  taskArtifactKind?: string | undefined;
+  targetArtifactPath?: string | undefined;
+}): string {
+  const recommendedResultLabel = describeRecommendedTaskResultLabel({
+    ...(options.taskArtifactKind ? { artifactKind: options.taskArtifactKind } : {}),
+    ...(options.targetArtifactPath ? { targetArtifactPath: options.targetArtifactPath } : {}),
+  });
+  const hasExplicitResultIntent =
+    options.taskArtifactKind !== undefined || options.targetArtifactPath !== undefined;
+
+  switch (options.outcomeType) {
+    case "pending-execution":
+      return "Candidate execution has not started yet.";
+    case "running":
+      return "Candidate execution is still in progress.";
+    case "needs-clarification":
+      return "Execution stopped because clarification is still required before candidate generation.";
+    case "external-research-required":
+      return "Execution stopped because bounded external research is required before candidate generation.";
+    case "abstained-before-execution":
+      return "Execution was declined before candidate generation.";
+    case "recommended-survivor":
+      return capitalizeSentence(`${recommendedResultLabel} was selected.`);
+    case "finalists-without-recommendation":
+      return `Finalists survived, but no ${recommendedResultLabel} was recorded.`;
+    case "completed-with-validation-gaps":
+      return hasExplicitResultIntent
+        ? `Execution completed, but validation gaps still block a ${recommendedResultLabel}.`
+        : "Execution completed, but validation gaps still block a safe recommendation.";
+    case "no-survivors":
+      return hasExplicitResultIntent
+        ? `No ${recommendedResultLabel} emerged from the consultation.`
+        : "No survivors advanced after the oracle rounds.";
+  }
+}
+
+export function describeConsultationJudgingBasisSummary(
+  judgingBasisKind: z.infer<typeof consultationJudgingBasisKindSchema>,
+): string {
+  switch (judgingBasisKind) {
+    case "repo-local-oracle":
+      return "Judged with repo-local validation oracles.";
+    case "missing-capability":
+      return "Judged against validation-gap and missing-capability evidence.";
+    case "unknown":
+      return "No explicit repo-local oracle or missing-capability basis was recorded.";
+  }
 }
 
 export function buildBlockedPreflightOutcome(
@@ -1313,7 +1479,7 @@ function buildConsultationNextActions(
       actions.add("revise-task-and-rerun");
       break;
     case "recommended-survivor":
-      actions.add("crown-recommended-survivor");
+      actions.add("crown-recommended-result");
       break;
     case "finalists-without-recommendation":
       actions.add("inspect-comparison-report");
@@ -1343,4 +1509,8 @@ function buildConsultationNextActions(
   }
 
   return [...actions];
+}
+
+function capitalizeSentence(value: string): string {
+  return value.length === 0 ? value : `${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`;
 }

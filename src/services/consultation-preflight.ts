@@ -9,7 +9,12 @@ import {
   consultationResearchBriefSchema,
   consultationResearchPostureSchema,
 } from "../domain/run.js";
-import { deriveResearchSignalFingerprint, type MaterializedTaskPacket } from "../domain/task.js";
+import {
+  deriveResearchBasisStatus,
+  deriveResearchConflictHandling,
+  deriveResearchSignalFingerprint,
+  type MaterializedTaskPacket,
+} from "../domain/task.js";
 
 import { collectProfileRepoSignals } from "./consultation-profile.js";
 import { type ProjectConfigLayers, writeJsonFile } from "./project.js";
@@ -83,6 +88,11 @@ export async function recommendConsultationPreflight(
             acceptedSignalFingerprint: options.taskPacket.researchContext.signalFingerprint,
             currentSignalFingerprint: signalFingerprint,
             driftDetected: researchBasisDrift,
+            status: deriveResearchBasisStatus({
+              researchContext: options.taskPacket.researchContext,
+              researchBasisDrift,
+            }),
+            refreshAction: researchBasisDrift ? "refresh-before-rerun" : "reuse",
           },
         }
       : {}),
@@ -117,6 +127,7 @@ export async function recommendConsultationPreflight(
         notes: signals.notes,
         signalSummary,
         ...(signalFingerprint ? { signalFingerprint } : {}),
+        conflictHandling: deriveResearchConflictHandling([]),
       }),
     );
   }

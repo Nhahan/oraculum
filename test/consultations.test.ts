@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   getExportPlanPath,
+  getFailureAnalysisPath,
   getFinalistComparisonMarkdownPath,
   getPreflightReadinessPath,
   getProfileSelectionPath,
@@ -85,6 +86,9 @@ describe("consultation workflow summaries", () => {
 
     expect(summary).toContain("Opened: 2026-04-04T00:00:00.000Z");
     expect(summary).toContain("Outcome: recommended-survivor");
+    expect(summary).toContain("Outcome detail: Recommended survivor was selected.");
+    expect(summary).toContain("Judging basis: Judged with repo-local validation oracles.");
+    expect(summary).toContain("Research basis status: unknown");
     expect(summary).toContain("Validation posture: sufficient");
     expect(summary).toContain("Verification level: lightweight");
     expect(summary).toContain("Entry paths:");
@@ -275,6 +279,53 @@ describe("consultation workflow summaries", () => {
     expect(summary).not.toContain("No survivor yet. Candidate states:");
   });
 
+  it("surfaces failure analysis artifacts in the consultation summary when investigation is recommended", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_failure_analysis",
+      candidateCount: 1,
+      outcome: {
+        type: "no-survivors",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "repo-local-oracle",
+      },
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(
+      getFailureAnalysisPath(cwd, manifest.id),
+      `${JSON.stringify(
+        {
+          runId: manifest.id,
+          generatedAt: "2026-04-04T00:00:00.000Z",
+          trigger: "no-survivors",
+          summary:
+            "No finalists survived the oracle rounds; investigate failing oracle evidence before retrying.",
+          recommendedAction: "investigate-root-cause-before-rerun",
+          validationGaps: [],
+          candidates: [],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+
+    expect(summary).toContain(
+      "- failure analysis: .oraculum/runs/run_failure_analysis/reports/failure-analysis.json",
+    );
+    expect(summary).toContain(
+      "- investigate the persisted failure analysis: .oraculum/runs/run_failure_analysis/reports/failure-analysis.json.",
+    );
+  });
+
   it("normalizes absolute artifact target paths in archive output when the project root is known", async () => {
     const cwd = await createInitializedProject();
     const absoluteTargetArtifactPath = join(cwd, "docs", "SESSION_PLAN.md");
@@ -459,7 +510,7 @@ describe("consultation workflow summaries", () => {
       },
     });
 
-    const review = buildVerdictReview(manifest, {
+    const review = await buildVerdictReview(manifest, {
       preflightReadinessPath: "/tmp/run_1/reports/preflight-readiness.json",
       profileSelectionPath: "/tmp/run_1/reports/profile-selection.json",
       comparisonMarkdownPath: "/tmp/run_1/reports/comparison.md",
@@ -468,11 +519,14 @@ describe("consultation workflow summaries", () => {
 
     expect(review).toEqual({
       outcomeType: "recommended-survivor",
+      outcomeSummary: "Recommended survivor was selected.",
       verificationLevel: "lightweight",
       validationPosture: "validation-gaps",
       judgingBasisKind: "repo-local-oracle",
+      judgingBasisSummary: "Judged with repo-local validation oracles.",
       taskSourceKind: "task-note",
       taskSourcePath: "/tmp/task.md",
+      researchBasisStatus: "unknown",
       researchSignalCount: 0,
       researchSourceCount: 0,
       researchClaimCount: 0,
@@ -481,6 +535,16 @@ describe("consultation workflow summaries", () => {
       researchConflictsPresent: false,
       recommendedCandidateId: "cand-01",
       finalistIds: ["cand-01"],
+      strongestEvidence: [
+        "Frontend evidence is strongest.",
+        "Validation evidence: frontend-framework",
+        "Validation evidence: build-script",
+        "cand-01 is the recommended promotion.",
+      ],
+      weakestEvidence: ["No e2e or visual deep check was detected."],
+      recommendationSummary: "cand-01 is the recommended promotion.",
+      manualReviewRecommended: false,
+      manualCrowningCandidateIds: [],
       validationProfileId: "frontend",
       validationSummary: "Frontend evidence is strongest.",
       validationSignals: ["frontend-framework", "build-script"],
@@ -491,6 +555,7 @@ describe("consultation workflow summaries", () => {
       artifactAvailability: {
         preflightReadiness: true,
         researchBrief: false,
+        failureAnalysis: false,
         profileSelection: true,
         comparisonReport: true,
         winnerSelection: true,
@@ -545,6 +610,75 @@ describe("consultation workflow summaries", () => {
         profileId: "library",
       }),
     ).toThrow("profileId must match validationProfileId");
+  });
+
+  it("backfills researchConflictHandling from persisted verdict review research signals", () => {
+    const conflicted = verdictReviewSchema.parse({
+      outcomeType: "external-research-required",
+      verificationLevel: "none",
+      validationPosture: "validation-gaps",
+      judgingBasisKind: "missing-capability",
+      taskSourceKind: "research-brief",
+      taskSourcePath: "/tmp/research-brief.json",
+      researchSignalCount: 0,
+      researchSummary: "External documentation still contains conflicting guidance.",
+      researchRerunRecommended: true,
+      researchSourceCount: 1,
+      researchClaimCount: 1,
+      researchVersionNoteCount: 0,
+      researchConflictCount: 1,
+      researchConflictsPresent: true,
+      validationSignals: [],
+      validationGaps: [],
+      researchPosture: "external-research-required",
+      manualReviewRecommended: true,
+      artifactAvailability: {
+        preflightReadiness: false,
+        researchBrief: true,
+        failureAnalysis: false,
+        profileSelection: false,
+        comparisonReport: false,
+        winnerSelection: false,
+        crowningRecord: false,
+      },
+      candidateStateCounts: {},
+    });
+
+    const current = verdictReviewSchema.parse({
+      outcomeType: "recommended-survivor",
+      verificationLevel: "lightweight",
+      validationPosture: "sufficient",
+      judgingBasisKind: "repo-local-oracle",
+      taskSourceKind: "research-brief",
+      taskSourcePath: "/tmp/research-brief.json",
+      researchSignalCount: 1,
+      researchSignalFingerprint: "fingerprint",
+      researchRerunRecommended: false,
+      researchSourceCount: 1,
+      researchClaimCount: 1,
+      researchVersionNoteCount: 0,
+      researchConflictCount: 0,
+      researchConflictsPresent: false,
+      recommendedCandidateId: "cand-01",
+      finalistIds: ["cand-01"],
+      validationSignals: [],
+      validationGaps: [],
+      researchPosture: "repo-plus-external-docs",
+      artifactAvailability: {
+        preflightReadiness: false,
+        researchBrief: true,
+        failureAnalysis: false,
+        profileSelection: false,
+        comparisonReport: false,
+        winnerSelection: false,
+        crowningRecord: false,
+      },
+      candidateStateCounts: {},
+    });
+
+    expect(conflicted.researchBasisStatus).toBe("current");
+    expect(conflicted.researchConflictHandling).toBe("manual-review-required");
+    expect(current.researchConflictHandling).toBe("accepted");
   });
 
   it("accepts reordered legacy verdict review gap aliases", () => {
@@ -722,6 +856,247 @@ describe("consultation workflow summaries", () => {
     ).toThrow(
       "finalistIds must match the number of promoted or exported candidate states when candidateStateCounts are present",
     );
+  });
+
+  it("rejects manual crowning ids that do not match finalists-without-recommendation reviews", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "finalists-without-recommendation",
+        verificationLevel: "lightweight",
+        validationPosture: "sufficient",
+        judgingBasisKind: "repo-local-oracle",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        finalistIds: ["cand-01"],
+        manualCrowningCandidateIds: ["cand-02"],
+        manualReviewRecommended: true,
+        researchPosture: "repo-only",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: true,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {
+          promoted: 1,
+        },
+      }),
+    ).toThrow("manualCrowningCandidateIds must match finalistIds");
+  });
+
+  it("rejects manual crowning ids when manual review is not recommended", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "finalists-without-recommendation",
+        verificationLevel: "lightweight",
+        validationPosture: "sufficient",
+        judgingBasisKind: "repo-local-oracle",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        finalistIds: ["cand-01"],
+        manualCrowningCandidateIds: ["cand-01"],
+        manualReviewRecommended: false,
+        researchPosture: "repo-only",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: true,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {
+          promoted: 1,
+        },
+      }),
+    ).toThrow("manualReviewRecommended must be true");
+  });
+
+  it("rejects manual crowning reasons without exposed manual crowning candidates", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "no-survivors",
+        verificationLevel: "none",
+        validationPosture: "sufficient",
+        judgingBasisKind: "unknown",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        finalistIds: [],
+        manualReviewRecommended: true,
+        manualCrowningReason: "Operator review is required before crowning.",
+        researchPosture: "repo-only",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow("manualCrowningReason is only allowed");
+  });
+
+  it("rejects finalists-without-recommendation reviews that do not recommend manual review", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "finalists-without-recommendation",
+        verificationLevel: "lightweight",
+        validationPosture: "sufficient",
+        judgingBasisKind: "repo-local-oracle",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        finalistIds: ["cand-01"],
+        manualReviewRecommended: false,
+        researchPosture: "repo-only",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: true,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {
+          promoted: 1,
+        },
+      }),
+    ).toThrow("finalists-without-recommendation reviews must recommend manual review");
+  });
+
+  it("rejects validation-gap reviews that do not recommend manual review", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "completed-with-validation-gaps",
+        verificationLevel: "lightweight",
+        validationPosture: "validation-gaps",
+        judgingBasisKind: "missing-capability",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        finalistIds: [],
+        manualReviewRecommended: false,
+        validationGaps: ["No repo-local oracle was recorded."],
+        researchPosture: "repo-only",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow("completed-with-validation-gaps reviews must recommend manual review");
+  });
+
+  it("rejects verdict reviews whose outcome summary disagrees with the outcome and task context", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "recommended-survivor",
+        outcomeSummary: "No recommended document result for docs/SESSION_PLAN.md emerged.",
+        verificationLevel: "lightweight",
+        validationPosture: "sufficient",
+        judgingBasisKind: "repo-local-oracle",
+        judgingBasisSummary: "Judged with repo-local validation oracles.",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        taskArtifactKind: "document",
+        targetArtifactPath: "docs/SESSION_PLAN.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        recommendedCandidateId: "cand-01",
+        finalistIds: ["cand-01"],
+        researchPosture: "repo-only",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {
+          promoted: 1,
+        },
+      }),
+    ).toThrow("outcomeSummary must match outcomeType and task artifact context");
+  });
+
+  it("rejects verdict reviews whose judging basis summary disagrees with the judging basis kind", () => {
+    expect(() =>
+      verdictReviewSchema.parse({
+        outcomeType: "no-survivors",
+        outcomeSummary: "No survivors advanced after the oracle rounds.",
+        verificationLevel: "lightweight",
+        validationPosture: "sufficient",
+        judgingBasisKind: "unknown",
+        judgingBasisSummary: "Judged with repo-local validation oracles.",
+        taskSourceKind: "task-note",
+        taskSourcePath: "/tmp/task.md",
+        researchSignalCount: 0,
+        researchRerunRecommended: false,
+        researchSourceCount: 0,
+        researchClaimCount: 0,
+        researchVersionNoteCount: 0,
+        researchConflictCount: 0,
+        researchConflictsPresent: false,
+        finalistIds: [],
+        researchPosture: "repo-only",
+        artifactAvailability: {
+          preflightReadiness: false,
+          researchBrief: false,
+          profileSelection: false,
+          comparisonReport: false,
+          winnerSelection: false,
+          crowningRecord: false,
+        },
+        candidateStateCounts: {},
+      }),
+    ).toThrow("judgingBasisSummary must match judgingBasisKind");
   });
 
   it("rejects non-recommended review payloads that still include a recommended candidate id", () => {
@@ -1018,7 +1393,7 @@ describe("consultation workflow summaries", () => {
     ).toThrow("preflightDecision proceed cannot use a blocked preflight outcomeType");
   });
 
-  it("allows legacy validation-gap reviews that only know the gap count", () => {
+  it("allows legacy validation-gap reviews that only know the gap count", async () => {
     const manifest = createManifest("completed", {
       id: "run_gap_review",
       candidateCount: 0,
@@ -1036,13 +1411,17 @@ describe("consultation workflow summaries", () => {
       },
     });
 
-    const review = buildVerdictReview(manifest, {});
+    const review = await buildVerdictReview(manifest, {});
 
     expect(review.outcomeType).toBe("completed-with-validation-gaps");
     expect(review.validationGaps).toEqual([]);
+    expect(review.recommendationAbsenceReason).toBe(
+      "Execution completed with unresolved validation gaps.",
+    );
+    expect(review.manualReviewRecommended).toBe(true);
   });
 
-  it("allows legacy survivor reviews that only know the recommended survivor id", () => {
+  it("allows legacy survivor reviews that only know the recommended survivor id", async () => {
     const manifest = createManifest("completed", {
       id: "run_legacy_survivor_review",
       candidateCount: 1,
@@ -1061,14 +1440,15 @@ describe("consultation workflow summaries", () => {
       },
     });
 
-    const review = verdictReviewSchema.parse(buildVerdictReview(manifest, {}));
+    const review = verdictReviewSchema.parse(await buildVerdictReview(manifest, {}));
 
     expect(review.outcomeType).toBe("recommended-survivor");
     expect(review.recommendedCandidateId).toBe("cand-01");
     expect(review.finalistIds).toEqual(["cand-01"]);
+    expect(review.manualReviewRecommended).toBe(false);
   });
 
-  it("allows legacy finalists-without-recommendation reviews without invented finalist ids", () => {
+  it("allows legacy finalists-without-recommendation reviews without invented finalist ids", async () => {
     const manifest = createManifest("completed", {
       id: "run_legacy_finalists_review",
       candidateCount: 2,
@@ -1086,10 +1466,168 @@ describe("consultation workflow summaries", () => {
       },
     });
 
-    const review = verdictReviewSchema.parse(buildVerdictReview(manifest, {}));
+    const review = verdictReviewSchema.parse(await buildVerdictReview(manifest, {}));
 
     expect(review.outcomeType).toBe("finalists-without-recommendation");
     expect(review.finalistIds).toEqual([]);
+    expect(review.recommendationAbsenceReason).toBe(
+      "Finalists survived, but no recommendation was recorded.",
+    );
+    expect(review.manualReviewRecommended).toBe(true);
+  });
+
+  it("reads judge abstention evidence into verdict review handoff fields", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_manual_crown_review",
+      recommendedWinner: undefined,
+      outcome: {
+        type: "finalists-without-recommendation",
+        terminal: true,
+        crownable: false,
+        finalistCount: 1,
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        validationGapCount: 0,
+        judgingBasisKind: "repo-local-oracle",
+      },
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/workspace",
+          taskPacketPath: "/tmp/task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(
+      getWinnerSelectionPath(cwd, manifest.id),
+      `${JSON.stringify(
+        {
+          runId: manifest.id,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-04T00:00:00.000Z",
+          completedAt: "2026-04-04T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Judge abstained.",
+          recommendation: {
+            decision: "abstain",
+            confidence: "low",
+            summary: "The finalists are too weak to recommend a safe promotion.",
+          },
+          artifacts: [],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const review = await buildVerdictReview(manifest, {
+      winnerSelectionPath: getWinnerSelectionPath(cwd, manifest.id),
+    });
+
+    expect(review.recommendationAbsenceReason).toBe(
+      "The finalists are too weak to recommend a safe promotion.",
+    );
+    expect(review.weakestEvidence).toContain(
+      "The finalists are too weak to recommend a safe promotion.",
+    );
+    expect(review.manualReviewRecommended).toBe(true);
+    expect(review.manualCrowningCandidateIds).toEqual(["cand-01"]);
+    expect(review.manualCrowningReason).toBe(
+      "Finalists survived without a recorded recommendation; manual crowning requires operator judgment.",
+    );
+  });
+
+  it("replays artifact-aware judging criteria from winner selection into verdict review", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_document_review",
+      taskPacket: {
+        id: "task",
+        title: "Review PRD",
+        sourceKind: "task-note",
+        sourcePath: "/tmp/task.md",
+        artifactKind: "document",
+        targetArtifactPath: "docs/PRD.md",
+      },
+      outcome: {
+        type: "recommended-survivor",
+        finalistCount: 1,
+        terminal: true,
+        crownable: true,
+        validationGapCount: 0,
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        judgingBasisKind: "repo-local-oracle",
+        recommendedCandidateId: "cand-01",
+      },
+      recommendedWinner: {
+        candidateId: "cand-01",
+        confidence: "high",
+        summary: "cand-01 best satisfies the PRD contract.",
+        source: "llm-judge",
+      },
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/workspace",
+          taskPacketPath: "/tmp/task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(
+      getWinnerSelectionPath(cwd, manifest.id),
+      `${JSON.stringify(
+        {
+          runId: manifest.id,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-04T00:00:00.000Z",
+          completedAt: "2026-04-04T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Judge selected cand-01.",
+          recommendation: {
+            decision: "select",
+            candidateId: "cand-01",
+            confidence: "high",
+            summary: "cand-01 is safest.",
+            judgingCriteria: [
+              "Covers the documented scope without contradicting repo constraints.",
+              "Leaves the PRD internally consistent and reviewable.",
+            ],
+          },
+          artifacts: [],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const review = await buildVerdictReview(manifest, {
+      winnerSelectionPath: getWinnerSelectionPath(cwd, manifest.id),
+    });
+
+    expect(review.judgingCriteria).toEqual([
+      "Covers the documented scope without contradicting repo constraints.",
+      "Leaves the PRD internally consistent and reviewable.",
+    ]);
   });
 
   it("renders blocked preflight consultations distinctly in the archive", async () => {
@@ -1178,7 +1716,7 @@ describe("consultation workflow summaries", () => {
 
     const summary = await renderConsultationSummary(manifest, cwd);
     const status = buildSavedConsultationStatus(manifest);
-    const review = buildVerdictReview(manifest, {
+    const review = await buildVerdictReview(manifest, {
       preflightReadinessPath: getPreflightReadinessPath(cwd, manifest.id),
       researchBriefPath: getResearchBriefPath(cwd, manifest.id),
     });
@@ -1220,6 +1758,10 @@ describe("consultation workflow summaries", () => {
     expect(review.validationSignals).toEqual([]);
     expect(review.researchConflictsPresent).toBe(false);
     expect(review.artifactAvailability.researchBrief).toBe(true);
+    expect(review.recommendationAbsenceReason).toBe(
+      "Execution stopped because bounded external research is still required.",
+    );
+    expect(review.manualReviewRecommended).toBe(true);
   });
 
   it("renders research-brief task provenance in summary and review", async () => {
@@ -1264,6 +1806,7 @@ describe("consultation workflow summaries", () => {
           ],
           versionNotes: ["Behavior changed in v3.2 compared with the legacy session API."],
           unresolvedConflicts: ["The repo comments still describe the pre-v3.2 refresh flow."],
+          conflictHandling: "manual-review-required",
         },
         originKind: "task-note",
         originPath: originalTaskPath,
@@ -1271,7 +1814,7 @@ describe("consultation workflow summaries", () => {
     });
 
     const summary = await renderConsultationSummary(manifest, cwd);
-    const review = buildVerdictReview(manifest, {});
+    const review = await buildVerdictReview(manifest, {});
     const status = buildSavedConsultationStatus(manifest);
 
     expect(summary).toContain(
@@ -1337,6 +1880,10 @@ describe("consultation workflow summaries", () => {
     expect(review.taskOriginSourceKind).toBe("task-note");
     expect(review.taskOriginSourcePath).toBe(originalTaskPath);
     expect(review.validationSignals).toEqual([]);
+    expect(review.weakestEvidence).toContain(
+      "Persisted research evidence no longer matches the current repository signal basis.",
+    );
+    expect(review.weakestEvidence).toContain("External research contains unresolved conflicts.");
   });
 
   it("does not report a promotion record when only a stale export plan file exists", async () => {
@@ -1486,7 +2033,7 @@ describe("consultation workflow summaries", () => {
                 capability: "e2e-or-visual",
                 reason: "missing-explicit-command",
                 detail:
-                  "A test-runner capability was detected, but no repo-local e2e/smoke script or explicit oracle exposes the executable command.",
+                  "Test-runner evidence was detected, but no repo-local e2e/smoke script or explicit oracle exposes the executable command.",
               },
             ],
           },
@@ -1501,7 +2048,7 @@ describe("consultation workflow summaries", () => {
 
     expect(summary).toContain("Skipped validation posture commands:");
     expect(summary).toContain(
-      "- e2e-deep: missing-explicit-command - A test-runner capability was detected",
+      "- e2e-deep: missing-explicit-command - Test-runner evidence was detected",
     );
   });
 

@@ -9,6 +9,7 @@ import {
   getAdvancedConfigPath,
   getConfigPath,
   getExportPlanPath,
+  getFailureAnalysisPath,
   getFinalistComparisonJsonPath,
   getFinalistComparisonMarkdownPath,
   getPreflightReadinessPath,
@@ -122,6 +123,7 @@ export const oraculumMcpToolSurface = [
       "consultation-config.json",
       "preflight-readiness.json",
       "research-brief.json",
+      "failure-analysis.json",
       "profile-selection.json",
       "comparison.json",
       "comparison.md",
@@ -191,6 +193,7 @@ export const oraculumMcpToolSurface = [
       "consultation-config.json",
       "preflight-readiness.json",
       "research-brief.json",
+      "failure-analysis.json",
       "profile-selection.json",
       "comparison.json",
       "comparison.md",
@@ -441,6 +444,7 @@ export function buildConsultationArtifacts(
   configPath?: string;
   preflightReadinessPath?: string;
   researchBriefPath?: string;
+  failureAnalysisPath?: string;
   profileSelectionPath?: string;
   comparisonJsonPath?: string;
   comparisonMarkdownPath?: string;
@@ -450,6 +454,7 @@ export function buildConsultationArtifacts(
   const projectRoot = resolveProjectRoot(cwd);
   const preflightReadinessPath = getPreflightReadinessPath(projectRoot, consultationId);
   const researchBriefPath = getResearchBriefPath(projectRoot, consultationId);
+  const failureAnalysisPath = getFailureAnalysisPath(projectRoot, consultationId);
   const profileSelectionPath = getProfileSelectionPath(projectRoot, consultationId);
   const comparisonJsonPath = getFinalistComparisonJsonPath(projectRoot, consultationId);
   const comparisonMarkdownPath = getFinalistComparisonMarkdownPath(projectRoot, consultationId);
@@ -463,6 +468,7 @@ export function buildConsultationArtifacts(
       : {}),
     ...(existsSync(preflightReadinessPath) ? { preflightReadinessPath } : {}),
     ...(existsSync(researchBriefPath) ? { researchBriefPath } : {}),
+    ...(existsSync(failureAnalysisPath) ? { failureAnalysisPath } : {}),
     ...(existsSync(profileSelectionPath) ? { profileSelectionPath } : {}),
     ...(existsSync(comparisonJsonPath) ? { comparisonJsonPath } : {}),
     ...(existsSync(comparisonMarkdownPath) ? { comparisonMarkdownPath } : {}),
