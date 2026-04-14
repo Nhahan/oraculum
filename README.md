@@ -18,9 +18,9 @@
 </p>
 
 <p align="center">
-  <strong>Consult competing patches. Read the verdict. Crown only the survivor.</strong>
+  <strong>Consult competing candidates. Read the verdict. Crown only the recommended result.</strong>
   <br />
-  <sub>Oracle-guided chat-native patch workflow for Claude Code and Codex</sub>
+  <sub>Oracle-guided chat-native consultation workflow for Claude Code and Codex</sub>
 </p>
 
 <p align="center">
@@ -35,9 +35,9 @@
 
 ## Overview
 
-Oraculum turns AI patching into a tournament instead of a one-shot edit.
+Oraculum turns AI implementation work into a tournament instead of a one-shot edit.
 
-Candidates run in isolation, repo-local checks act as oracles, evidence is recorded, and only the survivor is crowned.
+Candidates run in isolation, repo-local checks act as oracles, evidence is recorded, and only the recommended result is crowned.
 
 Claude Code or Codex remains the reasoning runtime; Oraculum supplies the deterministic harness around it: isolation, checks, witnesses, and the crowning gate.
 
@@ -83,22 +83,22 @@ orc consult "fix session loss on refresh"
 orc crown fix/session-loss
 ```
 
-That flow initializes Oraculum on first use, runs the tournament, and prints the verdict summary immediately. `crown` uses the latest consultation with a recommended survivor by default.
+That flow initializes Oraculum on first use, runs the tournament, and prints the verdict summary immediately. `crown` uses the latest consultation with a recommended result by default.
 
-In a Git-backed project, `crown` creates the named branch and applies the survivor there. In a non-Git project, use bare `orc crown`; it syncs the survivor back into the project folder without requiring a fake branch name.
+In a Git-backed project, `crown` creates the named branch and materializes the recommended result there. In a non-Git project, use bare `orc crown`; it syncs the recommended result back into the project folder without requiring a fake branch name.
 
 If you want to reopen the latest consultation later, inspect an older one, browse consultation history, or use setup/MCP/debug commands from the shell binary, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md).
 
 ## How It Works
 
 1. You give Oraculum one task.
-2. Oraculum creates multiple candidate fixes.
+2. Oraculum creates multiple candidate implementations.
 3. Each candidate runs in its own workspace.
 4. Checks remove weak candidates in stages.
-5. Oraculum recommends a survivor, explains the verdict, and lets you crown it.
+5. Oraculum recommends a result, explains the verdict, and lets you crown it.
 
-Results are saved under `.oraculum/`. The source of truth is the saved run state and artifacts, not chat transcript.
+Results are saved under `.oraculum/`. The source of truth is the saved run state and artifacts, including verdict review, finalist comparison, research briefs, and failure analysis, not chat transcript.
 
 ## Advanced Usage
 
-If you want more control over consultation-scoped profile selection, runtimes, consultation history, repo-local oracle configuration, setup diagnostics, MCP wiring details, or host uninstall instructions, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; operator controls belong in `.oraculum/advanced.json`.
+If you want more control over consultation-scoped validation posture selection, runtimes, consultation history, repo-local oracle configuration, research artifacts, setup diagnostics, MCP wiring details, or host uninstall instructions, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; operator controls belong in `.oraculum/advanced.json`.

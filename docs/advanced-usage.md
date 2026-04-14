@@ -21,7 +21,7 @@ oraculum setup status
 
 The npm package is only Oraculum's distribution channel. It does not mean the target repository must be a Node project.
 
-Every `consult` also runs an automatic profile-selection step. Oraculum collects repo facts, asks the chosen runtime for a structured recommendation, validates the recommendation, and applies the resulting profile draft to that consultation only. Explicit quick-start and advanced settings still win over inferred defaults.
+Every `consult` also runs an automatic validation-posture selection step. Oraculum collects repo facts, asks the chosen runtime for a structured recommendation, validates the recommendation, and applies the resulting posture draft to that consultation only. Explicit quick-start and advanced settings still win over inferred defaults.
 
 ## Consult On A Task File
 
@@ -46,37 +46,37 @@ Available runtimes today:
 - `codex`
 - `claude-code`
 
-Both runtimes support structured profile selection:
+Both runtimes support structured validation-posture selection:
 
 - `codex` via `exec --output-schema`
 - `claude-code` via `-p --output-format json --json-schema`
 
-That structured step is what lets Oraculum treat profile choice as a bounded selection problem instead of an unstructured free-form guess.
+That structured step is what lets Oraculum treat validation posture choice as a bounded selection problem instead of an unstructured free-form guess.
 
-## Automatic Profile Selection
+## Automatic Validation Posture Selection
 
-Each consultation now writes a profile-selection artifact under:
+Each consultation now writes a validation-posture selection artifact under:
 
 ```text
 .oraculum/runs/<consultation-id>/reports/profile-selection.json
 ```
 
-That artifact records the repo signals, the command catalog offered to the runtime, skipped command candidates, the chosen profile, and any missing capabilities.
+That artifact records the repo signals, the command catalog offered to the runtime, skipped command candidates, the selected validation posture, and any missing capabilities.
 
-Today the built-in profile families are:
+Today the built-in compatibility posture ids are:
 
 - `generic`
 - `library`
 - `frontend`
 - `migration`
 
-The selected profile is consultation-scoped. It does not rewrite your saved quick-start config, and it does not overwrite explicit advanced operator settings.
+The selected validation posture is consultation-scoped. It does not rewrite your saved quick-start config, and it does not overwrite explicit advanced operator settings.
 
-## Profile Selection Boundaries
+## Validation Posture Boundaries
 
 The runtime does not invent executable commands. It selects from the command ids Oraculum already provided in the consultation-scoped catalog.
 
-Invalid profile ids fail schema validation. Unknown strategy ids and command ids are filtered out or replaced by safe fallbacks before the recommendation is applied. If a plausible command is not safe to generate, Oraculum records it under `skippedCommandCandidates` instead of running it. If runtime profile selection fails or is disabled, fallback behavior stays conservative: zero-signal repositories use `generic`, ambiguous package managers do not silently become npm, and missing validation is recorded as `missingCapabilities`.
+Unknown strategy ids and command ids are filtered out or replaced by safe fallbacks before the recommendation is applied. Unsupported validation posture ids from runtime output are normalized through deterministic fallback before they become current state. If a plausible command is not safe to generate, Oraculum records it under `skippedCommandCandidates` instead of running it. If runtime validation-posture selection fails or is disabled, fallback behavior stays conservative: zero-signal repositories use `generic`, ambiguous package managers do not silently become npm, and missing validation is recorded as `missingCapabilities`.
 
 Repo-local scripts and explicit `.oraculum/advanced.json` oracles are strongest. Oraculum should not grow a built-in encyclopedia of framework, ORM, migration-tool, test-runner, or language-specific command recipes. Named tools, including Prisma or Drizzle, are recorded as evidence unless a repo-local script or explicit oracle defines the command.
 
@@ -105,22 +105,52 @@ orc verdict archive 20
 
 Use this when you want to reopen an older consultation without remembering the exact id first.
 
-## Crown The Recommended Survivor
+## Crown The Recommended Result
 
 ```text
 orc crown fix/session-loss
 ```
 
-The shared host-native `crown` path crowns the latest recommended survivor automatically.
+The shared host-native `crown` path crowns the latest recommended result automatically.
 
-In a Git-backed project, `crown` expects the target branch name as the first argument, creates that branch, and applies the recommended survivor there. In a non-Git project, use bare `orc crown`; it syncs the crowned workspace back into the project folder. If you pass a first argument in workspace-sync mode, Oraculum records it only as a materialization label.
+In a Git-backed project, `crown` expects the target branch name as the first argument, creates that branch, and materializes the recommended result there. In a non-Git project, use bare `orc crown`; it syncs the crowned workspace back into the project folder. If you pass a first argument in workspace-sync mode, Oraculum records it only as a materialization label.
 
 When available, the crowning record points at artifacts such as:
 
 - finalist-to-finalist comparison summaries
 - Markdown comparison reports
-- recommended survivor records
+- recommended result records
 - change summaries, witness rollups, and why-this-won rationale
+
+## Research Briefs And Failure Analysis
+
+When preflight decides that repo-only evidence is insufficient, Oraculum writes a bounded research artifact under:
+
+```text
+.oraculum/runs/<consultation-id>/reports/research-brief.json
+```
+
+That artifact carries the research question, summary, sources, claims, version notes, unresolved conflicts, and conflict handling. You can reuse it directly as the next task input:
+
+```text
+orc consult .oraculum/runs/<consultation-id>/reports/research-brief.json
+```
+
+If bounded repair or finalist judgment fails to converge, Oraculum may also write:
+
+```text
+.oraculum/runs/<consultation-id>/reports/failure-analysis.json
+```
+
+That artifact is for investigation, not auto-retry. It summarizes why execution stalled, which candidates failed repeatedly, and what evidence should be inspected before rerunning or manually crowning.
+
+## Verdict Evidence And Judging Criteria
+
+`orc verdict` stays read-only, but the saved artifacts now carry more machine-readable evidence than the default summary prints.
+
+- `winner-selection.json` can include artifact-aware `judgingCriteria` when the task has an explicit target result.
+- `verdict review` replays strongest evidence, weakest evidence, recommendation absence reasons, and manual review or manual crowning handoff fields.
+- comparison reports and verdict review also surface research basis status, research conflict handling, and failure-analysis availability when those artifacts exist.
 
 This keeps the default path short while leaving richer review material in the advanced path.
 
