@@ -8,7 +8,14 @@ import {
   decisionConfidenceSchema,
   type ProfileRepoSignals,
 } from "../domain/profile.js";
-import { type ConsultationPreflight, consultationPreflightSchema } from "../domain/run.js";
+import {
+  type ConsultationClarifyFollowUp,
+  type ConsultationPreflight,
+  type clarifyPressureKindSchema,
+  type clarifyScopeKeyTypeSchema,
+  consultationClarifyFollowUpSchema,
+  consultationPreflightSchema,
+} from "../domain/run.js";
 import type { MaterializedTaskPacket } from "../domain/task.js";
 
 export const agentArtifactKindSchema = z.enum([
@@ -169,6 +176,29 @@ export const agentPreflightResultSchema = z.object({
   artifacts: z.array(agentArtifactSchema).default([]),
 });
 
+export const agentClarifyFollowUpResultSchema = z.object({
+  runId: z.string().min(1),
+  adapter: adapterSchema,
+  status: agentRunStatusSchema,
+  startedAt: z.string().min(1),
+  completedAt: z.string().min(1),
+  exitCode: z.number().int(),
+  summary: z.string().min(1),
+  recommendation: consultationClarifyFollowUpSchema
+    .omit({
+      runId: true,
+      adapter: true,
+      decision: true,
+      scopeKeyType: true,
+      scopeKey: true,
+      repeatedCaseCount: true,
+      repeatedKinds: true,
+      recurringReasons: true,
+    })
+    .optional(),
+  artifacts: z.array(agentArtifactSchema).default([]),
+});
+
 export interface AgentRunRequest {
   runId: string;
   candidateId: string;
@@ -186,6 +216,9 @@ export interface AgentAdapter {
   runCandidate(request: AgentRunRequest): Promise<AgentRunResult>;
   recommendWinner(request: AgentJudgeRequest): Promise<AgentJudgeResult>;
   recommendPreflight(request: AgentPreflightRequest): Promise<AgentPreflightResult>;
+  recommendClarifyFollowUp(
+    request: AgentClarifyFollowUpRequest,
+  ): Promise<AgentClarifyFollowUpResult>;
   recommendProfile(request: AgentProfileRequest): Promise<AgentProfileResult>;
 }
 
@@ -224,6 +257,25 @@ export interface AgentPreflightRequest {
   signals: ProfileRepoSignals;
 }
 
+export interface AgentClarifyFollowUpRequest {
+  runId: string;
+  projectRoot: string;
+  logDir: string;
+  taskPacket: MaterializedTaskPacket;
+  signals: ProfileRepoSignals;
+  preflight: ConsultationPreflight & {
+    decision: "needs-clarification" | "external-research-required";
+  };
+  pressureContext: {
+    scopeKeyType: z.infer<typeof clarifyScopeKeyTypeSchema>;
+    scopeKey: string;
+    repeatedCaseCount: number;
+    repeatedKinds: Array<z.infer<typeof clarifyPressureKindSchema>>;
+    recurringReasons: string[];
+    priorQuestions: string[];
+  };
+}
+
 export interface AgentRepairContext {
   roundId: string;
   attempt: number;
@@ -248,7 +300,9 @@ export type AgentJudgeRecommendation = z.infer<typeof agentJudgeRecommendationSc
 export type AgentJudgeResult = z.infer<typeof agentJudgeResultSchema>;
 export type AgentProfileResult = z.infer<typeof agentProfileResultSchema>;
 export type AgentPreflightResult = z.infer<typeof agentPreflightResultSchema>;
+export type AgentClarifyFollowUpResult = z.infer<typeof agentClarifyFollowUpResultSchema>;
 export type AgentPreflightRecommendation = ConsultationPreflight;
+export type AgentClarifyFollowUpRecommendation = ConsultationClarifyFollowUp;
 export type { AgentProfileRecommendation };
 
 export function buildAgentPreflightJsonSchema(): Record<string, unknown> {
@@ -273,5 +327,19 @@ export function buildAgentPreflightJsonSchema(): Record<string, unknown> {
       researchQuestion: { type: "string", minLength: 1 },
     },
     required: ["decision", "confidence", "summary", "researchPosture"],
+  };
+}
+
+export function buildAgentClarifyFollowUpJsonSchema(): Record<string, unknown> {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      summary: { type: "string", minLength: 1 },
+      keyQuestion: { type: "string", minLength: 1 },
+      missingResultContract: { type: "string", minLength: 1 },
+      missingJudgingBasis: { type: "string", minLength: 1 },
+    },
+    required: ["summary", "keyQuestion", "missingResultContract", "missingJudgingBasis"],
   };
 }

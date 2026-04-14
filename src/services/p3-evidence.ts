@@ -1,9 +1,11 @@
 import { mkdir, readFile } from "node:fs/promises";
+import { isAbsolute, normalize, relative } from "node:path";
 
 import { z } from "zod";
 
 import { agentJudgeResultSchema } from "../adapters/types.js";
 import {
+  getClarifyFollowUpPath,
   getFailureAnalysisPath,
   getFinalistComparisonJsonPath,
   getFinalistComparisonMarkdownPath,
@@ -20,7 +22,10 @@ import {
 import { adapterSchema } from "../domain/config.js";
 import { decisionConfidenceSchema } from "../domain/profile.js";
 import {
+  consultationClarifyFollowUpSchema,
   consultationOutcomeTypeSchema,
+  consultationPreflightReadinessArtifactSchema,
+  consultationResearchBriefSchema,
   consultationValidationPostureSchema,
 } from "../domain/run.js";
 import {
@@ -31,7 +36,8 @@ import {
 
 import { buildVerdictReview, listRecentConsultations } from "./consultations.js";
 import { failureAnalysisSchema } from "./failure-analysis.js";
-import { pathExists, writeJsonFile } from "./project.js";
+import { comparisonReportSchema } from "./finalist-report.js";
+import { hasNonEmptyTextArtifact, pathExists, writeJsonFile } from "./project.js";
 
 const p3EvidenceCaseKindSchema = z.enum([
   "clarify-needed",
@@ -66,6 +72,7 @@ const p3EvidenceCaseSchema = z.object({
   artifactPaths: z
     .object({
       preflightReadinessPath: z.string().min(1).optional(),
+      clarifyFollowUpPath: z.string().min(1).optional(),
       researchBriefPath: z.string().min(1).optional(),
       failureAnalysisPath: z.string().min(1).optional(),
       winnerSelectionPath: z.string().min(1).optional(),
@@ -91,6 +98,7 @@ const p3RepeatedTaskSchema = z.object({
 
 const p3RepeatedSourceSchema = z.object({
   taskSourceKind: taskSourceKindSchema,
+  taskSourceKinds: z.array(taskSourceKindSchema).min(1),
   taskSourcePath: z.string().min(1),
   occurrenceCount: z.number().int().min(2),
   latestRunId: z.string().min(1),
@@ -142,6 +150,7 @@ const p3PromotionSignalSchema = z.object({
 
 const p3MissingArtifactKindSchema = z.enum([
   "preflight-readiness",
+  "clarify-follow-up",
   "research-brief",
   "winner-selection",
   "comparison-report",
@@ -178,6 +187,7 @@ const p3PressureTrajectorySchema = z.object({
 const p3InspectionItemSchema = z.object({
   artifactKind: z.enum([
     "preflight-readiness",
+    "clarify-follow-up",
     "research-brief",
     "winner-selection",
     "comparison-json",
@@ -220,6 +230,7 @@ const p3RecentClusterSchema = z.object({
 const p3ArtifactCoverageSchema = z.object({
   consultationsWithPreflightReadiness: z.number().int().min(0),
   consultationsWithPreflightFallback: z.number().int().min(0),
+  consultationsWithClarifyFollowUp: z.number().int().min(0),
   consultationsWithComparisonReport: z.number().int().min(0),
   consultationsWithWinnerSelection: z.number().int().min(0),
   consultationsWithFailureAnalysis: z.number().int().min(0),
@@ -243,6 +254,7 @@ const p3PressureArtifactCoverageSchema = z.object({
   casesWithTargetArtifact: z.number().int().min(0),
   casesWithPreflightReadiness: z.number().int().min(0),
   casesWithPreflightFallback: z.number().int().min(0),
+  casesWithClarifyFollowUp: z.number().int().min(0),
   casesWithComparisonReport: z.number().int().min(0),
   casesWithWinnerSelection: z.number().int().min(0),
   casesWithFailureAnalysis: z.number().int().min(0),
@@ -307,6 +319,24 @@ export const p3EvidenceReportSchema = z.object({
 
 export type P3EvidenceReport = z.infer<typeof p3EvidenceReportSchema>;
 
+export function normalizeEvidenceScopePath(projectRoot: string, path: string): string {
+  if (!isAbsolute(path)) {
+    return normalize(path);
+  }
+
+  const relativePath = relative(projectRoot, path);
+  if (
+    relativePath.length === 0 ||
+    relativePath === "." ||
+    relativePath.startsWith("..") ||
+    isAbsolute(relativePath)
+  ) {
+    return path;
+  }
+
+  return relativePath;
+}
+
 export async function collectP3Evidence(cwd: string): Promise<P3EvidenceReport> {
   const projectRoot = resolveProjectRoot(cwd);
   const manifests = await listRecentConsultations(projectRoot, Number.MAX_SAFE_INTEGER);
@@ -315,6 +345,7 @@ export async function collectP3Evidence(cwd: string): Promise<P3EvidenceReport> 
   const artifactCoverage = {
     consultationsWithPreflightReadiness: 0,
     consultationsWithPreflightFallback: 0,
+    consultationsWithClarifyFollowUp: 0,
     consultationsWithComparisonReport: 0,
     consultationsWithWinnerSelection: 0,
     consultationsWithFailureAnalysis: 0,
@@ -323,32 +354,45 @@ export async function collectP3Evidence(cwd: string): Promise<P3EvidenceReport> 
   };
 
   for (const manifest of manifests) {
+    const normalizedTargetArtifactPath = manifest.taskPacket.targetArtifactPath
+      ? normalizeEvidenceScopePath(projectRoot, manifest.taskPacket.targetArtifactPath)
+      : undefined;
+    const normalizedTaskSourcePath = normalizeEvidenceScopePath(
+      projectRoot,
+      manifest.taskPacket.originPath ?? manifest.taskPacket.sourcePath,
+    );
     const artifacts = await resolveConsultationArtifacts(projectRoot, manifest.id);
     const preflightReadiness = await readPreflightReadiness(artifacts.preflightReadinessPath);
-    if (artifacts.preflightReadinessPath) {
+    const clarifyFollowUp = await readClarifyFollowUp(artifacts.clarifyFollowUpPath);
+    const researchBrief = await readResearchBrief(artifacts.researchBriefPath);
+    const comparisonReport = await readComparisonReport(artifacts.comparisonJsonPath);
+    const winnerSelection = await readWinnerSelection(artifacts.winnerSelectionPath);
+    const failureAnalysis = await readFailureAnalysis(artifacts.failureAnalysisPath);
+    if (preflightReadiness) {
       artifactCoverage.consultationsWithPreflightReadiness += 1;
     }
     if (preflightReadiness?.llmSkipped || preflightReadiness?.llmFailure) {
       artifactCoverage.consultationsWithPreflightFallback += 1;
     }
-    if (artifacts.comparisonJsonPath || artifacts.comparisonMarkdownPath) {
+    if (clarifyFollowUp) {
+      artifactCoverage.consultationsWithClarifyFollowUp += 1;
+    }
+    if (comparisonReport || artifacts.comparisonMarkdownPath) {
       artifactCoverage.consultationsWithComparisonReport += 1;
     }
-    if (artifacts.winnerSelectionPath) {
+    if (winnerSelection) {
       artifactCoverage.consultationsWithWinnerSelection += 1;
     }
-    if (artifacts.failureAnalysisPath) {
+    if (failureAnalysis) {
       artifactCoverage.consultationsWithFailureAnalysis += 1;
     }
-    if (artifacts.researchBriefPath) {
+    if (researchBrief) {
       artifactCoverage.consultationsWithResearchBrief += 1;
     }
     const review = await buildVerdictReview(manifest, artifacts);
     if (review.manualReviewRecommended) {
       artifactCoverage.consultationsWithManualReviewRecommendation += 1;
     }
-    const winnerSelection = await readWinnerSelection(artifacts.winnerSelectionPath);
-    const failureAnalysis = await readFailureAnalysis(artifacts.failureAnalysisPath);
     const common = {
       runId: manifest.id,
       consultationPath: getRunDir(projectRoot, manifest.id),
@@ -356,7 +400,7 @@ export async function collectP3Evidence(cwd: string): Promise<P3EvidenceReport> 
       agent: manifest.agent,
       taskTitle: manifest.taskPacket.title,
       taskSourceKind: manifest.taskPacket.sourceKind,
-      taskSourcePath: manifest.taskPacket.sourcePath,
+      taskSourcePath: normalizedTaskSourcePath,
       outcomeType: review.outcomeType,
       outcomeSummary: review.outcomeSummary,
       validationPosture: review.validationPosture,
@@ -372,26 +416,17 @@ export async function collectP3Evidence(cwd: string): Promise<P3EvidenceReport> 
       supportingEvidence: limitEvidence(review.strongestEvidence),
       blockingEvidence: limitEvidence(review.weakestEvidence),
       artifactPaths: {
-        ...(artifacts.preflightReadinessPath
-          ? { preflightReadinessPath: artifacts.preflightReadinessPath }
-          : {}),
-        ...(artifacts.researchBriefPath ? { researchBriefPath: artifacts.researchBriefPath } : {}),
-        ...(artifacts.failureAnalysisPath
-          ? { failureAnalysisPath: artifacts.failureAnalysisPath }
-          : {}),
-        ...(artifacts.winnerSelectionPath
-          ? { winnerSelectionPath: artifacts.winnerSelectionPath }
-          : {}),
-        ...(artifacts.comparisonJsonPath
-          ? { comparisonJsonPath: artifacts.comparisonJsonPath }
-          : {}),
+        ...(preflightReadiness ? { preflightReadinessPath: artifacts.preflightReadinessPath } : {}),
+        ...(clarifyFollowUp ? { clarifyFollowUpPath: artifacts.clarifyFollowUpPath } : {}),
+        ...(researchBrief ? { researchBriefPath: artifacts.researchBriefPath } : {}),
+        ...(failureAnalysis ? { failureAnalysisPath: artifacts.failureAnalysisPath } : {}),
+        ...(winnerSelection ? { winnerSelectionPath: artifacts.winnerSelectionPath } : {}),
+        ...(comparisonReport ? { comparisonJsonPath: artifacts.comparisonJsonPath } : {}),
         ...(artifacts.comparisonMarkdownPath
           ? { comparisonMarkdownPath: artifacts.comparisonMarkdownPath }
           : {}),
       },
-      ...(manifest.taskPacket.targetArtifactPath
-        ? { targetArtifactPath: manifest.taskPacket.targetArtifactPath }
-        : {}),
+      ...(normalizedTargetArtifactPath ? { targetArtifactPath: normalizedTargetArtifactPath } : {}),
     } as const;
 
     if (review.outcomeType === "needs-clarification") {
@@ -658,13 +693,13 @@ export function renderP3EvidenceSummary(
   }
 
   lines.push(
-    `Artifact coverage: preflight-readiness=${report.artifactCoverage.consultationsWithPreflightReadiness} preflight-fallback=${report.artifactCoverage.consultationsWithPreflightFallback} comparison=${report.artifactCoverage.consultationsWithComparisonReport} winner-selection=${report.artifactCoverage.consultationsWithWinnerSelection} failure-analysis=${report.artifactCoverage.consultationsWithFailureAnalysis} research-brief=${report.artifactCoverage.consultationsWithResearchBrief} manual-review=${report.artifactCoverage.consultationsWithManualReviewRecommendation}`,
+    `Artifact coverage: preflight-readiness=${report.artifactCoverage.consultationsWithPreflightReadiness} preflight-fallback=${report.artifactCoverage.consultationsWithPreflightFallback} clarify-follow-up=${report.artifactCoverage.consultationsWithClarifyFollowUp} comparison=${report.artifactCoverage.consultationsWithComparisonReport} winner-selection=${report.artifactCoverage.consultationsWithWinnerSelection} failure-analysis=${report.artifactCoverage.consultationsWithFailureAnalysis} research-brief=${report.artifactCoverage.consultationsWithResearchBrief} manual-review=${report.artifactCoverage.consultationsWithManualReviewRecommendation}`,
   );
   lines.push(
     `Clarify pressure: total=${report.clarifyPressure.totalCases} needs-clarification=${report.clarifyPressure.needsClarificationCases} external-research-required=${report.clarifyPressure.externalResearchRequiredCases} repeated-tasks=${report.clarifyPressure.repeatedTasks.length} repeated-sources=${report.clarifyPressure.repeatedSources.length}`,
   );
   lines.push(
-    `Clarify evidence coverage: targets=${report.clarifyPressure.artifactCoverage.casesWithTargetArtifact} preflight-readiness=${report.clarifyPressure.artifactCoverage.casesWithPreflightReadiness} preflight-fallback=${report.clarifyPressure.artifactCoverage.casesWithPreflightFallback} research-brief=${report.clarifyPressure.artifactCoverage.casesWithResearchBrief} manual-review=${report.clarifyPressure.artifactCoverage.casesWithManualReviewRecommendation}`,
+    `Clarify evidence coverage: targets=${report.clarifyPressure.artifactCoverage.casesWithTargetArtifact} preflight-readiness=${report.clarifyPressure.artifactCoverage.casesWithPreflightReadiness} preflight-fallback=${report.clarifyPressure.artifactCoverage.casesWithPreflightFallback} clarify-follow-up=${report.clarifyPressure.artifactCoverage.casesWithClarifyFollowUp} research-brief=${report.clarifyPressure.artifactCoverage.casesWithResearchBrief} manual-review=${report.clarifyPressure.artifactCoverage.casesWithManualReviewRecommendation}`,
   );
   lines.push(
     `Clarify metadata: validation-gaps=${report.clarifyPressure.metadataCoverage.consultationsWithValidationGaps} research-current=${report.clarifyPressure.metadataCoverage.consultationsWithCurrentResearchBasis} research-stale=${report.clarifyPressure.metadataCoverage.consultationsWithStaleResearchBasis} research-unknown=${report.clarifyPressure.metadataCoverage.consultationsWithUnknownResearchBasis} research-conflicts=${report.clarifyPressure.metadataCoverage.consultationsWithResearchConflicts} rerun=${report.clarifyPressure.metadataCoverage.consultationsWithResearchRerunRecommended}`,
@@ -796,6 +831,7 @@ function renderCasePreview(cases: z.infer<typeof p3EvidenceCaseSchema>[]): strin
   return cases.slice(0, 5).map((item) => {
     const suffix = item.question ?? item.summary;
     const artifactHint =
+      item.artifactPaths.clarifyFollowUpPath ??
       item.artifactPaths.failureAnalysisPath ??
       item.artifactPaths.winnerSelectionPath ??
       item.artifactPaths.preflightReadinessPath;
@@ -950,6 +986,7 @@ function buildRepeatedSources(
     string,
     {
       taskSourceKind: z.infer<typeof taskSourceKindSchema>;
+      taskSourceKinds: Set<z.infer<typeof taskSourceKindSchema>>;
       taskSourcePath: string;
       latestRunId: string;
       latestOpenedAt: string;
@@ -960,11 +997,12 @@ function buildRepeatedSources(
   >();
 
   for (const item of cases) {
-    const key = `${item.taskSourceKind}\u0000${item.taskSourcePath}`;
+    const key = item.taskSourcePath;
     const current = grouped.get(key);
     if (!current) {
       grouped.set(key, {
         taskSourceKind: item.taskSourceKind,
+        taskSourceKinds: new Set([item.taskSourceKind]),
         taskSourcePath: item.taskSourcePath,
         latestRunId: item.runId,
         latestOpenedAt: item.openedAt,
@@ -975,10 +1013,12 @@ function buildRepeatedSources(
       continue;
     }
 
+    current.taskSourceKinds.add(item.taskSourceKind);
     current.taskTitles.add(item.taskTitle);
     current.kinds.add(item.kind);
     current.runIds.add(item.runId);
     if (new Date(item.openedAt).getTime() > new Date(current.latestOpenedAt).getTime()) {
+      current.taskSourceKind = item.taskSourceKind;
       current.latestOpenedAt = item.openedAt;
       current.latestRunId = item.runId;
     }
@@ -995,6 +1035,7 @@ function buildRepeatedSources(
     .map((item) =>
       p3RepeatedSourceSchema.parse({
         taskSourceKind: item.taskSourceKind,
+        taskSourceKinds: [...item.taskSourceKinds].sort((left, right) => left.localeCompare(right)),
         taskSourcePath: item.taskSourcePath,
         occurrenceCount: item.runIds.size,
         latestRunId: item.latestRunId,
@@ -1547,6 +1588,7 @@ function buildPressureArtifactCoverage(
     casesWithPreflightReadiness: cases.filter((item) => item.artifactPaths.preflightReadinessPath)
       .length,
     casesWithPreflightFallback: cases.filter((item) => item.preflightFallbackObserved).length,
+    casesWithClarifyFollowUp: cases.filter((item) => item.artifactPaths.clarifyFollowUpPath).length,
     casesWithComparisonReport: cases.filter(
       (item) => item.artifactPaths.comparisonJsonPath || item.artifactPaths.comparisonMarkdownPath,
     ).length,
@@ -1654,6 +1696,12 @@ function buildClarifyInspectionQueue(
   return [
     ...buildGapInspectionQueue(projectRoot, coverageGapRuns),
     ...buildInspectionQueue(cases, [
+      {
+        artifactKind: "clarify-follow-up",
+        path: (item) => item.artifactPaths.clarifyFollowUpPath,
+        reason: () =>
+          "Inspect the persisted clarify follow-up artifact for bounded rerun guidance.",
+      },
       {
         artifactKind: "research-brief",
         path: (item) => item.artifactPaths.researchBriefPath,
@@ -2005,22 +2053,15 @@ function scoreEvidenceCaseKind(kind: z.infer<typeof p3EvidenceCaseKindSchema>): 
   }
 }
 
-const preflightReadinessArtifactSchema = z
-  .object({
-    llmSkipped: z.boolean().optional(),
-    llmFailure: z.string().min(1).optional(),
-  })
-  .passthrough();
-
 async function readPreflightReadiness(
   path: string | undefined,
-): Promise<z.infer<typeof preflightReadinessArtifactSchema> | undefined> {
+): Promise<z.infer<typeof consultationPreflightReadinessArtifactSchema> | undefined> {
   if (!path) {
     return undefined;
   }
 
   try {
-    return preflightReadinessArtifactSchema.parse(
+    return consultationPreflightReadinessArtifactSchema.parse(
       JSON.parse(await readFile(path, "utf8")) as unknown,
     );
   } catch {
@@ -2033,6 +2074,7 @@ async function resolveConsultationArtifacts(
   runId: string,
 ): Promise<{
   preflightReadinessPath?: string;
+  clarifyFollowUpPath?: string;
   researchBriefPath?: string;
   failureAnalysisPath?: string;
   profileSelectionPath?: string;
@@ -2043,6 +2085,7 @@ async function resolveConsultationArtifacts(
 }> {
   const [
     preflightReadinessPath,
+    clarifyFollowUpPath,
     researchBriefPath,
     failureAnalysisPath,
     profileSelectionPath,
@@ -2051,16 +2094,18 @@ async function resolveConsultationArtifacts(
     winnerSelectionPath,
   ] = await Promise.all([
     existingPath(getPreflightReadinessPath(projectRoot, runId)),
+    existingPath(getClarifyFollowUpPath(projectRoot, runId)),
     existingPath(getResearchBriefPath(projectRoot, runId)),
     existingPath(getFailureAnalysisPath(projectRoot, runId)),
     existingPath(getProfileSelectionPath(projectRoot, runId)),
     existingPath(getFinalistComparisonJsonPath(projectRoot, runId)),
-    existingPath(getFinalistComparisonMarkdownPath(projectRoot, runId)),
+    existingNonEmptyTextPath(getFinalistComparisonMarkdownPath(projectRoot, runId)),
     existingPath(getWinnerSelectionPath(projectRoot, runId)),
   ]);
 
   return {
     ...(preflightReadinessPath ? { preflightReadinessPath } : {}),
+    ...(clarifyFollowUpPath ? { clarifyFollowUpPath } : {}),
     ...(researchBriefPath ? { researchBriefPath } : {}),
     ...(failureAnalysisPath ? { failureAnalysisPath } : {}),
     ...(profileSelectionPath ? { profileSelectionPath } : {}),
@@ -2074,6 +2119,10 @@ async function existingPath(path: string): Promise<string | undefined> {
   return (await pathExists(path)) ? path : undefined;
 }
 
+async function existingNonEmptyTextPath(path: string): Promise<string | undefined> {
+  return (await hasNonEmptyTextArtifact(path)) ? path : undefined;
+}
+
 async function readWinnerSelection(
   path: string | undefined,
 ): Promise<z.infer<typeof agentJudgeResultSchema> | undefined> {
@@ -2083,6 +2132,52 @@ async function readWinnerSelection(
 
   try {
     return agentJudgeResultSchema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
+  } catch {
+    return undefined;
+  }
+}
+
+async function readClarifyFollowUp(
+  path: string | undefined,
+): Promise<z.infer<typeof consultationClarifyFollowUpSchema> | undefined> {
+  if (!path) {
+    return undefined;
+  }
+
+  try {
+    return consultationClarifyFollowUpSchema.parse(
+      JSON.parse(await readFile(path, "utf8")) as unknown,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+async function readResearchBrief(
+  path: string | undefined,
+): Promise<z.infer<typeof consultationResearchBriefSchema> | undefined> {
+  if (!path) {
+    return undefined;
+  }
+
+  try {
+    return consultationResearchBriefSchema.parse(
+      JSON.parse(await readFile(path, "utf8")) as unknown,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+async function readComparisonReport(
+  path: string | undefined,
+): Promise<z.infer<typeof comparisonReportSchema> | undefined> {
+  if (!path) {
+    return undefined;
+  }
+
+  try {
+    return comparisonReportSchema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
   } catch {
     return undefined;
   }

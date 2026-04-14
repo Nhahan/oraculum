@@ -7,6 +7,7 @@ import type { z } from "zod";
 
 import { agentJudgeResultSchema } from "../src/adapters/types.js";
 import {
+  getClarifyFollowUpPath,
   getFinalistComparisonJsonPath,
   getFinalistComparisonMarkdownPath,
   getP3EvidencePath,
@@ -14,7 +15,12 @@ import {
   getWinnerSelectionPath,
 } from "../src/core/paths.js";
 import type { RunManifest } from "../src/domain/run.js";
+import {
+  consultationClarifyFollowUpSchema,
+  consultationPreflightReadinessArtifactSchema,
+} from "../src/domain/run.js";
 import { failureAnalysisSchema } from "../src/services/failure-analysis.js";
+import { comparisonReportSchema } from "../src/services/finalist-report.js";
 import {
   collectP3Evidence,
   p3EvidenceReportSchema,
@@ -70,11 +76,16 @@ describe("P3 evidence collection", () => {
         },
       }),
     );
-    await writeFile(
-      join(cwd, ".oraculum", "runs", "run_clarify_1", "reports", "preflight-readiness.json"),
-      `${JSON.stringify({ llmFailure: "runtime unavailable" }, null, 2)}\n`,
-      "utf8",
-    );
+    await writePreflightReadinessArtifact(cwd, "run_clarify_1", {
+      llmFailure: "runtime unavailable",
+      recommendation: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The target sections are unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which sections are required in the session plan?",
+      },
+    });
     await writeManifest(
       cwd,
       createManifest("run_clarify_2", {
@@ -111,11 +122,16 @@ describe("P3 evidence collection", () => {
         },
       }),
     );
-    await writeFile(
-      join(cwd, ".oraculum", "runs", "run_clarify_2", "reports", "preflight-readiness.json"),
-      `${JSON.stringify({ llmSkipped: true }, null, 2)}\n`,
-      "utf8",
-    );
+    await writePreflightReadinessArtifact(cwd, "run_clarify_2", {
+      llmSkipped: true,
+      recommendation: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Official release guidance is required before execution.",
+        researchPosture: "external-research-required",
+        researchQuestion: "What do the official docs require for the current release plan format?",
+      },
+    });
     await writeManifest(
       cwd,
       createManifest("run_clarify_3", {
@@ -150,11 +166,32 @@ describe("P3 evidence collection", () => {
         },
       }),
     );
-    await writeFile(
-      join(cwd, ".oraculum", "runs", "run_clarify_3", "reports", "preflight-readiness.json"),
-      `${JSON.stringify({ llmFailure: "host timeout" }, null, 2)}\n`,
-      "utf8",
-    );
+    await writePreflightReadinessArtifact(cwd, "run_clarify_3", {
+      llmFailure: "host timeout",
+      recommendation: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The target sections are still unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which sections are required in the session plan?",
+      },
+    });
+    await writeClarifyFollowUp(cwd, "run_clarify_3", {
+      runId: "run_clarify_3",
+      adapter: "codex",
+      decision: "needs-clarification",
+      scopeKeyType: "target-artifact",
+      scopeKey: "docs/SESSION_PLAN.md",
+      repeatedCaseCount: 3,
+      repeatedKinds: ["clarify-needed", "external-research-required"],
+      recurringReasons: ["Which sections are required in the session plan?"],
+      summary: "The repeated blocker is still the missing document contract.",
+      keyQuestion: "Which sections are required in the session plan?",
+      missingResultContract:
+        "The session plan still lacks a concrete section contract for the target document.",
+      missingJudgingBasis:
+        "Winner selection is still unsafe until the required sections are explicit.",
+    });
 
     const report = await collectP3Evidence(cwd);
 
@@ -163,6 +200,7 @@ describe("P3 evidence collection", () => {
       expect.objectContaining({
         consultationsWithPreflightReadiness: 3,
         consultationsWithPreflightFallback: 3,
+        consultationsWithClarifyFollowUp: 1,
         consultationsWithManualReviewRecommendation: 3,
       }),
     );
@@ -172,6 +210,7 @@ describe("P3 evidence collection", () => {
         casesWithTargetArtifact: 3,
         casesWithPreflightReadiness: 3,
         casesWithPreflightFallback: 3,
+        casesWithClarifyFollowUp: 1,
         casesWithResearchBrief: 0,
         casesWithManualReviewRecommendation: 3,
       }),
@@ -235,6 +274,11 @@ describe("P3 evidence collection", () => {
     expect(report.clarifyPressure.inspectionQueue).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          artifactKind: "clarify-follow-up",
+          runId: "run_clarify_3",
+          path: getClarifyFollowUpPath(cwd, "run_clarify_3"),
+        }),
+        expect.objectContaining({
           artifactKind: "run-manifest",
           runId: "run_clarify_2",
           path: getRunManifestPath(cwd, "run_clarify_2"),
@@ -270,6 +314,9 @@ describe("P3 evidence collection", () => {
         agent: "codex",
         question: "Which sections are required in the session plan?",
         artifactPaths: expect.objectContaining({
+          clarifyFollowUpPath: expect.stringContaining(
+            ".oraculum/runs/run_clarify_3/reports/clarify-follow-up.json",
+          ),
           preflightReadinessPath: expect.stringContaining(
             ".oraculum/runs/run_clarify_3/reports/preflight-readiness.json",
           ),
@@ -277,7 +324,179 @@ describe("P3 evidence collection", () => {
       }),
     );
     const clarifySummary = renderP3EvidenceSummary(report);
+    expect(clarifySummary).toContain(
+      "Artifact coverage: preflight-readiness=3 preflight-fallback=3 clarify-follow-up=1 comparison=0 winner-selection=0 failure-analysis=0 research-brief=0 manual-review=3",
+    );
+    expect(clarifySummary).toContain(
+      "Clarify evidence coverage: targets=3 preflight-readiness=3 preflight-fallback=3 clarify-follow-up=1 research-brief=0 manual-review=3",
+    );
     expect(clarifySummary).toContain("Missing clarify artifacts: research-brief=1");
+  });
+
+  it("ignores invalid persisted artifacts when computing evidence coverage", async () => {
+    const cwd = await createInitializedProject();
+
+    await writeManifest(
+      cwd,
+      createManifest("run_invalid_clarify_artifacts", {
+        taskPacket: {
+          id: "task",
+          title: "Refresh rollout FAQ",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/rollout-faq.md",
+          artifactKind: "document",
+          targetArtifactPath: "docs/ROLLOUT_FAQ.md",
+        },
+        candidateCount: 0,
+        rounds: [],
+        candidates: [],
+        preflight: {
+          decision: "external-research-required",
+          confidence: "high",
+          summary: "Official rollout answers are still required.",
+          researchPosture: "external-research-required",
+          researchQuestion: "Which rollout answers are current in the official docs?",
+        },
+        outcome: {
+          type: "external-research-required",
+          terminal: true,
+          crownable: false,
+          finalistCount: 0,
+          validationPosture: "validation-gaps",
+          verificationLevel: "none",
+          validationGapCount: 0,
+          judgingBasisKind: "missing-capability",
+        },
+      }),
+    );
+    await writeFile(
+      join(
+        cwd,
+        ".oraculum",
+        "runs",
+        "run_invalid_clarify_artifacts",
+        "reports",
+        "preflight-readiness.json",
+      ),
+      "{}\n",
+      "utf8",
+    );
+    await writeFile(getClarifyFollowUpPath(cwd, "run_invalid_clarify_artifacts"), "{}\n", "utf8");
+    await writeFile(
+      join(
+        cwd,
+        ".oraculum",
+        "runs",
+        "run_invalid_clarify_artifacts",
+        "reports",
+        "research-brief.json",
+      ),
+      "{}\n",
+      "utf8",
+    );
+
+    await writeManifest(
+      cwd,
+      createManifest("run_invalid_finalist_artifacts", {
+        createdAt: "2026-04-05T00:00:00.000Z",
+        taskPacket: {
+          id: "task",
+          title: "Compare rollout finalists",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/rollout-finalists.md",
+          artifactKind: "document",
+          targetArtifactPath: "docs/ROLLOUT_FAQ.md",
+        },
+        candidateCount: 2,
+        candidates: [createCandidate("cand-a", "promoted"), createCandidate("cand-b", "promoted")],
+        outcome: {
+          type: "finalists-without-recommendation",
+          terminal: true,
+          crownable: false,
+          finalistCount: 2,
+          validationPosture: "sufficient",
+          verificationLevel: "standard",
+          validationGapCount: 0,
+          judgingBasisKind: "repo-local-oracle",
+        },
+      }),
+    );
+    await writeFile(getWinnerSelectionPath(cwd, "run_invalid_finalist_artifacts"), "{}\n", "utf8");
+    await writeFile(
+      getFinalistComparisonMarkdownPath(cwd, "run_invalid_finalist_artifacts"),
+      " \n",
+      "utf8",
+    );
+    await writeFile(
+      join(
+        cwd,
+        ".oraculum",
+        "runs",
+        "run_invalid_finalist_artifacts",
+        "reports",
+        "failure-analysis.json",
+      ),
+      "{}\n",
+      "utf8",
+    );
+
+    const report = await collectP3Evidence(cwd);
+
+    expect(report.artifactCoverage).toEqual(
+      expect.objectContaining({
+        consultationsWithClarifyFollowUp: 0,
+        consultationsWithResearchBrief: 0,
+        consultationsWithWinnerSelection: 0,
+        consultationsWithFailureAnalysis: 0,
+      }),
+    );
+    expect(report.clarifyPressure.artifactCoverage).toEqual(
+      expect.objectContaining({
+        caseCount: 1,
+        casesWithClarifyFollowUp: 0,
+        casesWithResearchBrief: 0,
+      }),
+    );
+    expect(report.clarifyPressure.coverageBlindSpots).toContain(
+      "External-research blockers have no persisted research-brief artifacts yet.",
+    );
+    expect(report.clarifyPressure.coverageGapRuns).toEqual([
+      expect.objectContaining({
+        runId: "run_invalid_clarify_artifacts",
+        missingArtifactKinds: ["preflight-readiness", "research-brief"],
+      }),
+    ]);
+    expect(report.clarifyPressure.cases).toEqual([
+      expect.objectContaining({
+        runId: "run_invalid_clarify_artifacts",
+        artifactPaths: expect.not.objectContaining({
+          clarifyFollowUpPath: expect.any(String),
+          researchBriefPath: expect.any(String),
+        }),
+      }),
+    ]);
+    expect(report.finalistSelectionPressure.artifactCoverage).toEqual(
+      expect.objectContaining({
+        caseCount: 2,
+        casesWithWinnerSelection: 0,
+        casesWithFailureAnalysis: 0,
+      }),
+    );
+    expect(report.finalistSelectionPressure.coverageBlindSpots).toContain(
+      "Some finalist-selection pressure cases are missing winner-selection artifacts.",
+    );
+    expect(report.finalistSelectionPressure.cases).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: "run_invalid_finalist_artifacts",
+          kind: "finalists-without-recommendation",
+          artifactPaths: expect.not.objectContaining({
+            winnerSelectionPath: expect.any(String),
+            failureAnalysisPath: expect.any(String),
+          }),
+        }),
+      ]),
+    );
   });
 
   it("collects finalist-selection pressure and writes a replayable report artifact", async () => {
@@ -390,6 +609,7 @@ describe("P3 evidence collection", () => {
       expect.objectContaining({
         consultationsWithPreflightReadiness: 0,
         consultationsWithPreflightFallback: 0,
+        consultationsWithClarifyFollowUp: 0,
         consultationsWithComparisonReport: 2,
         consultationsWithWinnerSelection: 2,
         consultationsWithFailureAnalysis: 1,
@@ -497,7 +717,7 @@ describe("P3 evidence collection", () => {
       ]),
     );
     expect(summary).toContain(
-      "Artifact coverage: preflight-readiness=0 preflight-fallback=0 comparison=2 winner-selection=2 failure-analysis=1 research-brief=0 manual-review=1",
+      "Artifact coverage: preflight-readiness=0 preflight-fallback=0 clarify-follow-up=0 comparison=2 winner-selection=2 failure-analysis=1 research-brief=0 manual-review=1",
     );
     expect(summary).toContain(
       "Finalist evidence coverage: targets=4 comparison=4 winner-selection=4 failure-analysis=3 research-brief=0 manual-review=3",
@@ -584,11 +804,16 @@ describe("P3 evidence collection", () => {
         },
       }),
     );
-    await writeFile(
-      join(cwd, ".oraculum", "runs", "run_research_clarify", "reports", "preflight-readiness.json"),
-      "{}\n",
-      "utf8",
-    );
+    await writePreflightReadinessArtifact(cwd, "run_research_clarify", {
+      recommendation: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Official rollout guidance still conflicts and needs bounded research.",
+        researchPosture: "external-research-required",
+        researchQuestion: "Which rollout cutoff date is current in the official guidance?",
+        researchBasisDrift: true,
+      },
+    });
 
     const report = await collectP3Evidence(cwd);
     const summary = renderP3EvidenceSummary(report);
@@ -767,11 +992,15 @@ describe("P3 evidence collection", () => {
         },
       }),
     );
-    await writeFile(
-      join(cwd, ".oraculum", "runs", "run_source_clarify_1", "reports", "preflight-readiness.json"),
-      "{}\n",
-      "utf8",
-    );
+    await writePreflightReadinessArtifact(cwd, "run_source_clarify_1", {
+      recommendation: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The operator memo audience is unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Who is the intended operator audience?",
+      },
+    });
 
     await writeManifest(
       cwd,
@@ -805,11 +1034,15 @@ describe("P3 evidence collection", () => {
         },
       }),
     );
-    await writeFile(
-      join(cwd, ".oraculum", "runs", "run_source_clarify_2", "reports", "preflight-readiness.json"),
-      "{}\n",
-      "utf8",
-    );
+    await writePreflightReadinessArtifact(cwd, "run_source_clarify_2", {
+      recommendation: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The operator memo audience is still unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Who is the intended operator audience?",
+      },
+    });
 
     const report = await collectP3Evidence(cwd);
     const summary = renderP3EvidenceSummary(report);
@@ -831,6 +1064,357 @@ describe("P3 evidence collection", () => {
     );
     expect(summary).toContain("Repeated task sources:");
     expect(summary).toContain("/tmp/operator-memo.md: 2 cases [clarify-needed]");
+  });
+
+  it("normalizes in-repo absolute target artifact paths when grouping repeated pressure", async () => {
+    const cwd = await createInitializedProject();
+    const absoluteTargetArtifactPath = join(cwd, "docs", "MIXED_SCOPE.md");
+
+    await writeManifest(
+      cwd,
+      createManifest("run_mixed_target_1", {
+        taskPacket: {
+          id: "task",
+          title: "Draft mixed-scope note",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/mixed-scope-a.md",
+          artifactKind: "document",
+          targetArtifactPath: "docs/MIXED_SCOPE.md",
+        },
+        candidateCount: 0,
+        rounds: [],
+        candidates: [],
+        preflight: {
+          decision: "needs-clarification",
+          confidence: "medium",
+          summary: "The mixed-scope note contract is unclear.",
+          researchPosture: "repo-only",
+          clarificationQuestion: "Which sections belong in the mixed-scope note?",
+        },
+        outcome: {
+          type: "needs-clarification",
+          terminal: true,
+          crownable: false,
+          finalistCount: 0,
+          validationPosture: "unknown",
+          verificationLevel: "none",
+          validationGapCount: 0,
+          judgingBasisKind: "unknown",
+        },
+      }),
+    );
+    await writePreflightReadinessArtifact(cwd, "run_mixed_target_1", {
+      recommendation: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The mixed-scope note still lacks a section contract.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which sections must the mixed-scope note contain?",
+      },
+    });
+
+    await writeManifest(
+      cwd,
+      createManifest("run_mixed_target_2", {
+        createdAt: "2026-04-05T00:00:00.000Z",
+        agent: "claude-code",
+        taskPacket: {
+          id: "task",
+          title: "Refine mixed-scope note",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/mixed-scope-b.md",
+          artifactKind: "document",
+          targetArtifactPath: absoluteTargetArtifactPath,
+        },
+        candidateCount: 0,
+        rounds: [],
+        candidates: [],
+        preflight: {
+          decision: "external-research-required",
+          confidence: "high",
+          summary: "Official guidance is still required for the mixed-scope note.",
+          researchPosture: "external-research-required",
+          researchQuestion: "What official guidance must the mixed-scope note cite?",
+        },
+        outcome: {
+          type: "external-research-required",
+          terminal: true,
+          crownable: false,
+          finalistCount: 0,
+          validationPosture: "validation-gaps",
+          verificationLevel: "none",
+          validationGapCount: 0,
+          judgingBasisKind: "missing-capability",
+        },
+      }),
+    );
+    await writePreflightReadinessArtifact(cwd, "run_mixed_target_2", {
+      recommendation: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Official guidance is still required for the mixed-scope note.",
+        researchPosture: "external-research-required",
+        researchQuestion: "What official guidance must the mixed-scope note cite?",
+      },
+    });
+
+    const report = await collectP3Evidence(cwd);
+
+    expect(report.clarifyPressure.repeatedTargets).toEqual([
+      expect.objectContaining({
+        targetArtifactPath: "docs/MIXED_SCOPE.md",
+        occurrenceCount: 2,
+      }),
+    ]);
+    expect(report.clarifyPressure.pressureTrajectories).toEqual([
+      expect.objectContaining({
+        keyType: "target-artifact",
+        key: "docs/MIXED_SCOPE.md",
+        occurrenceCount: 2,
+      }),
+    ]);
+    expect(report.clarifyPressure.cases).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: "run_mixed_target_2",
+          targetArtifactPath: "docs/MIXED_SCOPE.md",
+        }),
+      ]),
+    );
+  });
+
+  it("normalizes origin-backed in-repo task source paths when grouping repeated source pressure", async () => {
+    const cwd = await createInitializedProject();
+    const normalizedTaskSourcePath = "tasks/operator-memo.md";
+    const absoluteOriginPath = join(cwd, normalizedTaskSourcePath);
+
+    await writeManifest(
+      cwd,
+      createManifest("run_mixed_source_1", {
+        taskPacket: {
+          id: "task",
+          title: "Draft operator memo",
+          sourceKind: "task-note",
+          sourcePath: normalizedTaskSourcePath,
+        },
+        candidateCount: 0,
+        rounds: [],
+        candidates: [],
+        preflight: {
+          decision: "needs-clarification",
+          confidence: "medium",
+          summary: "The operator memo audience is still unclear.",
+          researchPosture: "repo-only",
+          clarificationQuestion: "Who is the intended operator audience?",
+        },
+        outcome: {
+          type: "needs-clarification",
+          terminal: true,
+          crownable: false,
+          finalistCount: 0,
+          validationPosture: "unknown",
+          verificationLevel: "none",
+          validationGapCount: 0,
+          judgingBasisKind: "unknown",
+        },
+      }),
+    );
+    await writePreflightReadinessArtifact(cwd, "run_mixed_source_1", {
+      recommendation: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The operator memo source is still ambiguous.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which operator responsibilities are in scope?",
+      },
+    });
+
+    await writeManifest(
+      cwd,
+      createManifest("run_mixed_source_2", {
+        createdAt: "2026-04-05T00:00:00.000Z",
+        agent: "claude-code",
+        taskPacket: {
+          id: "task",
+          title: "Refine operator memo",
+          sourceKind: "research-brief",
+          sourcePath: join(
+            cwd,
+            ".oraculum",
+            "runs",
+            "run_mixed_source_2",
+            "reports",
+            "research-brief.json",
+          ),
+          originKind: "task-note",
+          originPath: absoluteOriginPath,
+        },
+        candidateCount: 0,
+        rounds: [],
+        candidates: [],
+        preflight: {
+          decision: "external-research-required",
+          confidence: "high",
+          summary: "Official operator guidance is still required.",
+          researchPosture: "external-research-required",
+          researchQuestion: "Which operator responsibilities are in scope?",
+        },
+        outcome: {
+          type: "external-research-required",
+          terminal: true,
+          crownable: false,
+          finalistCount: 0,
+          validationPosture: "validation-gaps",
+          verificationLevel: "none",
+          validationGapCount: 0,
+          judgingBasisKind: "missing-capability",
+        },
+      }),
+    );
+    await writePreflightReadinessArtifact(cwd, "run_mixed_source_2", {
+      recommendation: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Official operator guidance is still required.",
+        researchPosture: "external-research-required",
+        researchQuestion: "Which operator responsibilities are in scope?",
+      },
+    });
+
+    const report = await collectP3Evidence(cwd);
+
+    expect(report.clarifyPressure.repeatedSources).toEqual([
+      expect.objectContaining({
+        taskSourcePath: normalizedTaskSourcePath,
+        taskSourceKinds: ["research-brief", "task-note"],
+        occurrenceCount: 2,
+        latestRunId: "run_mixed_source_2",
+      }),
+    ]);
+    expect(report.clarifyPressure.pressureTrajectories).toEqual([
+      expect.objectContaining({
+        keyType: "task-source",
+        key: normalizedTaskSourcePath,
+        occurrenceCount: 2,
+        agents: ["claude-code", "codex"],
+      }),
+    ]);
+    expect(report.clarifyPressure.cases).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: "run_mixed_source_2",
+          taskSourcePath: normalizedTaskSourcePath,
+        }),
+      ]),
+    );
+  });
+
+  it("normalizes dotted relative in-repo task source paths when grouping repeated source pressure", async () => {
+    const cwd = await createInitializedProject();
+    const normalizedTaskSourcePath = "tasks/operator-memo.md";
+
+    await writeManifest(
+      cwd,
+      createManifest("run_dotted_source_1", {
+        taskPacket: {
+          id: "task",
+          title: "Draft operator memo",
+          sourceKind: "task-note",
+          sourcePath: normalizedTaskSourcePath,
+        },
+        candidateCount: 0,
+        rounds: [],
+        candidates: [],
+        preflight: {
+          decision: "needs-clarification",
+          confidence: "medium",
+          summary: "The operator memo audience is still unclear.",
+          researchPosture: "repo-only",
+          clarificationQuestion: "Who is the intended operator audience?",
+        },
+        outcome: {
+          type: "needs-clarification",
+          terminal: true,
+          crownable: false,
+          finalistCount: 0,
+          validationPosture: "unknown",
+          verificationLevel: "none",
+          validationGapCount: 0,
+          judgingBasisKind: "unknown",
+        },
+      }),
+    );
+    await writePreflightReadinessArtifact(cwd, "run_dotted_source_1", {
+      recommendation: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The operator memo source is still ambiguous.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which operator responsibilities are in scope?",
+      },
+    });
+
+    await writeManifest(
+      cwd,
+      createManifest("run_dotted_source_2", {
+        createdAt: "2026-04-05T00:00:00.000Z",
+        agent: "claude-code",
+        taskPacket: {
+          id: "task",
+          title: "Refine operator memo",
+          sourceKind: "task-note",
+          sourcePath: `./${normalizedTaskSourcePath}`,
+        },
+        candidateCount: 0,
+        rounds: [],
+        candidates: [],
+        preflight: {
+          decision: "external-research-required",
+          confidence: "high",
+          summary: "Official operator guidance is still required.",
+          researchPosture: "external-research-required",
+          researchQuestion: "Which operator responsibilities are in scope?",
+        },
+        outcome: {
+          type: "external-research-required",
+          terminal: true,
+          crownable: false,
+          finalistCount: 0,
+          validationPosture: "validation-gaps",
+          verificationLevel: "none",
+          validationGapCount: 0,
+          judgingBasisKind: "missing-capability",
+        },
+      }),
+    );
+    await writePreflightReadinessArtifact(cwd, "run_dotted_source_2", {
+      recommendation: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Official operator guidance is still required.",
+        researchPosture: "external-research-required",
+        researchQuestion: "Which operator responsibilities are in scope?",
+      },
+    });
+
+    const report = await collectP3Evidence(cwd);
+
+    expect(report.clarifyPressure.repeatedSources).toEqual([
+      expect.objectContaining({
+        taskSourcePath: normalizedTaskSourcePath,
+        taskSourceKinds: ["task-note"],
+        occurrenceCount: 2,
+        latestRunId: "run_dotted_source_2",
+      }),
+    ]);
+    expect(report.clarifyPressure.pressureTrajectories).toEqual([
+      expect.objectContaining({
+        keyType: "task-source",
+        key: normalizedTaskSourcePath,
+        occurrenceCount: 2,
+        agents: ["claude-code", "codex"],
+      }),
+    ]);
   });
 
   it("does not promote clarify pressure from unrelated multi-host cases alone", async () => {
@@ -1219,10 +1803,80 @@ async function writeComparisonArtifacts(cwd: string, runId: string): Promise<voi
   await mkdir(join(cwd, ".oraculum", "runs", runId, "reports"), { recursive: true });
   await writeFile(
     getFinalistComparisonJsonPath(cwd, runId),
-    `${JSON.stringify({ finalists: [] }, null, 2)}\n`,
+    `${JSON.stringify(
+      comparisonReportSchema.parse({
+        runId,
+        generatedAt: "2026-04-04T00:00:00.000Z",
+        agent: "codex",
+        task: {
+          id: "task",
+          title: "Task",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/task.md",
+        },
+        targetResultLabel: "recommended result",
+        finalistCount: 0,
+        researchRerunRecommended: false,
+        verificationLevel: "standard",
+        finalists: [],
+      }),
+      null,
+      2,
+    )}\n`,
     "utf8",
   );
   await writeFile(getFinalistComparisonMarkdownPath(cwd, runId), "# Finalist Comparison\n", "utf8");
+}
+
+async function writeClarifyFollowUp(
+  cwd: string,
+  runId: string,
+  value: z.input<typeof consultationClarifyFollowUpSchema>,
+): Promise<void> {
+  await mkdir(join(cwd, ".oraculum", "runs", runId, "reports"), { recursive: true });
+  await writeFile(
+    getClarifyFollowUpPath(cwd, runId),
+    `${JSON.stringify(consultationClarifyFollowUpSchema.parse(value), null, 2)}\n`,
+    "utf8",
+  );
+}
+
+async function writePreflightReadinessArtifact(
+  cwd: string,
+  runId: string,
+  overrides: Record<string, unknown> = {},
+): Promise<void> {
+  await mkdir(join(cwd, ".oraculum", "runs", runId, "reports"), { recursive: true });
+  await writeFile(
+    join(cwd, ".oraculum", "runs", runId, "reports", "preflight-readiness.json"),
+    `${JSON.stringify(
+      consultationPreflightReadinessArtifactSchema.parse({
+        signals: {
+          packageManager: "npm",
+          scripts: [],
+          dependencies: [],
+          files: [],
+          workspaceRoots: [],
+          workspaceMetadata: [],
+          notes: [],
+          capabilities: [],
+          provenance: [],
+          commandCatalog: [],
+          skippedCommandCandidates: [],
+        },
+        recommendation: {
+          decision: "proceed",
+          confidence: "low",
+          summary: "Proceed conservatively with the default consultation flow.",
+          researchPosture: "repo-only",
+        },
+        ...overrides,
+      }),
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
 }
 
 function createManifest(runId: string, overrides: Partial<RunManifest> = {}): RunManifest {

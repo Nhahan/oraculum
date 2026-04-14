@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 
 import { OraculumError } from "../core/errors.js";
@@ -181,6 +182,30 @@ export async function pathExists(path: string): Promise<boolean> {
   try {
     await lstat(path);
     return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function hasNonEmptyTextArtifact(path: string): Promise<boolean> {
+  if (!(await pathExists(path))) {
+    return false;
+  }
+
+  try {
+    return (await readFile(path, "utf8")).trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+export function hasNonEmptyTextArtifactSync(path: string): boolean {
+  if (!existsSync(path)) {
+    return false;
+  }
+
+  try {
+    return readFileSync(path, "utf8").trim().length > 0;
   } catch {
     return false;
   }

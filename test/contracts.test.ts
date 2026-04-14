@@ -508,6 +508,9 @@ describe("oracle and adapter contracts", () => {
           artifacts: [],
         };
       },
+      async recommendClarifyFollowUp() {
+        throw new Error("not used");
+      },
       async recommendProfile(request) {
         return agentProfileResultSchema.parse({
           runId: request.runId,

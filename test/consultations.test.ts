@@ -1,12 +1,15 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import type { AgentAdapter } from "../src/adapters/types.js";
 import {
+  getClarifyFollowUpPath,
   getExportPlanPath,
   getFailureAnalysisPath,
+  getFinalistComparisonJsonPath,
   getFinalistComparisonMarkdownPath,
   getPreflightReadinessPath,
   getProfileSelectionPath,
@@ -17,18 +20,31 @@ import {
 } from "../src/core/paths.js";
 import { verdictReviewSchema } from "../src/domain/chat-native.js";
 import {
+  consultationProfileSelectionArtifactSchema,
+  type ProfileRepoSignals,
+} from "../src/domain/profile.js";
+import {
   buildSavedConsultationStatus,
+  consultationClarifyFollowUpSchema,
+  consultationPreflightReadinessArtifactSchema,
   consultationResearchBriefSchema,
+  exportPlanSchema,
   type RunManifest,
 } from "../src/domain/run.js";
-import { deriveResearchSignalFingerprint } from "../src/domain/task.js";
+import {
+  deriveResearchSignalFingerprint,
+  materializedTaskPacketSchema,
+} from "../src/domain/task.js";
+import { recommendConsultationPreflight } from "../src/services/consultation-preflight.js";
 import {
   buildVerdictReview,
   listRecentConsultations,
   renderConsultationArchive,
   renderConsultationSummary,
 } from "../src/services/consultations.js";
-import { initializeProject } from "../src/services/project.js";
+import { comparisonReportSchema } from "../src/services/finalist-report.js";
+import { collectP3Evidence } from "../src/services/p3-evidence.js";
+import { initializeProject, loadProjectConfigLayers } from "../src/services/project.js";
 
 const tempRoots: string[] = [];
 type ProfileSelectionFixture = {
@@ -78,10 +94,37 @@ describe("consultation workflow summaries", () => {
       },
     });
     await writeManifest(cwd, manifest);
-    await writeFile(getProfileSelectionPath(cwd, manifest.id), "{}\n", "utf8");
+    const profileSelection = manifest.profileSelection;
+    if (!profileSelection) {
+      throw new Error("expected persisted profile selection");
+    }
+    await writeProfileSelectionArtifact(cwd, manifest.id, profileSelection);
     await writeFile(getFinalistComparisonMarkdownPath(cwd, manifest.id), "# comparison\n", "utf8");
-    await writeFile(getWinnerSelectionPath(cwd, manifest.id), "{}\n", "utf8");
-    await writeFile(getExportPlanPath(cwd, manifest.id), "{}\n", "utf8");
+    await writeFile(
+      getWinnerSelectionPath(cwd, manifest.id),
+      `${JSON.stringify(
+        {
+          runId: manifest.id,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-04T00:00:00.000Z",
+          completedAt: "2026-04-04T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Judge selected cand-01.",
+          recommendation: {
+            decision: "select",
+            candidateId: "cand-01",
+            confidence: "high",
+            summary: "cand-01 is the recommended promotion.",
+          },
+          artifacts: [],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeExportPlanArtifact(cwd, manifest.id, "cand-01");
 
     const summary = await renderConsultationSummary(manifest, cwd);
 
@@ -453,7 +496,7 @@ describe("consultation workflow summaries", () => {
       },
     });
     await writeManifest(cwd, manifest);
-    await writeFile(getPreflightReadinessPath(cwd, manifest.id), "{}\n", "utf8");
+    await writePreflightReadinessArtifact(cwd, manifest.id);
 
     const summary = await renderConsultationSummary(manifest, cwd);
     const status = buildSavedConsultationStatus(manifest);
@@ -485,6 +528,7 @@ describe("consultation workflow summaries", () => {
   });
 
   it("builds a machine-readable verdict review from saved consultation state", async () => {
+    const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {
       profileSelection: {
         profileId: "frontend",
@@ -510,12 +554,43 @@ describe("consultation workflow summaries", () => {
         summary: "cand-01 is the recommended promotion.",
       },
     });
+    await mkdir(join(cwd, ".oraculum", "runs", manifest.id, "reports"), { recursive: true });
+    await writeFile(
+      getWinnerSelectionPath(cwd, manifest.id),
+      `${JSON.stringify(
+        {
+          runId: manifest.id,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-04T00:00:00.000Z",
+          completedAt: "2026-04-04T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Judge selected cand-01.",
+          recommendation: {
+            decision: "select",
+            candidateId: "cand-01",
+            confidence: "high",
+            summary: "cand-01 is the recommended promotion.",
+          },
+          artifacts: [],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writePreflightReadinessArtifact(cwd, manifest.id);
+    const profileSelection = manifest.profileSelection;
+    if (!profileSelection) {
+      throw new Error("expected persisted profile selection");
+    }
+    await writeProfileSelectionArtifact(cwd, manifest.id, profileSelection);
 
     const review = await buildVerdictReview(manifest, {
-      preflightReadinessPath: "/tmp/run_1/reports/preflight-readiness.json",
-      profileSelectionPath: "/tmp/run_1/reports/profile-selection.json",
+      preflightReadinessPath: getPreflightReadinessPath(cwd, manifest.id),
+      profileSelectionPath: getProfileSelectionPath(cwd, manifest.id),
       comparisonMarkdownPath: "/tmp/run_1/reports/comparison.md",
-      winnerSelectionPath: "/tmp/run_1/reports/winner-selection.json",
+      winnerSelectionPath: getWinnerSelectionPath(cwd, manifest.id),
     });
 
     expect(review).toEqual({
@@ -557,10 +632,11 @@ describe("consultation workflow summaries", () => {
       researchRerunRecommended: false,
       artifactAvailability: {
         preflightReadiness: true,
+        clarifyFollowUp: false,
         researchBrief: false,
         failureAnalysis: false,
         profileSelection: true,
-        comparisonReport: true,
+        comparisonReport: false,
         winnerSelection: true,
         secondOpinionWinnerSelection: false,
         crowningRecord: false,
@@ -569,6 +645,129 @@ describe("consultation workflow summaries", () => {
         exported: 1,
       },
     });
+  });
+
+  it("renders clarify follow-up artifacts and replay guidance for repeated blocked preflight", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_clarify_follow_up",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: "/tmp/task.md",
+        artifactKind: "document",
+        targetArtifactPath: "docs/PRD.md",
+      },
+      preflight: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The exact target artifact shape is still ambiguous.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which sections must docs/PRD.md contain?",
+      },
+      outcome: {
+        type: "needs-clarification",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "unknown",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    await writeManifest(cwd, manifest);
+    await writePreflightReadinessArtifact(cwd, manifest.id);
+    await writeFile(
+      getClarifyFollowUpPath(cwd, manifest.id),
+      `${JSON.stringify(
+        consultationClarifyFollowUpSchema.parse({
+          runId: manifest.id,
+          adapter: "codex",
+          decision: "needs-clarification",
+          scopeKeyType: "target-artifact",
+          scopeKey: "docs/PRD.md",
+          repeatedCaseCount: 3,
+          repeatedKinds: ["clarify-needed", "external-research-required"],
+          recurringReasons: [
+            "Which sections must docs/PRD.md contain?",
+            "What evidence is required before editing docs/PRD.md?",
+          ],
+          summary: "Repeated blockers show the result contract is underspecified for docs/PRD.md.",
+          keyQuestion:
+            "What exact sections and acceptance bullets must docs/PRD.md contain before execution starts?",
+          missingResultContract:
+            "A concrete section-level result contract for docs/PRD.md is still missing.",
+          missingJudgingBasis:
+            "The review basis does not yet say how to judge the completed PRD artifact.",
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const review = await buildVerdictReview(manifest, {
+      preflightReadinessPath: getPreflightReadinessPath(cwd, manifest.id),
+      clarifyFollowUpPath: getClarifyFollowUpPath(cwd, manifest.id),
+    });
+
+    expect(summary).toContain("Clarify follow-up: target-artifact (docs/PRD.md, 3 prior cases)");
+    expect(summary).toContain(
+      "Repeated blockers show the result contract is underspecified for docs/PRD.md.",
+    );
+    expect(summary).toContain(
+      "Key clarify question: What exact sections and acceptance bullets must docs/PRD.md contain before execution starts?",
+    );
+    expect(summary).toContain(
+      "Missing result contract: A concrete section-level result contract for docs/PRD.md is still missing.",
+    );
+    expect(summary).toContain(
+      "Missing judging basis: The review basis does not yet say how to judge the completed PRD artifact.",
+    );
+    expect(summary).toContain(
+      "- clarify follow-up: .oraculum/runs/run_clarify_follow_up/reports/clarify-follow-up.json",
+    );
+    expect(summary).toContain(
+      "- inspect the persisted clarify follow-up: .oraculum/runs/run_clarify_follow_up/reports/clarify-follow-up.json.",
+    );
+    expect(summary).toContain(
+      "- answer the key clarify question: What exact sections and acceptance bullets must docs/PRD.md contain before execution starts?",
+    );
+    expect(summary).toContain(
+      "- rerun `orc consult` once the missing result contract and judging basis are explicit.",
+    );
+    expect(review.clarifyScopeKeyType).toBe("target-artifact");
+    expect(review.clarifyScopeKey).toBe("docs/PRD.md");
+    expect(review.clarifyRepeatedCaseCount).toBe(3);
+    expect(review.clarifyFollowUpQuestion).toBe(
+      "What exact sections and acceptance bullets must docs/PRD.md contain before execution starts?",
+    );
+    expect(review.clarifyMissingResultContract).toBe(
+      "A concrete section-level result contract for docs/PRD.md is still missing.",
+    );
+    expect(review.clarifyMissingJudgingBasis).toBe(
+      "The review basis does not yet say how to judge the completed PRD artifact.",
+    );
+    expect(review.artifactAvailability.clarifyFollowUp).toBe(true);
+    expect(review.strongestEvidence).toContain(
+      "Repeated blockers show the result contract is underspecified for docs/PRD.md.",
+    );
+    expect(review.strongestEvidence).toContain(
+      "Key clarify question: What exact sections and acceptance bullets must docs/PRD.md contain before execution starts?",
+    );
+    expect(review.weakestEvidence).toContain(
+      "Missing result contract: A concrete section-level result contract for docs/PRD.md is still missing.",
+    );
+    expect(review.weakestEvidence).toContain(
+      "Missing judging basis: The review basis does not yet say how to judge the completed PRD artifact.",
+    );
   });
 
   it("backfills and validates legacy verdict review aliases at the schema boundary", () => {
@@ -1777,6 +1976,666 @@ describe("consultation workflow summaries", () => {
     expect(review.artifactAvailability.secondOpinionWinnerSelection).toBe(true);
   });
 
+  it("marks archive recommendations as manual review when second-opinion disagreement exists", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_second_opinion_archive",
+      outcome: {
+        type: "recommended-survivor",
+        finalistCount: 1,
+        terminal: true,
+        crownable: true,
+        validationGapCount: 0,
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        judgingBasisKind: "repo-local-oracle",
+        recommendedCandidateId: "cand-01",
+      },
+      recommendedWinner: {
+        candidateId: "cand-01",
+        confidence: "high",
+        summary: "cand-01 is the recommended promotion.",
+        source: "llm-judge",
+      },
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/workspace",
+          taskPacketPath: "/tmp/task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(
+      getSecondOpinionWinnerSelectionPath(cwd, manifest.id),
+      `${JSON.stringify(
+        {
+          runId: manifest.id,
+          advisoryOnly: true,
+          adapter: "claude-code",
+          triggerKinds: ["many-changed-paths"],
+          triggerReasons: ["A finalist changed 3 paths, meeting the second-opinion threshold (1)."],
+          primaryRecommendation: {
+            source: "llm-judge",
+            decision: "select",
+            candidateId: "cand-01",
+            confidence: "high",
+            summary: "cand-01 is the recommended promotion.",
+          },
+          result: {
+            runId: manifest.id,
+            adapter: "claude-code",
+            status: "completed",
+            startedAt: "2026-04-04T00:00:00.000Z",
+            completedAt: "2026-04-04T00:00:01.000Z",
+            exitCode: 0,
+            summary: "Second opinion abstained.",
+            recommendation: {
+              decision: "abstain",
+              confidence: "medium",
+              summary: "Manual review is safer before crowning.",
+            },
+            artifacts: [],
+          },
+          agreement: "disagrees-select-vs-abstain",
+          advisorySummary:
+            "Second-opinion judge abstained, while the primary path selected a finalist.",
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const archive = renderConsultationArchive([manifest], { projectRoot: cwd });
+
+    expect(archive).toContain(
+      "- run_second_opinion_archive | completed | Task | no auto validation posture | recommended survivor cand-01 (manual review)",
+    );
+  });
+
+  it("treats invalid clarify follow-up artifacts as unavailable in verdict review", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_invalid_clarify_follow_up",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: "/tmp/task.md",
+        artifactKind: "document",
+        targetArtifactPath: "docs/PRD.md",
+      },
+      preflight: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The result contract is unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which sections must docs/PRD.md contain?",
+      },
+      outcome: {
+        type: "needs-clarification",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "unknown",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    await writeManifest(cwd, manifest);
+    await writePreflightReadinessArtifact(cwd, manifest.id);
+    await writeFile(getClarifyFollowUpPath(cwd, manifest.id), "{}\n", "utf8");
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const review = verdictReviewSchema.parse(
+      await buildVerdictReview(manifest, {
+        preflightReadinessPath: getPreflightReadinessPath(cwd, manifest.id),
+        clarifyFollowUpPath: getClarifyFollowUpPath(cwd, manifest.id),
+      }),
+    );
+
+    expect(summary).toContain("- clarify follow-up: not available");
+    expect(summary).not.toContain(
+      "- inspect the persisted clarify follow-up: .oraculum/runs/run_invalid_clarify_follow_up/reports/clarify-follow-up.json.",
+    );
+    expect(review.artifactAvailability.clarifyFollowUp).toBe(false);
+    expect(review.clarifyScopeKeyType).toBeUndefined();
+    expect(review.clarifyScopeKey).toBeUndefined();
+    expect(review.clarifyRepeatedCaseCount).toBeUndefined();
+    expect(review.clarifyFollowUpQuestion).toBeUndefined();
+    expect(review.clarifyMissingResultContract).toBeUndefined();
+    expect(review.clarifyMissingJudgingBasis).toBeUndefined();
+  });
+
+  it("treats invalid preflight-readiness artifacts as unavailable in verdict review", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_invalid_preflight_readiness",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: "/tmp/task.md",
+        artifactKind: "document",
+        targetArtifactPath: "docs/PRD.md",
+      },
+      preflight: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The result contract is unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which sections must docs/PRD.md contain?",
+      },
+      outcome: {
+        type: "needs-clarification",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "unknown",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(getPreflightReadinessPath(cwd, manifest.id), "not-json\n", "utf8");
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const review = verdictReviewSchema.parse(
+      await buildVerdictReview(manifest, {
+        preflightReadinessPath: getPreflightReadinessPath(cwd, manifest.id),
+      }),
+    );
+
+    expect(summary).toContain("- preflight readiness: not available");
+    expect(review.artifactAvailability.preflightReadiness).toBe(false);
+  });
+
+  it("treats invalid second-opinion artifacts as unavailable in verdict review", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_invalid_second_opinion",
+      recommendedWinner: {
+        candidateId: "cand-01",
+        confidence: "high",
+        source: "llm-judge",
+        summary: "cand-01 is the recommended promotion.",
+      },
+      outcome: {
+        type: "recommended-survivor",
+        terminal: true,
+        crownable: true,
+        finalistCount: 1,
+        recommendedCandidateId: "cand-01",
+        validationPosture: "sufficient",
+        verificationLevel: "standard",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "repo-local-oracle",
+      },
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/cand-01",
+          taskPacketPath: "/tmp/task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(getSecondOpinionWinnerSelectionPath(cwd, manifest.id), "{}\n", "utf8");
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const review = verdictReviewSchema.parse(
+      await buildVerdictReview(manifest, {
+        secondOpinionWinnerSelectionPath: getSecondOpinionWinnerSelectionPath(cwd, manifest.id),
+      }),
+    );
+
+    expect(summary).toContain("- second-opinion winner selection: not available");
+    expect(summary).toContain("- crown the recommended survivor: orc crown <branch-name>");
+    expect(summary).not.toContain("Second-opinion judge:");
+    expect(review.artifactAvailability.secondOpinionWinnerSelection).toBe(false);
+    expect(review.secondOpinionAgreement).toBeUndefined();
+    expect(review.secondOpinionAdapter).toBeUndefined();
+    expect(review.secondOpinionSummary).toBeUndefined();
+    expect(review.manualReviewRecommended).toBe(false);
+  });
+
+  it("treats invalid comparison reports as unavailable in verdict review", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_invalid_comparison_report",
+      outcome: {
+        type: "recommended-survivor",
+        terminal: true,
+        crownable: true,
+        finalistCount: 1,
+        recommendedCandidateId: "cand-01",
+        validationPosture: "sufficient",
+        verificationLevel: "standard",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "repo-local-oracle",
+      },
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/cand-01",
+          taskPacketPath: "/tmp/task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(getFinalistComparisonJsonPath(cwd, manifest.id), "{}\n", "utf8");
+
+    const review = verdictReviewSchema.parse(
+      await buildVerdictReview(manifest, {
+        comparisonJsonPath: getFinalistComparisonJsonPath(cwd, manifest.id),
+      }),
+    );
+
+    expect(review.artifactAvailability.comparisonReport).toBe(false);
+  });
+
+  it("does not report comparison availability from a missing markdown path alone", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_missing_comparison_markdown",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      outcome: {
+        type: "no-survivors",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "unknown",
+        verificationLevel: "lightweight",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "repo-local-oracle",
+      },
+    });
+    await writeManifest(cwd, manifest);
+
+    const review = verdictReviewSchema.parse(
+      await buildVerdictReview(manifest, {
+        comparisonMarkdownPath: getFinalistComparisonMarkdownPath(cwd, manifest.id),
+      }),
+    );
+
+    expect(review.artifactAvailability.comparisonReport).toBe(false);
+  });
+
+  it("treats blank comparison markdown as unavailable in summary and review", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_blank_comparison_markdown",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      outcome: {
+        type: "no-survivors",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "unknown",
+        verificationLevel: "lightweight",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "repo-local-oracle",
+      },
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(getFinalistComparisonMarkdownPath(cwd, manifest.id), "   \n", "utf8");
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const review = verdictReviewSchema.parse(
+      await buildVerdictReview(manifest, {
+        comparisonMarkdownPath: getFinalistComparisonMarkdownPath(cwd, manifest.id),
+      }),
+    );
+
+    expect(summary).toContain("- comparison report: not available yet");
+    expect(summary).toContain("- review why no candidate survived the oracle rounds.");
+    expect(summary).not.toContain("open the comparison report above");
+    expect(review.artifactAvailability.comparisonReport).toBe(false);
+  });
+
+  it("surfaces a valid comparison json path when markdown is unavailable", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_json_only_comparison",
+      candidateCount: 2,
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/cand-01",
+          taskPacketPath: "/tmp/cand-01.task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+        {
+          id: "cand-02",
+          strategyId: "safety-first",
+          strategyLabel: "Safety First",
+          status: "promoted",
+          workspaceDir: "/tmp/cand-02",
+          taskPacketPath: "/tmp/cand-02.task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+      outcome: {
+        type: "finalists-without-recommendation",
+        terminal: true,
+        crownable: false,
+        finalistCount: 2,
+        validationPosture: "sufficient",
+        verificationLevel: "standard",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "repo-local-oracle",
+      },
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(
+      getFinalistComparisonJsonPath(cwd, manifest.id),
+      `${JSON.stringify(
+        comparisonReportSchema.parse({
+          runId: manifest.id,
+          generatedAt: "2026-04-04T00:00:00.000Z",
+          agent: "codex",
+          task: {
+            id: "task",
+            title: "Task",
+            sourceKind: "task-note",
+            sourcePath: "/tmp/task.md",
+          },
+          targetResultLabel: "recommended survivor",
+          finalistCount: 2,
+          researchRerunRecommended: false,
+          verificationLevel: "standard",
+          finalists: [
+            {
+              candidateId: "cand-01",
+              strategyLabel: "Minimal Change",
+              summary: "cand-01 keeps the diff small.",
+              artifactKinds: ["patch"],
+              verdicts: [],
+              changedPaths: ["docs/TASK.md"],
+              changeSummary: {
+                mode: "none",
+                changedPathCount: 1,
+                createdPathCount: 0,
+                removedPathCount: 0,
+                modifiedPathCount: 1,
+              },
+              witnessRollup: {
+                witnessCount: 0,
+                warningOrHigherCount: 0,
+                repairableCount: 0,
+                repairHints: [],
+                riskSummaries: [],
+                keyWitnesses: [],
+              },
+              repairSummary: {
+                attemptCount: 0,
+                repairedRounds: [],
+              },
+              status: "promoted",
+              verdictCounts: {
+                pass: 0,
+                repairable: 0,
+                fail: 0,
+                skip: 0,
+                info: 0,
+                warning: 0,
+                error: 0,
+                critical: 0,
+              },
+            },
+            {
+              candidateId: "cand-02",
+              strategyLabel: "Safety First",
+              summary: "cand-02 carries broader safeguards.",
+              artifactKinds: ["patch"],
+              verdicts: [],
+              changedPaths: ["docs/TASK.md"],
+              changeSummary: {
+                mode: "none",
+                changedPathCount: 1,
+                createdPathCount: 0,
+                removedPathCount: 0,
+                modifiedPathCount: 1,
+              },
+              witnessRollup: {
+                witnessCount: 0,
+                warningOrHigherCount: 0,
+                repairableCount: 0,
+                repairHints: [],
+                riskSummaries: [],
+                keyWitnesses: [],
+              },
+              repairSummary: {
+                attemptCount: 0,
+                repairedRounds: [],
+              },
+              status: "promoted",
+              verdictCounts: {
+                pass: 0,
+                repairable: 0,
+                fail: 0,
+                skip: 0,
+                info: 0,
+                warning: 0,
+                error: 0,
+                critical: 0,
+              },
+            },
+          ],
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+
+    expect(summary).toContain(
+      `- comparison report: ${getFinalistComparisonJsonPath(cwd, manifest.id).replace(`${cwd}/`, "")}`,
+    );
+    expect(summary).toContain(
+      "- inspect the comparison first. The shared `orc crown` path only crowns a recommended survivor.",
+    );
+  });
+
+  it("does not tell operators to inspect a missing comparison report when finalists survived", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_missing_finalist_comparison",
+      candidateCount: 2,
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/cand-01",
+          taskPacketPath: "/tmp/cand-01.task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+        {
+          id: "cand-02",
+          strategyId: "safety-first",
+          strategyLabel: "Safety First",
+          status: "promoted",
+          workspaceDir: "/tmp/cand-02",
+          taskPacketPath: "/tmp/cand-02.task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+      outcome: {
+        type: "finalists-without-recommendation",
+        terminal: true,
+        crownable: false,
+        finalistCount: 2,
+        validationPosture: "sufficient",
+        verificationLevel: "standard",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "repo-local-oracle",
+      },
+    });
+    await writeManifest(cwd, manifest);
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+
+    expect(summary).toContain("- comparison report: not available yet");
+    expect(summary).toContain(
+      "- compare the surviving finalists manually before crowning because no comparison report is available yet.",
+    );
+    expect(summary).not.toContain("- inspect the comparison first.");
+  });
+
+  it("treats invalid winner-selection artifacts as unavailable in summary and review", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_invalid_winner_selection",
+      outcome: {
+        type: "finalists-without-recommendation",
+        terminal: true,
+        crownable: false,
+        finalistCount: 2,
+        validationPosture: "sufficient",
+        verificationLevel: "standard",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "repo-local-oracle",
+      },
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/cand-01",
+          taskPacketPath: "/tmp/task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+        {
+          id: "cand-02",
+          strategyId: "safety-first",
+          strategyLabel: "Safety First",
+          status: "promoted",
+          workspaceDir: "/tmp/cand-02",
+          taskPacketPath: "/tmp/task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(getWinnerSelectionPath(cwd, manifest.id), "{}\n", "utf8");
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const review = verdictReviewSchema.parse(
+      await buildVerdictReview(manifest, {
+        winnerSelectionPath: getWinnerSelectionPath(cwd, manifest.id),
+      }),
+    );
+
+    expect(summary).toContain("- winner selection: not available yet");
+    expect(review.artifactAvailability.winnerSelection).toBe(false);
+  });
+
+  it("treats invalid failure-analysis artifacts as unavailable in summary and review", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_invalid_failure_analysis",
+      outcome: {
+        type: "no-survivors",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "sufficient",
+        verificationLevel: "standard",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "repo-local-oracle",
+      },
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "failed",
+          workspaceDir: "/tmp/cand-01",
+          taskPacketPath: "/tmp/task-packet.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-04T00:00:00.000Z",
+        },
+      ],
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(getFailureAnalysisPath(cwd, manifest.id), "{}\n", "utf8");
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const review = verdictReviewSchema.parse(
+      await buildVerdictReview(manifest, {
+        failureAnalysisPath: getFailureAnalysisPath(cwd, manifest.id),
+      }),
+    );
+
+    expect(summary).toContain("- failure analysis: not available");
+    expect(summary).not.toContain(
+      "- investigate the persisted failure analysis: .oraculum/runs/run_invalid_failure_analysis/reports/failure-analysis.json.",
+    );
+    expect(review.artifactAvailability.failureAnalysis).toBe(false);
+  });
+
   it("renders blocked preflight consultations distinctly in the archive", async () => {
     const cwd = await createInitializedProject();
     const blocked = createManifest("completed", {
@@ -1840,7 +2699,7 @@ describe("consultation workflow summaries", () => {
       },
     });
     await writeManifest(cwd, manifest);
-    await writeFile(getPreflightReadinessPath(cwd, manifest.id), "{}\n", "utf8");
+    await writePreflightReadinessArtifact(cwd, manifest.id);
     await writeFile(
       getResearchBriefPath(cwd, manifest.id),
       `${JSON.stringify(
@@ -1909,6 +2768,845 @@ describe("consultation workflow summaries", () => {
       "Execution stopped because bounded external research is still required.",
     );
     expect(review.manualReviewRecommended).toBe(true);
+  });
+
+  it("does not surface an invalid persisted research brief as available rerun input", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      id: "run_invalid_research_brief",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: "/tmp/task.md",
+      },
+      preflight: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Official API documentation is still required.",
+        researchPosture: "external-research-required",
+        researchQuestion:
+          "What does the official API documentation say about the current versioned behavior?",
+      },
+      outcome: {
+        type: "external-research-required",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "validation-gaps",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "missing-capability",
+      },
+    });
+    await writeManifest(cwd, manifest);
+    await writePreflightReadinessArtifact(cwd, manifest.id, {
+      recommendation: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Official guidance is still required before execution.",
+        researchPosture: "external-research-required",
+        researchQuestion: "What official guidance is required before execution?",
+      },
+    });
+    await writeFile(getResearchBriefPath(cwd, manifest.id), "{}\n", "utf8");
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const review = await buildVerdictReview(manifest, {
+      preflightReadinessPath: getPreflightReadinessPath(cwd, manifest.id),
+      researchBriefPath: getResearchBriefPath(cwd, manifest.id),
+    });
+
+    expect(summary).toContain("- research brief: not available");
+    expect(summary).not.toContain(
+      "- rerun from the persisted research brief when ready: `orc consult .oraculum/runs/run_invalid_research_brief/reports/research-brief.json`.",
+    );
+    expect(review.researchRerunInputPath).toBeUndefined();
+    expect(review.artifactAvailability.researchBrief).toBe(false);
+  });
+
+  it("writes a clarify follow-up artifact only after repeated same-scope blocked preflight", async () => {
+    const cwd = await createInitializedProject();
+    const targetArtifactPath = "docs/PRD.md";
+    const priorOne = createManifest("completed", {
+      id: "run_clarify_prior_1",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: join(cwd, "task.md"),
+        artifactKind: "document",
+        targetArtifactPath,
+      },
+      preflight: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The PRD sections are unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which sections must the PRD contain?",
+      },
+      outcome: {
+        type: "needs-clarification",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "unknown",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    const priorTwo = createManifest("completed", {
+      id: "run_clarify_prior_2",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: join(cwd, "task.md"),
+        artifactKind: "document",
+        targetArtifactPath,
+      },
+      preflight: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Official product docs are still required.",
+        researchPosture: "external-research-required",
+        researchQuestion: "What should the PRD cover for this launch?",
+      },
+      outcome: {
+        type: "external-research-required",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "validation-gaps",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    await writeManifest(cwd, priorOne);
+    await writeManifest(cwd, priorTwo);
+    await writePreflightReadinessArtifact(cwd, priorOne.id);
+    await writePreflightReadinessArtifact(cwd, priorTwo.id);
+
+    const taskPacket = materializedTaskPacketSchema.parse({
+      id: "task",
+      title: "Task",
+      intent: "Prepare the product requirements document.",
+      nonGoals: [],
+      acceptanceCriteria: [],
+      risks: [],
+      oracleHints: [],
+      strategyHints: [],
+      contextFiles: [],
+      artifactKind: "document",
+      targetArtifactPath,
+      source: {
+        kind: "task-note",
+        path: join(cwd, "task.md"),
+      },
+    });
+    await writeFile(taskPacket.source.path, "# Task\nPrepare the PRD.\n", "utf8");
+    const evidence = await collectP3Evidence(cwd);
+    expect(evidence.clarifyPressure.promotionSignal.shouldPromote).toBe(true);
+    expect(evidence.clarifyPressure.repeatedTargets).toEqual([
+      expect.objectContaining({
+        targetArtifactPath,
+        occurrenceCount: 2,
+      }),
+    ]);
+
+    let clarifyCalls = 0;
+    let capturedPressureContext:
+      | Parameters<AgentAdapter["recommendClarifyFollowUp"]>[0]["pressureContext"]
+      | undefined;
+    const adapter: AgentAdapter = {
+      name: "codex",
+      async runCandidate() {
+        throw new Error("not used");
+      },
+      async recommendWinner() {
+        throw new Error("not used");
+      },
+      async recommendProfile() {
+        throw new Error("not used");
+      },
+      async recommendPreflight(request) {
+        return {
+          runId: request.runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-14T00:00:00.000Z",
+          completedAt: "2026-04-14T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Need a clearer result contract before execution.",
+          recommendation: {
+            decision: "needs-clarification",
+            confidence: "medium",
+            summary: "Need a clearer result contract before execution.",
+            researchPosture: "repo-only",
+            clarificationQuestion: "Which sections must docs/PRD.md contain?",
+          },
+          artifacts: [],
+        };
+      },
+      async recommendClarifyFollowUp(request) {
+        clarifyCalls += 1;
+        capturedPressureContext = request.pressureContext;
+        return {
+          runId: request.runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-14T00:00:00.000Z",
+          completedAt: "2026-04-14T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Clarify the artifact contract before retrying.",
+          recommendation: {
+            summary: "Repeated blockers show the PRD contract is underspecified.",
+            keyQuestion: "Which sections and acceptance bullets must the PRD include?",
+            missingResultContract:
+              "The expected section-level PRD result contract is still missing.",
+            missingJudgingBasis:
+              "The review basis does not define how the completed PRD should be judged.",
+          },
+          artifacts: [],
+        };
+      },
+    };
+
+    const result = await recommendConsultationPreflight({
+      adapter,
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: join(cwd, ".oraculum", "runs", "run_clarify_current", "reports"),
+      runId: "run_clarify_current",
+      taskPacket,
+    });
+
+    expect(result.preflight.decision).toBe("needs-clarification");
+    expect(clarifyCalls).toBe(1);
+    expect(capturedPressureContext).toEqual(
+      expect.objectContaining({
+        scopeKeyType: "target-artifact",
+        scopeKey: targetArtifactPath,
+        repeatedCaseCount: 2,
+        repeatedKinds: expect.arrayContaining(["clarify-needed", "external-research-required"]),
+        recurringReasons: expect.arrayContaining([
+          "Which sections must the PRD contain?",
+          "What should the PRD cover for this launch?",
+        ]),
+        priorQuestions: expect.arrayContaining([
+          "Which sections must the PRD contain?",
+          "What should the PRD cover for this launch?",
+        ]),
+      }),
+    );
+    const clarifyFollowUp = consultationClarifyFollowUpSchema.parse(
+      JSON.parse(await readFile(getClarifyFollowUpPath(cwd, "run_clarify_current"), "utf8")),
+    );
+    expect(clarifyFollowUp.scopeKeyType).toBe("target-artifact");
+    expect(clarifyFollowUp.scopeKey).toBe(targetArtifactPath);
+    expect(clarifyFollowUp.repeatedCaseCount).toBe(2);
+    expect(clarifyFollowUp.repeatedKinds).toEqual(
+      expect.arrayContaining(["clarify-needed", "external-research-required"]),
+    );
+    expect(clarifyFollowUp.keyQuestion).toBe(
+      "Which sections and acceptance bullets must the PRD include?",
+    );
+    const readiness = JSON.parse(
+      await readFile(getPreflightReadinessPath(cwd, "run_clarify_current"), "utf8"),
+    ) as {
+      clarifyFollowUp?: { keyQuestion?: string };
+    };
+    expect(readiness.clarifyFollowUp?.keyQuestion).toBe(
+      "Which sections and acceptance bullets must the PRD include?",
+    );
+  });
+
+  it("matches repeated clarify pressure across relative and absolute in-repo target paths", async () => {
+    const cwd = await createInitializedProject();
+    const relativeTargetArtifactPath = "docs/PRD.md";
+    const absoluteTargetArtifactPath = join(cwd, "docs", "PRD.md");
+    const priorOne = createManifest("completed", {
+      id: "run_clarify_mixed_target_1",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: join(cwd, "task.md"),
+        artifactKind: "document",
+        targetArtifactPath: relativeTargetArtifactPath,
+      },
+      preflight: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The PRD sections are unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which sections must the PRD contain?",
+      },
+      outcome: {
+        type: "needs-clarification",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "unknown",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    const priorTwo = createManifest("completed", {
+      id: "run_clarify_mixed_target_2",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: join(cwd, "task.md"),
+        artifactKind: "document",
+        targetArtifactPath: absoluteTargetArtifactPath,
+      },
+      preflight: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Official product docs are still required.",
+        researchPosture: "external-research-required",
+        researchQuestion: "What should the PRD cover for this launch?",
+      },
+      outcome: {
+        type: "external-research-required",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "validation-gaps",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    await writeManifest(cwd, priorOne);
+    await writeManifest(cwd, priorTwo);
+    await writePreflightReadinessArtifact(cwd, priorOne.id);
+    await writePreflightReadinessArtifact(cwd, priorTwo.id);
+
+    const taskPacket = materializedTaskPacketSchema.parse({
+      id: "task",
+      title: "Task",
+      intent: "Prepare the product requirements document.",
+      nonGoals: [],
+      acceptanceCriteria: [],
+      risks: [],
+      oracleHints: [],
+      strategyHints: [],
+      contextFiles: [],
+      artifactKind: "document",
+      targetArtifactPath: absoluteTargetArtifactPath,
+      source: {
+        kind: "task-note",
+        path: join(cwd, "task.md"),
+      },
+    });
+    await writeFile(taskPacket.source.path, "# Task\nPrepare the PRD.\n", "utf8");
+
+    let clarifyCalls = 0;
+    const adapter: AgentAdapter = {
+      name: "codex",
+      async runCandidate() {
+        throw new Error("not used");
+      },
+      async recommendWinner() {
+        throw new Error("not used");
+      },
+      async recommendProfile() {
+        throw new Error("not used");
+      },
+      async recommendPreflight(request) {
+        return {
+          runId: request.runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-14T00:00:00.000Z",
+          completedAt: "2026-04-14T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Need a clearer result contract before execution.",
+          recommendation: {
+            decision: "needs-clarification",
+            confidence: "medium",
+            summary: "Need a clearer result contract before execution.",
+            researchPosture: "repo-only",
+            clarificationQuestion: "Which sections must docs/PRD.md contain?",
+          },
+          artifacts: [],
+        };
+      },
+      async recommendClarifyFollowUp() {
+        clarifyCalls += 1;
+        return {
+          runId: "run_clarify_mixed_target_current",
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-14T00:00:00.000Z",
+          completedAt: "2026-04-14T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Clarify the artifact contract before retrying.",
+          recommendation: {
+            summary: "Repeated blockers show the PRD contract is underspecified.",
+            keyQuestion: "Which sections and acceptance bullets must the PRD include?",
+            missingResultContract:
+              "The expected section-level PRD result contract is still missing.",
+            missingJudgingBasis:
+              "The review basis does not define how the completed PRD should be judged.",
+          },
+          artifacts: [],
+        };
+      },
+    };
+
+    await recommendConsultationPreflight({
+      adapter,
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: join(cwd, ".oraculum", "runs", "run_clarify_mixed_target_current", "reports"),
+      runId: "run_clarify_mixed_target_current",
+      taskPacket,
+    });
+
+    expect(clarifyCalls).toBe(1);
+    const clarifyFollowUp = consultationClarifyFollowUpSchema.parse(
+      JSON.parse(
+        await readFile(getClarifyFollowUpPath(cwd, "run_clarify_mixed_target_current"), "utf8"),
+      ) as unknown,
+    );
+    expect(clarifyFollowUp.scopeKeyType).toBe("target-artifact");
+    expect(clarifyFollowUp.scopeKey).toBe(relativeTargetArtifactPath);
+  });
+
+  it("matches repeated clarify pressure across dotted and plain in-repo target paths", async () => {
+    const cwd = await createInitializedProject();
+    const normalizedTargetArtifactPath = "docs/PRD.md";
+    const dottedTargetArtifactPath = `./${normalizedTargetArtifactPath}`;
+    const priorOne = createManifest("completed", {
+      id: "run_clarify_dotted_target_1",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: join(cwd, "task.md"),
+        artifactKind: "document",
+        targetArtifactPath: normalizedTargetArtifactPath,
+      },
+      preflight: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The PRD sections are unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which sections must the PRD contain?",
+      },
+      outcome: {
+        type: "needs-clarification",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "unknown",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    const priorTwo = createManifest("completed", {
+      id: "run_clarify_dotted_target_2",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: join(cwd, "task.md"),
+        artifactKind: "document",
+        targetArtifactPath: dottedTargetArtifactPath,
+      },
+      preflight: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Official product docs are still required.",
+        researchPosture: "external-research-required",
+        researchQuestion: "What should the PRD cover for this launch?",
+      },
+      outcome: {
+        type: "external-research-required",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "validation-gaps",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    await writeManifest(cwd, priorOne);
+    await writeManifest(cwd, priorTwo);
+    await writePreflightReadinessArtifact(cwd, priorOne.id);
+    await writePreflightReadinessArtifact(cwd, priorTwo.id);
+
+    const taskPacket = materializedTaskPacketSchema.parse({
+      id: "task",
+      title: "Task",
+      intent: "Prepare the product requirements document.",
+      nonGoals: [],
+      acceptanceCriteria: [],
+      risks: [],
+      oracleHints: [],
+      strategyHints: [],
+      contextFiles: [],
+      artifactKind: "document",
+      targetArtifactPath: dottedTargetArtifactPath,
+      source: {
+        kind: "task-note",
+        path: join(cwd, "task.md"),
+      },
+    });
+    await writeFile(taskPacket.source.path, "# Task\nPrepare the PRD.\n", "utf8");
+
+    let clarifyCalls = 0;
+    const adapter: AgentAdapter = {
+      name: "codex",
+      async runCandidate() {
+        throw new Error("not used");
+      },
+      async recommendWinner() {
+        throw new Error("not used");
+      },
+      async recommendProfile() {
+        throw new Error("not used");
+      },
+      async recommendPreflight(request) {
+        return {
+          runId: request.runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-14T00:00:00.000Z",
+          completedAt: "2026-04-14T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Need a clearer result contract before execution.",
+          recommendation: {
+            decision: "needs-clarification",
+            confidence: "medium",
+            summary: "Need a clearer result contract before execution.",
+            researchPosture: "repo-only",
+            clarificationQuestion: "Which sections must docs/PRD.md contain?",
+          },
+          artifacts: [],
+        };
+      },
+      async recommendClarifyFollowUp() {
+        clarifyCalls += 1;
+        return {
+          runId: "run_clarify_dotted_target_current",
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-14T00:00:00.000Z",
+          completedAt: "2026-04-14T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Clarify the artifact contract before retrying.",
+          recommendation: {
+            summary: "Repeated blockers show the PRD contract is underspecified.",
+            keyQuestion: "Which sections and acceptance bullets must the PRD include?",
+            missingResultContract:
+              "The expected section-level PRD result contract is still missing.",
+            missingJudgingBasis:
+              "The review basis does not define how the completed PRD should be judged.",
+          },
+          artifacts: [],
+        };
+      },
+    };
+
+    await recommendConsultationPreflight({
+      adapter,
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: join(cwd, ".oraculum", "runs", "run_clarify_dotted_target_current", "reports"),
+      runId: "run_clarify_dotted_target_current",
+      taskPacket,
+    });
+
+    expect(clarifyCalls).toBe(1);
+    const clarifyFollowUp = consultationClarifyFollowUpSchema.parse(
+      JSON.parse(
+        await readFile(getClarifyFollowUpPath(cwd, "run_clarify_dotted_target_current"), "utf8"),
+      ) as unknown,
+    );
+    expect(clarifyFollowUp.scopeKeyType).toBe("target-artifact");
+    expect(clarifyFollowUp.scopeKey).toBe(normalizedTargetArtifactPath);
+  });
+
+  it("matches repeated clarify pressure across origin-backed relative and absolute task source paths", async () => {
+    const cwd = await createInitializedProject();
+    const normalizedTaskSourcePath = "tasks/operator-memo.md";
+    const absoluteOriginPath = join(cwd, normalizedTaskSourcePath);
+    const priorOne = createManifest("completed", {
+      id: "run_clarify_mixed_source_1",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: normalizedTaskSourcePath,
+      },
+      preflight: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The operator memo audience is still unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Who is the intended operator audience?",
+      },
+      outcome: {
+        type: "needs-clarification",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "unknown",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    const priorTwo = createManifest("completed", {
+      id: "run_clarify_mixed_source_2",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "research-brief",
+        sourcePath: getResearchBriefPath(cwd, "run_clarify_mixed_source_2"),
+        originKind: "task-note",
+        originPath: absoluteOriginPath,
+      },
+      preflight: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Official operator guidance is still required.",
+        researchPosture: "external-research-required",
+        researchQuestion: "Which operator responsibilities are in scope?",
+      },
+      outcome: {
+        type: "external-research-required",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "validation-gaps",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    await writeManifest(cwd, priorOne);
+    await writeManifest(cwd, priorTwo);
+    await writePreflightReadinessArtifact(cwd, priorOne.id);
+    await writePreflightReadinessArtifact(cwd, priorTwo.id);
+
+    const taskPacket = materializedTaskPacketSchema.parse({
+      id: "task",
+      title: "Task",
+      intent: "Prepare the operator memo.",
+      nonGoals: [],
+      acceptanceCriteria: [],
+      risks: [],
+      oracleHints: [],
+      strategyHints: [],
+      contextFiles: [],
+      source: {
+        kind: "task-note",
+        path: absoluteOriginPath,
+      },
+    });
+    await writeFile(taskPacket.source.path, "# Task\nPrepare the operator memo.\n", "utf8");
+
+    let clarifyCalls = 0;
+    let capturedPressureContext:
+      | Parameters<AgentAdapter["recommendClarifyFollowUp"]>[0]["pressureContext"]
+      | undefined;
+    const adapter: AgentAdapter = {
+      name: "codex",
+      async runCandidate() {
+        throw new Error("not used");
+      },
+      async recommendWinner() {
+        throw new Error("not used");
+      },
+      async recommendProfile() {
+        throw new Error("not used");
+      },
+      async recommendPreflight(request) {
+        return {
+          runId: request.runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-14T00:00:00.000Z",
+          completedAt: "2026-04-14T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Need a clearer memo audience before execution.",
+          recommendation: {
+            decision: "needs-clarification",
+            confidence: "medium",
+            summary: "Need a clearer memo audience before execution.",
+            researchPosture: "repo-only",
+            clarificationQuestion: "Who is the intended operator audience?",
+          },
+          artifacts: [],
+        };
+      },
+      async recommendClarifyFollowUp(request) {
+        clarifyCalls += 1;
+        capturedPressureContext = request.pressureContext;
+        return {
+          runId: request.runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-14T00:00:00.000Z",
+          completedAt: "2026-04-14T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Clarify the memo audience before retrying.",
+          recommendation: {
+            summary: "Repeated blockers show the operator memo scope is underspecified.",
+            keyQuestion: "Which operator audience and operational scope should the memo target?",
+            missingResultContract:
+              "The memo still lacks a concrete audience and deliverable contract.",
+            missingJudgingBasis: "The review basis does not define how to judge the finished memo.",
+          },
+          artifacts: [],
+        };
+      },
+    };
+
+    await recommendConsultationPreflight({
+      adapter,
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: join(cwd, ".oraculum", "runs", "run_clarify_mixed_source_current", "reports"),
+      runId: "run_clarify_mixed_source_current",
+      taskPacket,
+    });
+
+    expect(clarifyCalls).toBe(1);
+    expect(capturedPressureContext).toEqual(
+      expect.objectContaining({
+        scopeKeyType: "task-source",
+        scopeKey: normalizedTaskSourcePath,
+        repeatedCaseCount: 2,
+      }),
+    );
+    const clarifyFollowUp = consultationClarifyFollowUpSchema.parse(
+      JSON.parse(
+        await readFile(getClarifyFollowUpPath(cwd, "run_clarify_mixed_source_current"), "utf8"),
+      ) as unknown,
+    );
+    expect(clarifyFollowUp.scopeKeyType).toBe("task-source");
+    expect(clarifyFollowUp.scopeKey).toBe(normalizedTaskSourcePath);
+  });
+
+  it("does not write a clarify follow-up artifact for a first-time blocked preflight", async () => {
+    const cwd = await createInitializedProject();
+    const taskPacket = materializedTaskPacketSchema.parse({
+      id: "task",
+      title: "Task",
+      intent: "Prepare the product requirements document.",
+      nonGoals: [],
+      acceptanceCriteria: [],
+      risks: [],
+      oracleHints: [],
+      strategyHints: [],
+      contextFiles: [],
+      artifactKind: "document",
+      targetArtifactPath: "docs/PRD.md",
+      source: {
+        kind: "task-note",
+        path: join(cwd, "task.md"),
+      },
+    });
+    await writeFile(taskPacket.source.path, "# Task\nPrepare the PRD.\n", "utf8");
+
+    let clarifyCalls = 0;
+    const adapter: AgentAdapter = {
+      name: "codex",
+      async runCandidate() {
+        throw new Error("not used");
+      },
+      async recommendWinner() {
+        throw new Error("not used");
+      },
+      async recommendProfile() {
+        throw new Error("not used");
+      },
+      async recommendPreflight(request) {
+        return {
+          runId: request.runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-14T00:00:00.000Z",
+          completedAt: "2026-04-14T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Need a clearer result contract before execution.",
+          recommendation: {
+            decision: "needs-clarification",
+            confidence: "medium",
+            summary: "Need a clearer result contract before execution.",
+            researchPosture: "repo-only",
+            clarificationQuestion: "Which sections must docs/PRD.md contain?",
+          },
+          artifacts: [],
+        };
+      },
+      async recommendClarifyFollowUp() {
+        clarifyCalls += 1;
+        throw new Error("should not run");
+      },
+    };
+
+    await recommendConsultationPreflight({
+      adapter,
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: join(cwd, ".oraculum", "runs", "run_clarify_first", "reports"),
+      runId: "run_clarify_first",
+      taskPacket,
+    });
+
+    expect(clarifyCalls).toBe(0);
+    await expect(
+      readFile(getClarifyFollowUpPath(cwd, "run_clarify_first"), "utf8"),
+    ).rejects.toThrow();
   });
 
   it("renders research-brief task provenance in summary and review", async () => {
@@ -2051,12 +3749,16 @@ describe("consultation workflow summaries", () => {
       ],
     });
     await writeManifest(cwd, manifest);
-    await writeFile(getExportPlanPath(cwd, manifest.id), "{}\n", "utf8");
+    await writeExportPlanArtifact(cwd, manifest.id, "cand-01");
 
     const summary = await renderConsultationSummary(manifest, cwd);
+    const review = await buildVerdictReview(manifest, {
+      crowningRecordPath: getExportPlanPath(cwd, manifest.id),
+    });
 
     expect(summary).toContain("- crowning record: not created yet");
     expect(summary).not.toContain("- reopen the crowning record:");
+    expect(review.artifactAvailability.crowningRecord).toBe(false);
   });
 
   it("does not claim a profile-selection artifact when the file is missing", async () => {
@@ -2079,6 +3781,48 @@ describe("consultation workflow summaries", () => {
     const summary = await renderConsultationSummary(manifest, cwd);
 
     expect(summary).toContain("- profile selection: not available");
+  });
+
+  it("does not claim a profile-selection artifact when the file is invalid", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed", {
+      profileSelection: {
+        profileId: "library",
+        confidence: "high",
+        source: "llm-recommendation",
+        summary: "Library scripts and package export signals are strongest.",
+        candidateCount: 4,
+        strategyIds: ["minimal-change", "test-amplified"],
+        oracleIds: ["lint-fast", "typecheck-fast"],
+        missingCapabilities: [],
+        signals: ["package-export", "lint-script"],
+      },
+    });
+    await writeManifest(cwd, manifest);
+    await writeFile(getProfileSelectionPath(cwd, manifest.id), "{}\n", "utf8");
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const review = await buildVerdictReview(manifest, {
+      profileSelectionPath: getProfileSelectionPath(cwd, manifest.id),
+    });
+
+    expect(summary).toContain("- profile selection: not available");
+    expect(review.artifactAvailability.profileSelection).toBe(false);
+  });
+
+  it("does not claim a crowning record when the export plan file is invalid", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed");
+    await writeManifest(cwd, manifest);
+    await writeFile(getExportPlanPath(cwd, manifest.id), "{}\n", "utf8");
+
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const review = await buildVerdictReview(manifest, {
+      crowningRecordPath: getExportPlanPath(cwd, manifest.id),
+    });
+
+    expect(summary).toContain("- crowning record: not created yet");
+    expect(review.artifactAvailability.crowningRecord).toBe(false);
   });
 
   it("shows profile gaps in the consultation summary when deep validation is incomplete", async () => {
@@ -2170,9 +3914,18 @@ describe("consultation workflow summaries", () => {
     await writeFile(
       getProfileSelectionPath(cwd, manifest.id),
       `${JSON.stringify(
-        {
+        consultationProfileSelectionArtifactSchema.parse({
           signals: {
             packageManager: "unknown",
+            scripts: [],
+            dependencies: [],
+            files: [],
+            workspaceRoots: [],
+            workspaceMetadata: [],
+            notes: [],
+            capabilities: [],
+            provenance: [],
+            commandCatalog: [],
             skippedCommandCandidates: [
               {
                 id: "e2e-deep",
@@ -2184,7 +3937,27 @@ describe("consultation workflow summaries", () => {
               },
             ],
           },
-        },
+          recommendation: {
+            validationProfileId: "generic",
+            confidence: "low",
+            validationSummary: "No executable profile-specific command evidence was detected.",
+            candidateCount: 3,
+            strategyIds: ["minimal-change", "safety-first"],
+            selectedCommandIds: [],
+            validationGaps: ["No repo-local validation command was detected."],
+          },
+          appliedSelection: {
+            validationProfileId: "generic",
+            confidence: "low",
+            source: "fallback-detection",
+            validationSummary: "No executable profile-specific command evidence was detected.",
+            candidateCount: 3,
+            strategyIds: ["minimal-change", "safety-first"],
+            oracleIds: [],
+            validationGaps: ["No repo-local validation command was detected."],
+            validationSignals: ["e2e-config"],
+          },
+        }),
         null,
         2,
       )}\n`,
@@ -2222,9 +3995,7 @@ describe("consultation workflow summaries", () => {
     const status = buildSavedConsultationStatus(manifest);
 
     expect(summary).toContain("No survivor yet. Candidate states:");
-    expect(summary).toContain(
-      "- review why no candidate survived the oracle rounds: open the comparison report above.",
-    );
+    expect(summary).toContain("- review why no candidate survived the oracle rounds.");
     expect(summary).not.toContain("oraculum crown");
     expect(status.verificationLevel).toBe("lightweight");
     expect(status.nextActions).toEqual([
@@ -2500,6 +4271,112 @@ async function writeRawManifest(cwd: string, runId: string, manifest: unknown): 
   await mkdir(join(cwd, ".oraculum", "runs", runId), { recursive: true });
   await mkdir(join(cwd, ".oraculum", "runs", runId, "reports"), { recursive: true });
   await writeFile(getRunManifestPath(cwd, runId), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+}
+
+async function writeProfileSelectionArtifact(
+  cwd: string,
+  runId: string,
+  profileSelection: NonNullable<RunManifest["profileSelection"]>,
+): Promise<void> {
+  const signals: ProfileRepoSignals = {
+    packageManager: "npm",
+    scripts: [],
+    dependencies: [],
+    files: [],
+    workspaceRoots: [],
+    workspaceMetadata: [],
+    notes: [],
+    capabilities: [],
+    provenance: [],
+    commandCatalog: [],
+    skippedCommandCandidates: [],
+  };
+  await mkdir(join(cwd, ".oraculum", "runs", runId, "reports"), { recursive: true });
+  await writeFile(
+    getProfileSelectionPath(cwd, runId),
+    `${JSON.stringify(
+      consultationProfileSelectionArtifactSchema.parse({
+        signals,
+        recommendation: {
+          validationProfileId: profileSelection.validationProfileId,
+          confidence: profileSelection.confidence,
+          validationSummary: profileSelection.validationSummary,
+          candidateCount: profileSelection.candidateCount,
+          strategyIds: profileSelection.strategyIds,
+          selectedCommandIds: [],
+          validationGaps: profileSelection.validationGaps,
+        },
+        appliedSelection: profileSelection,
+      }),
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+}
+
+async function writePreflightReadinessArtifact(
+  cwd: string,
+  runId: string,
+  overrides: Record<string, unknown> = {},
+): Promise<void> {
+  await mkdir(join(cwd, ".oraculum", "runs", runId, "reports"), { recursive: true });
+  await writeFile(
+    getPreflightReadinessPath(cwd, runId),
+    `${JSON.stringify(
+      consultationPreflightReadinessArtifactSchema.parse({
+        signals: {
+          packageManager: "npm",
+          scripts: [],
+          dependencies: [],
+          files: [],
+          workspaceRoots: [],
+          workspaceMetadata: [],
+          notes: [],
+          capabilities: [],
+          provenance: [],
+          commandCatalog: [],
+          skippedCommandCandidates: [],
+        },
+        recommendation: {
+          decision: "proceed",
+          confidence: "low",
+          summary: "Proceed conservatively with the default consultation flow.",
+          researchPosture: "repo-only",
+        },
+        ...overrides,
+      }),
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+}
+
+async function writeExportPlanArtifact(
+  cwd: string,
+  runId: string,
+  winnerId: string,
+): Promise<void> {
+  await mkdir(join(cwd, ".oraculum", "runs", runId, "reports"), { recursive: true });
+  await writeFile(
+    getExportPlanPath(cwd, runId),
+    `${JSON.stringify(
+      exportPlanSchema.parse({
+        runId,
+        winnerId,
+        branchName: `orc/${runId}-${winnerId}`,
+        mode: "git-branch",
+        materializationMode: "branch",
+        workspaceDir: "/tmp/workspace",
+        withReport: true,
+        createdAt: "2026-04-04T00:00:00.000Z",
+      }),
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
 }
 
 function createManifest(

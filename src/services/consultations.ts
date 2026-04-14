@@ -1,11 +1,14 @@
+import { readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 import type { z } from "zod";
 
 import { agentJudgeResultSchema } from "../adapters/types.js";
 import {
+  getClarifyFollowUpPath,
   getExportPlanPath,
   getFailureAnalysisPath,
+  getFinalistComparisonJsonPath,
   getFinalistComparisonMarkdownPath,
   getPreflightReadinessPath,
   getProfileSelectionPath,
@@ -19,17 +22,21 @@ import {
 } from "../core/paths.js";
 import type { VerdictReview } from "../domain/chat-native.js";
 import {
+  consultationProfileSelectionArtifactSchema,
   getValidationGaps,
   getValidationProfileId,
   getValidationSignals,
   getValidationSummary,
   type ProfileSkippedCommandCandidate,
-  profileRepoSignalsSchema,
 } from "../domain/profile.js";
 import {
   buildSavedConsultationStatus,
+  consultationClarifyFollowUpSchema,
+  consultationPreflightReadinessArtifactSchema,
+  consultationResearchBriefSchema,
   describeConsultationJudgingBasisSummary,
   describeConsultationOutcomeSummary,
+  exportPlanSchema,
   isPreflightBlockedConsultation,
   type RunManifest,
 } from "../domain/run.js";
@@ -39,9 +46,10 @@ import {
   describeRecommendedTaskResultLabel,
   describeTaskResultLabel,
 } from "../domain/task.js";
+import { failureAnalysisSchema } from "./failure-analysis.js";
 import { secondOpinionWinnerSelectionArtifactSchema } from "./finalist-judge.js";
 import { comparisonReportSchema } from "./finalist-report.js";
-import { pathExists } from "./project.js";
+import { hasNonEmptyTextArtifact, pathExists } from "./project.js";
 import { parseRunManifestArtifact } from "./run-manifest-artifact.js";
 
 type ConsultationSurface = "chat-native";
@@ -173,6 +181,11 @@ export async function renderConsultationSummary(
   });
   const hasExplicitResultIntent =
     Boolean(manifest.taskPacket.artifactKind) || Boolean(manifest.taskPacket.targetArtifactPath);
+  const clarifyFollowUpPath = getClarifyFollowUpPath(projectRoot, manifest.id);
+  const clarifyFollowUpExists = await pathExists(clarifyFollowUpPath);
+  const clarifyFollowUp = await readClarifyFollowUpResult(
+    clarifyFollowUpExists ? clarifyFollowUpPath : undefined,
+  );
   const secondOpinionWinnerSelectionPath = getSecondOpinionWinnerSelectionPath(
     projectRoot,
     manifest.id,
@@ -192,6 +205,15 @@ export async function renderConsultationSummary(
     }
     if (manifest.preflight.researchQuestion) {
       lines.push(`Research needed: ${manifest.preflight.researchQuestion}`);
+    }
+    if (clarifyFollowUp) {
+      lines.push(
+        `Clarify follow-up: ${clarifyFollowUp.scopeKeyType} (${toDisplayPath(projectRoot, clarifyFollowUp.scopeKey)}, ${clarifyFollowUp.repeatedCaseCount} prior cases)`,
+        clarifyFollowUp.summary,
+        `Key clarify question: ${clarifyFollowUp.keyQuestion}`,
+        `Missing result contract: ${clarifyFollowUp.missingResultContract}`,
+        `Missing judging basis: ${clarifyFollowUp.missingJudgingBasis}`,
+      );
     }
   }
 
@@ -247,53 +269,83 @@ export async function renderConsultationSummary(
   }
 
   lines.push("Entry paths:");
-  const comparisonReportPath = getFinalistComparisonMarkdownPath(projectRoot, manifest.id);
+  const comparisonMarkdownPath = getFinalistComparisonMarkdownPath(projectRoot, manifest.id);
+  const comparisonJsonPath = getFinalistComparisonJsonPath(projectRoot, manifest.id);
   const failureAnalysisPath = getFailureAnalysisPath(projectRoot, manifest.id);
   const preflightReadinessPath = getPreflightReadinessPath(projectRoot, manifest.id);
   const researchBriefPath = getResearchBriefPath(projectRoot, manifest.id);
   const profileSelectionPath = getProfileSelectionPath(projectRoot, manifest.id);
   const winnerSelectionPath = getWinnerSelectionPath(projectRoot, manifest.id);
   const preflightReadinessExists = await pathExists(preflightReadinessPath);
+  const preflightReadiness = await readPreflightReadinessResult(
+    preflightReadinessExists ? preflightReadinessPath : undefined,
+  );
   const researchBriefExists = await pathExists(researchBriefPath);
+  const researchBrief = await readResearchBriefResult(
+    researchBriefExists ? researchBriefPath : undefined,
+  );
   const failureAnalysisExists = await pathExists(failureAnalysisPath);
+  const failureAnalysis = await readFailureAnalysisResult(
+    failureAnalysisExists ? failureAnalysisPath : undefined,
+  );
   const profileSelectionExists = await pathExists(profileSelectionPath);
-  const comparisonReportExists = await pathExists(comparisonReportPath);
+  const profileSelectionArtifact = await readProfileSelectionArtifactResult(
+    profileSelectionExists ? profileSelectionPath : undefined,
+  );
+  const comparisonJsonExists = await pathExists(comparisonJsonPath);
+  const comparisonReport = await readComparisonReport(
+    comparisonJsonExists ? comparisonJsonPath : undefined,
+  );
+  const comparisonMarkdownAvailable = await hasNonEmptyTextArtifact(comparisonMarkdownPath);
+  const comparisonReportSummaryPath = comparisonMarkdownAvailable
+    ? comparisonMarkdownPath
+    : comparisonReport
+      ? comparisonJsonPath
+      : undefined;
   const winnerSelectionExists = await pathExists(winnerSelectionPath);
+  const winnerSelection = await readWinnerSelectionResult(
+    winnerSelectionExists ? winnerSelectionPath : undefined,
+  );
   lines.push(
     `- consultation root: ${toDisplayPath(projectRoot, getRunDir(projectRoot, manifest.id))}`,
   );
   lines.push(
-    preflightReadinessExists
+    preflightReadiness
       ? `- preflight readiness: ${toDisplayPath(projectRoot, preflightReadinessPath)}`
       : "- preflight readiness: not available",
   );
   lines.push(
-    researchBriefExists
+    clarifyFollowUp
+      ? `- clarify follow-up: ${toDisplayPath(projectRoot, clarifyFollowUpPath)}`
+      : "- clarify follow-up: not available",
+  );
+  lines.push(
+    researchBrief
       ? `- research brief: ${toDisplayPath(projectRoot, researchBriefPath)}`
       : "- research brief: not available",
   );
   lines.push(
-    failureAnalysisExists
+    failureAnalysis
       ? `- failure analysis: ${toDisplayPath(projectRoot, failureAnalysisPath)}`
       : "- failure analysis: not available",
   );
   lines.push(
-    profileSelectionExists
+    profileSelectionArtifact
       ? `- profile selection: ${toDisplayPath(projectRoot, profileSelectionPath)}`
       : "- profile selection: not available",
   );
   lines.push(
-    comparisonReportExists
-      ? `- comparison report: ${toDisplayPath(projectRoot, comparisonReportPath)}`
+    comparisonReportSummaryPath
+      ? `- comparison report: ${toDisplayPath(projectRoot, comparisonReportSummaryPath)}`
       : "- comparison report: not available yet",
   );
   lines.push(
-    winnerSelectionExists
+    winnerSelection
       ? `- winner selection: ${toDisplayPath(projectRoot, winnerSelectionPath)}`
       : "- winner selection: not available yet",
   );
   lines.push(
-    secondOpinionWinnerSelectionExists
+    secondOpinionWinnerSelection
       ? `- second-opinion winner selection: ${toDisplayPath(projectRoot, secondOpinionWinnerSelectionPath)}`
       : "- second-opinion winner selection: not available",
   );
@@ -302,7 +354,9 @@ export async function renderConsultationSummary(
   const hasExportedCandidate = manifest.candidates.some(
     (candidate) => candidate.status === "exported",
   );
-  const hasCrowningRecord = hasExportedCandidate && (await pathExists(exportPlanPath));
+  const exportPlanExists = await pathExists(exportPlanPath);
+  const exportPlan = await readExportPlanResult(exportPlanExists ? exportPlanPath : undefined);
+  const hasCrowningRecord = hasExportedCandidate && Boolean(exportPlan);
   lines.push(
     hasCrowningRecord
       ? `- crowning record: ${toDisplayPath(projectRoot, exportPlanPath)}`
@@ -334,21 +388,44 @@ export async function renderConsultationSummary(
     manifest,
     projectRoot,
     currentResearchBriefPath: researchBriefPath,
-    currentResearchBriefExists: researchBriefExists,
+    currentResearchBriefExists: Boolean(researchBrief),
   });
   if (hasCrowningRecord) {
     lines.push(`- reopen the crowning record: ${toDisplayPath(projectRoot, exportPlanPath)}`);
-  } else if (failureAnalysisExists) {
+  } else if (failureAnalysis) {
     lines.push(
       `- investigate the persisted failure analysis: ${toDisplayPath(projectRoot, failureAnalysisPath)}.`,
     );
   } else if (status.outcomeType === "needs-clarification") {
-    lines.push("- answer the preflight clarification question, then rerun `orc consult`.");
+    if (clarifyFollowUp) {
+      lines.push(
+        `- inspect the persisted clarify follow-up: ${toDisplayPath(projectRoot, clarifyFollowUpPath)}.`,
+      );
+      lines.push(`- answer the key clarify question: ${clarifyFollowUp.keyQuestion}`);
+    } else {
+      lines.push("- answer the preflight clarification question, then rerun `orc consult`.");
+    }
+    lines.push(
+      "- rerun `orc consult` once the missing result contract and judging basis are explicit.",
+    );
   } else if (status.outcomeType === "external-research-required") {
     const researchBriefInput = researchBriefInputPath
       ? `orc consult ${researchBriefInputPath}`
       : "orc consult";
-    lines.push("- gather the required external evidence.");
+    if (clarifyFollowUp) {
+      lines.push(
+        `- inspect the persisted clarify follow-up: ${toDisplayPath(projectRoot, clarifyFollowUpPath)}.`,
+      );
+      lines.push(`- gather bounded external evidence for: ${clarifyFollowUp.keyQuestion}`);
+      lines.push(
+        `- use this missing result contract when refreshing the brief: ${clarifyFollowUp.missingResultContract}`,
+      );
+      lines.push(
+        `- use this missing judging basis when refreshing the brief: ${clarifyFollowUp.missingJudgingBasis}`,
+      );
+    } else {
+      lines.push("- gather the required external evidence.");
+    }
     if (status.researchBasisDrift) {
       lines.push(
         "- refresh the persisted research brief because its signal basis no longer matches the current repository.",
@@ -383,11 +460,15 @@ export async function renderConsultationSummary(
     lines.push(`- crown the ${crownableResultLabel}: ${crownTarget}`);
   } else if (manifest.status === "completed" && finalists.length > 0) {
     lines.push(
-      `- inspect the comparison first. The shared \`${crownCommand}\` path only crowns a ${crownableResultLabel}.`,
+      comparisonReportSummaryPath
+        ? `- inspect the comparison first. The shared \`${crownCommand}\` path only crowns a ${crownableResultLabel}.`
+        : `- compare the surviving finalists manually before crowning because no comparison report is available yet.`,
     );
   } else if (manifest.status === "completed") {
     lines.push(
-      "- review why no candidate survived the oracle rounds: open the comparison report above.",
+      comparisonReportSummaryPath
+        ? "- review why no candidate survived the oracle rounds: open the comparison report above."
+        : "- review why no candidate survived the oracle rounds.",
     );
   } else {
     lines.push(`- reopen this consultation later: ${verdictCommand} ${manifest.id}`);
@@ -427,6 +508,7 @@ export async function buildVerdictReview(
   manifest: RunManifest,
   artifacts: {
     preflightReadinessPath?: string;
+    clarifyFollowUpPath?: string;
     researchBriefPath?: string;
     failureAnalysisPath?: string;
     profileSelectionPath?: string;
@@ -438,15 +520,31 @@ export async function buildVerdictReview(
   },
 ): Promise<VerdictReview> {
   const status = buildSavedConsultationStatus(manifest);
+  const hasExportedCandidate = manifest.candidates.some(
+    (candidate) => candidate.status === "exported",
+  );
   const comparisonReport = await readComparisonReport(artifacts.comparisonJsonPath);
+  const comparisonMarkdownAvailable = artifacts.comparisonMarkdownPath
+    ? await hasNonEmptyTextArtifact(artifacts.comparisonMarkdownPath)
+    : false;
+  const preflightReadiness = await readPreflightReadinessResult(artifacts.preflightReadinessPath);
   const winnerSelection = await readWinnerSelectionResult(artifacts.winnerSelectionPath);
+  const clarifyFollowUp = await readClarifyFollowUpResult(artifacts.clarifyFollowUpPath);
+  const researchBrief = await readResearchBriefResult(artifacts.researchBriefPath);
+  const failureAnalysis = await readFailureAnalysisResult(artifacts.failureAnalysisPath);
+  const profileSelectionArtifact = await readProfileSelectionArtifactResult(
+    artifacts.profileSelectionPath,
+  );
+  const exportPlan = await readExportPlanResult(artifacts.crowningRecordPath);
   const secondOpinionWinnerSelection = await readSecondOpinionWinnerSelectionResult(
     artifacts.secondOpinionWinnerSelectionPath,
   );
   const researchRerunInputPath =
     manifest.taskPacket.sourceKind === "research-brief"
       ? manifest.taskPacket.sourcePath
-      : artifacts.researchBriefPath;
+      : researchBrief
+        ? artifacts.researchBriefPath
+        : undefined;
   const researchRerunRecommended =
     status.outcomeType === "external-research-required" || status.researchBasisDrift === true;
   const candidateStateCounts = manifest.candidates.reduce<Record<string, number>>(
@@ -469,6 +567,7 @@ export async function buildVerdictReview(
   const validationSignals = getValidationSignals(manifest.profileSelection);
   const validationGaps = getValidationGaps(manifest.profileSelection);
   const strongestEvidence = buildReviewStrongestEvidence({
+    clarifyFollowUp,
     comparisonReport,
     manifest,
     reviewFinalistIds,
@@ -488,6 +587,7 @@ export async function buildVerdictReview(
     winnerSelection,
   });
   const weakestEvidence = buildReviewWeakestEvidence({
+    clarifyFollowUp,
     manifest,
     recommendationAbsenceReason,
     secondOpinionWinnerSelection,
@@ -615,21 +715,31 @@ export async function buildVerdictReview(
     ...(manifest.preflight?.researchQuestion
       ? { researchQuestion: manifest.preflight.researchQuestion }
       : {}),
+    ...(clarifyFollowUp ? { clarifyScopeKeyType: clarifyFollowUp.scopeKeyType } : {}),
+    ...(clarifyFollowUp ? { clarifyScopeKey: clarifyFollowUp.scopeKey } : {}),
+    ...(clarifyFollowUp ? { clarifyRepeatedCaseCount: clarifyFollowUp.repeatedCaseCount } : {}),
+    ...(clarifyFollowUp ? { clarifyFollowUpQuestion: clarifyFollowUp.keyQuestion } : {}),
+    ...(clarifyFollowUp
+      ? { clarifyMissingResultContract: clarifyFollowUp.missingResultContract }
+      : {}),
+    ...(clarifyFollowUp ? { clarifyMissingJudgingBasis: clarifyFollowUp.missingJudgingBasis } : {}),
     artifactAvailability: {
-      preflightReadiness: Boolean(artifacts.preflightReadinessPath),
-      researchBrief: Boolean(artifacts.researchBriefPath),
-      failureAnalysis: Boolean(artifacts.failureAnalysisPath),
-      profileSelection: Boolean(artifacts.profileSelectionPath),
-      comparisonReport: Boolean(artifacts.comparisonJsonPath || artifacts.comparisonMarkdownPath),
-      winnerSelection: Boolean(artifacts.winnerSelectionPath),
-      secondOpinionWinnerSelection: Boolean(artifacts.secondOpinionWinnerSelectionPath),
-      crowningRecord: Boolean(artifacts.crowningRecordPath),
+      preflightReadiness: Boolean(preflightReadiness),
+      clarifyFollowUp: Boolean(clarifyFollowUp),
+      researchBrief: Boolean(researchBrief),
+      failureAnalysis: Boolean(failureAnalysis),
+      profileSelection: Boolean(profileSelectionArtifact),
+      comparisonReport: Boolean(comparisonReport || comparisonMarkdownAvailable),
+      winnerSelection: Boolean(winnerSelection),
+      secondOpinionWinnerSelection: Boolean(secondOpinionWinnerSelection),
+      crowningRecord: hasExportedCandidate && Boolean(exportPlan),
     },
     candidateStateCounts,
   };
 }
 
 function buildReviewStrongestEvidence(options: {
+  clarifyFollowUp: z.infer<typeof consultationClarifyFollowUpSchema> | undefined;
   comparisonReport: z.infer<typeof comparisonReportSchema> | undefined;
   manifest: RunManifest;
   reviewFinalistIds: string[];
@@ -650,6 +760,10 @@ function buildReviewStrongestEvidence(options: {
   add(options.validationSummary);
   for (const signal of options.validationSignals.slice(0, 3)) {
     add(`Validation evidence: ${signal}`);
+  }
+  if (options.clarifyFollowUp) {
+    add(options.clarifyFollowUp.summary);
+    add(`Key clarify question: ${options.clarifyFollowUp.keyQuestion}`);
   }
   if (options.manifest.taskPacket.researchContext?.summary) {
     add(options.manifest.taskPacket.researchContext.summary);
@@ -681,6 +795,7 @@ function buildReviewStrongestEvidence(options: {
 }
 
 function buildReviewWeakestEvidence(options: {
+  clarifyFollowUp: z.infer<typeof consultationClarifyFollowUpSchema> | undefined;
   manifest: RunManifest;
   recommendationAbsenceReason: string | undefined;
   secondOpinionWinnerSelection:
@@ -704,6 +819,10 @@ function buildReviewWeakestEvidence(options: {
   }
   if ((options.manifest.taskPacket.researchContext?.unresolvedConflicts.length ?? 0) > 0) {
     add("External research contains unresolved conflicts.");
+  }
+  if (options.clarifyFollowUp) {
+    add(`Missing result contract: ${options.clarifyFollowUp.missingResultContract}`);
+    add(`Missing judging basis: ${options.clarifyFollowUp.missingJudgingBasis}`);
   }
   if (
     options.secondOpinionWinnerSelection &&
@@ -790,6 +909,70 @@ async function readWinnerSelectionResult(
   }
 }
 
+async function readPreflightReadinessResult(
+  preflightReadinessPath: string | undefined,
+): Promise<z.infer<typeof consultationPreflightReadinessArtifactSchema> | undefined> {
+  if (!preflightReadinessPath) {
+    return undefined;
+  }
+
+  try {
+    return consultationPreflightReadinessArtifactSchema.parse(
+      JSON.parse(await readFile(preflightReadinessPath, "utf8")) as unknown,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+async function readFailureAnalysisResult(
+  failureAnalysisPath: string | undefined,
+): Promise<z.infer<typeof failureAnalysisSchema> | undefined> {
+  if (!failureAnalysisPath) {
+    return undefined;
+  }
+
+  try {
+    return failureAnalysisSchema.parse(
+      JSON.parse(await readFile(failureAnalysisPath, "utf8")) as unknown,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+async function readClarifyFollowUpResult(
+  clarifyFollowUpPath: string | undefined,
+): Promise<z.infer<typeof consultationClarifyFollowUpSchema> | undefined> {
+  if (!clarifyFollowUpPath) {
+    return undefined;
+  }
+
+  try {
+    return consultationClarifyFollowUpSchema.parse(
+      JSON.parse(await readFile(clarifyFollowUpPath, "utf8")) as unknown,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+async function readResearchBriefResult(
+  researchBriefPath: string | undefined,
+): Promise<z.infer<typeof consultationResearchBriefSchema> | undefined> {
+  if (!researchBriefPath) {
+    return undefined;
+  }
+
+  try {
+    return consultationResearchBriefSchema.parse(
+      JSON.parse(await readFile(researchBriefPath, "utf8")) as unknown,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
 async function readSecondOpinionWinnerSelectionResult(
   secondOpinionWinnerSelectionPath: string | undefined,
 ): Promise<z.infer<typeof secondOpinionWinnerSelectionArtifactSchema> | undefined> {
@@ -800,6 +983,22 @@ async function readSecondOpinionWinnerSelectionResult(
   try {
     return secondOpinionWinnerSelectionArtifactSchema.parse(
       JSON.parse(await readFile(secondOpinionWinnerSelectionPath, "utf8")) as unknown,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+function readSecondOpinionWinnerSelectionResultSync(
+  secondOpinionWinnerSelectionPath: string | undefined,
+): z.infer<typeof secondOpinionWinnerSelectionArtifactSchema> | undefined {
+  if (!secondOpinionWinnerSelectionPath) {
+    return undefined;
+  }
+
+  try {
+    return secondOpinionWinnerSelectionArtifactSchema.parse(
+      JSON.parse(readFileSync(secondOpinionWinnerSelectionPath, "utf8")) as unknown,
     );
   } catch {
     return undefined;
@@ -823,8 +1022,22 @@ export function renderConsultationArchive(
 
   const lines = ["Recent consultations:"];
   for (const manifest of manifests) {
-    const status = buildSavedConsultationStatus(manifest);
-    const recommendation = renderArchiveOutcomeSummary(manifest, status, options?.projectRoot);
+    const secondOpinionAgreement = options?.projectRoot
+      ? readSecondOpinionWinnerSelectionResultSync(
+          getSecondOpinionWinnerSelectionPath(options.projectRoot, manifest.id),
+        )?.agreement
+      : undefined;
+    const status = buildSavedConsultationStatus(manifest, {
+      ...(secondOpinionAgreement && secondOpinionAgreement !== "agrees-select"
+        ? { manualReviewRequired: true }
+        : {}),
+    });
+    const recommendation = renderArchiveOutcomeSummary(
+      manifest,
+      status,
+      options?.projectRoot,
+      secondOpinionAgreement,
+    );
     const artifact = renderArchiveArtifactSummary(manifest, options?.projectRoot);
     const profile = getValidationProfileId(manifest.profileSelection)
       ? `validation posture ${getValidationProfileId(manifest.profileSelection)}`
@@ -843,6 +1056,7 @@ function renderArchiveOutcomeSummary(
   manifest: RunManifest,
   status: ReturnType<typeof buildSavedConsultationStatus>,
   projectRoot?: string,
+  secondOpinionAgreement?: z.infer<typeof secondOpinionWinnerSelectionArtifactSchema>["agreement"],
 ): string {
   const hasExplicitResultIntent =
     Boolean(manifest.taskPacket.artifactKind) || Boolean(manifest.taskPacket.targetArtifactPath);
@@ -858,7 +1072,9 @@ function renderArchiveOutcomeSummary(
   });
 
   if (status.recommendedCandidateId) {
-    return `${recommendedResultLabel} ${status.recommendedCandidateId}`;
+    return secondOpinionAgreement && secondOpinionAgreement !== "agrees-select"
+      ? `${recommendedResultLabel} ${status.recommendedCandidateId} (manual review)`
+      : `${recommendedResultLabel} ${status.recommendedCandidateId}`;
   }
 
   switch (status.outcomeType) {
@@ -933,16 +1149,38 @@ async function readSkippedProfileCommands(
   projectRoot: string,
   runId: string,
 ): Promise<ProfileSkippedCommandCandidate[]> {
-  const profileSelectionPath = getProfileSelectionPath(projectRoot, runId);
-  if (!(await pathExists(profileSelectionPath))) {
-    return [];
+  const artifact = await readProfileSelectionArtifactResult(
+    getProfileSelectionPath(projectRoot, runId),
+  );
+  return artifact?.signals.skippedCommandCandidates ?? [];
+}
+
+async function readProfileSelectionArtifactResult(
+  path: string | undefined,
+): Promise<z.infer<typeof consultationProfileSelectionArtifactSchema> | undefined> {
+  if (!path) {
+    return undefined;
   }
 
   try {
-    const raw = JSON.parse(await readFile(profileSelectionPath, "utf8")) as { signals?: unknown };
-    const signals = profileRepoSignalsSchema.safeParse(raw.signals);
-    return signals.success ? signals.data.skippedCommandCandidates : [];
+    return consultationProfileSelectionArtifactSchema.parse(
+      JSON.parse(await readFile(path, "utf8")) as unknown,
+    );
   } catch {
-    return [];
+    return undefined;
+  }
+}
+
+async function readExportPlanResult(
+  path: string | undefined,
+): Promise<z.infer<typeof exportPlanSchema> | undefined> {
+  if (!path) {
+    return undefined;
+  }
+
+  try {
+    return exportPlanSchema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
+  } catch {
+    return undefined;
   }
 }

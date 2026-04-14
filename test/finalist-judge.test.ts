@@ -9,6 +9,7 @@ import { getSecondOpinionWinnerSelectionPath, getWinnerSelectionPath } from "../
 import {
   recommendSecondOpinionWithJudge,
   recommendWinnerWithJudge,
+  secondOpinionWinnerSelectionArtifactSchema,
 } from "../src/services/finalist-judge.js";
 
 const tempRoots: string[] = [];
@@ -20,6 +21,10 @@ afterEach(async () => {
     }),
   );
 });
+
+async function recommendUnusedClarifyFollowUp(): Promise<never> {
+  throw new Error("not used");
+}
 
 describe("finalist judge", () => {
   it("falls back cleanly when the judge throws before producing a result", async () => {
@@ -40,6 +45,7 @@ describe("finalist judge", () => {
         recommendProfile: async () => {
           throw new Error("not used");
         },
+        recommendClarifyFollowUp: recommendUnusedClarifyFollowUp,
         recommendWinner: async () => {
           throw new Error("judge binary missing");
         },
@@ -109,6 +115,7 @@ describe("finalist judge", () => {
         recommendProfile: async () => {
           throw new Error("not used");
         },
+        recommendClarifyFollowUp: recommendUnusedClarifyFollowUp,
         recommendWinner: async () => ({
           runId,
           adapter: "codex",
@@ -194,6 +201,7 @@ describe("finalist judge", () => {
         recommendProfile: async () => {
           throw new Error("not used");
         },
+        recommendClarifyFollowUp: recommendUnusedClarifyFollowUp,
         recommendWinner: async () => ({
           runId,
           adapter: "codex",
@@ -279,6 +287,7 @@ describe("finalist judge", () => {
         recommendProfile: async () => {
           throw new Error("not used");
         },
+        recommendClarifyFollowUp: recommendUnusedClarifyFollowUp,
         recommendWinner: async (request) => {
           capturedConsultationProfile = request.consultationProfile;
           return {
@@ -378,6 +387,7 @@ describe("finalist judge", () => {
         recommendProfile: async () => {
           throw new Error("not used");
         },
+        recommendClarifyFollowUp: recommendUnusedClarifyFollowUp,
         recommendWinner: async () => {
           throw new Error("should not run");
         },
@@ -458,6 +468,7 @@ describe("finalist judge", () => {
         recommendProfile: async () => {
           throw new Error("not used");
         },
+        recommendClarifyFollowUp: recommendUnusedClarifyFollowUp,
         recommendWinner: async () => ({
           runId,
           adapter: "claude-code",
@@ -564,6 +575,220 @@ describe("finalist judge", () => {
     await expect(
       readFile(getSecondOpinionWinnerSelectionPath(projectRoot, runId), "utf8"),
     ).resolves.toContain('"agreement": "disagrees-select-vs-abstain"');
+  });
+
+  it("drops failed second-opinion recommendations from the persisted advisory artifact", async () => {
+    const projectRoot = await createTempRoot();
+    const runId = "run_7";
+    await mkdir(join(projectRoot, ".oraculum", "runs", runId, "reports"), { recursive: true });
+
+    const artifact = await recommendSecondOpinionWithJudge({
+      adapter: {
+        name: "claude-code",
+        runCandidate: async () => {
+          throw new Error("not used");
+        },
+        recommendPreflight: async () => {
+          throw new Error("not used");
+        },
+        recommendProfile: async () => {
+          throw new Error("not used");
+        },
+        recommendClarifyFollowUp: recommendUnusedClarifyFollowUp,
+        recommendWinner: async () => ({
+          runId,
+          adapter: "claude-code",
+          status: "failed",
+          startedAt: "2026-04-05T00:00:00.000Z",
+          completedAt: "2026-04-05T00:00:01.000Z",
+          exitCode: 7,
+          summary: "second opinion failed",
+          recommendation: {
+            decision: "select",
+            candidateId: "cand-01",
+            confidence: "low",
+            summary: "stale failed recommendation",
+          },
+          artifacts: [],
+        }),
+      } satisfies AgentAdapter,
+      candidateResults: [
+        {
+          runId,
+          candidateId: "cand-01",
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-05T00:00:00.000Z",
+          completedAt: "2026-04-05T00:00:01.000Z",
+          exitCode: 0,
+          summary: "ok",
+          artifacts: [],
+        },
+      ],
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: join(projectRoot, "workspace"),
+          taskPacketPath: join(projectRoot, "task-packet.json"),
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-05T00:00:00.000Z",
+        },
+      ],
+      primaryRecommendation: {
+        candidateId: "cand-01",
+        confidence: "low",
+        summary: "Primary judge selected cand-01.",
+        source: "llm-judge",
+      },
+      projectRoot,
+      runId,
+      secondOpinion: {
+        enabled: true,
+        triggers: ["low-confidence"],
+        minChangedPaths: 8,
+        minChangedLines: 200,
+      },
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        intent: "Fix the bug.",
+        source: {
+          kind: "task-note",
+          path: join(projectRoot, "task.md"),
+        },
+      },
+      verdictsByCandidate: new Map(),
+    });
+
+    expect(artifact?.agreement).toBe("unavailable");
+    expect(artifact?.result?.status).toBe("failed");
+    expect(artifact?.result?.recommendation).toBeUndefined();
+    await expect(
+      readFile(getSecondOpinionWinnerSelectionPath(projectRoot, runId), "utf8"),
+    ).resolves.not.toContain('"recommendation"');
+  });
+
+  it("rejects second-opinion artifacts whose agreement contradicts the completed recommendation", () => {
+    expect(() =>
+      secondOpinionWinnerSelectionArtifactSchema.parse({
+        runId: "run_schema_1",
+        advisoryOnly: true,
+        adapter: "claude-code",
+        triggerKinds: ["low-confidence"],
+        triggerReasons: ["Primary judge confidence was low."],
+        primaryRecommendation: {
+          source: "llm-judge",
+          decision: "select",
+          candidateId: "cand-01",
+          confidence: "low",
+          summary: "cand-01 stayed ahead.",
+        },
+        result: {
+          runId: "run_schema_1",
+          adapter: "claude-code",
+          status: "completed",
+          startedAt: "2026-04-05T00:00:00.000Z",
+          completedAt: "2026-04-05T00:00:01.000Z",
+          exitCode: 0,
+          summary: "second opinion selected cand-02",
+          recommendation: {
+            decision: "select",
+            candidateId: "cand-02",
+            confidence: "medium",
+            summary: "cand-02 is safer.",
+          },
+          artifacts: [],
+        },
+        agreement: "agrees-select",
+        advisorySummary: "contradictory artifact",
+      }),
+    ).toThrow(/agrees-select/);
+
+    expect(() =>
+      secondOpinionWinnerSelectionArtifactSchema.parse({
+        runId: "run_schema_2",
+        advisoryOnly: true,
+        adapter: "claude-code",
+        triggerKinds: ["judge-abstain"],
+        triggerReasons: ["Primary judge abstained."],
+        primaryRecommendation: {
+          source: "llm-judge",
+          decision: "abstain",
+          confidence: "low",
+          summary: "No safe winner yet.",
+        },
+        agreement: "agrees-abstain",
+        advisorySummary: "contradictory artifact",
+      }),
+    ).toThrow(/result is required/);
+
+    expect(() =>
+      secondOpinionWinnerSelectionArtifactSchema.parse({
+        runId: "run_schema_3",
+        advisoryOnly: true,
+        adapter: "claude-code",
+        triggerKinds: ["low-confidence"],
+        triggerReasons: ["Primary judge confidence was low."],
+        primaryRecommendation: {
+          source: "llm-judge",
+          decision: "select",
+          candidateId: "cand-01",
+          confidence: "low",
+          summary: "cand-01 stayed ahead.",
+        },
+        result: {
+          runId: "run_schema_other",
+          adapter: "codex",
+          status: "failed",
+          startedAt: "2026-04-05T00:00:00.000Z",
+          completedAt: "2026-04-05T00:00:01.000Z",
+          exitCode: 1,
+          summary: "second opinion failed",
+          artifacts: [],
+        },
+        agreement: "unavailable",
+        advisorySummary: "mismatched unavailable artifact",
+      }),
+    ).toThrow(/result\.(runId|adapter) must match/i);
+
+    expect(() =>
+      secondOpinionWinnerSelectionArtifactSchema.parse({
+        runId: "run_schema_4",
+        advisoryOnly: true,
+        adapter: "claude-code",
+        triggerKinds: ["low-confidence", "fallback-policy"],
+        triggerReasons: ["Primary judge confidence was low."],
+        primaryRecommendation: {
+          source: "fallback-policy",
+          decision: "select",
+          candidateId: "cand-01",
+          confidence: "low",
+          summary: "cand-01 stayed ahead.",
+        },
+        result: {
+          runId: "run_schema_4",
+          adapter: "claude-code",
+          status: "completed",
+          startedAt: "2026-04-05T00:00:00.000Z",
+          completedAt: "2026-04-05T00:00:01.000Z",
+          exitCode: 0,
+          summary: "second opinion selected cand-01",
+          recommendation: {
+            decision: "select",
+            candidateId: "cand-01",
+            confidence: "medium",
+            summary: "cand-01 is still safest.",
+          },
+          artifacts: [],
+        },
+        agreement: "agrees-select",
+        advisorySummary: "length-mismatched trigger artifact",
+      }),
+    ).toThrow(/triggerReasons must align 1:1 with triggerKinds/i);
   });
 });
 

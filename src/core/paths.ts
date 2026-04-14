@@ -246,6 +246,10 @@ export function getPreflightReadinessPath(projectRoot: string, runId: string): s
   return join(getReportsDir(projectRoot, runId), "preflight-readiness.json");
 }
 
+export function getClarifyFollowUpPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "clarify-follow-up.json");
+}
+
 export function getResearchBriefPath(projectRoot: string, runId: string): string {
   return join(getReportsDir(projectRoot, runId), "research-brief.json");
 }

@@ -3257,6 +3257,9 @@ function createNoopProfileAdapter(
     async recommendPreflight() {
       throw new Error("not used");
     },
+    async recommendClarifyFollowUp() {
+      throw new Error("not used");
+    },
     async recommendWinner() {
       throw new Error("not used");
     },

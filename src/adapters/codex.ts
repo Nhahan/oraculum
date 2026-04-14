@@ -12,12 +12,15 @@ import { consultationPreflightSchema } from "../domain/run.js";
 import { shouldUseWindowsShell } from "./platform.js";
 import {
   buildCandidatePrompt,
+  buildClarifyFollowUpPrompt,
   buildPreflightPrompt,
   buildProfileSelectionPrompt,
   buildWinnerSelectionPrompt,
 } from "./prompt.js";
 import {
   type AgentAdapter,
+  type AgentClarifyFollowUpRequest,
+  type AgentClarifyFollowUpResult,
   type AgentJudgeRecommendation,
   type AgentJudgeRequest,
   type AgentJudgeResult,
@@ -27,11 +30,13 @@ import {
   type AgentProfileResult,
   type AgentRunRequest,
   type AgentRunResult,
+  agentClarifyFollowUpResultSchema,
   agentJudgeRecommendationSchema,
   agentJudgeResultSchema,
   agentPreflightResultSchema,
   agentProfileResultSchema,
   agentRunResultSchema,
+  buildAgentClarifyFollowUpJsonSchema,
   buildAgentPreflightJsonSchema,
 } from "./types.js";
 
@@ -237,6 +242,72 @@ export class CodexAdapter implements AgentAdapter {
     });
   }
 
+  async recommendClarifyFollowUp(
+    request: AgentClarifyFollowUpRequest,
+  ): Promise<AgentClarifyFollowUpResult> {
+    await mkdir(request.logDir, { recursive: true });
+
+    const prompt = buildClarifyFollowUpPrompt(request);
+    const promptPath = join(request.logDir, "clarify-follow-up.prompt.txt");
+    const schemaPath = join(request.logDir, "clarify-follow-up.schema.json");
+    const stdoutPath = join(request.logDir, "clarify-follow-up.stdout.jsonl");
+    const stderrPath = join(request.logDir, "clarify-follow-up.stderr.txt");
+    const finalMessagePath = join(request.logDir, "clarify-follow-up.final-message.txt");
+    const startedAt = new Date().toISOString();
+
+    await writeFile(promptPath, prompt, "utf8");
+    await writeFile(
+      schemaPath,
+      `${JSON.stringify(buildAgentClarifyFollowUpJsonSchema(), null, 2)}\n`,
+    );
+
+    const result = await runSubprocess({
+      command: this.binaryPath,
+      args: [
+        "-a",
+        "never",
+        "exec",
+        "-s",
+        "read-only",
+        "--skip-git-repo-check",
+        "--json",
+        "--output-schema",
+        schemaPath,
+        "-o",
+        finalMessagePath,
+      ],
+      cwd: request.projectRoot,
+      ...(this.env ? { env: this.env } : {}),
+      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
+      stdin: prompt,
+      timeoutMs: this.timeoutMs,
+    });
+
+    await writeFile(stdoutPath, result.stdout, "utf8");
+    await writeFile(stderrPath, result.stderr, "utf8");
+
+    const finalMessage = await readOptionalFile(finalMessagePath);
+    const judgeOutput = finalMessage ?? result.stdout;
+
+    return agentClarifyFollowUpResultSchema.parse({
+      runId: request.runId,
+      adapter: this.name,
+      status: result.timedOut ? "timed-out" : result.exitCode === 0 ? "completed" : "failed",
+      startedAt,
+      completedAt: new Date().toISOString(),
+      exitCode: result.exitCode,
+      summary: summarizeAgentOutput(judgeOutput, "Codex clarify follow-up finished."),
+      recommendation: extractClarifyFollowUpRecommendation(judgeOutput),
+      artifacts: [
+        { kind: "prompt", path: promptPath },
+        { kind: "report", path: schemaPath },
+        { kind: "transcript", path: stdoutPath },
+        { kind: "stderr", path: stderrPath },
+        ...(finalMessage ? [{ kind: "report" as const, path: finalMessagePath }] : []),
+      ],
+    });
+  }
+
   async recommendProfile(request: AgentProfileRequest): Promise<AgentProfileResult> {
     await mkdir(request.logDir, { recursive: true });
 
@@ -349,6 +420,19 @@ function extractPreflightRecommendation(output: string) {
 
   try {
     return consultationPreflightSchema.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+function extractClarifyFollowUpRecommendation(output: string) {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return agentClarifyFollowUpResultSchema.shape.recommendation.parse(parsed);
   } catch {
     return undefined;
   }

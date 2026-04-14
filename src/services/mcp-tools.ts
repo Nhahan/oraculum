@@ -57,6 +57,7 @@ import {
 } from "./consultations.js";
 import { executeRun } from "./execution.js";
 import { materializeExport } from "./exports.js";
+import { secondOpinionWinnerSelectionArtifactSchema } from "./finalist-judge.js";
 import { ensureProjectInitialized, initializeProject } from "./project.js";
 import { planRun, readLatestRunManifest, readRunManifest, writeLatestRunState } from "./runs.js";
 
@@ -80,16 +81,17 @@ export async function runConsultTool(input: ConsultToolRequest): Promise<Consult
       ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
     },
   });
+  const blockedArtifacts = buildToolConsultationArtifacts(request.cwd, manifest);
   if (isPreflightBlockedConsultation(manifest)) {
     await writeLatestRunState(resolveProjectRoot(request.cwd), manifest.id);
     return consultToolResponseSchema.parse({
       mode: "consult",
       consultation: manifest,
-      status: buildSavedConsultationStatus(manifest),
+      status: await buildArtifactAwareConsultationStatus(manifest, blockedArtifacts),
       summary: await renderConsultationSummary(manifest, request.cwd, {
         surface: "chat-native",
       }),
-      artifacts: buildConsultationArtifacts(request.cwd, manifest.id),
+      artifacts: blockedArtifacts,
       ...(initialized ? { initializedProject: buildProjectInitializationResult(initialized) } : {}),
     });
   }
@@ -98,15 +100,16 @@ export async function runConsultTool(input: ConsultToolRequest): Promise<Consult
     runId: manifest.id,
     ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
   });
+  const executedArtifacts = buildToolConsultationArtifacts(request.cwd, execution.manifest);
 
   return consultToolResponseSchema.parse({
     mode: "consult",
     consultation: execution.manifest,
-    status: buildSavedConsultationStatus(execution.manifest),
+    status: await buildArtifactAwareConsultationStatus(execution.manifest, executedArtifacts),
     summary: await renderConsultationSummary(execution.manifest, request.cwd, {
       surface: "chat-native",
     }),
-    artifacts: buildConsultationArtifacts(request.cwd, execution.manifest.id),
+    artifacts: executedArtifacts,
     ...(initialized ? { initializedProject: buildProjectInitializationResult(initialized) } : {}),
   });
 }
@@ -126,15 +129,16 @@ export async function runDraftTool(input: DraftToolRequest): Promise<DraftToolRe
       allowRuntime: false,
     },
   });
+  const artifacts = buildToolConsultationArtifacts(request.cwd, manifest);
 
   return draftToolResponseSchema.parse({
     mode: "draft",
     consultation: manifest,
-    status: buildSavedConsultationStatus(manifest),
+    status: await buildArtifactAwareConsultationStatus(manifest, artifacts),
     summary: await renderConsultationSummary(manifest, request.cwd, {
       surface: "chat-native",
     }),
-    artifacts: buildConsultationArtifacts(request.cwd, manifest.id),
+    artifacts,
     ...(initialized ? { initializedProject: buildProjectInitializationResult(initialized) } : {}),
   });
 }
@@ -144,12 +148,12 @@ export async function runVerdictTool(input: VerdictToolRequest): Promise<Verdict
   const manifest = request.consultationId
     ? await readRunManifest(request.cwd, request.consultationId)
     : await readLatestRunManifest(request.cwd);
-  const artifacts = buildConsultationArtifacts(request.cwd, manifest.id);
+  const artifacts = buildToolConsultationArtifacts(request.cwd, manifest);
 
   return verdictToolResponseSchema.parse({
     mode: "verdict",
     consultation: manifest,
-    status: buildSavedConsultationStatus(manifest),
+    status: await buildArtifactAwareConsultationStatus(manifest, artifacts),
     review: await buildVerdictReview(manifest, artifacts),
     summary: await renderConsultationSummary(manifest, request.cwd, {
       surface: "chat-native",
@@ -186,6 +190,7 @@ export async function runCrownTool(input: CrownToolRequest): Promise<CrownToolRe
     ...(request.candidateId ? { winnerId: request.candidateId } : {}),
   });
   const consultation = await readRunManifest(request.cwd, result.plan.runId);
+  const artifacts = buildToolConsultationArtifacts(request.cwd, consultation);
   const materialization = await buildCrownMaterialization(request.cwd, result.plan);
 
   return crownToolResponseSchema.parse({
@@ -194,8 +199,54 @@ export async function runCrownTool(input: CrownToolRequest): Promise<CrownToolRe
     recordPath: result.path,
     materialization,
     consultation,
-    status: buildSavedConsultationStatus(consultation),
+    status: await buildArtifactAwareConsultationStatus(consultation, artifacts),
   });
+}
+
+function buildToolConsultationArtifacts(
+  cwd: string,
+  consultation: Awaited<ReturnType<typeof readRunManifest>>,
+) {
+  return buildConsultationArtifacts(cwd, consultation.id, {
+    hasExportedCandidate: consultation.candidates.some(
+      (candidate) => candidate.status === "exported",
+    ),
+  });
+}
+
+async function buildArtifactAwareConsultationStatus(
+  consultation: Awaited<ReturnType<typeof readRunManifest>>,
+  artifacts: ReturnType<typeof buildConsultationArtifacts>,
+) {
+  const secondOpinionRequiresManualReview = await readSecondOpinionRequiresManualReview(
+    artifacts.secondOpinionWinnerSelectionPath,
+  );
+
+  return buildSavedConsultationStatus(consultation, {
+    comparisonReportAvailable: Boolean(
+      artifacts.comparisonJsonPath || artifacts.comparisonMarkdownPath,
+    ),
+    ...(secondOpinionRequiresManualReview !== undefined
+      ? { manualReviewRequired: secondOpinionRequiresManualReview }
+      : {}),
+  });
+}
+
+async function readSecondOpinionRequiresManualReview(
+  path: string | undefined,
+): Promise<boolean | undefined> {
+  if (!path) {
+    return undefined;
+  }
+
+  try {
+    const artifact = secondOpinionWinnerSelectionArtifactSchema.parse(
+      JSON.parse(await readFile(path, "utf8")) as unknown,
+    );
+    return artifact.agreement !== "agrees-select";
+  } catch {
+    return undefined;
+  }
 }
 
 function normalizeCrownToolRequest(request: CrownToolRequest): CrownToolRequest {

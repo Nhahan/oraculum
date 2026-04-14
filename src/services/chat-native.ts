@@ -4,9 +4,11 @@ import { join } from "node:path";
 
 import type { ZodTypeAny } from "zod";
 
+import { agentJudgeResultSchema } from "../adapters/types.js";
 import { APP_VERSION } from "../core/constants.js";
 import {
   getAdvancedConfigPath,
+  getClarifyFollowUpPath,
   getConfigPath,
   getExportPlanPath,
   getFailureAnalysisPath,
@@ -44,8 +46,19 @@ import {
   verdictToolRequestSchema,
   verdictToolResponseSchema,
 } from "../domain/chat-native.js";
+import { consultationProfileSelectionArtifactSchema } from "../domain/profile.js";
+import {
+  consultationClarifyFollowUpSchema,
+  consultationPreflightReadinessArtifactSchema,
+  consultationResearchBriefSchema,
+  exportPlanSchema,
+} from "../domain/run.js";
 import { getExpectedCodexRuleFileName, getExpectedCodexSkillDirs } from "./codex-chat-native.js";
+import { failureAnalysisSchema } from "./failure-analysis.js";
+import { secondOpinionWinnerSelectionArtifactSchema } from "./finalist-judge.js";
+import { comparisonReportSchema } from "./finalist-report.js";
 import type { InitializeProjectResult } from "./project.js";
+import { hasNonEmptyTextArtifactSync } from "./project.js";
 
 export const oraculumMcpSchemas = {
   oraculum_consult: {
@@ -123,6 +136,7 @@ export const oraculumMcpToolSurface = [
       "run.json",
       "consultation-config.json",
       "preflight-readiness.json",
+      "clarify-follow-up.json",
       "research-brief.json",
       "failure-analysis.json",
       "profile-selection.json",
@@ -194,6 +208,7 @@ export const oraculumMcpToolSurface = [
       "run.json",
       "consultation-config.json",
       "preflight-readiness.json",
+      "clarify-follow-up.json",
       "research-brief.json",
       "failure-analysis.json",
       "profile-selection.json",
@@ -442,10 +457,14 @@ export function getMcpToolSchemas(toolId: McpToolId): {
 export function buildConsultationArtifacts(
   cwd: string,
   consultationId: string,
+  options?: {
+    hasExportedCandidate?: boolean;
+  },
 ): {
   consultationRoot: string;
   configPath?: string;
   preflightReadinessPath?: string;
+  clarifyFollowUpPath?: string;
   researchBriefPath?: string;
   failureAnalysisPath?: string;
   profileSelectionPath?: string;
@@ -457,6 +476,7 @@ export function buildConsultationArtifacts(
 } {
   const projectRoot = resolveProjectRoot(cwd);
   const preflightReadinessPath = getPreflightReadinessPath(projectRoot, consultationId);
+  const clarifyFollowUpPath = getClarifyFollowUpPath(projectRoot, consultationId);
   const researchBriefPath = getResearchBriefPath(projectRoot, consultationId);
   const failureAnalysisPath = getFailureAnalysisPath(projectRoot, consultationId);
   const profileSelectionPath = getProfileSelectionPath(projectRoot, consultationId);
@@ -468,22 +488,58 @@ export function buildConsultationArtifacts(
     consultationId,
   );
   const crowningRecordPath = getExportPlanPath(projectRoot, consultationId);
+  const hasExportedCandidate = options?.hasExportedCandidate ?? false;
 
   return {
     consultationRoot: getRunDir(projectRoot, consultationId),
     ...(existsSync(getRunConfigPath(projectRoot, consultationId))
       ? { configPath: getRunConfigPath(projectRoot, consultationId) }
       : {}),
-    ...(existsSync(preflightReadinessPath) ? { preflightReadinessPath } : {}),
-    ...(existsSync(researchBriefPath) ? { researchBriefPath } : {}),
-    ...(existsSync(failureAnalysisPath) ? { failureAnalysisPath } : {}),
-    ...(existsSync(profileSelectionPath) ? { profileSelectionPath } : {}),
-    ...(existsSync(comparisonJsonPath) ? { comparisonJsonPath } : {}),
-    ...(existsSync(comparisonMarkdownPath) ? { comparisonMarkdownPath } : {}),
-    ...(existsSync(winnerSelectionPath) ? { winnerSelectionPath } : {}),
-    ...(existsSync(secondOpinionWinnerSelectionPath) ? { secondOpinionWinnerSelectionPath } : {}),
-    ...(existsSync(crowningRecordPath) ? { crowningRecordPath } : {}),
+    ...(hasValidJsonArtifact(preflightReadinessPath, consultationPreflightReadinessArtifactSchema)
+      ? { preflightReadinessPath }
+      : {}),
+    ...(hasValidJsonArtifact(clarifyFollowUpPath, consultationClarifyFollowUpSchema)
+      ? { clarifyFollowUpPath }
+      : {}),
+    ...(hasValidJsonArtifact(researchBriefPath, consultationResearchBriefSchema)
+      ? { researchBriefPath }
+      : {}),
+    ...(hasValidJsonArtifact(failureAnalysisPath, failureAnalysisSchema)
+      ? { failureAnalysisPath }
+      : {}),
+    ...(hasValidJsonArtifact(profileSelectionPath, consultationProfileSelectionArtifactSchema)
+      ? { profileSelectionPath }
+      : {}),
+    ...(hasValidJsonArtifact(comparisonJsonPath, comparisonReportSchema)
+      ? { comparisonJsonPath }
+      : {}),
+    ...(hasNonEmptyTextArtifactSync(comparisonMarkdownPath) ? { comparisonMarkdownPath } : {}),
+    ...(hasValidJsonArtifact(winnerSelectionPath, agentJudgeResultSchema)
+      ? { winnerSelectionPath }
+      : {}),
+    ...(hasValidJsonArtifact(
+      secondOpinionWinnerSelectionPath,
+      secondOpinionWinnerSelectionArtifactSchema,
+    )
+      ? { secondOpinionWinnerSelectionPath }
+      : {}),
+    ...(hasExportedCandidate && hasValidJsonArtifact(crowningRecordPath, exportPlanSchema)
+      ? { crowningRecordPath }
+      : {}),
   };
+}
+
+function hasValidJsonArtifact(path: string, schema: ZodTypeAny): boolean {
+  if (!existsSync(path)) {
+    return false;
+  }
+
+  try {
+    schema.parse(JSON.parse(readFileSync(path, "utf8")) as unknown);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function buildProjectInitializationResult(result: InitializeProjectResult): {

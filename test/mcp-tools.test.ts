@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,6 +21,7 @@ vi.mock("../src/services/execution.js", () => ({
 
 vi.mock("../src/services/project.js", () => ({
   ensureProjectInitialized: vi.fn(),
+  hasNonEmptyTextArtifactSync: vi.fn(() => false),
   initializeProject: vi.fn(),
 }));
 
@@ -35,6 +36,7 @@ vi.mock("../src/services/exports.js", () => ({
   materializeExport: vi.fn(),
 }));
 
+import { getSecondOpinionWinnerSelectionPath } from "../src/core/paths.js";
 import { runSubprocess } from "../src/core/subprocess.js";
 import { summarizeSetupDiagnosticsHosts } from "../src/services/chat-native.js";
 import {
@@ -132,6 +134,7 @@ describe("chat-native MCP tools", () => {
       researchPosture: "repo-only",
       artifactAvailability: {
         preflightReadiness: false,
+        clarifyFollowUp: false,
         researchBrief: false,
         failureAnalysis: false,
         profileSelection: false,
@@ -433,6 +436,153 @@ describe("chat-native MCP tools", () => {
       profileId: "library",
     });
     expect(archive.mode).toBe("verdict-archive");
+  });
+
+  it("omits inspect-comparison-report from verdict status when no comparison artifact is available", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oraculum-mcp-missing-comparison-"));
+    tempRoots.push(root);
+    const manifest = createCompletedManifest();
+    mockedReadRunManifest.mockResolvedValue({
+      ...manifest,
+      candidateCount: 2,
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/cand-01",
+          taskPacketPath: "/tmp/cand-01.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-05T00:00:00.000Z",
+        },
+        {
+          id: "cand-02",
+          strategyId: "safety-first",
+          strategyLabel: "Safety First",
+          status: "promoted",
+          workspaceDir: "/tmp/cand-02",
+          taskPacketPath: "/tmp/cand-02.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-05T00:00:00.000Z",
+        },
+      ],
+      outcome: {
+        type: "finalists-without-recommendation",
+        terminal: true,
+        crownable: false,
+        finalistCount: 2,
+        validationPosture: "sufficient",
+        verificationLevel: "standard",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "repo-local-oracle",
+      },
+      recommendedWinner: undefined,
+    });
+
+    const verdict = await runVerdictTool({
+      cwd: root,
+      consultationId: "run_9",
+    });
+
+    expect(verdict.status.nextActions).toEqual([
+      "reopen-verdict",
+      "browse-archive",
+      "rerun-with-different-candidate-count",
+    ]);
+  });
+
+  it("omits direct crown from verdict status when second-opinion manual review is required", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oraculum-mcp-second-opinion-status-"));
+    tempRoots.push(root);
+    const manifest = createCompletedManifest();
+    mockedReadRunManifest.mockResolvedValue({
+      ...manifest,
+      outcome: {
+        type: "recommended-survivor",
+        terminal: true,
+        crownable: true,
+        finalistCount: 1,
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "repo-local-oracle",
+        recommendedCandidateId: "cand-01",
+      },
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "promoted",
+          workspaceDir: "/tmp/cand-01",
+          taskPacketPath: "/tmp/cand-01.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-05T00:00:00.000Z",
+        },
+      ],
+      recommendedWinner: {
+        candidateId: "cand-01",
+        confidence: "high",
+        summary: "cand-01 is the recommended promotion.",
+        source: "llm-judge",
+      },
+    });
+
+    const secondOpinionPath = getSecondOpinionWinnerSelectionPath(root, "run_1");
+    await mkdir(dirname(secondOpinionPath), { recursive: true });
+    await writeFile(
+      secondOpinionPath,
+      `${JSON.stringify(
+        {
+          runId: "run_1",
+          advisoryOnly: true,
+          adapter: "claude-code",
+          triggerKinds: ["many-changed-paths"],
+          triggerReasons: ["A finalist changed 3 paths, meeting the second-opinion threshold (1)."],
+          primaryRecommendation: {
+            source: "llm-judge",
+            decision: "select",
+            candidateId: "cand-01",
+            confidence: "high",
+            summary: "cand-01 is the recommended promotion.",
+          },
+          result: {
+            runId: "run_1",
+            adapter: "claude-code",
+            status: "completed",
+            startedAt: "2026-04-05T00:00:00.000Z",
+            completedAt: "2026-04-05T00:00:01.000Z",
+            exitCode: 0,
+            summary: "Second opinion abstained.",
+            recommendation: {
+              decision: "abstain",
+              confidence: "medium",
+              summary: "Manual review is safer before crowning.",
+            },
+            artifacts: [],
+          },
+          agreement: "disagrees-select-vs-abstain",
+          advisorySummary:
+            "Second-opinion judge abstained, while the primary path selected a finalist.",
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const verdict = await runVerdictTool({
+      cwd: root,
+      consultationId: "run_9",
+    });
+
+    expect(verdict.status.nextActions).toEqual(["reopen-verdict", "browse-archive"]);
   });
 
   it("renders verdict archive display paths against the resolved project root", async () => {

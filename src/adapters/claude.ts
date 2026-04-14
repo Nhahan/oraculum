@@ -12,12 +12,15 @@ import { consultationPreflightSchema } from "../domain/run.js";
 import { shouldUseWindowsShell } from "./platform.js";
 import {
   buildCandidatePrompt,
+  buildClarifyFollowUpPrompt,
   buildPreflightPrompt,
   buildProfileSelectionPrompt,
   buildWinnerSelectionPrompt,
 } from "./prompt.js";
 import {
   type AgentAdapter,
+  type AgentClarifyFollowUpRequest,
+  type AgentClarifyFollowUpResult,
   type AgentJudgeRecommendation,
   type AgentJudgeRequest,
   type AgentJudgeResult,
@@ -27,11 +30,13 @@ import {
   type AgentProfileResult,
   type AgentRunRequest,
   type AgentRunResult,
+  agentClarifyFollowUpResultSchema,
   agentJudgeRecommendationSchema,
   agentJudgeResultSchema,
   agentPreflightResultSchema,
   agentProfileResultSchema,
   agentRunResultSchema,
+  buildAgentClarifyFollowUpJsonSchema,
   buildAgentPreflightJsonSchema,
 } from "./types.js";
 
@@ -185,6 +190,57 @@ export class ClaudeAdapter implements AgentAdapter {
       exitCode: result.exitCode,
       summary: summarizeAgentOutput(result.stdout, "Claude preflight readiness finished."),
       recommendation: extractPreflightRecommendation(result.stdout),
+      artifacts: [
+        { kind: "prompt", path: promptPath },
+        { kind: "stdout", path: stdoutPath },
+        { kind: "stderr", path: stderrPath },
+      ],
+    });
+  }
+
+  async recommendClarifyFollowUp(
+    request: AgentClarifyFollowUpRequest,
+  ): Promise<AgentClarifyFollowUpResult> {
+    await mkdir(request.logDir, { recursive: true });
+
+    const prompt = buildClarifyFollowUpPrompt(request);
+    const promptPath = join(request.logDir, "clarify-follow-up.prompt.txt");
+    const stdoutPath = join(request.logDir, "clarify-follow-up.stdout.txt");
+    const stderrPath = join(request.logDir, "clarify-follow-up.stderr.txt");
+    const startedAt = new Date().toISOString();
+
+    await writeFile(promptPath, prompt, "utf8");
+
+    const result = await runSubprocess({
+      command: this.binaryPath,
+      args: [
+        "-p",
+        "--output-format",
+        "json",
+        "--permission-mode",
+        "plan",
+        "--json-schema",
+        JSON.stringify(buildAgentClarifyFollowUpJsonSchema()),
+      ],
+      cwd: request.projectRoot,
+      ...(this.env ? { env: this.env } : {}),
+      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
+      stdin: prompt,
+      timeoutMs: this.timeoutMs,
+    });
+
+    await writeFile(stdoutPath, result.stdout, "utf8");
+    await writeFile(stderrPath, result.stderr, "utf8");
+
+    return agentClarifyFollowUpResultSchema.parse({
+      runId: request.runId,
+      adapter: this.name,
+      status: result.timedOut ? "timed-out" : result.exitCode === 0 ? "completed" : "failed",
+      startedAt,
+      completedAt: new Date().toISOString(),
+      exitCode: result.exitCode,
+      summary: summarizeAgentOutput(result.stdout, "Claude clarify follow-up finished."),
+      recommendation: extractClarifyFollowUpRecommendation(result.stdout),
       artifacts: [
         { kind: "prompt", path: promptPath },
         { kind: "stdout", path: stdoutPath },
@@ -365,6 +421,43 @@ function extractPreflightRecommendation(stdout: string) {
           "researchPosture" in nested
         ) {
           return consultationPreflightSchema.parse(nested);
+        }
+      }
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
+function extractClarifyFollowUpRecommendation(stdout: string) {
+  const trimmed = stdout.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    if (
+      "summary" in parsed &&
+      "keyQuestion" in parsed &&
+      "missingResultContract" in parsed &&
+      "missingJudgingBasis" in parsed
+    ) {
+      return agentClarifyFollowUpResultSchema.shape.recommendation.parse(parsed);
+    }
+
+    for (const value of nestedObjects(parsed)) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const nested = value as Record<string, unknown>;
+        if (
+          "summary" in nested &&
+          "keyQuestion" in nested &&
+          "missingResultContract" in nested &&
+          "missingJudgingBasis" in nested
+        ) {
+          return agentClarifyFollowUpResultSchema.shape.recommendation.parse(nested);
         }
       }
     }

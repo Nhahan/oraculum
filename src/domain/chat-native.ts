@@ -3,6 +3,7 @@ import { z } from "zod";
 import { adapterSchema, secondOpinionJudgeTriggerSchema } from "./config.js";
 import { decisionConfidenceSchema } from "./profile.js";
 import {
+  clarifyScopeKeyTypeSchema,
   consultationJudgingBasisKindSchema,
   consultationOutcomeTypeSchema,
   consultationPreflightDecisionSchema,
@@ -113,6 +114,7 @@ export const consultationArtifactPathsSchema = z.object({
   consultationRoot: z.string().min(1),
   configPath: z.string().min(1).optional(),
   preflightReadinessPath: z.string().min(1).optional(),
+  clarifyFollowUpPath: z.string().min(1).optional(),
   researchBriefPath: z.string().min(1).optional(),
   failureAnalysisPath: z.string().min(1).optional(),
   profileSelectionPath: z.string().min(1).optional(),
@@ -277,8 +279,15 @@ export const verdictReviewSchema = z.preprocess(
       researchPosture: consultationResearchPostureSchema,
       clarificationQuestion: z.string().min(1).optional(),
       researchQuestion: z.string().min(1).optional(),
+      clarifyScopeKeyType: clarifyScopeKeyTypeSchema.optional(),
+      clarifyScopeKey: z.string().min(1).optional(),
+      clarifyRepeatedCaseCount: z.number().int().min(2).optional(),
+      clarifyFollowUpQuestion: z.string().min(1).optional(),
+      clarifyMissingResultContract: z.string().min(1).optional(),
+      clarifyMissingJudgingBasis: z.string().min(1).optional(),
       artifactAvailability: z.object({
         preflightReadiness: z.boolean(),
+        clarifyFollowUp: z.boolean().default(false),
         researchBrief: z.boolean(),
         failureAnalysis: z.boolean().default(false),
         profileSelection: z.boolean(),
@@ -499,6 +508,55 @@ export const verdictReviewSchema = z.preprocess(
           path: ["manualCrowningReason"],
           message:
             "manualCrowningReason is only allowed when manual crowning candidates are exposed.",
+        });
+      }
+
+      if (
+        value.artifactAvailability.clarifyFollowUp &&
+        !(
+          value.clarifyScopeKeyType &&
+          value.clarifyScopeKey &&
+          value.clarifyRepeatedCaseCount &&
+          value.clarifyFollowUpQuestion &&
+          value.clarifyMissingResultContract &&
+          value.clarifyMissingJudgingBasis
+        )
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["clarifyFollowUpQuestion"],
+          message:
+            "clarify follow-up review fields are required when a clarify-follow-up artifact is available.",
+        });
+      }
+
+      if (
+        (value.clarifyScopeKeyType ||
+          value.clarifyScopeKey ||
+          value.clarifyRepeatedCaseCount ||
+          value.clarifyFollowUpQuestion ||
+          value.clarifyMissingResultContract ||
+          value.clarifyMissingJudgingBasis) &&
+        !value.artifactAvailability.clarifyFollowUp
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["artifactAvailability", "clarifyFollowUp"],
+          message:
+            "clarifyFollowUp artifact availability must be true when clarify follow-up review fields are present.",
+        });
+      }
+
+      if (
+        value.artifactAvailability.clarifyFollowUp &&
+        value.outcomeType !== "needs-clarification" &&
+        value.outcomeType !== "external-research-required"
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["outcomeType"],
+          message:
+            "clarify-follow-up artifacts are only valid for needs-clarification or external-research-required reviews.",
         });
       }
 

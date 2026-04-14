@@ -8,6 +8,7 @@ import {
   getValidationProfileId,
   getValidationSignals,
   getValidationSummary,
+  profileRepoSignalsSchema,
 } from "./profile.js";
 import {
   deriveResearchBasisStatus,
@@ -71,6 +72,8 @@ export const consultationResearchPostureSchema = z.enum([
   "external-research-required",
   "unknown",
 ]);
+export const clarifyPressureKindSchema = z.enum(["clarify-needed", "external-research-required"]);
+export const clarifyScopeKeyTypeSchema = z.enum(["target-artifact", "task-source"]);
 export const consultationNextActionSchema = z.preprocess(
   (value) => (value === "crown-recommended-survivor" ? "crown-recommended-result" : value),
   z.enum([
@@ -404,6 +407,39 @@ export const consultationPreflightSchema = z.preprocess(
       }
     }),
 );
+export const consultationClarifyFollowUpSchema = z.object({
+  runId: z.string().min(1),
+  adapter: adapterSchema,
+  decision: z.enum(["needs-clarification", "external-research-required"]),
+  scopeKeyType: clarifyScopeKeyTypeSchema,
+  scopeKey: z.string().min(1),
+  repeatedCaseCount: z.number().int().min(2),
+  repeatedKinds: z.array(clarifyPressureKindSchema).min(1),
+  recurringReasons: z.array(z.string().min(1)).default([]),
+  summary: z.string().min(1),
+  keyQuestion: z.string().min(1),
+  missingResultContract: z.string().min(1),
+  missingJudgingBasis: z.string().min(1),
+});
+export const consultationPreflightReadinessArtifactSchema = z
+  .object({
+    signals: profileRepoSignalsSchema,
+    recommendation: consultationPreflightSchema,
+    llmSkipped: z.boolean().optional(),
+    llmFailure: z.string().min(1).optional(),
+    llmResult: z.unknown().optional(),
+    researchBasis: z
+      .object({
+        acceptedSignalFingerprint: z.string().min(1),
+        currentSignalFingerprint: z.string().min(1).optional(),
+        driftDetected: z.boolean(),
+        status: taskResearchBasisStatusSchema,
+        refreshAction: z.enum(["refresh-before-rerun", "reuse"]),
+      })
+      .optional(),
+    clarifyFollowUp: consultationClarifyFollowUpSchema.optional(),
+  })
+  .passthrough();
 export const consultationResearchBriefSchema = z.preprocess(
   (value) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -1086,6 +1122,10 @@ export type RunRound = z.infer<typeof roundManifestSchema>;
 export type RunRecommendation = z.infer<typeof runRecommendationSchema>;
 export type ConsultationOutcome = z.infer<typeof consultationOutcomeSchema>;
 export type ConsultationPreflight = z.infer<typeof consultationPreflightSchema>;
+export type ConsultationClarifyFollowUp = z.infer<typeof consultationClarifyFollowUpSchema>;
+export type ConsultationPreflightReadinessArtifact = z.infer<
+  typeof consultationPreflightReadinessArtifactSchema
+>;
 export type ConsultationResearchBrief = z.infer<typeof consultationResearchBriefSchema>;
 export type SavedConsultationStatus = z.infer<typeof savedConsultationStatusSchema>;
 export type ConsultationNextAction = z.infer<typeof consultationNextActionSchema>;
@@ -1270,9 +1310,21 @@ export function deriveConsultationOutcomeForManifest(
   });
 }
 
-export function buildSavedConsultationStatus(manifest: RunManifest): SavedConsultationStatus {
+export function buildSavedConsultationStatus(
+  manifest: RunManifest,
+  options?: {
+    comparisonReportAvailable?: boolean;
+    manualReviewRequired?: boolean;
+  },
+): SavedConsultationStatus {
   const outcome = manifest.outcome ?? deriveConsultationOutcomeForManifest(manifest);
   const nextActions = buildConsultationNextActions(outcome, {
+    ...(options?.comparisonReportAvailable !== undefined
+      ? { comparisonReportAvailable: options.comparisonReportAvailable }
+      : {}),
+    ...(options?.manualReviewRequired !== undefined
+      ? { manualReviewRequired: options.manualReviewRequired }
+      : {}),
     researchBasisDrift: manifest.preflight?.researchBasisDrift === true,
   });
   const researchRerunInputPath =
@@ -1479,7 +1531,11 @@ function deriveVerificationLevel(
 
 function buildConsultationNextActions(
   outcome: ConsultationOutcome,
-  options?: { researchBasisDrift?: boolean },
+  options?: {
+    comparisonReportAvailable?: boolean;
+    manualReviewRequired?: boolean;
+    researchBasisDrift?: boolean;
+  },
 ): ConsultationNextAction[] {
   const actions = new Set<ConsultationNextAction>(["reopen-verdict", "browse-archive"]);
 
@@ -1498,20 +1554,28 @@ function buildConsultationNextActions(
       actions.add("revise-task-and-rerun");
       break;
     case "recommended-survivor":
-      actions.add("crown-recommended-result");
+      if (options?.manualReviewRequired !== true) {
+        actions.add("crown-recommended-result");
+      }
       break;
     case "finalists-without-recommendation":
-      actions.add("inspect-comparison-report");
+      if (options?.comparisonReportAvailable !== false) {
+        actions.add("inspect-comparison-report");
+      }
       actions.add("rerun-with-different-candidate-count");
       break;
     case "completed-with-validation-gaps":
-      actions.add("inspect-comparison-report");
+      if (options?.comparisonReportAvailable !== false) {
+        actions.add("inspect-comparison-report");
+      }
       actions.add("review-validation-gaps");
       actions.add("add-repo-local-oracle");
       actions.add("rerun-with-different-candidate-count");
       break;
     case "no-survivors":
-      actions.add("inspect-comparison-report");
+      if (options?.comparisonReportAvailable !== false) {
+        actions.add("inspect-comparison-report");
+      }
       actions.add("rerun-with-different-candidate-count");
       break;
     case "pending-execution":

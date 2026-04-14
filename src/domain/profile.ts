@@ -311,6 +311,17 @@ export const consultationProfileSelectionSchema = z.preprocess((value) => {
   return payload;
 }, consultationProfileSelectionBaseSchema);
 
+export const consultationProfileSelectionArtifactSchema = z
+  .object({
+    signals: profileRepoSignalsSchema,
+    recommendation: agentProfileRecommendationSchema,
+    appliedSelection: consultationProfileSelectionSchema,
+    llmSkipped: z.boolean().optional(),
+    llmFailure: z.string().min(1).optional(),
+    llmResult: z.unknown().optional(),
+  })
+  .passthrough();
+
 export function buildAgentProfileRecommendationJsonSchema(): Record<string, unknown> {
   const properties = {
     profileId: {

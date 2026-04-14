@@ -4,16 +4,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { agentJudgeResultSchema } from "../src/adapters/types.js";
 import { APP_VERSION } from "../src/core/constants.js";
 import {
+  getClarifyFollowUpPath,
   getExportPlanPath,
   getFailureAnalysisPath,
+  getFinalistComparisonJsonPath,
   getFinalistComparisonMarkdownPath,
   getPreflightReadinessPath,
+  getProfileSelectionPath,
   getResearchBriefPath,
   getRunConfigPath,
   getRunDir,
   getSecondOpinionWinnerSelectionPath,
+  getWinnerSelectionPath,
 } from "../src/core/paths.js";
 import {
   consultToolResponseSchema,
@@ -23,6 +28,13 @@ import {
   mcpToolIdSchema,
   setupStatusToolResponseSchema,
 } from "../src/domain/chat-native.js";
+import { consultationProfileSelectionArtifactSchema } from "../src/domain/profile.js";
+import {
+  consultationClarifyFollowUpSchema,
+  consultationPreflightReadinessArtifactSchema,
+  consultationResearchBriefSchema,
+  exportPlanSchema,
+} from "../src/domain/run.js";
 import {
   buildConsultationArtifacts,
   buildSetupDiagnosticsResponse,
@@ -33,6 +45,9 @@ import {
   oraculumMcpToolSurface,
   summarizeSetupDiagnosticsHosts,
 } from "../src/services/chat-native.js";
+import { failureAnalysisSchema } from "../src/services/failure-analysis.js";
+import { secondOpinionWinnerSelectionArtifactSchema } from "../src/services/finalist-judge.js";
+import { comparisonReportSchema } from "../src/services/finalist-report.js";
 import { createOraculumMcpServer } from "../src/services/mcp-server.js";
 import { runCrownTool } from "../src/services/mcp-tools.js";
 import { initializeProject } from "../src/services/project.js";
@@ -287,18 +302,222 @@ describe("chat-native MCP surface", () => {
     await mkdir(getRunDir(projectRoot, consultationId), { recursive: true });
     await mkdir(join(getRunDir(projectRoot, consultationId), "reports"), { recursive: true });
     await writeFile(getRunConfigPath(projectRoot, consultationId), "{}\n", "utf8");
-    await writeFile(getPreflightReadinessPath(projectRoot, consultationId), "{}\n", "utf8");
-    await writeFile(getResearchBriefPath(projectRoot, consultationId), "{}\n", "utf8");
-    await writeFile(getFailureAnalysisPath(projectRoot, consultationId), "{}\n", "utf8");
-    await writeFile(getFinalistComparisonMarkdownPath(projectRoot, consultationId), "# report\n");
+    await writePreflightReadinessArtifact(projectRoot, consultationId);
     await writeFile(
-      getSecondOpinionWinnerSelectionPath(projectRoot, consultationId),
-      "{}\n",
+      getFinalistComparisonJsonPath(projectRoot, consultationId),
+      `${JSON.stringify(
+        comparisonReportSchema.parse({
+          runId: consultationId,
+          generatedAt: "2026-04-14T00:00:00.000Z",
+          agent: "codex",
+          task: {
+            id: "task",
+            title: "Task",
+            sourceKind: "task-note",
+            sourcePath: "/tmp/task.md",
+          },
+          targetResultLabel: "recommended result",
+          finalistCount: 0,
+          researchRerunRecommended: false,
+          verificationLevel: "lightweight",
+          finalists: [],
+        }),
+        null,
+        2,
+      )}\n`,
       "utf8",
     );
-    await writeFile(getExportPlanPath(projectRoot, consultationId), "{}\n", "utf8");
+    await writeFile(
+      getClarifyFollowUpPath(projectRoot, consultationId),
+      `${JSON.stringify(
+        consultationClarifyFollowUpSchema.parse({
+          runId: consultationId,
+          adapter: "codex",
+          decision: "needs-clarification",
+          scopeKeyType: "target-artifact",
+          scopeKey: "docs/SESSION_PLAN.md",
+          repeatedCaseCount: 2,
+          repeatedKinds: ["clarify-needed"],
+          recurringReasons: ["Which sections are required?"],
+          summary: "The document contract is still underspecified.",
+          keyQuestion: "Which sections are required?",
+          missingResultContract: "The expected section contract is still missing.",
+          missingJudgingBasis: "The judging basis for the document is still missing.",
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      getResearchBriefPath(projectRoot, consultationId),
+      `${JSON.stringify(
+        consultationResearchBriefSchema.parse({
+          decision: "external-research-required",
+          question: "What does the official API documentation say?",
+          researchPosture: "external-research-required",
+          summary: "Official documentation is still required.",
+          task: {
+            id: "task",
+            title: "Task",
+            sourceKind: "task-note",
+            sourcePath: "/tmp/task.md",
+          },
+          notes: [],
+          signalSummary: [],
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      getFailureAnalysisPath(projectRoot, consultationId),
+      `${JSON.stringify(
+        failureAnalysisSchema.parse({
+          runId: consultationId,
+          generatedAt: "2026-04-14T00:00:00.000Z",
+          trigger: "finalists-without-recommendation",
+          summary: "Investigate before rerun.",
+          recommendedAction: "investigate-root-cause-before-rerun",
+          validationGaps: [],
+          candidates: [],
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(getFinalistComparisonMarkdownPath(projectRoot, consultationId), "# report\n");
+    await writeFile(
+      getWinnerSelectionPath(projectRoot, consultationId),
+      `${JSON.stringify(
+        agentJudgeResultSchema.parse({
+          runId: consultationId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-14T00:00:00.000Z",
+          completedAt: "2026-04-14T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Judge selected cand-01.",
+          recommendation: {
+            decision: "select",
+            candidateId: "cand-01",
+            confidence: "high",
+            summary: "cand-01 is the recommended promotion.",
+          },
+          artifacts: [],
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      getSecondOpinionWinnerSelectionPath(projectRoot, consultationId),
+      `${JSON.stringify(
+        secondOpinionWinnerSelectionArtifactSchema.parse({
+          runId: consultationId,
+          advisoryOnly: true,
+          adapter: "claude-code",
+          triggerKinds: ["low-confidence"],
+          triggerReasons: ["Primary judge confidence was low."],
+          primaryRecommendation: {
+            source: "llm-judge",
+            decision: "select",
+            candidateId: "cand-01",
+            confidence: "low",
+            summary: "cand-01 remained the leading primary recommendation.",
+          },
+          result: {
+            runId: consultationId,
+            adapter: "claude-code",
+            status: "completed",
+            startedAt: "2026-04-14T00:00:00.000Z",
+            completedAt: "2026-04-14T00:00:01.000Z",
+            exitCode: 0,
+            summary: "Second opinion agreed with cand-01.",
+            recommendation: {
+              decision: "select",
+              candidateId: "cand-01",
+              confidence: "medium",
+              summary: "cand-01 remains the safest recommendation.",
+            },
+            artifacts: [],
+          },
+          agreement: "agrees-select",
+          advisorySummary: "The second opinion agrees with the primary recommendation.",
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      getProfileSelectionPath(projectRoot, consultationId),
+      `${JSON.stringify(
+        consultationProfileSelectionArtifactSchema.parse({
+          signals: {
+            packageManager: "npm",
+            scripts: [],
+            dependencies: [],
+            files: [],
+            workspaceRoots: [],
+            workspaceMetadata: [],
+            notes: [],
+            capabilities: [],
+            provenance: [],
+            commandCatalog: [],
+            skippedCommandCandidates: [],
+          },
+          recommendation: {
+            validationProfileId: "generic",
+            confidence: "low",
+            validationSummary: "No executable validation evidence was detected.",
+            candidateCount: 3,
+            strategyIds: ["minimal-change"],
+            selectedCommandIds: [],
+            validationGaps: ["No repo-local validation command was detected."],
+          },
+          appliedSelection: {
+            validationProfileId: "generic",
+            confidence: "low",
+            source: "fallback-detection",
+            validationSummary: "No executable validation evidence was detected.",
+            candidateCount: 3,
+            strategyIds: ["minimal-change"],
+            oracleIds: [],
+            validationGaps: ["No repo-local validation command was detected."],
+            validationSignals: [],
+          },
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      getExportPlanPath(projectRoot, consultationId),
+      `${JSON.stringify(
+        exportPlanSchema.parse({
+          runId: consultationId,
+          winnerId: "cand-01",
+          branchName: `orc/${consultationId}-cand-01`,
+          mode: "git-branch",
+          materializationMode: "branch",
+          workspaceDir: "/tmp/workspace",
+          withReport: true,
+          createdAt: "2026-04-14T00:00:00.000Z",
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
 
-    const artifacts = buildConsultationArtifacts(projectRoot, consultationId);
+    const artifacts = buildConsultationArtifacts(projectRoot, consultationId, {
+      hasExportedCandidate: true,
+    });
     const parsed = consultToolResponseSchema.shape.artifacts.parse(artifacts);
 
     expect(parsed.consultationRoot).toBe(getRunDir(projectRoot, consultationId));
@@ -306,8 +525,13 @@ describe("chat-native MCP surface", () => {
     expect(parsed.preflightReadinessPath).toBe(
       getPreflightReadinessPath(projectRoot, consultationId),
     );
+    expect(parsed.clarifyFollowUpPath).toBe(getClarifyFollowUpPath(projectRoot, consultationId));
     expect(parsed.researchBriefPath).toBe(getResearchBriefPath(projectRoot, consultationId));
     expect(parsed.failureAnalysisPath).toBe(getFailureAnalysisPath(projectRoot, consultationId));
+    expect(parsed.profileSelectionPath).toBe(getProfileSelectionPath(projectRoot, consultationId));
+    expect(parsed.comparisonJsonPath).toBe(
+      getFinalistComparisonJsonPath(projectRoot, consultationId),
+    );
     expect(parsed.comparisonMarkdownPath).toBe(
       getFinalistComparisonMarkdownPath(projectRoot, consultationId),
     );
@@ -315,7 +539,7 @@ describe("chat-native MCP surface", () => {
       getSecondOpinionWinnerSelectionPath(projectRoot, consultationId),
     );
     expect(parsed.crowningRecordPath).toBe(getExportPlanPath(projectRoot, consultationId));
-    expect(parsed.profileSelectionPath).toBeUndefined();
+    expect(parsed.profileSelectionPath).toBe(getProfileSelectionPath(projectRoot, consultationId));
   });
 
   it("resolves consultation artifacts from a nested cwd", async () => {
@@ -328,11 +552,72 @@ describe("chat-native MCP surface", () => {
     await mkdir(nestedCwd, { recursive: true });
     await mkdir(join(getRunDir(projectRoot, consultationId), "reports"), { recursive: true });
     await writeFile(getRunConfigPath(projectRoot, consultationId), "{}\n", "utf8");
-    await writeFile(getPreflightReadinessPath(projectRoot, consultationId), "{}\n", "utf8");
-    await writeFile(getResearchBriefPath(projectRoot, consultationId), "{}\n", "utf8");
-    await writeFile(getFailureAnalysisPath(projectRoot, consultationId), "{}\n", "utf8");
+    await writePreflightReadinessArtifact(projectRoot, consultationId);
+    await writeFile(
+      getClarifyFollowUpPath(projectRoot, consultationId),
+      `${JSON.stringify(
+        consultationClarifyFollowUpSchema.parse({
+          runId: consultationId,
+          adapter: "codex",
+          decision: "needs-clarification",
+          scopeKeyType: "task-source",
+          scopeKey: "tasks/operator-memo.md",
+          repeatedCaseCount: 2,
+          repeatedKinds: ["clarify-needed"],
+          recurringReasons: ["Who is the intended audience?"],
+          summary: "The memo audience is still underspecified.",
+          keyQuestion: "Who is the intended audience?",
+          missingResultContract: "The operator memo deliverable is still underspecified.",
+          missingJudgingBasis: "The memo review basis is still underspecified.",
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      getResearchBriefPath(projectRoot, consultationId),
+      `${JSON.stringify(
+        consultationResearchBriefSchema.parse({
+          decision: "external-research-required",
+          question: "What does the vendor documentation say?",
+          researchPosture: "external-research-required",
+          summary: "Vendor documentation is still required.",
+          task: {
+            id: "task",
+            title: "Task",
+            sourceKind: "task-note",
+            sourcePath: "/tmp/task.md",
+          },
+          notes: [],
+          signalSummary: [],
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      getFailureAnalysisPath(projectRoot, consultationId),
+      `${JSON.stringify(
+        failureAnalysisSchema.parse({
+          runId: consultationId,
+          generatedAt: "2026-04-14T00:00:00.000Z",
+          trigger: "no-survivors",
+          summary: "Investigate before rerun.",
+          recommendedAction: "investigate-root-cause-before-rerun",
+          validationGaps: [],
+          candidates: [],
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
 
-    const artifacts = buildConsultationArtifacts(nestedCwd, consultationId);
+    const artifacts = buildConsultationArtifacts(nestedCwd, consultationId, {
+      hasExportedCandidate: false,
+    });
     const parsed = consultToolResponseSchema.shape.artifacts.parse(artifacts);
 
     expect(parsed.consultationRoot).toBe(getRunDir(projectRoot, consultationId));
@@ -340,9 +625,95 @@ describe("chat-native MCP surface", () => {
     expect(parsed.preflightReadinessPath).toBe(
       getPreflightReadinessPath(projectRoot, consultationId),
     );
+    expect(parsed.clarifyFollowUpPath).toBe(getClarifyFollowUpPath(projectRoot, consultationId));
     expect(parsed.researchBriefPath).toBe(getResearchBriefPath(projectRoot, consultationId));
     expect(parsed.failureAnalysisPath).toBe(getFailureAnalysisPath(projectRoot, consultationId));
     expect(parsed.secondOpinionWinnerSelectionPath).toBeUndefined();
+  });
+
+  it("omits a valid crowning record when no candidate was exported", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "oraculum-chat-native-stale-crown-"));
+    tempRoots.push(projectRoot);
+    const consultationId = "run_20260409_stale_crown";
+
+    await mkdir(join(getRunDir(projectRoot, consultationId), "reports"), { recursive: true });
+    await writeFile(
+      getExportPlanPath(projectRoot, consultationId),
+      `${JSON.stringify(
+        exportPlanSchema.parse({
+          runId: consultationId,
+          winnerId: "cand-01",
+          branchName: `orc/${consultationId}-cand-01`,
+          mode: "git-branch",
+          materializationMode: "branch",
+          workspaceDir: "/tmp/workspace",
+          withReport: true,
+          createdAt: "2026-04-14T00:00:00.000Z",
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const artifacts = buildConsultationArtifacts(projectRoot, consultationId, {
+      hasExportedCandidate: false,
+    });
+    const parsed = consultToolResponseSchema.shape.artifacts.parse(artifacts);
+
+    expect(parsed.crowningRecordPath).toBeUndefined();
+  });
+
+  it("omits invalid machine-readable artifact paths from MCP responses", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "oraculum-chat-native-invalid-"));
+    tempRoots.push(projectRoot);
+    const consultationId = "run_20260409_invalid";
+
+    await mkdir(join(getRunDir(projectRoot, consultationId), "reports"), { recursive: true });
+    await writeFile(getPreflightReadinessPath(projectRoot, consultationId), "not-json\n", "utf8");
+    await writeFile(getClarifyFollowUpPath(projectRoot, consultationId), "{}\n", "utf8");
+    await writeFile(getResearchBriefPath(projectRoot, consultationId), "{}\n", "utf8");
+    await writeFile(getFailureAnalysisPath(projectRoot, consultationId), "{}\n", "utf8");
+    await writeFile(getProfileSelectionPath(projectRoot, consultationId), "{}\n", "utf8");
+    await writeFile(getFinalistComparisonJsonPath(projectRoot, consultationId), "{}\n", "utf8");
+    await writeFile(getWinnerSelectionPath(projectRoot, consultationId), "{}\n", "utf8");
+    await writeFile(getExportPlanPath(projectRoot, consultationId), "{}\n", "utf8");
+    await writeFile(
+      getSecondOpinionWinnerSelectionPath(projectRoot, consultationId),
+      "{}\n",
+      "utf8",
+    );
+
+    const artifacts = buildConsultationArtifacts(projectRoot, consultationId, {
+      hasExportedCandidate: false,
+    });
+    const parsed = consultToolResponseSchema.shape.artifacts.parse(artifacts);
+
+    expect(parsed.preflightReadinessPath).toBeUndefined();
+    expect(parsed.clarifyFollowUpPath).toBeUndefined();
+    expect(parsed.researchBriefPath).toBeUndefined();
+    expect(parsed.failureAnalysisPath).toBeUndefined();
+    expect(parsed.profileSelectionPath).toBeUndefined();
+    expect(parsed.comparisonJsonPath).toBeUndefined();
+    expect(parsed.winnerSelectionPath).toBeUndefined();
+    expect(parsed.secondOpinionWinnerSelectionPath).toBeUndefined();
+    expect(parsed.crowningRecordPath).toBeUndefined();
+  });
+
+  it("omits blank comparison markdown paths from MCP responses", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "oraculum-chat-native-blank-md-"));
+    tempRoots.push(projectRoot);
+    const consultationId = "run_20260409_blank_markdown";
+
+    await mkdir(join(getRunDir(projectRoot, consultationId), "reports"), { recursive: true });
+    await writeFile(getFinalistComparisonMarkdownPath(projectRoot, consultationId), " \n", "utf8");
+
+    const artifacts = buildConsultationArtifacts(projectRoot, consultationId, {
+      hasExportedCandidate: false,
+    });
+    const parsed = consultToolResponseSchema.shape.artifacts.parse(artifacts);
+
+    expect(parsed.comparisonMarkdownPath).toBeUndefined();
   });
 
   it("omits artifact paths that do not exist on disk", async () => {
@@ -352,15 +723,19 @@ describe("chat-native MCP surface", () => {
 
     await mkdir(getRunDir(projectRoot, consultationId), { recursive: true });
 
-    const artifacts = buildConsultationArtifacts(projectRoot, consultationId);
+    const artifacts = buildConsultationArtifacts(projectRoot, consultationId, {
+      hasExportedCandidate: false,
+    });
     const parsed = consultToolResponseSchema.shape.artifacts.parse(artifacts);
 
     expect(parsed.consultationRoot).toBe(getRunDir(projectRoot, consultationId));
     expect(parsed.configPath).toBeUndefined();
     expect(parsed.preflightReadinessPath).toBeUndefined();
+    expect(parsed.clarifyFollowUpPath).toBeUndefined();
     expect(parsed.researchBriefPath).toBeUndefined();
     expect(parsed.failureAnalysisPath).toBeUndefined();
     expect(parsed.profileSelectionPath).toBeUndefined();
+    expect(parsed.comparisonJsonPath).toBeUndefined();
     expect(parsed.comparisonMarkdownPath).toBeUndefined();
     expect(parsed.secondOpinionWinnerSelectionPath).toBeUndefined();
     expect(parsed.crowningRecordPath).toBeUndefined();
@@ -575,4 +950,41 @@ function createCrownToolResponse(candidateId: string) {
       updatedAt: "2026-04-05T00:00:00.000Z",
     },
   });
+}
+
+async function writePreflightReadinessArtifact(
+  projectRoot: string,
+  consultationId: string,
+  overrides: Record<string, unknown> = {},
+): Promise<void> {
+  await writeFile(
+    getPreflightReadinessPath(projectRoot, consultationId),
+    `${JSON.stringify(
+      consultationPreflightReadinessArtifactSchema.parse({
+        signals: {
+          packageManager: "npm",
+          scripts: [],
+          dependencies: [],
+          files: [],
+          workspaceRoots: [],
+          workspaceMetadata: [],
+          notes: [],
+          capabilities: [],
+          provenance: [],
+          commandCatalog: [],
+          skippedCommandCandidates: [],
+        },
+        recommendation: {
+          decision: "proceed",
+          confidence: "low",
+          summary: "Proceed conservatively with the default consultation flow.",
+          researchPosture: "repo-only",
+        },
+        ...overrides,
+      }),
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
 }
