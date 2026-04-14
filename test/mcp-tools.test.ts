@@ -21,6 +21,7 @@ vi.mock("../src/services/execution.js", () => ({
 
 vi.mock("../src/services/project.js", () => ({
   ensureProjectInitialized: vi.fn(),
+  hasNonEmptyTextArtifact: vi.fn(() => false),
   hasNonEmptyTextArtifactSync: vi.fn(() => false),
   initializeProject: vi.fn(),
 }));
@@ -36,8 +37,9 @@ vi.mock("../src/services/exports.js", () => ({
   materializeExport: vi.fn(),
 }));
 
-import { getSecondOpinionWinnerSelectionPath } from "../src/core/paths.js";
+import { getExportPlanPath, getSecondOpinionWinnerSelectionPath } from "../src/core/paths.js";
 import { runSubprocess } from "../src/core/subprocess.js";
+import { exportPlanSchema } from "../src/domain/run.js";
 import { summarizeSetupDiagnosticsHosts } from "../src/services/chat-native.js";
 import {
   buildVerdictReview,
@@ -571,6 +573,74 @@ describe("chat-native MCP tools", () => {
           advisorySummary:
             "Second-opinion judge abstained, while the primary path selected a finalist.",
         },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const verdict = await runVerdictTool({
+      cwd: root,
+      consultationId: "run_9",
+    });
+
+    expect(verdict.status.nextActions).toEqual(["reopen-verdict", "browse-archive"]);
+  });
+
+  it("omits direct crown from verdict status when a crowning record already exists", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oraculum-mcp-crowning-record-status-"));
+    tempRoots.push(root);
+    const manifest = createCompletedManifest();
+    mockedReadRunManifest.mockResolvedValue({
+      ...manifest,
+      candidates: [
+        {
+          id: "cand-01",
+          strategyId: "minimal-change",
+          strategyLabel: "Minimal Change",
+          status: "exported",
+          workspaceDir: "/tmp/cand-01",
+          taskPacketPath: "/tmp/cand-01.json",
+          repairCount: 0,
+          repairedRounds: [],
+          createdAt: "2026-04-05T00:00:00.000Z",
+        },
+      ],
+      recommendedWinner: {
+        candidateId: "cand-01",
+        confidence: "high",
+        summary: "cand-01 is the recommended promotion.",
+        source: "llm-judge",
+      },
+      outcome: {
+        type: "recommended-survivor",
+        terminal: true,
+        crownable: true,
+        finalistCount: 1,
+        validationPosture: "sufficient",
+        verificationLevel: "lightweight",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "repo-local-oracle",
+        recommendedCandidateId: "cand-01",
+      },
+    });
+
+    const exportPlanPath = getExportPlanPath(root, "run_1");
+    await mkdir(dirname(exportPlanPath), { recursive: true });
+    await writeFile(
+      exportPlanPath,
+      `${JSON.stringify(
+        exportPlanSchema.parse({
+          runId: "run_1",
+          winnerId: "cand-01",
+          branchName: "orc/run_1-cand-01",
+          mode: "git-branch",
+          materializationMode: "branch",
+          workspaceDir: "/tmp/workspace",
+          withReport: true,
+          createdAt: "2026-04-05T00:00:00.000Z",
+        }),
         null,
         2,
       )}\n`,

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -212,6 +212,84 @@ describe("task packet contracts", () => {
       "- The repo comments still describe the pre-v3.2 refresh flow.",
     );
     expect(packet.contextFiles).toEqual([join(root, "fix-session-loss.md")]);
+  });
+
+  it("resolves relative source paths in authored research briefs against the brief location", async () => {
+    const root = await createTempProject();
+    const tasksDir = join(root, "tasks");
+    const taskPath = join(tasksDir, "research-brief.json");
+    await mkdir(tasksDir, { recursive: true });
+    await writeFile(
+      taskPath,
+      `${JSON.stringify(
+        {
+          decision: "external-research-required",
+          question: "Which rollout note is current?",
+          confidence: "medium",
+          researchPosture: "external-research-required",
+          summary: "Compare the rollout notes before execution.",
+          task: {
+            id: "rollout-note",
+            title: "Update rollout note",
+            sourceKind: "task-note",
+            sourcePath: "../docs/ROLL_OUT_NOTE.md",
+            artifactKind: "document",
+            targetArtifactPath: "docs/ROLL_OUT_NOTE.md",
+          },
+          notes: [],
+          signalSummary: [],
+          sources: [],
+          claims: [],
+          versionNotes: [],
+          unresolvedConflicts: [],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const packet = await loadTaskPacket(taskPath);
+
+    expect(packet.source.originPath).toBe(join(root, "docs", "ROLL_OUT_NOTE.md"));
+    expect(packet.contextFiles).toEqual([join(root, "docs", "ROLL_OUT_NOTE.md")]);
+  });
+
+  it("resolves relative source and origin paths in materialized task packets against the packet location", async () => {
+    const root = await createTempProject();
+    const tasksDir = join(root, "tasks");
+    const packetPath = join(tasksDir, "materialized-task-packet.json");
+    await mkdir(tasksDir, { recursive: true });
+    await writeFile(
+      packetPath,
+      `${JSON.stringify(
+        {
+          id: "rollout-note",
+          title: "Update rollout note",
+          intent: "Keep the rollout note aligned with the published artifact.",
+          nonGoals: [],
+          acceptanceCriteria: [],
+          risks: [],
+          oracleHints: [],
+          strategyHints: [],
+          contextFiles: [],
+          source: {
+            kind: "research-brief",
+            path: "../reports/research-brief.json",
+            originKind: "task-note",
+            originPath: "../docs/ROLL_OUT_NOTE.md",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const packet = await loadTaskPacket(packetPath);
+
+    expect(packet.source.path).toBe(join(root, "reports", "research-brief.json"));
+    expect(packet.source.originPath).toBe(join(root, "docs", "ROLL_OUT_NOTE.md"));
   });
 });
 

@@ -3536,6 +3536,366 @@ describe("consultation workflow summaries", () => {
     expect(clarifyFollowUp.scopeKey).toBe(normalizedTaskSourcePath);
   });
 
+  it("matches repeated clarify pressure across external absolute task source paths", async () => {
+    const cwd = await createInitializedProject();
+    const externalTaskSourcePath = join(tmpdir(), "oraculum-external-task-note.md");
+    const priorOne = createManifest("completed", {
+      id: "run_clarify_external_source_1",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: externalTaskSourcePath,
+      },
+      preflight: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The external memo audience is still unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Who is the intended audience for the external memo?",
+      },
+      outcome: {
+        type: "needs-clarification",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "unknown",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    const priorTwo = createManifest("completed", {
+      id: "run_clarify_external_source_2",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "research-brief",
+        sourcePath: getResearchBriefPath(cwd, "run_clarify_external_source_2"),
+        originKind: "task-note",
+        originPath: externalTaskSourcePath,
+      },
+      preflight: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Official external guidance is still required.",
+        researchPosture: "external-research-required",
+        researchQuestion: "Which external audience and responsibilities are in scope?",
+      },
+      outcome: {
+        type: "external-research-required",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "validation-gaps",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    await writeManifest(cwd, priorOne);
+    await writeManifest(cwd, priorTwo);
+    await writePreflightReadinessArtifact(cwd, priorOne.id);
+    await writePreflightReadinessArtifact(cwd, priorTwo.id);
+
+    const taskPacket = materializedTaskPacketSchema.parse({
+      id: "task",
+      title: "Task",
+      intent: "Prepare the external operator memo.",
+      nonGoals: [],
+      acceptanceCriteria: [],
+      risks: [],
+      oracleHints: [],
+      strategyHints: [],
+      contextFiles: [],
+      source: {
+        kind: "task-note",
+        path: externalTaskSourcePath,
+      },
+    });
+    await writeFile(
+      taskPacket.source.path,
+      "# Task\nPrepare the external operator memo.\n",
+      "utf8",
+    );
+
+    let clarifyCalls = 0;
+    let capturedPressureContext:
+      | Parameters<AgentAdapter["recommendClarifyFollowUp"]>[0]["pressureContext"]
+      | undefined;
+    const adapter: AgentAdapter = {
+      name: "codex",
+      async runCandidate() {
+        throw new Error("not used");
+      },
+      async recommendWinner() {
+        throw new Error("not used");
+      },
+      async recommendProfile() {
+        throw new Error("not used");
+      },
+      async recommendPreflight(request) {
+        return {
+          runId: request.runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-14T00:00:00.000Z",
+          completedAt: "2026-04-14T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Need a clearer audience before execution.",
+          recommendation: {
+            decision: "needs-clarification",
+            confidence: "medium",
+            summary: "Need a clearer audience before execution.",
+            researchPosture: "repo-only",
+            clarificationQuestion: "Who is the intended audience for the external memo?",
+          },
+          artifacts: [],
+        };
+      },
+      async recommendClarifyFollowUp(request) {
+        clarifyCalls += 1;
+        capturedPressureContext = request.pressureContext;
+        return {
+          runId: request.runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-14T00:00:00.000Z",
+          completedAt: "2026-04-14T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Clarify the external memo audience before retrying.",
+          recommendation: {
+            summary: "Repeated blockers show the external memo scope is underspecified.",
+            keyQuestion: "Which external audience and operational scope should the memo target?",
+            missingResultContract:
+              "The memo still lacks a concrete external audience and deliverable contract.",
+            missingJudgingBasis:
+              "The review basis does not define how to judge the finished external memo.",
+          },
+          artifacts: [],
+        };
+      },
+    };
+
+    await recommendConsultationPreflight({
+      adapter,
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: join(cwd, ".oraculum", "runs", "run_clarify_external_source_current", "reports"),
+      runId: "run_clarify_external_source_current",
+      taskPacket,
+    });
+
+    expect(clarifyCalls).toBe(1);
+    expect(capturedPressureContext).toEqual(
+      expect.objectContaining({
+        scopeKeyType: "task-source",
+        scopeKey: externalTaskSourcePath,
+        repeatedCaseCount: 2,
+      }),
+    );
+    const clarifyFollowUp = consultationClarifyFollowUpSchema.parse(
+      JSON.parse(
+        await readFile(getClarifyFollowUpPath(cwd, "run_clarify_external_source_current"), "utf8"),
+      ) as unknown,
+    );
+    expect(clarifyFollowUp.scopeKeyType).toBe("task-source");
+    expect(clarifyFollowUp.scopeKey).toBe(externalTaskSourcePath);
+  });
+
+  it("matches repeated clarify pressure across external relative and absolute task source paths", async () => {
+    const cwd = await createInitializedProject();
+    const externalRelativeTaskSourcePath = "../oraculum-external-task-note.md";
+    const externalAbsoluteTaskSourcePath = join(cwd, externalRelativeTaskSourcePath);
+    const priorOne = createManifest("completed", {
+      id: "run_clarify_external_mixed_source_1",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "task-note",
+        sourcePath: externalRelativeTaskSourcePath,
+      },
+      preflight: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The external memo audience is still unclear.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Who is the intended audience for the external memo?",
+      },
+      outcome: {
+        type: "needs-clarification",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "unknown",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    const priorTwo = createManifest("completed", {
+      id: "run_clarify_external_mixed_source_2",
+      candidateCount: 0,
+      rounds: [],
+      candidates: [],
+      taskPacket: {
+        id: "task",
+        title: "Task",
+        sourceKind: "research-brief",
+        sourcePath: getResearchBriefPath(cwd, "run_clarify_external_mixed_source_2"),
+        originKind: "task-note",
+        originPath: externalAbsoluteTaskSourcePath,
+      },
+      preflight: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Official external guidance is still required.",
+        researchPosture: "external-research-required",
+        researchQuestion: "Which external audience and responsibilities are in scope?",
+      },
+      outcome: {
+        type: "external-research-required",
+        terminal: true,
+        crownable: false,
+        finalistCount: 0,
+        validationPosture: "validation-gaps",
+        verificationLevel: "none",
+        missingCapabilityCount: 0,
+        validationGapCount: 0,
+        judgingBasisKind: "unknown",
+      },
+    });
+    await writeManifest(cwd, priorOne);
+    await writeManifest(cwd, priorTwo);
+    await writePreflightReadinessArtifact(cwd, priorOne.id);
+    await writePreflightReadinessArtifact(cwd, priorTwo.id);
+
+    const taskPacket = materializedTaskPacketSchema.parse({
+      id: "task",
+      title: "Task",
+      intent: "Prepare the external operator memo.",
+      nonGoals: [],
+      acceptanceCriteria: [],
+      risks: [],
+      oracleHints: [],
+      strategyHints: [],
+      contextFiles: [],
+      source: {
+        kind: "task-note",
+        path: externalAbsoluteTaskSourcePath,
+      },
+    });
+    await writeFile(
+      taskPacket.source.path,
+      "# Task\nPrepare the external operator memo.\n",
+      "utf8",
+    );
+
+    let clarifyCalls = 0;
+    let capturedPressureContext:
+      | Parameters<AgentAdapter["recommendClarifyFollowUp"]>[0]["pressureContext"]
+      | undefined;
+    const adapter: AgentAdapter = {
+      name: "codex",
+      async runCandidate() {
+        throw new Error("not used");
+      },
+      async recommendWinner() {
+        throw new Error("not used");
+      },
+      async recommendProfile() {
+        throw new Error("not used");
+      },
+      async recommendPreflight(request) {
+        return {
+          runId: request.runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-14T00:00:00.000Z",
+          completedAt: "2026-04-14T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Need a clearer audience before execution.",
+          recommendation: {
+            decision: "needs-clarification",
+            confidence: "medium",
+            summary: "Need a clearer audience before execution.",
+            researchPosture: "repo-only",
+            clarificationQuestion: "Who is the intended audience for the external memo?",
+          },
+          artifacts: [],
+        };
+      },
+      async recommendClarifyFollowUp(request) {
+        clarifyCalls += 1;
+        capturedPressureContext = request.pressureContext;
+        return {
+          runId: request.runId,
+          adapter: "codex",
+          status: "completed",
+          startedAt: "2026-04-14T00:00:00.000Z",
+          completedAt: "2026-04-14T00:00:01.000Z",
+          exitCode: 0,
+          summary: "Clarify the external memo audience before retrying.",
+          recommendation: {
+            summary: "Repeated blockers show the external memo scope is underspecified.",
+            keyQuestion: "Which external audience and operational scope should the memo target?",
+            missingResultContract:
+              "The memo still lacks a concrete external audience and deliverable contract.",
+            missingJudgingBasis:
+              "The review basis does not define how to judge the finished external memo.",
+          },
+          artifacts: [],
+        };
+      },
+    };
+
+    await recommendConsultationPreflight({
+      adapter,
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: join(
+        cwd,
+        ".oraculum",
+        "runs",
+        "run_clarify_external_mixed_source_current",
+        "reports",
+      ),
+      runId: "run_clarify_external_mixed_source_current",
+      taskPacket,
+    });
+
+    expect(clarifyCalls).toBe(1);
+    expect(capturedPressureContext).toEqual(
+      expect.objectContaining({
+        scopeKeyType: "task-source",
+        scopeKey: externalAbsoluteTaskSourcePath,
+        repeatedCaseCount: 2,
+      }),
+    );
+    const clarifyFollowUp = consultationClarifyFollowUpSchema.parse(
+      JSON.parse(
+        await readFile(
+          getClarifyFollowUpPath(cwd, "run_clarify_external_mixed_source_current"),
+          "utf8",
+        ),
+      ) as unknown,
+    );
+    expect(clarifyFollowUp.scopeKeyType).toBe("task-source");
+    expect(clarifyFollowUp.scopeKey).toBe(externalAbsoluteTaskSourcePath);
+  });
+
   it("does not write a clarify follow-up artifact for a first-time blocked preflight", async () => {
     const cwd = await createInitializedProject();
     const taskPacket = materializedTaskPacketSchema.parse({

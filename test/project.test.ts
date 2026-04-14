@@ -516,6 +516,56 @@ describe("project scaffold", () => {
     expect(status.nextActions).toEqual(["reopen-verdict", "browse-archive"]);
   });
 
+  it("omits direct crown when a crowning record already exists", () => {
+    const status = buildSavedConsultationStatus(
+      {
+        id: "run_1",
+        status: "completed",
+        taskPath: "/tmp/task.md",
+        taskPacket: {
+          id: "task",
+          title: "Task",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/task.md",
+        },
+        agent: "codex",
+        candidateCount: 1,
+        createdAt: "2026-04-05T00:00:00.000Z",
+        rounds: [],
+        candidates: [
+          {
+            id: "cand-01",
+            strategyId: "minimal-change",
+            strategyLabel: "Minimal Change",
+            status: "exported",
+            workspaceDir: "/tmp/cand-01",
+            taskPacketPath: "/tmp/cand-01/task.json",
+            repairCount: 0,
+            repairedRounds: [],
+            createdAt: "2026-04-05T00:00:00.000Z",
+          },
+        ],
+        outcome: {
+          type: "recommended-survivor",
+          terminal: true,
+          crownable: true,
+          finalistCount: 1,
+          validationPosture: "sufficient",
+          verificationLevel: "standard",
+          missingCapabilityCount: 0,
+          validationGapCount: 0,
+          judgingBasisKind: "repo-local-oracle",
+          recommendedCandidateId: "cand-01",
+        },
+      },
+      {
+        crowningRecordAvailable: true,
+      },
+    );
+
+    expect(status.nextActions).toEqual(["reopen-verdict", "browse-archive"]);
+  });
+
   it("rejects conflicting legacy and validation outcome gap aliases", () => {
     expect(() =>
       consultationOutcomeSchema.parse({

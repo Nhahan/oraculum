@@ -705,6 +705,11 @@ describe("P3 evidence collection", () => {
           runId: "run_selection_abstain",
         }),
         expect.objectContaining({
+          artifactKind: "winner-selection-second-opinion",
+          runId: "run_low_confidence",
+          path: getSecondOpinionWinnerSelectionPath(cwd, "run_low_confidence"),
+        }),
+        expect.objectContaining({
           artifactKind: "winner-selection",
           runId: "run_low_confidence",
         }),
@@ -748,6 +753,12 @@ describe("P3 evidence collection", () => {
           candidateIds: ["cand-low"],
           confidence: "low",
           manualReviewRecommended: true,
+          artifactPaths: expect.objectContaining({
+            secondOpinionWinnerSelectionPath: getSecondOpinionWinnerSelectionPath(
+              cwd,
+              "run_low_confidence",
+            ),
+          }),
         }),
       ]),
     );
@@ -879,6 +890,74 @@ describe("P3 evidence collection", () => {
     );
   });
 
+  it("reports missing second-opinion artifacts for low-confidence finalist pressure", async () => {
+    const cwd = await createInitializedProject();
+
+    await writeManifest(
+      cwd,
+      createManifest("run_missing_second_opinion", {
+        taskPacket: {
+          id: "task",
+          title: "Finalize release plan candidate",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/release-plan.md",
+          artifactKind: "document",
+          targetArtifactPath: "docs/RELEASE_PLAN.md",
+        },
+        candidates: [createCandidate("cand-01", "promoted")],
+        outcome: {
+          type: "recommended-survivor",
+          terminal: true,
+          crownable: true,
+          finalistCount: 1,
+          validationPosture: "sufficient",
+          verificationLevel: "standard",
+          validationGapCount: 0,
+          judgingBasisKind: "repo-local-oracle",
+          recommendedCandidateId: "cand-01",
+        },
+        recommendedWinner: {
+          candidateId: "cand-01",
+          confidence: "low",
+          summary: "cand-01 is narrowly ahead but needs review.",
+          source: "llm-judge",
+        },
+      }),
+    );
+    await writeWinnerSelection(cwd, "run_missing_second_opinion", {
+      runId: "run_missing_second_opinion",
+      adapter: "codex",
+      status: "completed",
+      startedAt: "2026-04-04T00:00:00.000Z",
+      completedAt: "2026-04-04T00:00:01.000Z",
+      exitCode: 0,
+      summary: "cand-01 is narrowly ahead.",
+      recommendation: {
+        decision: "select",
+        candidateId: "cand-01",
+        confidence: "low",
+        summary: "cand-01 edges out the alternative but remains low confidence.",
+      },
+      artifacts: [],
+    });
+    await writeComparisonArtifacts(cwd, "run_missing_second_opinion");
+
+    const report = await collectP3Evidence(cwd);
+
+    expect(report.finalistSelectionPressure.coverageGapRuns).toEqual([
+      expect.objectContaining({
+        runId: "run_missing_second_opinion",
+        missingArtifactKinds: ["winner-selection-second-opinion"],
+      }),
+    ]);
+    expect(report.finalistSelectionPressure.missingArtifactBreakdown).toEqual([
+      expect.objectContaining({
+        artifactKind: "winner-selection-second-opinion",
+        consultationCount: 1,
+      }),
+    ]);
+  });
+
   it("keeps pressure-local blind spots visible when unrelated consultations have stronger artifacts", async () => {
     const cwd = await createInitializedProject();
 
@@ -991,6 +1070,311 @@ describe("P3 evidence collection", () => {
     expect(summary).toContain(
       "blind spot: Some finalist-selection pressure cases are missing comparison reports.",
     );
+  });
+
+  it("does not count blank comparison markdown as finalist evidence coverage", async () => {
+    const cwd = await createInitializedProject();
+
+    await writeManifest(
+      cwd,
+      createManifest("run_blank_comparison_markdown", {
+        taskPacket: {
+          id: "task",
+          title: "Compare onboarding finalists",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/onboarding-finalists.md",
+          artifactKind: "document",
+          targetArtifactPath: "docs/ONBOARDING.md",
+        },
+        candidateCount: 2,
+        candidates: [createCandidate("cand-a", "promoted"), createCandidate("cand-b", "promoted")],
+        outcome: {
+          type: "finalists-without-recommendation",
+          terminal: true,
+          crownable: false,
+          finalistCount: 2,
+          validationPosture: "sufficient",
+          verificationLevel: "standard",
+          validationGapCount: 0,
+          judgingBasisKind: "repo-local-oracle",
+        },
+      }),
+    );
+    await writeFile(
+      getFinalistComparisonMarkdownPath(cwd, "run_blank_comparison_markdown"),
+      " \n",
+      "utf8",
+    );
+    await writeWinnerSelection(cwd, "run_blank_comparison_markdown", {
+      runId: "run_blank_comparison_markdown",
+      adapter: "codex",
+      status: "completed",
+      startedAt: "2026-04-05T00:00:00.000Z",
+      completedAt: "2026-04-05T00:00:01.000Z",
+      exitCode: 0,
+      summary: "Judge abstained because the finalists remain too close.",
+      recommendation: {
+        decision: "abstain",
+        confidence: "medium",
+        summary: "The finalists remain too close to recommend safely.",
+      },
+      artifacts: [],
+    });
+
+    const report = await collectP3Evidence(cwd);
+
+    expect(report.artifactCoverage.consultationsWithComparisonReport).toBe(0);
+    expect(report.finalistSelectionPressure.artifactCoverage).toEqual(
+      expect.objectContaining({
+        casesWithComparisonReport: 0,
+      }),
+    );
+    expect(report.finalistSelectionPressure.coverageBlindSpots).toContain(
+      "Some finalist-selection pressure cases are missing comparison reports.",
+    );
+  });
+
+  it("counts non-empty markdown-only comparison reports as finalist evidence coverage", async () => {
+    const cwd = await createInitializedProject();
+
+    await writeManifest(
+      cwd,
+      createManifest("run_markdown_only_comparison", {
+        taskPacket: {
+          id: "task",
+          title: "Compare onboarding finalists",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/onboarding-finalists.md",
+          artifactKind: "document",
+          targetArtifactPath: "docs/ONBOARDING.md",
+        },
+        candidateCount: 2,
+        candidates: [createCandidate("cand-a", "promoted"), createCandidate("cand-b", "promoted")],
+        outcome: {
+          type: "finalists-without-recommendation",
+          terminal: true,
+          crownable: false,
+          finalistCount: 2,
+          validationPosture: "sufficient",
+          verificationLevel: "standard",
+          validationGapCount: 0,
+          judgingBasisKind: "repo-local-oracle",
+        },
+      }),
+    );
+    await writeFile(
+      getFinalistComparisonMarkdownPath(cwd, "run_markdown_only_comparison"),
+      "# Finalist Comparison\n\nCandidate notes.\n",
+      "utf8",
+    );
+    await writeWinnerSelection(cwd, "run_markdown_only_comparison", {
+      runId: "run_markdown_only_comparison",
+      adapter: "codex",
+      status: "completed",
+      startedAt: "2026-04-05T00:00:00.000Z",
+      completedAt: "2026-04-05T00:00:01.000Z",
+      exitCode: 0,
+      summary: "Judge abstained because the finalists remain too close.",
+      recommendation: {
+        decision: "abstain",
+        confidence: "medium",
+        summary: "The finalists remain too close to recommend safely.",
+      },
+      artifacts: [],
+    });
+
+    const report = await collectP3Evidence(cwd);
+
+    expect(report.artifactCoverage.consultationsWithComparisonReport).toBe(1);
+    expect(report.finalistSelectionPressure.artifactCoverage).toEqual(
+      expect.objectContaining({
+        casesWithComparisonReport: 3,
+      }),
+    );
+    expect(report.finalistSelectionPressure.coverageBlindSpots).not.toContain(
+      "Some finalist-selection pressure cases are missing comparison reports.",
+    );
+  });
+
+  it("counts valid json comparison reports even when markdown is blank", async () => {
+    const cwd = await createInitializedProject();
+
+    await writeManifest(
+      cwd,
+      createManifest("run_json_plus_blank_markdown", {
+        taskPacket: {
+          id: "task",
+          title: "Compare onboarding finalists",
+          sourceKind: "task-note",
+          sourcePath: "/tmp/onboarding-finalists.md",
+          artifactKind: "document",
+          targetArtifactPath: "docs/ONBOARDING.md",
+        },
+        candidateCount: 2,
+        candidates: [createCandidate("cand-a", "promoted"), createCandidate("cand-b", "promoted")],
+        outcome: {
+          type: "finalists-without-recommendation",
+          terminal: true,
+          crownable: false,
+          finalistCount: 2,
+          validationPosture: "sufficient",
+          verificationLevel: "standard",
+          validationGapCount: 0,
+          judgingBasisKind: "repo-local-oracle",
+        },
+      }),
+    );
+    await writeComparisonArtifacts(cwd, "run_json_plus_blank_markdown");
+    await writeFile(
+      getFinalistComparisonMarkdownPath(cwd, "run_json_plus_blank_markdown"),
+      " \n",
+      "utf8",
+    );
+    await writeWinnerSelection(cwd, "run_json_plus_blank_markdown", {
+      runId: "run_json_plus_blank_markdown",
+      adapter: "codex",
+      status: "completed",
+      startedAt: "2026-04-05T00:00:00.000Z",
+      completedAt: "2026-04-05T00:00:01.000Z",
+      exitCode: 0,
+      summary: "Judge abstained because the finalists remain too close.",
+      recommendation: {
+        decision: "abstain",
+        confidence: "medium",
+        summary: "The finalists remain too close to recommend safely.",
+      },
+      artifacts: [],
+    });
+
+    const report = await collectP3Evidence(cwd);
+
+    expect(report.artifactCoverage.consultationsWithComparisonReport).toBe(1);
+    expect(report.finalistSelectionPressure.artifactCoverage).toEqual(
+      expect.objectContaining({
+        casesWithComparisonReport: 3,
+      }),
+    );
+    expect(report.finalistSelectionPressure.coverageBlindSpots).not.toContain(
+      "Some finalist-selection pressure cases are missing comparison reports.",
+    );
+  });
+
+  it("normalizes external relative and absolute task source paths when grouping repeated source pressure", async () => {
+    const cwd = await createInitializedProject();
+    const externalRelativeTaskSourcePath = "../shared/operator-memo.md";
+    const externalAbsoluteTaskSourcePath = join(cwd, externalRelativeTaskSourcePath);
+
+    await writeManifest(
+      cwd,
+      createManifest("run_external_mixed_source_1", {
+        taskPacket: {
+          id: "task",
+          title: "Draft external operator memo",
+          sourceKind: "task-note",
+          sourcePath: externalRelativeTaskSourcePath,
+        },
+        candidateCount: 0,
+        rounds: [],
+        candidates: [],
+        preflight: {
+          decision: "needs-clarification",
+          confidence: "medium",
+          summary: "The external operator memo audience is still unclear.",
+          researchPosture: "repo-only",
+          clarificationQuestion: "Who is the intended operator audience?",
+        },
+        outcome: {
+          type: "needs-clarification",
+          terminal: true,
+          crownable: false,
+          finalistCount: 0,
+          validationPosture: "unknown",
+          verificationLevel: "none",
+          validationGapCount: 0,
+          judgingBasisKind: "unknown",
+        },
+      }),
+    );
+    await writePreflightReadinessArtifact(cwd, "run_external_mixed_source_1", {
+      recommendation: {
+        decision: "needs-clarification",
+        confidence: "medium",
+        summary: "The external operator memo source is still ambiguous.",
+        researchPosture: "repo-only",
+        clarificationQuestion: "Which operator responsibilities are in scope?",
+      },
+    });
+
+    await writeManifest(
+      cwd,
+      createManifest("run_external_mixed_source_2", {
+        createdAt: "2026-04-05T00:00:00.000Z",
+        agent: "claude-code",
+        taskPacket: {
+          id: "task",
+          title: "Refine external operator memo",
+          sourceKind: "research-brief",
+          sourcePath: join(
+            cwd,
+            ".oraculum",
+            "runs",
+            "run_external_mixed_source_2",
+            "reports",
+            "research-brief.json",
+          ),
+          originKind: "task-note",
+          originPath: externalAbsoluteTaskSourcePath,
+        },
+        candidateCount: 0,
+        rounds: [],
+        candidates: [],
+        preflight: {
+          decision: "external-research-required",
+          confidence: "high",
+          summary: "Official external operator guidance is still required.",
+          researchPosture: "external-research-required",
+          researchQuestion: "Which operator responsibilities are in scope?",
+        },
+        outcome: {
+          type: "external-research-required",
+          terminal: true,
+          crownable: false,
+          finalistCount: 0,
+          validationPosture: "validation-gaps",
+          verificationLevel: "none",
+          validationGapCount: 0,
+          judgingBasisKind: "missing-capability",
+        },
+      }),
+    );
+    await writePreflightReadinessArtifact(cwd, "run_external_mixed_source_2", {
+      recommendation: {
+        decision: "external-research-required",
+        confidence: "high",
+        summary: "Official external operator guidance is still required.",
+        researchPosture: "external-research-required",
+        researchQuestion: "Which operator responsibilities are in scope?",
+      },
+    });
+
+    const report = await collectP3Evidence(cwd);
+
+    expect(report.clarifyPressure.repeatedSources).toEqual([
+      expect.objectContaining({
+        taskSourcePath: externalAbsoluteTaskSourcePath,
+        taskSourceKinds: ["research-brief", "task-note"],
+        occurrenceCount: 2,
+        latestRunId: "run_external_mixed_source_2",
+      }),
+    ]);
+    expect(report.clarifyPressure.pressureTrajectories).toEqual([
+      expect.objectContaining({
+        keyType: "task-source",
+        key: externalAbsoluteTaskSourcePath,
+        occurrenceCount: 2,
+        agents: ["claude-code", "codex"],
+      }),
+    ]);
   });
 
   it("tracks repeated task sources when titles drift without a target artifact", async () => {
