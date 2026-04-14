@@ -246,6 +246,7 @@ export async function recommendConsultationProfile(
         }
       : llmResult;
   await writeJsonFile(profileSelectionPath, {
+    runId: options.runId,
     signals,
     ...(!allowRuntime ? { llmSkipped: true } : {}),
     ...(llmFailure ? { llmFailure } : {}),

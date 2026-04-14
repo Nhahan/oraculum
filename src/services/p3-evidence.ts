@@ -35,6 +35,7 @@ const p3EvidenceCaseKindSchema = z.enum([
   "judge-abstain",
   "manual-crowning-handoff",
   "low-confidence-recommendation",
+  "second-opinion-disagreement",
 ]);
 
 const p3EvidenceCaseSchema = z.object({
@@ -281,6 +282,7 @@ const p3FinalistSelectionPressureSchema = z.object({
   judgeAbstainCases: z.number().int().min(0),
   manualCrowningCases: z.number().int().min(0),
   lowConfidenceRecommendationCases: z.number().int().min(0),
+  secondOpinionDisagreementCases: z.number().int().min(0),
   artifactCoverage: p3PressureArtifactCoverageSchema,
   metadataCoverage: p3PressureMetadataCoverageSchema,
   recentCluster: p3RecentClusterSchema,
@@ -510,6 +512,29 @@ export async function collectP3Evidence(cwd: string): Promise<P3EvidenceReport> 
         }),
       );
     }
+
+    if (
+      review.outcomeType === "recommended-survivor" &&
+      artifacts.secondOpinionWinnerSelection &&
+      artifacts.secondOpinionWinnerSelection.agreement !== "agrees-select"
+    ) {
+      finalistSelectionCases.push(
+        p3EvidenceCaseSchema.parse({
+          ...common,
+          kind: "second-opinion-disagreement",
+          summary:
+            review.secondOpinionSummary ??
+            "The advisory second-opinion judge disagreed with the recommended result.",
+          candidateIds: review.recommendedCandidateId ? [review.recommendedCandidateId] : [],
+          candidateStrategyLabels: resolveCandidateStrategyLabels(
+            manifest,
+            review.recommendedCandidateId ? [review.recommendedCandidateId] : [],
+          ),
+          ...(review.judgingCriteria?.length ? { judgingCriteria: review.judgingCriteria } : {}),
+          confidence: recommendationConfidence,
+        }),
+      );
+    }
   }
 
   const clarifyRepeatedTasks = buildRepeatedTasks(clarifyCases);
@@ -524,10 +549,9 @@ export async function collectP3Evidence(cwd: string): Promise<P3EvidenceReport> 
   );
   const clarifyArtifactCoverage = buildPressureArtifactCoverage(clarifyCases);
   const clarifyMetadataCoverage = buildPressureMetadataCoverage(clarifyCases);
-  const clarifyCoverageGapRuns = buildCoverageGapRuns(
-    projectRoot,
-    clarifyCases,
-    getClarifyMissingArtifacts,
+  const expectedClarifyFollowUpRunIds = buildExpectedClarifyFollowUpRunIds(clarifyCases);
+  const clarifyCoverageGapRuns = buildCoverageGapRuns(projectRoot, clarifyCases, (item) =>
+    getClarifyMissingArtifacts(item, expectedClarifyFollowUpRunIds),
   );
   const clarifyMissingArtifactBreakdown = buildMissingArtifactBreakdown(clarifyCoverageGapRuns);
   const clarifyInspectionQueue = buildClarifyInspectionQueue(
@@ -609,6 +633,9 @@ export async function collectP3Evidence(cwd: string): Promise<P3EvidenceReport> 
       ).length,
       lowConfidenceRecommendationCases: finalistSelectionCases.filter(
         (item) => item.kind === "low-confidence-recommendation",
+      ).length,
+      secondOpinionDisagreementCases: finalistSelectionCases.filter(
+        (item) => item.kind === "second-opinion-disagreement",
       ).length,
       artifactCoverage: finalistArtifactCoverage,
       metadataCoverage: finalistMetadataCoverage,
@@ -702,7 +729,7 @@ export function renderP3EvidenceSummary(
   lines.push(...renderCasePreview(report.clarifyPressure.cases));
 
   lines.push(
-    `Finalist selection pressure: total=${report.finalistSelectionPressure.totalCases} finalists-without-recommendation=${report.finalistSelectionPressure.finalistsWithoutRecommendationCases} judge-abstain=${report.finalistSelectionPressure.judgeAbstainCases} manual-crowning=${report.finalistSelectionPressure.manualCrowningCases} low-confidence=${report.finalistSelectionPressure.lowConfidenceRecommendationCases} repeated-tasks=${report.finalistSelectionPressure.repeatedTasks.length} repeated-sources=${report.finalistSelectionPressure.repeatedSources.length}`,
+    `Finalist selection pressure: total=${report.finalistSelectionPressure.totalCases} finalists-without-recommendation=${report.finalistSelectionPressure.finalistsWithoutRecommendationCases} judge-abstain=${report.finalistSelectionPressure.judgeAbstainCases} manual-crowning=${report.finalistSelectionPressure.manualCrowningCases} low-confidence=${report.finalistSelectionPressure.lowConfidenceRecommendationCases} second-opinion-disagreement=${report.finalistSelectionPressure.secondOpinionDisagreementCases} repeated-tasks=${report.finalistSelectionPressure.repeatedTasks.length} repeated-sources=${report.finalistSelectionPressure.repeatedSources.length}`,
   );
   lines.push(
     `Finalist evidence coverage: targets=${report.finalistSelectionPressure.artifactCoverage.casesWithTargetArtifact} comparison=${report.finalistSelectionPressure.artifactCoverage.casesWithComparisonReport} winner-selection=${report.finalistSelectionPressure.artifactCoverage.casesWithWinnerSelection} failure-analysis=${report.finalistSelectionPressure.artifactCoverage.casesWithFailureAnalysis} research-brief=${report.finalistSelectionPressure.artifactCoverage.casesWithResearchBrief} manual-review=${report.finalistSelectionPressure.artifactCoverage.casesWithManualReviewRecommendation}`,
@@ -811,6 +838,7 @@ function renderCasePreview(cases: z.infer<typeof p3EvidenceCaseSchema>[]): strin
     const suffix = item.question ?? item.summary;
     const artifactHint =
       item.artifactPaths.clarifyFollowUpPath ??
+      item.artifactPaths.secondOpinionWinnerSelectionPath ??
       item.artifactPaths.failureAnalysisPath ??
       item.artifactPaths.winnerSelectionPath ??
       item.artifactPaths.preflightReadinessPath;
@@ -1448,6 +1476,9 @@ function buildFinalistPromotionSignal(
   const lowConfidenceCases = cases.filter(
     (item) => item.kind === "low-confidence-recommendation",
   ).length;
+  const secondOpinionDisagreementCases = cases.filter(
+    (item) => item.kind === "second-opinion-disagreement",
+  ).length;
   const reasons: string[] = [];
 
   if (judgeAbstainCases >= 2) {
@@ -1458,6 +1489,11 @@ function buildFinalistPromotionSignal(
   }
   if (lowConfidenceCases >= 2) {
     reasons.push(`${lowConfidenceCases} consultations selected low-confidence winners.`);
+  }
+  if (secondOpinionDisagreementCases >= 2) {
+    reasons.push(
+      `${secondOpinionDisagreementCases} consultations recorded advisory second-opinion disagreement with the recommended result.`,
+    );
   }
   if (repeatedTasks.some((item) => item.occurrenceCount >= 2) && cases.length >= 3) {
     reasons.push(
@@ -1584,6 +1620,7 @@ function buildClarifyCoverageBlindSpots(
   artifactCoverage: z.infer<typeof p3PressureArtifactCoverageSchema>,
 ): string[] {
   const blindSpots: string[] = [];
+  const expectedClarifyFollowUpRunIds = buildExpectedClarifyFollowUpRunIds(cases);
 
   if (
     artifactCoverage.caseCount > 0 &&
@@ -1609,6 +1646,15 @@ function buildClarifyCoverageBlindSpots(
   ) {
     blindSpots.push("External-research blockers have no persisted research-brief artifacts yet.");
   }
+  if (
+    expectedClarifyFollowUpRunIds.size > 0 &&
+    cases.some(
+      (item) =>
+        expectedClarifyFollowUpRunIds.has(item.runId) && !item.artifactPaths.clarifyFollowUpPath,
+    )
+  ) {
+    blindSpots.push("Repeated clarify pressure is missing persisted clarify-follow-up artifacts.");
+  }
 
   return blindSpots;
 }
@@ -1621,13 +1667,15 @@ function buildFinalistCoverageBlindSpots(cases: z.infer<typeof p3EvidenceCaseSch
       (item) =>
         item.kind === "finalists-without-recommendation" ||
         item.kind === "judge-abstain" ||
-        item.kind === "low-confidence-recommendation",
+        item.kind === "low-confidence-recommendation" ||
+        item.kind === "second-opinion-disagreement",
     ) &&
     cases.some(
       (item) =>
         (item.kind === "finalists-without-recommendation" ||
           item.kind === "judge-abstain" ||
-          item.kind === "low-confidence-recommendation") &&
+          item.kind === "low-confidence-recommendation" ||
+          item.kind === "second-opinion-disagreement") &&
         !item.artifactPaths.winnerSelectionPath,
     )
   ) {
@@ -1648,12 +1696,26 @@ function buildFinalistCoverageBlindSpots(cases: z.infer<typeof p3EvidenceCaseSch
       (item) =>
         (item.kind === "finalists-without-recommendation" ||
           item.kind === "judge-abstain" ||
+          item.kind === "manual-crowning-handoff" ||
+          item.kind === "second-opinion-disagreement" ||
           item.kind === "low-confidence-recommendation") &&
         !item.artifactPaths.comparisonJsonPath &&
         !item.artifactPaths.comparisonMarkdownPath,
     )
   ) {
     blindSpots.push("Some finalist-selection pressure cases are missing comparison reports.");
+  }
+  if (
+    cases.some(
+      (item) =>
+        (item.kind === "low-confidence-recommendation" ||
+          item.kind === "second-opinion-disagreement") &&
+        !item.artifactPaths.secondOpinionWinnerSelectionPath,
+    )
+  ) {
+    blindSpots.push(
+      "Some finalist-selection pressure cases are missing advisory second-opinion artifacts.",
+    );
   }
   if (
     cases.some((item) => item.kind === "manual-crowning-handoff") &&
@@ -1946,6 +2008,7 @@ function buildMissingArtifactBreakdown(
 
 function getClarifyMissingArtifacts(
   item: z.infer<typeof p3EvidenceCaseSchema>,
+  expectedClarifyFollowUpRunIds = new Set<string>(),
 ): z.infer<typeof p3MissingArtifactKindSchema>[] {
   const missingArtifacts: z.infer<typeof p3MissingArtifactKindSchema>[] = [];
 
@@ -1954,6 +2017,9 @@ function getClarifyMissingArtifacts(
   }
   if (item.kind === "external-research-required" && !item.artifactPaths.researchBriefPath) {
     missingArtifacts.push("research-brief");
+  }
+  if (expectedClarifyFollowUpRunIds.has(item.runId) && !item.artifactPaths.clarifyFollowUpPath) {
+    missingArtifacts.push("clarify-follow-up");
   }
 
   return missingArtifacts;
@@ -1970,6 +2036,7 @@ function getFinalistMissingArtifacts(
   if (
     (item.kind === "finalists-without-recommendation" ||
       item.kind === "judge-abstain" ||
+      item.kind === "second-opinion-disagreement" ||
       item.kind === "low-confidence-recommendation") &&
     !item.artifactPaths.winnerSelectionPath
   ) {
@@ -1979,6 +2046,7 @@ function getFinalistMissingArtifacts(
     (item.kind === "finalists-without-recommendation" ||
       item.kind === "judge-abstain" ||
       item.kind === "manual-crowning-handoff" ||
+      item.kind === "second-opinion-disagreement" ||
       item.kind === "low-confidence-recommendation") &&
     !hasComparisonReport
   ) {
@@ -1988,7 +2056,8 @@ function getFinalistMissingArtifacts(
     missingArtifacts.push("failure-analysis");
   }
   if (
-    item.kind === "low-confidence-recommendation" &&
+    (item.kind === "low-confidence-recommendation" ||
+      item.kind === "second-opinion-disagreement") &&
     !item.artifactPaths.secondOpinionWinnerSelectionPath
   ) {
     missingArtifacts.push("winner-selection-second-opinion");
@@ -2039,6 +2108,8 @@ function scoreEvidenceCaseKind(kind: z.infer<typeof p3EvidenceCaseKindSchema>): 
       return 2;
     case "low-confidence-recommendation":
       return 1;
+    case "second-opinion-disagreement":
+      return 2;
     case "finalists-without-recommendation":
       return 2;
     case "manual-crowning-handoff":
@@ -2046,6 +2117,86 @@ function scoreEvidenceCaseKind(kind: z.infer<typeof p3EvidenceCaseKindSchema>): 
     case "judge-abstain":
       return 3;
   }
+}
+
+function buildExpectedClarifyFollowUpRunIds(
+  cases: z.infer<typeof p3EvidenceCaseSchema>[],
+): Set<string> {
+  const runIds = new Set<string>();
+  const targetGroups = new Map<
+    string,
+    Array<{ runId: string; openedAt: string; hasClarifyFollowUp: boolean }>
+  >();
+  const sourceGroups = new Map<
+    string,
+    Array<{ runId: string; openedAt: string; hasClarifyFollowUp: boolean }>
+  >();
+
+  for (const item of cases) {
+    if (item.targetArtifactPath) {
+      const current = targetGroups.get(item.targetArtifactPath) ?? [];
+      current.push({
+        runId: item.runId,
+        openedAt: item.openedAt,
+        hasClarifyFollowUp: Boolean(item.artifactPaths.clarifyFollowUpPath),
+      });
+      targetGroups.set(item.targetArtifactPath, current);
+    }
+
+    const current = sourceGroups.get(item.taskSourcePath) ?? [];
+    current.push({
+      runId: item.runId,
+      openedAt: item.openedAt,
+      hasClarifyFollowUp: Boolean(item.artifactPaths.clarifyFollowUpPath),
+    });
+    sourceGroups.set(item.taskSourcePath, current);
+  }
+
+  for (const group of [...targetGroups.values(), ...sourceGroups.values()]) {
+    const orderedRuns = [...group]
+      .sort(compareRunSequence)
+      .filter(
+        (entry, index, items) => items.findIndex((item) => item.runId === entry.runId) === index,
+      );
+    if (orderedRuns.length < 2) {
+      continue;
+    }
+    for (const [index, entry] of orderedRuns.entries()) {
+      if (index < 2 || entry.hasClarifyFollowUp) {
+        continue;
+      }
+      runIds.add(entry.runId);
+    }
+  }
+
+  return runIds;
+}
+
+function compareRunSequence(
+  left: { runId: string; openedAt: string },
+  right: { runId: string; openedAt: string },
+): number {
+  const leftRunTimestamp = extractRunSequenceTimestamp(left.runId);
+  const rightRunTimestamp = extractRunSequenceTimestamp(right.runId);
+  if (
+    leftRunTimestamp !== undefined &&
+    rightRunTimestamp !== undefined &&
+    leftRunTimestamp !== rightRunTimestamp
+  ) {
+    return leftRunTimestamp.localeCompare(rightRunTimestamp);
+  }
+
+  const openedAtDelta = new Date(left.openedAt).getTime() - new Date(right.openedAt).getTime();
+  if (openedAtDelta !== 0) {
+    return openedAtDelta;
+  }
+
+  return left.runId.localeCompare(right.runId);
+}
+
+function extractRunSequenceTimestamp(runId: string): string | undefined {
+  const match = /^run_(\d{14})_[0-9a-f]{8}$/i.exec(runId);
+  return match?.[1];
 }
 
 function resolveCandidateStrategyLabels(

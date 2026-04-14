@@ -79,6 +79,7 @@ export const consultationNextActionSchema = z.preprocess(
   z.enum([
     "reopen-verdict",
     "browse-archive",
+    "perform-manual-review",
     "review-preflight-readiness",
     "answer-clarification-and-rerun",
     "gather-external-research-and-rerun",
@@ -423,6 +424,7 @@ export const consultationClarifyFollowUpSchema = z.object({
 });
 export const consultationPreflightReadinessArtifactSchema = z
   .object({
+    runId: z.string().min(1),
     signals: profileRepoSignalsSchema,
     recommendation: consultationPreflightSchema,
     llmSkipped: z.boolean().optional(),
@@ -460,6 +462,7 @@ export const consultationResearchBriefSchema = z.preprocess(
   },
   z
     .object({
+      runId: z.string().min(1),
       decision: z.literal("external-research-required"),
       question: z.string().min(1),
       confidence: decisionConfidenceSchema.optional(),
@@ -1543,6 +1546,10 @@ function buildConsultationNextActions(
   },
 ): ConsultationNextAction[] {
   const actions = new Set<ConsultationNextAction>(["reopen-verdict", "browse-archive"]);
+
+  if (options?.manualReviewRequired === true) {
+    actions.add("perform-manual-review");
+  }
 
   switch (outcome.type) {
     case "needs-clarification":

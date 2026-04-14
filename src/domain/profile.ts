@@ -313,6 +313,7 @@ export const consultationProfileSelectionSchema = z.preprocess((value) => {
 
 export const consultationProfileSelectionArtifactSchema = z
   .object({
+    runId: z.string().min(1),
     signals: profileRepoSignalsSchema,
     recommendation: agentProfileRecommendationSchema,
     appliedSelection: consultationProfileSelectionSchema,

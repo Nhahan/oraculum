@@ -113,14 +113,22 @@ export const secondOpinionWinnerSelectionArtifactSchema = z
             message: "result.adapter must match the persisted second-opinion artifact adapter.",
           });
         }
-      }
-      if (recommendation) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["agreement"],
-          message:
-            "agreement cannot be unavailable when the second-opinion result contains a completed recommendation.",
-        });
+        if (value.result.status === "completed") {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["result", "status"],
+            message:
+              "result.status cannot be completed when second-opinion agreement is unavailable.",
+          });
+        }
+        if ("recommendation" in value.result && value.result.recommendation !== undefined) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["result", "recommendation"],
+            message:
+              "result.recommendation must be omitted when second-opinion agreement is unavailable.",
+          });
+        }
       }
       return;
     }

@@ -108,6 +108,7 @@ export async function recommendConsultationPreflight(
   const preflightPath = getPreflightReadinessPath(options.projectRoot, options.runId);
   await mkdir(dirname(preflightPath), { recursive: true });
   await writeJsonFile(preflightPath, {
+    runId: options.runId,
     signals,
     ...(options.taskPacket.researchContext?.signalFingerprint
       ? {
@@ -135,6 +136,7 @@ export async function recommendConsultationPreflight(
     await writeJsonFile(
       researchBriefPath,
       consultationResearchBriefSchema.parse({
+        runId: options.runId,
         decision: "external-research-required",
         question: preflight.researchQuestion,
         confidence: preflight.confidence,

@@ -126,7 +126,10 @@ export async function resolveConsultationArtifacts(
   },
 ): Promise<ConsultationArtifactState> {
   const paths = buildConsultationArtifactPathCandidates(cwd, consultationId);
-  return readConsultationArtifacts(paths, options);
+  return readConsultationArtifacts(paths, {
+    ...options,
+    expectedRunId: consultationId,
+  });
 }
 
 export function resolveConsultationArtifactsSync(
@@ -137,25 +140,29 @@ export function resolveConsultationArtifactsSync(
   },
 ): ConsultationArtifactState {
   const paths = buildConsultationArtifactPathCandidates(cwd, consultationId);
-  return readConsultationArtifactsSync(paths, options);
+  return readConsultationArtifactsSync(paths, {
+    ...options,
+    expectedRunId: consultationId,
+  });
 }
 
 export async function readConsultationArtifacts(
   paths: ConsultationArtifactPaths,
   options?: {
     hasExportedCandidate?: boolean;
+    expectedRunId?: string;
   },
 ): Promise<ConsultationArtifactState> {
   const [
-    preflightReadiness,
-    clarifyFollowUp,
-    researchBrief,
-    failureAnalysis,
-    profileSelection,
-    comparisonReport,
+    parsedPreflightReadiness,
+    parsedClarifyFollowUp,
+    parsedResearchBrief,
+    parsedFailureAnalysis,
+    parsedProfileSelection,
+    parsedComparisonReport,
     comparisonMarkdownAvailable,
-    winnerSelection,
-    secondOpinionWinnerSelection,
+    parsedWinnerSelection,
+    parsedSecondOpinionWinnerSelection,
     parsedCrowningRecord,
   ] = await Promise.all([
     readJsonArtifact(paths.preflightReadinessPath, consultationPreflightReadinessArtifactSchema),
@@ -165,7 +172,7 @@ export async function readConsultationArtifacts(
     readJsonArtifact(paths.profileSelectionPath, consultationProfileSelectionArtifactSchema),
     readJsonArtifact(paths.comparisonJsonPath, comparisonReportSchema),
     paths.comparisonMarkdownPath
-      ? hasNonEmptyTextArtifact(paths.comparisonMarkdownPath)
+      ? hasCurrentComparisonMarkdownArtifact(paths.comparisonMarkdownPath, options?.expectedRunId)
       : Promise.resolve(false),
     readJsonArtifact(paths.winnerSelectionPath, agentJudgeResultSchema),
     readJsonArtifact(
@@ -175,8 +182,36 @@ export async function readConsultationArtifacts(
     readJsonArtifact(paths.crowningRecordPath, exportPlanSchema),
   ]);
 
+  const expectedRunId = options?.expectedRunId;
+  const preflightReadiness = filterArtifactForConsultationRun(parsedPreflightReadiness, {
+    expectedRunId,
+  });
+  const clarifyFollowUp = filterArtifactForConsultationRun(parsedClarifyFollowUp, {
+    expectedRunId,
+  });
+  const researchBrief = filterArtifactForConsultationRun(parsedResearchBrief, {
+    expectedRunId,
+  });
+  const failureAnalysis = filterArtifactForConsultationRun(parsedFailureAnalysis, {
+    expectedRunId,
+  });
+  const profileSelection = filterArtifactForConsultationRun(parsedProfileSelection, {
+    expectedRunId,
+  });
+  const comparisonReport = filterArtifactForConsultationRun(parsedComparisonReport, {
+    expectedRunId,
+  });
+  const winnerSelection = filterArtifactForConsultationRun(parsedWinnerSelection, {
+    expectedRunId,
+  });
+  const secondOpinionWinnerSelection = filterArtifactForConsultationRun(
+    parsedSecondOpinionWinnerSelection,
+    { expectedRunId },
+  );
   const hasExportedCandidate = options?.hasExportedCandidate ?? false;
-  const crowningRecord = hasExportedCandidate ? parsedCrowningRecord : undefined;
+  const crowningRecord = hasExportedCandidate
+    ? filterArtifactForConsultationRun(parsedCrowningRecord, { expectedRunId })
+    : undefined;
   const manualReviewRequired = Boolean(
     secondOpinionWinnerSelection && secondOpinionWinnerSelection.agreement !== "agrees-select",
   );
@@ -228,37 +263,75 @@ export function readConsultationArtifactsSync(
   paths: ConsultationArtifactPaths,
   options?: {
     hasExportedCandidate?: boolean;
+    expectedRunId?: string;
   },
 ): ConsultationArtifactState {
-  const preflightReadiness = readJsonArtifactSync(
+  const parsedPreflightReadiness = readJsonArtifactSync(
     paths.preflightReadinessPath,
     consultationPreflightReadinessArtifactSchema,
   );
-  const clarifyFollowUp = readJsonArtifactSync(
+  const parsedClarifyFollowUp = readJsonArtifactSync(
     paths.clarifyFollowUpPath,
     consultationClarifyFollowUpSchema,
   );
-  const researchBrief = readJsonArtifactSync(
+  const parsedResearchBrief = readJsonArtifactSync(
     paths.researchBriefPath,
     consultationResearchBriefSchema,
   );
-  const failureAnalysis = readJsonArtifactSync(paths.failureAnalysisPath, failureAnalysisSchema);
-  const profileSelection = readJsonArtifactSync(
+  const parsedFailureAnalysis = readJsonArtifactSync(
+    paths.failureAnalysisPath,
+    failureAnalysisSchema,
+  );
+  const parsedProfileSelection = readJsonArtifactSync(
     paths.profileSelectionPath,
     consultationProfileSelectionArtifactSchema,
   );
-  const comparisonReport = readJsonArtifactSync(paths.comparisonJsonPath, comparisonReportSchema);
+  const parsedComparisonReport = readJsonArtifactSync(
+    paths.comparisonJsonPath,
+    comparisonReportSchema,
+  );
   const comparisonMarkdownAvailable = paths.comparisonMarkdownPath
-    ? hasNonEmptyTextArtifactSync(paths.comparisonMarkdownPath)
+    ? hasCurrentComparisonMarkdownArtifactSync(paths.comparisonMarkdownPath, options?.expectedRunId)
     : false;
-  const winnerSelection = readJsonArtifactSync(paths.winnerSelectionPath, agentJudgeResultSchema);
-  const secondOpinionWinnerSelection = readJsonArtifactSync(
+  const parsedWinnerSelection = readJsonArtifactSync(
+    paths.winnerSelectionPath,
+    agentJudgeResultSchema,
+  );
+  const parsedSecondOpinionWinnerSelection = readJsonArtifactSync(
     paths.secondOpinionWinnerSelectionPath,
     secondOpinionWinnerSelectionArtifactSchema,
   );
   const parsedCrowningRecord = readJsonArtifactSync(paths.crowningRecordPath, exportPlanSchema);
+  const expectedRunId = options?.expectedRunId;
+  const preflightReadiness = filterArtifactForConsultationRun(parsedPreflightReadiness, {
+    expectedRunId,
+  });
+  const clarifyFollowUp = filterArtifactForConsultationRun(parsedClarifyFollowUp, {
+    expectedRunId,
+  });
+  const researchBrief = filterArtifactForConsultationRun(parsedResearchBrief, {
+    expectedRunId,
+  });
+  const failureAnalysis = filterArtifactForConsultationRun(parsedFailureAnalysis, {
+    expectedRunId,
+  });
+  const profileSelection = filterArtifactForConsultationRun(parsedProfileSelection, {
+    expectedRunId,
+  });
+  const comparisonReport = filterArtifactForConsultationRun(parsedComparisonReport, {
+    expectedRunId,
+  });
+  const winnerSelection = filterArtifactForConsultationRun(parsedWinnerSelection, {
+    expectedRunId,
+  });
+  const secondOpinionWinnerSelection = filterArtifactForConsultationRun(
+    parsedSecondOpinionWinnerSelection,
+    { expectedRunId },
+  );
   const hasExportedCandidate = options?.hasExportedCandidate ?? false;
-  const crowningRecord = hasExportedCandidate ? parsedCrowningRecord : undefined;
+  const crowningRecord = hasExportedCandidate
+    ? filterArtifactForConsultationRun(parsedCrowningRecord, { expectedRunId })
+    : undefined;
   const manualReviewRequired = Boolean(
     secondOpinionWinnerSelection && secondOpinionWinnerSelection.agreement !== "agrees-select",
   );
@@ -418,6 +491,34 @@ async function readJsonArtifact<TSchema extends ZodTypeAny>(
   }
 }
 
+export function filterArtifactForConsultationRun<T>(
+  artifact: T | undefined,
+  options: {
+    expectedRunId: string | undefined;
+    allowMissingRunId?: boolean;
+  },
+): T | undefined {
+  const expectedRunId = options.expectedRunId;
+  if (!artifact || !expectedRunId) {
+    return artifact;
+  }
+
+  if (!hasArtifactRunId(artifact)) {
+    return options.allowMissingRunId ? artifact : undefined;
+  }
+
+  return artifact.runId === expectedRunId ? artifact : undefined;
+}
+
+function hasArtifactRunId(value: unknown): value is { runId: string } {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.runId === "string" && candidate.runId.length > 0;
+}
+
 function readJsonArtifactSync<TSchema extends ZodTypeAny>(
   path: string | undefined,
   schema: TSchema,
@@ -431,4 +532,47 @@ function readJsonArtifactSync<TSchema extends ZodTypeAny>(
   } catch {
     return undefined;
   }
+}
+
+export async function hasCurrentComparisonMarkdownArtifact(
+  path: string,
+  expectedRunId: string | undefined,
+): Promise<boolean> {
+  if (!(await hasNonEmptyTextArtifact(path))) {
+    return false;
+  }
+
+  if (!expectedRunId) {
+    return true;
+  }
+
+  try {
+    return extractComparisonMarkdownRunId(await readFile(path, "utf8")) === expectedRunId;
+  } catch {
+    return false;
+  }
+}
+
+export function hasCurrentComparisonMarkdownArtifactSync(
+  path: string,
+  expectedRunId: string | undefined,
+): boolean {
+  if (!hasNonEmptyTextArtifactSync(path)) {
+    return false;
+  }
+
+  if (!expectedRunId) {
+    return true;
+  }
+
+  try {
+    return extractComparisonMarkdownRunId(readFileSync(path, "utf8")) === expectedRunId;
+  } catch {
+    return false;
+  }
+}
+
+function extractComparisonMarkdownRunId(content: string): string | undefined {
+  const match = content.match(/^- Run:\s*(.+?)\s*$/m);
+  return match?.[1]?.trim() || undefined;
 }
