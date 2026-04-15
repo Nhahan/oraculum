@@ -193,7 +193,7 @@ function renderCodexRules(manifest: readonly CommandManifestEntry[]): string {
 function renderCodexSkill(entry: CommandManifestEntry): string {
   const postToolInstruction =
     entry.id === "consult"
-      ? "After the MCP tool succeeds, report the verified tool result concisely and stop. Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command even if the result suggests a next step; wait for explicit user instruction."
+      ? "After the MCP tool succeeds, report the verified tool result concisely and stop. Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command even if the result suggests a next step; wait for explicit user instruction. Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`; the user must send a separate follow-up command after this tool call finishes."
       : "After the MCP tool succeeds, report the verified tool result concisely and stop. Do not run Bash, Edit, Write, or ad-hoc follow-up work unless the user explicitly asks.";
 
   return [

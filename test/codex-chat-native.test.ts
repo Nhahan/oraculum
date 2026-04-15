@@ -55,6 +55,9 @@ describe("Codex chat-native packaging", () => {
     expect(consultSkill?.content).toContain(
       "Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command",
     );
+    expect(consultSkill?.content).toContain(
+      "Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`",
+    );
     expect(crownSkill?.content).toContain("Call the MCP tool `oraculum_crown`.");
     expect(crownSkill?.content).toContain("report the verified tool result concisely and stop");
     expect(crownSkill?.content).toContain("required only for branch materialization");

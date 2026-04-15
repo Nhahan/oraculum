@@ -734,6 +734,7 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
       "- This skill is intended for exact-prefix routing inside Claude Code.",
       "- After the MCP tool returns, relay that tool result and stop.",
       "- Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command even if the result suggests a next step; wait for explicit user instruction.",
+      "- Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`; the user must send a separate follow-up command after this tool call finishes.",
       "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
     ];
   }

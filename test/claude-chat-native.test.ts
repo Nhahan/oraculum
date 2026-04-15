@@ -180,6 +180,9 @@ describe("Claude Code chat-native packaging", () => {
     expect(consultSkill?.content).toContain(
       "Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command",
     );
+    expect(consultSkill?.content).toContain(
+      "Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`",
+    );
   });
 
   it("writes packaged Claude artifacts into dist during the build", async () => {
