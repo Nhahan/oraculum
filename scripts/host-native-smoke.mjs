@@ -2,16 +2,22 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+const scriptPath = fileURLToPath(import.meta.url);
+const isEntrypoint = process.argv[1] ? resolvePath(process.argv[1]) === scriptPath : false;
 const keepEvidence = process.env.ORACULUM_KEEP_EVIDENCE === "1";
 const timeoutMs = Number.parseInt(process.env.ORACULUM_HOST_NATIVE_TIMEOUT_MS ?? "300000", 10);
 const claudeModel = process.env.ORACULUM_HOST_NATIVE_CLAUDE_MODEL ?? "sonnet";
 const runtimeInput = process.env.ORACULUM_HOST_NATIVE_RUNTIMES ?? "claude-code,codex";
 const candidateAgentInput = process.env.ORACULUM_HOST_NATIVE_AGENT ?? "host";
 const scenarioInput = process.env.ORACULUM_HOST_NATIVE_SCENARIOS ?? "node-package,package-free";
+const settleTimeoutMs = Number.parseInt(
+  process.env.ORACULUM_HOST_NATIVE_SETTLE_TIMEOUT_MS ?? "60000",
+  10,
+);
 const hostNativeCandidateCount = parseBoundedInteger(
   process.env.ORACULUM_HOST_NATIVE_CANDIDATES ?? "1",
   "ORACULUM_HOST_NATIVE_CANDIDATES",
@@ -113,7 +119,10 @@ async function runRuntimeSmoke(tempRoot, runtime, scenario) {
     );
   }
 
-  const runId = await readLatestRunId(projectRoot);
+  const { runId } = await waitForCompletedRun(projectRoot, {
+    label: `${runtime} consult`,
+    timeoutMs: settleTimeoutMs,
+  });
 
   const crownPrompt = scenario.gitBacked ? `orc crown ${branchName}` : "orc crown";
   const crown = await runHost(runtime, projectRoot, crownPrompt);
@@ -126,6 +135,10 @@ async function runRuntimeSmoke(tempRoot, runtime, scenario) {
     );
   }
   assertVerifiedCrownMaterialization(runtime, crown.stdout + crown.stderr);
+  await waitForExportPlan(projectRoot, runId, {
+    label: `${runtime} crown`,
+    timeoutMs: settleTimeoutMs,
+  });
 
   if (scenario.gitBacked) {
     const branch = (
@@ -163,27 +176,27 @@ async function runRuntimeSmoke(tempRoot, runtime, scenario) {
     });
   }
 
-  const manifest = JSON.parse(
+  const finalizedManifest = JSON.parse(
     await readFile(join(projectRoot, ".oraculum", "runs", runId, "run.json"), "utf8"),
   );
-  const exportedCandidateIds = Array.isArray(manifest.candidates)
-    ? manifest.candidates
+  const exportedCandidateIds = Array.isArray(finalizedManifest.candidates)
+    ? finalizedManifest.candidates
         .filter((candidate) => candidate?.status === "exported")
         .map((candidate) => candidate.id)
     : [];
   if (
-    manifest.status !== "completed" ||
-    manifest.agent !== candidateAgent ||
-    manifest.candidateCount !== hostNativeCandidateCount ||
+    finalizedManifest.status !== "completed" ||
+    finalizedManifest.agent !== candidateAgent ||
+    finalizedManifest.candidateCount !== hostNativeCandidateCount ||
     exportedCandidateIds.length !== 1
   ) {
     throw new Error(
       [
         `Expected ${runtime} run ${runId} to be completed with one exported candidate.`,
-        `agent=${manifest.agent} expectedAgent=${candidateAgent}`,
-        `candidateCount=${manifest.candidateCount} expectedCandidateCount=${hostNativeCandidateCount}`,
+        `agent=${finalizedManifest.agent} expectedAgent=${candidateAgent}`,
+        `candidateCount=${finalizedManifest.candidateCount} expectedCandidateCount=${hostNativeCandidateCount}`,
         `exportedCandidateIds=${exportedCandidateIds.join(",") || "none"}`,
-        JSON.stringify(manifest, null, 2),
+        JSON.stringify(finalizedManifest, null, 2),
       ].join("\n"),
     );
   }
@@ -431,6 +444,73 @@ async function readLatestRunId(projectRoot) {
   }
 
   return latest.runId;
+}
+
+export async function waitForCompletedRun(projectRoot, options) {
+  const pollIntervalMs = options.pollIntervalMs ?? 1000;
+  const deadline = Date.now() + options.timeoutMs;
+  let lastError = "latest-run.json was not written yet.";
+
+  while (Date.now() < deadline) {
+    try {
+      const runId = await readLatestRunId(projectRoot);
+      const runPath = join(projectRoot, ".oraculum", "runs", runId, "run.json");
+      const manifest = JSON.parse(await readFile(runPath, "utf8"));
+      if (manifest.status === "completed") {
+        return { runId, manifest };
+      }
+      lastError = `run ${runId} is still ${manifest.status}.`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await delay(pollIntervalMs);
+  }
+
+  throw new Error(`${options.label} did not settle within ${options.timeoutMs}ms. ${lastError}`);
+}
+
+export async function waitForExportPlan(projectRoot, runId, options) {
+  const pollIntervalMs = options.pollIntervalMs ?? 1000;
+  const deadline = Date.now() + options.timeoutMs;
+  const exportPlanPath = join(
+    projectRoot,
+    ".oraculum",
+    "runs",
+    runId,
+    "reports",
+    "export-plan.json",
+  );
+  const runPath = join(projectRoot, ".oraculum", "runs", runId, "run.json");
+  let lastError = `export plan ${exportPlanPath} was not written yet.`;
+
+  while (Date.now() < deadline) {
+    try {
+      await readFile(exportPlanPath, "utf8");
+      const manifest = JSON.parse(await readFile(runPath, "utf8"));
+      const exportedCandidateIds = Array.isArray(manifest.candidates)
+        ? manifest.candidates.filter((candidate) => candidate?.status === "exported")
+        : [];
+      if (exportedCandidateIds.length > 0) {
+        return;
+      }
+      lastError = `export plan exists, but run ${runId} has not recorded an exported candidate yet.`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await delay(pollIntervalMs);
+  }
+
+  throw new Error(
+    `${options.label} did not persist its export plan within ${options.timeoutMs}ms. ${lastError}`,
+  );
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms).unref();
+  });
 }
 
 function countToolCalls(runtime, output, command) {
@@ -745,8 +825,10 @@ function terminateChild(child) {
   }, 500).unref();
 }
 
-main().catch((error) => {
-  const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`${message}\n`);
-  process.exitCode = 1;
-});
+if (isEntrypoint) {
+  main().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`${message}\n`);
+    process.exitCode = 1;
+  });
+}

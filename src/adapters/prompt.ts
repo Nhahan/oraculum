@@ -309,6 +309,7 @@ export function buildPreflightPrompt(request: AgentPreflightRequest): string {
     "- Prefer proceed when the repository and task already provide enough grounding for a safe tournament run.",
     "- Prefer needs-clarification when one short missing answer would unlock safe execution.",
     "- Prefer external-research-required when correctness depends on official external docs or version facts that are not already grounded in the repository.",
+    "- When checking repository evidence, treat docs/ and internal/ as optional and inspect only paths that actually exist.",
     "- Do not invent repository facts, target files, commands, or external citations.",
     "- Keep the summary and any question concise and concrete.",
     "- Return JSON only.",
