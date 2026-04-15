@@ -9,6 +9,132 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const publishedSpec = process.env.ORACULUM_PUBLISHED_SPEC;
 const keepEvidence = process.env.ORACULUM_KEEP_EVIDENCE === "1";
 
+export function classifyPublishedSmokePrompt(prompt) {
+  if (
+    prompt.includes(
+      "You are deciding whether an Oraculum consultation is ready to proceed before any candidate is generated.",
+    )
+  ) {
+    return "preflight";
+  }
+
+  if (
+    prompt.includes(
+      "You are selecting the best Oraculum consultation validation posture for the current repository.",
+    )
+  ) {
+    return "profile";
+  }
+
+  if (prompt.includes("You are selecting the best Oraculum finalist.")) {
+    return "winner";
+  }
+
+  return /^Candidate ID: (.+)$/m.test(prompt) ? "candidate" : "read-only";
+}
+
+export function shouldPublishedSmokeMutateWorkspace(prompt) {
+  return classifyPublishedSmokePrompt(prompt) === "candidate";
+}
+
+export function buildPublishedSmokeFakeCodexSource() {
+  return `const fs = require("node:fs");
+const path = require("node:path");
+const classifyPublishedSmokePrompt = ${classifyPublishedSmokePrompt.toString()};
+const shouldPublishedSmokeMutateWorkspace = ${shouldPublishedSmokeMutateWorkspace.toString()};
+
+	const prompt = fs.readFileSync(0, "utf8");
+	const promptKind = classifyPublishedSmokePrompt(prompt);
+	const args = process.argv.slice(2);
+	const cwdIndex = args.indexOf("-C");
+	if (cwdIndex >= 0 && typeof args[cwdIndex + 1] === "string") {
+	  process.chdir(args[cwdIndex + 1]);
+	}
+	const candidateMatch = prompt.match(/^Candidate ID: (.+)$/m);
+	const candidateId = candidateMatch ? candidateMatch[1].trim() : "cand-01";
+
+	function preflightPayload() {
+	  return {
+	    decision: "proceed",
+	    confidence: "high",
+	    summary: "The repository and task are grounded enough to start the consultation.",
+	    researchPosture: "repo-only",
+	  };
+	}
+
+	function profilePayload() {
+	  return {
+	    profileId: "library",
+    confidence: "high",
+    summary: "library profile fits the repository signals.",
+    candidateCount: 2,
+    strategyIds: ["minimal-change", "test-amplified"],
+    selectedCommandIds: ["lint-fast", "typecheck-fast", "unit-impact", "full-suite-deep"],
+    missingCapabilities: [],
+  };
+}
+
+	function winnerPayload() {
+  return {
+    candidateId: "cand-02",
+    confidence: "high",
+    summary: "cand-02 preserved the strongest evidence.",
+  };
+}
+
+function resolveWorkspaceRoot() {
+  const current = process.cwd();
+  if (current.includes(path.sep + '.oraculum' + path.sep + 'workspaces' + path.sep)) {
+    return current;
+  }
+
+  const workspacesRoot = path.join(current, '.oraculum', 'workspaces');
+  if (!candidateId || !fs.existsSync(workspacesRoot)) {
+    return current;
+  }
+
+  for (const runDir of fs.readdirSync(workspacesRoot)) {
+    const candidateRoot = path.join(workspacesRoot, runDir, candidateId);
+    if (fs.existsSync(path.join(candidateRoot, 'src', 'index.js'))) {
+      return candidateRoot;
+    }
+  }
+
+  return current;
+}
+
+function mutateWorkspace() {
+  const file = path.join(resolveWorkspaceRoot(), "src", "index.js");
+  const next = fs.readFileSync(file, "utf8").replace('"Bye"', '"Hello from ' + candidateId + '"');
+  fs.writeFileSync(file, next, "utf8");
+}
+
+	if (shouldPublishedSmokeMutateWorkspace(prompt)) {
+	  mutateWorkspace();
+	}
+
+let out = "";
+for (let index = 0; index < args.length; index += 1) {
+  if (args[index] === "-o") {
+    out = args[index + 1] || "";
+  }
+}
+
+	process.stdout.write(JSON.stringify({ event: "started" }) + "\\n");
+	if (out) {
+	  const payload = promptKind === "preflight"
+	    ? preflightPayload()
+	    : promptKind === "profile"
+	      ? profilePayload()
+	      : promptKind === "winner"
+	        ? winnerPayload()
+	        : "candidate patch ready";
+	  fs.writeFileSync(out, typeof payload === "string" ? payload : JSON.stringify(payload), "utf8");
+	}
+process.exit(0);
+`;
+}
+
 async function main() {
   const tempRoot = await mkdtemp(join(tmpdir(), "oraculum-published-smoke-"));
 
@@ -81,76 +207,7 @@ async function main() {
     const fakeBinaryPath = await writeNodeBinary(
       projectRoot,
       "published-smoke-codex",
-      `const fs = require("node:fs");
-const path = require("node:path");
-
-	const prompt = fs.readFileSync(0, "utf8");
-	const args = process.argv.slice(2);
-	const candidateMatch = prompt.match(/^Candidate ID: (.+)$/m);
-	const candidateId = candidateMatch ? candidateMatch[1].trim() : "cand-01";
-	const isPreflight = prompt.includes("You are deciding whether an Oraculum consultation is ready to proceed before any candidate is generated.");
-	const isProfile = prompt.includes("You are selecting the best Oraculum consultation profile");
-	const isWinner = prompt.includes("You are selecting the best Oraculum finalist.");
-
-	function preflightPayload() {
-	  return {
-	    decision: "proceed",
-	    confidence: "high",
-	    summary: "The repository and task are grounded enough to start the consultation.",
-	    researchPosture: "repo-only",
-	  };
-	}
-
-	function profilePayload() {
-	  return {
-	    profileId: "library",
-    confidence: "high",
-    summary: "library profile fits the repository signals.",
-    candidateCount: 2,
-    strategyIds: ["minimal-change", "test-amplified"],
-    selectedCommandIds: ["lint-fast", "typecheck-fast", "unit-impact", "full-suite-deep"],
-    missingCapabilities: [],
-  };
-}
-
-function winnerPayload() {
-  return {
-    candidateId: "cand-02",
-    confidence: "high",
-    summary: "cand-02 preserved the strongest evidence.",
-  };
-}
-
-function mutateWorkspace() {
-  const file = path.join(process.cwd(), "src", "index.js");
-  const next = fs.readFileSync(file, "utf8").replace('"Bye"', '"Hello from ' + candidateId + '"');
-  fs.writeFileSync(file, next, "utf8");
-}
-
-	if (!isPreflight && !isProfile && !isWinner) {
-	  mutateWorkspace();
-	}
-
-let out = "";
-for (let index = 0; index < args.length; index += 1) {
-  if (args[index] === "-o") {
-    out = args[index + 1] || "";
-  }
-}
-
-	process.stdout.write(JSON.stringify({ event: "started" }) + "\\n");
-	if (out) {
-	  const payload = isPreflight
-	    ? preflightPayload()
-	    : isProfile
-	      ? profilePayload()
-	      : isWinner
-	        ? winnerPayload()
-	        : "candidate patch ready";
-	  fs.writeFileSync(out, typeof payload === "string" ? payload : JSON.stringify(payload), "utf8");
-	}
-process.exit(0);
-`,
+      buildPublishedSmokeFakeCodexSource(),
     );
 
     runOrThrow("git", ["init"], { cwd: projectRoot });

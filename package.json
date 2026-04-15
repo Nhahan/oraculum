@@ -38,6 +38,7 @@
     "evidence:release-smoke": "node scripts/release-smoke.mjs",
     "format": "biome check --write .",
     "lint": "biome check .",
+    "prepack": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
