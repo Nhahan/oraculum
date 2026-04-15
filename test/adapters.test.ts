@@ -296,21 +296,19 @@ if (out) {
     const winnerSchema = JSON.parse(
       await readFile(join(logDir, "winner-judge.schema.json"), "utf8"),
     ) as {
-      oneOf?: Array<{
-        required?: string[];
-      }>;
+      type?: string;
+      oneOf?: unknown;
+      properties?: Record<string, { anyOf?: Array<{ type?: string }> }>;
+      required?: string[];
     };
-    expect(winnerSchema.oneOf?.[0]?.required).toEqual(
-      expect.arrayContaining([
-        "decision",
-        "candidateId",
-        "confidence",
-        "summary",
-        "judgingCriteria",
-      ]),
-    );
-    expect(winnerSchema.oneOf?.[1]?.required).toEqual(
+    expect(winnerSchema.type).toBe("object");
+    expect(winnerSchema.oneOf).toBeUndefined();
+    expect(winnerSchema.required).toEqual(
       expect.arrayContaining(["decision", "confidence", "summary", "judgingCriteria"]),
+    );
+    expect(winnerSchema.required).toEqual(expect.arrayContaining(["candidateId"]));
+    expect(winnerSchema.properties?.candidateId?.anyOf).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "string" }), { type: "null" }]),
     );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Change summary: mode=git-diff, changed=2, created=1, removed=0, modified=1, +14, -3",

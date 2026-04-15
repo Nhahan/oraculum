@@ -492,37 +492,21 @@ function buildCodexWinnerRecommendationSchema(): Record<string, unknown> {
 
   return {
     type: "object",
-    oneOf: [
-      {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          decision: { type: "string", const: "select" },
-          candidateId: { type: "string", minLength: 1 },
-          confidence: {
-            type: "string",
-            enum: ["low", "medium", "high"],
-          },
-          summary: { type: "string", minLength: 1 },
-          judgingCriteria: buildCodexNullableSchema(judgingCriteriaProperty),
-        },
-        required: ["decision", "candidateId", "confidence", "summary", "judgingCriteria"],
+    additionalProperties: false,
+    properties: {
+      decision: {
+        type: "string",
+        enum: ["select", "abstain"],
       },
-      {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          decision: { type: "string", const: "abstain" },
-          confidence: {
-            type: "string",
-            enum: ["low", "medium", "high"],
-          },
-          summary: { type: "string", minLength: 1 },
-          judgingCriteria: buildCodexNullableSchema(judgingCriteriaProperty),
-        },
-        required: ["decision", "confidence", "summary", "judgingCriteria"],
+      candidateId: buildCodexNullableSchema({ type: "string", minLength: 1 }),
+      confidence: {
+        type: "string",
+        enum: ["low", "medium", "high"],
       },
-    ],
+      summary: { type: "string", minLength: 1 },
+      judgingCriteria: buildCodexNullableSchema(judgingCriteriaProperty),
+    },
+    required: ["decision", "candidateId", "confidence", "summary", "judgingCriteria"],
   };
 }
 
