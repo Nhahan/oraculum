@@ -28,6 +28,20 @@ afterEach(async () => {
   );
 });
 
+function parseLoggedJson(text: string): unknown {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start === -1 || end === -1 || end < start) {
+      throw new Error(`Could not find a JSON object in logged text: ${trimmed}`);
+    }
+    return JSON.parse(trimmed.slice(start, end + 1)) as unknown;
+  }
+}
+
 describe("agent adapters", () => {
   it("runs Claude adapter and captures prompt/stdout/stderr artifacts", async () => {
     const root = await createTempRoot();
@@ -863,7 +877,7 @@ process.stdout.write(JSON.stringify({
     );
     const stderr = await readFile(join(logDir, "winner-judge.stderr.txt"), "utf8");
     expect(stderr).toContain('"--json-schema"');
-    const parsedStderr = JSON.parse(stderr) as { schema?: string };
+    const parsedStderr = parseLoggedJson(stderr) as { schema?: string };
     expect(parsedStderr.schema).toBeTruthy();
     const parsedSchema = JSON.parse(parsedStderr.schema ?? "{}") as {
       type?: string;
@@ -949,7 +963,7 @@ process.stdout.write(JSON.stringify({
       '"--json-schema"',
     );
     const stderr = await readFile(join(logDir, "clarify-follow-up.stderr.txt"), "utf8");
-    const parsedStderr = JSON.parse(stderr) as { schema?: string };
+    const parsedStderr = parseLoggedJson(stderr) as { schema?: string };
     const parsedSchema = JSON.parse(parsedStderr.schema ?? "{}") as {
       required?: string[];
       properties?: Record<string, unknown>;

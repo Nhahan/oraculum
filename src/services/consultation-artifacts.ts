@@ -36,6 +36,14 @@ import { secondOpinionWinnerSelectionArtifactSchema } from "./finalist-judge.js"
 import { comparisonReportSchema } from "./finalist-report.js";
 import { hasNonEmptyTextArtifact, hasNonEmptyTextArtifactSync } from "./project.js";
 
+function toPortableRelativePath(path: string): string {
+  return path.replaceAll("\\", "/");
+}
+
+function toPreservedAbsolutePath(path: string, normalizedPath: string): string {
+  return path.includes("\\") ? normalizedPath : normalizedPath.replaceAll("\\", "/");
+}
+
 export interface ConsultationArtifactPaths {
   consultationRoot: string;
   configPath?: string;
@@ -72,7 +80,6 @@ export interface ConsultationArtifactState extends ConsultationArtifactPaths {
 
 export function normalizeConsultationScopePath(projectRoot: string, path: string): string {
   if (!isAbsolute(path)) {
-    const normalizedPath = normalize(path);
     const resolvedPath = normalize(resolvePath(projectRoot, path));
     const relativePath = relative(projectRoot, resolvedPath);
     if (
@@ -83,7 +90,7 @@ export function normalizeConsultationScopePath(projectRoot: string, path: string
     ) {
       return resolvedPath;
     }
-    return normalizedPath;
+    return toPortableRelativePath(relativePath);
   }
 
   const normalizedPath = normalize(path);
@@ -94,10 +101,10 @@ export function normalizeConsultationScopePath(projectRoot: string, path: string
     relativePath.startsWith("..") ||
     isAbsolute(relativePath)
   ) {
-    return normalizedPath;
+    return toPreservedAbsolutePath(path, normalizedPath);
   }
 
-  return normalize(relativePath);
+  return toPortableRelativePath(relativePath);
 }
 
 export function buildConsultationArtifactPathCandidates(

@@ -588,6 +588,7 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
   }>;
   summary: string;
 } {
+  const toPortableDisplayPath = (path: string) => path.replaceAll("\\", "/");
   const projectRoot = resolveProjectRoot(cwd);
   const configPath = getConfigPath(projectRoot);
   const advancedConfigPath = getAdvancedConfigPath(projectRoot);
@@ -623,8 +624,8 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
             ? "Use `orc ...` directly in Claude Code."
             : "Run `oraculum setup --runtime claude-code`.",
         notes: [
-          `Expected MCP config path: ${claudeMcpPath}`,
-          `Expected Claude plugin cache root: ${claudePluginsDir}`,
+          `Expected MCP config path: ${toPortableDisplayPath(claudeMcpPath)}`,
+          `Expected Claude plugin cache root: ${toPortableDisplayPath(claudePluginsDir)}`,
           "Run `oraculum setup --runtime claude-code` to register the MCP server and install the Oraculum plugin.",
         ],
       },
@@ -638,9 +639,9 @@ export function buildSetupDiagnosticsResponse(cwd: string): {
             ? "Use `orc ...` directly in Codex."
             : "Run `oraculum setup --runtime codex`.",
         notes: [
-          `Expected MCP config path: ${codexConfigPath}`,
-          `Expected skill install root: ${codexSkillsDir}`,
-          `Expected rule install root: ${codexRulesDir}`,
+          `Expected MCP config path: ${toPortableDisplayPath(codexConfigPath)}`,
+          `Expected skill install root: ${toPortableDisplayPath(codexSkillsDir)}`,
+          `Expected rule install root: ${toPortableDisplayPath(codexRulesDir)}`,
           "Run `oraculum setup --runtime codex` to register the MCP server and install the Oraculum skills and rules.",
         ],
       },

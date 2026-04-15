@@ -45,6 +45,7 @@ import {
 import { comparisonReportSchema } from "../src/services/finalist-report.js";
 import { collectP3Evidence } from "../src/services/p3-evidence.js";
 import { initializeProject, loadProjectConfigLayers } from "../src/services/project.js";
+import { normalizePathForAssertion } from "./helpers/platform.js";
 
 const tempRoots: string[] = [];
 type ProfileSelectionFixture = {
@@ -70,6 +71,15 @@ afterEach(async () => {
     }),
   );
 });
+
+function toExpectedDisplayPath(cwd: string, targetPath: string): string {
+  const normalizedRoot = normalizePathForAssertion(cwd).replace(/\/+$/u, "");
+  const normalizedTarget = normalizePathForAssertion(targetPath);
+  if (normalizedTarget.startsWith(`${normalizedRoot}/`)) {
+    return normalizedTarget.slice(normalizedRoot.length + 1);
+  }
+  return normalizedTarget;
+}
 
 describe("consultation workflow summaries", () => {
   it("renders a richer consultation summary with entry paths and next steps", async () => {
@@ -2939,10 +2949,10 @@ describe("consultation workflow summaries", () => {
     );
 
     expect(summary).toContain(
-      `- comparison report: ${getFinalistComparisonMarkdownPath(cwd, manifest.id).replace(`${cwd}/`, "")}`,
+      `- comparison report: ${toExpectedDisplayPath(cwd, getFinalistComparisonMarkdownPath(cwd, manifest.id))}`,
     );
     expect(summary).not.toContain(
-      getFinalistComparisonJsonPath(cwd, manifest.id).replace(`${cwd}/`, ""),
+      toExpectedDisplayPath(cwd, getFinalistComparisonJsonPath(cwd, manifest.id)),
     );
     expect(review.artifactAvailability.comparisonReport).toBe(true);
   });
@@ -3198,7 +3208,7 @@ describe("consultation workflow summaries", () => {
     const summary = await renderConsultationSummary(manifest, cwd);
 
     expect(summary).toContain(
-      `- comparison report: ${getFinalistComparisonJsonPath(cwd, manifest.id).replace(`${cwd}/`, "")}`,
+      `- comparison report: ${toExpectedDisplayPath(cwd, getFinalistComparisonJsonPath(cwd, manifest.id))}`,
     );
     expect(summary).toContain(
       "- inspect the comparison first. The shared `orc crown` path only crowns a recommended survivor.",
