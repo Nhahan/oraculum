@@ -4872,6 +4872,163 @@ describe("consultation workflow summaries", () => {
     ).rejects.toThrow();
   });
 
+  it("falls back to needs-clarification for vague low-contract tasks when runtime preflight times out", async () => {
+    const cwd = await createInitializedProject();
+    const taskPacket = materializedTaskPacketSchema.parse({
+      id: "ambiguous-release-guidance",
+      title: "ambiguous release guidance",
+      intent: [
+        "Improve the release guidance so it is better and more complete.",
+        "",
+        "Notes:",
+        "- Keep the change small.",
+        "- Use the right artifact if one should change.",
+        "- Make the result obviously better for operators.",
+      ].join("\n"),
+      nonGoals: [],
+      acceptanceCriteria: [],
+      risks: [],
+      oracleHints: [],
+      strategyHints: [],
+      contextFiles: [],
+      source: {
+        kind: "task-note",
+        path: join(cwd, "dogfood-tasks", "ambiguous-release-guidance.md"),
+      },
+    });
+    await mkdir(join(cwd, "dogfood-tasks"), { recursive: true });
+    await writeFile(taskPacket.source.path, `${taskPacket.intent}\n`, "utf8");
+
+    const adapter: AgentAdapter = {
+      name: "codex",
+      async runCandidate() {
+        throw new Error("not used");
+      },
+      async recommendWinner() {
+        throw new Error("not used");
+      },
+      async recommendProfile() {
+        throw new Error("not used");
+      },
+      async recommendPreflight(request) {
+        return {
+          runId: request.runId,
+          adapter: "codex",
+          status: "timed-out",
+          startedAt: "2026-04-15T00:00:00.000Z",
+          completedAt: "2026-04-15T00:00:45.000Z",
+          exitCode: 0,
+          summary: "Timed out before returning structured output.",
+          artifacts: [],
+        };
+      },
+      async recommendClarifyFollowUp() {
+        throw new Error("not used");
+      },
+    };
+
+    const result = await recommendConsultationPreflight({
+      adapter,
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: join(cwd, ".oraculum", "runs", "run_ambiguous_timeout", "reports"),
+      runId: "run_ambiguous_timeout",
+      taskPacket,
+    });
+
+    expect(result.preflight).toEqual({
+      decision: "needs-clarification",
+      confidence: "low",
+      summary:
+        "Runtime preflight did not return a structured recommendation. The task still lacks a concrete target artifact or result contract for safe execution.",
+      researchPosture: "repo-only",
+      clarificationQuestion:
+        "Which file or artifact should Oraculum update, and what concrete result should it produce?",
+    });
+  });
+
+  it("falls back to external-research-required for official current-version doc tasks when runtime preflight times out", async () => {
+    const cwd = await createInitializedProject();
+    const taskPacket = materializedTaskPacketSchema.parse({
+      id: "external-doc-alignment",
+      title: "external doc alignment",
+      intent: [
+        "Document whether the current Oraculum docs match the latest official OpenAI guidance for structured tool output and prompt-based JSON schema generation.",
+        "",
+        "Target outcome:",
+        "- If repo-only evidence is enough, proceed conservatively.",
+        "- If repo-only evidence is insufficient, do not guess. Require bounded external research and preserve a reusable research artifact.",
+      ].join("\n"),
+      nonGoals: [],
+      acceptanceCriteria: [],
+      risks: ["Prefer explicit research over speculation."],
+      oracleHints: [],
+      strategyHints: [],
+      contextFiles: [],
+      source: {
+        kind: "task-note",
+        path: join(cwd, "dogfood-tasks", "external-doc-alignment.md"),
+      },
+    });
+    await mkdir(join(cwd, "dogfood-tasks"), { recursive: true });
+    await writeFile(taskPacket.source.path, `${taskPacket.intent}\n`, "utf8");
+
+    const adapter: AgentAdapter = {
+      name: "codex",
+      async runCandidate() {
+        throw new Error("not used");
+      },
+      async recommendWinner() {
+        throw new Error("not used");
+      },
+      async recommendProfile() {
+        throw new Error("not used");
+      },
+      async recommendPreflight(request) {
+        return {
+          runId: request.runId,
+          adapter: "codex",
+          status: "timed-out",
+          startedAt: "2026-04-15T00:00:00.000Z",
+          completedAt: "2026-04-15T00:00:45.000Z",
+          exitCode: 0,
+          summary: "Timed out before returning structured output.",
+          artifacts: [],
+        };
+      },
+      async recommendClarifyFollowUp() {
+        throw new Error("not used");
+      },
+    };
+
+    const result = await recommendConsultationPreflight({
+      adapter,
+      configLayers: await loadProjectConfigLayers(cwd),
+      projectRoot: cwd,
+      reportsDir: join(cwd, ".oraculum", "runs", "run_external_doc_timeout", "reports"),
+      runId: "run_external_doc_timeout",
+      taskPacket,
+    });
+
+    expect(result.preflight).toEqual({
+      decision: "external-research-required",
+      confidence: "low",
+      summary:
+        "Runtime preflight did not return a structured recommendation. Official current-version documentation is still required before safe execution.",
+      researchPosture: "external-research-required",
+      researchQuestion:
+        "What do the official current-version docs say about the requested behavior or guidance?",
+    });
+    const researchBrief = consultationResearchBriefSchema.parse(
+      JSON.parse(
+        await readFile(getResearchBriefPath(cwd, "run_external_doc_timeout"), "utf8"),
+      ) as unknown,
+    );
+    expect(researchBrief.question).toBe(
+      "What do the official current-version docs say about the requested behavior or guidance?",
+    );
+  });
+
   it("renders research-brief task provenance in summary and review", async () => {
     const cwd = await createInitializedProject();
     const originalTaskPath = "/tmp/original-task.md";

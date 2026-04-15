@@ -1478,6 +1478,9 @@ if (out) {
     await expect(readFile(join(logDir, "preflight-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Detected capabilities:",
     );
+    await expect(readFile(join(logDir, "preflight-judge.prompt.txt"), "utf8")).resolves.toContain(
+      "treat docs/ and internal/ as optional",
+    );
     const preflightSchema = JSON.parse(
       await readFile(join(logDir, "preflight-judge.schema.json"), "utf8"),
     ) as {
