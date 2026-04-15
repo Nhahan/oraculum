@@ -28,6 +28,10 @@ export const packagedHostArtifactLayout: PackagedHostArtifactLayout =
             purpose: "Generated Claude command entry for consult.",
           },
           {
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/commands/plan.md`,
+            purpose: "Generated Claude command entry for plan.",
+          },
+          {
             path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/commands/verdict.md`,
             purpose: "Generated Claude command entry for verdict.",
           },
@@ -54,6 +58,10 @@ export const packagedHostArtifactLayout: PackagedHostArtifactLayout =
           {
             path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/.claude-plugin/skills/consult/SKILL.md`,
             purpose: "Generated Claude exact-prefix consult skill.",
+          },
+          {
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/.claude-plugin/skills/plan/SKILL.md`,
+            purpose: "Generated Claude exact-prefix plan skill.",
           },
           {
             path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/.claude-plugin/skills/verdict/SKILL.md`,
@@ -88,6 +96,10 @@ export const packagedHostArtifactLayout: PackagedHostArtifactLayout =
           {
             path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-consult/SKILL.md`,
             purpose: "Generated Codex exact-prefix consult skill.",
+          },
+          {
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-plan/SKILL.md`,
+            purpose: "Generated Codex exact-prefix plan skill.",
           },
           {
             path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-verdict/SKILL.md`,

@@ -180,6 +180,14 @@ export function getCandidateRepairAttemptResultPath(
   );
 }
 
+export function getCandidateScorecardPath(
+  projectRoot: string,
+  runId: string,
+  candidateId: string,
+): string {
+  return join(getCandidateDir(projectRoot, runId, candidateId), "scorecard.json");
+}
+
 export function getCandidateOracleStdoutLogPath(
   projectRoot: string,
   runId: string,
@@ -210,6 +218,14 @@ export function getReportsDir(projectRoot: string, runId: string): string {
   return join(getRunDir(projectRoot, runId), "reports");
 }
 
+export function getConsultationPlanPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "consultation-plan.json");
+}
+
+export function getConsultationPlanMarkdownPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "consultation-plan.md");
+}
+
 export function getExportPlanPath(projectRoot: string, runId: string): string {
   return join(getReportsDir(projectRoot, runId), "export-plan.json");
 }
@@ -236,6 +252,10 @@ export function getWinnerSelectionPath(projectRoot: string, runId: string): stri
 
 export function getSecondOpinionWinnerSelectionPath(projectRoot: string, runId: string): string {
   return join(getReportsDir(projectRoot, runId), "winner-selection.second-opinion.json");
+}
+
+export function getFinalistScorecardsPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "finalist-scorecards.json");
 }
 
 export function getProfileSelectionPath(projectRoot: string, runId: string): string {

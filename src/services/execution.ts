@@ -15,13 +15,14 @@ import {
   getCandidateManifestPath,
   getCandidateRepairAttemptLogsDir,
   getCandidateRepairAttemptResultPath,
+  getCandidateScorecardPath,
   getCandidateVerdictPath,
   getCandidateWitnessPath,
   getRunManifestPath,
   resolveProjectRoot,
 } from "../core/paths.js";
 import { runSubprocess } from "../core/subprocess.js";
-import { type Adapter, projectConfigSchema } from "../domain/config.js";
+import { type Adapter, type ProjectConfig, projectConfigSchema } from "../domain/config.js";
 import type { OracleVerdict } from "../domain/oracle.js";
 import {
   getValidationGaps,
@@ -30,7 +31,10 @@ import {
 } from "../domain/profile.js";
 import {
   type CandidateManifest,
+  type CandidateScorecard,
+  type ConsultationPlanArtifact,
   candidateManifestSchema,
+  candidateScorecardSchema,
   deriveConsultationOutcomeForManifest,
   isPreflightBlockedConsultation,
   type RunManifest,
@@ -38,15 +42,16 @@ import {
   roundManifestSchema,
   runManifestSchema,
 } from "../domain/run.js";
-import { materializedTaskPacketSchema } from "../domain/task.js";
+import { type MaterializedTaskPacket, materializedTaskPacketSchema } from "../domain/task.js";
 
 import { captureManagedProjectSnapshot } from "./base-snapshots.js";
 import { writeFailureAnalysis } from "./failure-analysis.js";
 import { recommendSecondOpinionWithJudge, recommendWinnerWithJudge } from "./finalist-judge.js";
 import { writeFinalistComparisonReport } from "./finalist-report.js";
-import { evaluateCandidateRound } from "./oracles.js";
+import { evaluateCandidateRound, evaluateConsultationPlanStage } from "./oracles.js";
 import { loadProjectConfig, writeJsonFile } from "./project.js";
 import { readRunManifest, writeLatestExportableRunState, writeLatestRunState } from "./runs.js";
+import { readConsultationPlanArtifact } from "./task-packets.js";
 import { detectWorkspaceMode, prepareCandidateWorkspace } from "./workspaces.js";
 
 interface ExecuteRunOptions {
@@ -66,6 +71,7 @@ export interface ExecuteRunResult {
 interface CandidateExecutionRecord {
   candidate: CandidateManifest;
   result: AgentRunResult;
+  taskPacket: MaterializedTaskPacket;
 }
 
 interface CandidateSelectionMetrics {
@@ -96,6 +102,12 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
   };
   const adapter = createAgentAdapter(manifest.agent, adapterFactoryOptions);
+  const consultationPlan = await readConsultationPlanArtifact(manifest.taskPath);
+  if (manifest.taskPacket.sourceKind === "consultation-plan" && !consultationPlan) {
+    throw new OraculumError(
+      `Consultation "${manifest.id}" references a missing or invalid consultation plan artifact: ${manifest.taskPath}`,
+    );
+  }
   const secondOpinionAdapterName = projectConfig.judge.secondOpinion.enabled
     ? resolveSecondOpinionAdapterName(
         manifest.agent,
@@ -117,6 +129,8 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
   const candidateMap = new Map<string, CandidateManifest>();
   const selectionMetrics = new Map<string, CandidateSelectionMetrics>();
   const verdictsByCandidate = new Map<string, OracleVerdict[]>();
+  const scorecardsByCandidate = new Map<string, CandidateScorecard>();
+  const executionGraphEnabled = isExecutionGraphEnabled(consultationPlan);
 
   for (const candidate of manifest.candidates) {
     const runningCandidate = candidateManifestSchema.parse({
@@ -126,6 +140,9 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     await writeCandidateManifest(projectRoot, manifest.id, runningCandidate);
 
     const logDir = getCandidateLogsDir(projectRoot, manifest.id, candidate.id);
+    const taskPacket = materializedTaskPacketSchema.parse(
+      JSON.parse(await readFile(candidate.taskPacketPath, "utf8")) as unknown,
+    );
     let parsedResult: AgentRunResult;
     let workspaceMode = runningCandidate.workspaceMode;
     let baseRevision: string | undefined;
@@ -160,10 +177,6 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
           ...(baseRevision ? { baseRevision } : {}),
           ...(baseSnapshotPath ? { baseSnapshotPath } : {}),
         }),
-      );
-
-      const taskPacket = materializedTaskPacketSchema.parse(
-        JSON.parse(await readFile(candidate.taskPacketPath, "utf8")) as unknown,
       );
 
       const result = await adapter.runCandidate({
@@ -204,6 +217,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     executionRecords.push({
       candidate: updatedCandidate,
       result: parsedResult,
+      taskPacket,
     });
     selectionMetrics.set(updatedCandidate.id, {
       candidateId: updatedCandidate.id,
@@ -214,10 +228,27 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
       criticalCount: 0,
       artifactCount: parsedResult.artifacts.length,
     });
+    if (executionGraphEnabled && consultationPlan) {
+      const scorecard = candidateScorecardSchema.parse({
+        candidateId: updatedCandidate.id,
+        mode: consultationPlan.mode,
+        stageResults: [],
+        violations: [],
+        unresolvedRisks: [],
+        artifactCoherence: deriveCandidateArtifactCoherence(parsedResult),
+        reversibility: "unknown",
+      });
+      scorecardsByCandidate.set(updatedCandidate.id, scorecard);
+      await writeJsonFile(
+        getCandidateScorecardPath(projectRoot, manifest.id, updatedCandidate.id),
+        scorecard,
+      );
+    }
   }
 
   const roundStates = manifest.rounds.map((round) => ({ ...round }));
   const survivors = new Set(executionRecords.map((record) => record.candidate.id));
+  const completedRoundIds = new Set<string>();
 
   for (const [index, round] of roundStates.entries()) {
     const startedAt = new Date().toISOString();
@@ -251,6 +282,8 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
         result: currentResult,
         roundId: round.id,
         runId: manifest.id,
+        taskPacket: record.taskPacket,
+        ...(consultationPlan ? { consultationPlan } : {}),
       });
       const repairHistoryVerdicts: OracleVerdict[] = [];
       let repairAttempt = 0;
@@ -274,9 +307,6 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
         let repairedResult: AgentRunResult;
 
         try {
-          const taskPacket = materializedTaskPacketSchema.parse(
-            JSON.parse(await readFile(currentCandidate.taskPacketPath, "utf8")) as unknown,
-          );
           repairedResult = agentRunResultSchema.parse(
             await adapter.runCandidate({
               runId: manifest.id,
@@ -285,7 +315,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
               strategyLabel: currentCandidate.strategyLabel,
               workspaceDir: currentCandidate.workspaceDir,
               logDir: repairLogDir,
-              taskPacket,
+              taskPacket: record.taskPacket,
               repairContext: buildRepairContext(round.id, repairAttempt, evaluation.verdicts),
             }),
           );
@@ -334,6 +364,8 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
           result: currentResult,
           roundId: round.id,
           runId: manifest.id,
+          taskPacket: record.taskPacket,
+          ...(consultationPlan ? { consultationPlan } : {}),
         });
       }
 
@@ -395,6 +427,36 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
       eliminatedCount,
       completedAt: new Date().toISOString(),
     });
+    completedRoundIds.add(round.id);
+    if (executionGraphEnabled && consultationPlan) {
+      const stageEffects = await evaluateEligibleConsultationPlanStages({
+        candidateMap,
+        completedRoundIds,
+        consultationPlan,
+        executionRecords,
+        projectConfig,
+        projectRoot,
+        runId: manifest.id,
+        scorecardsByCandidate,
+        selectionMetrics,
+        survivors,
+        verdictsByCandidate,
+      });
+      roundStates[index] = roundManifestSchema.parse({
+        ...roundStates[index],
+        verdictCount: roundStates[index].verdictCount + stageEffects.verdictCount,
+        eliminatedCount: roundStates[index].eliminatedCount + stageEffects.eliminatedCount,
+        survivorCount: Math.max(0, roundStates[index].survivorCount - stageEffects.eliminatedCount),
+      });
+      if (index < roundStates.length - 1) {
+        manifest = await writeRunManifest(projectRoot, {
+          ...manifest,
+          status: "running",
+          rounds: roundStates,
+          candidates: Array.from(candidateMap.values()),
+        });
+      }
+    }
   }
 
   const taskPacketPath = manifest.candidates[0]?.taskPacketPath;
@@ -409,6 +471,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
         adapter,
         candidateResults,
         candidates: Array.from(candidateMap.values()),
+        ...(consultationPlan ? { consultationPlan } : {}),
         ...(manifest.profileSelection ? { consultationProfile: manifest.profileSelection } : {}),
         projectRoot,
         runId: manifest.id,
@@ -424,6 +487,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
           Array.from(candidateMap.values()),
           selectionMetrics,
           manifest.profileSelection,
+          scorecardsByCandidate,
         )
       : undefined);
   if (taskPacket && secondOpinionAdapter && projectConfig.judge.secondOpinion.enabled) {
@@ -431,6 +495,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
       adapter: secondOpinionAdapter,
       candidateResults,
       candidates: Array.from(candidateMap.values()),
+      ...(consultationPlan ? { consultationPlan } : {}),
       ...(manifest.profileSelection ? { consultationProfile: manifest.profileSelection } : {}),
       managedTreeRules: projectConfig.managedTree,
       ...(judgeOutcome.judgeResult ? { primaryJudgeResult: judgeOutcome.judgeResult } : {}),
@@ -561,36 +626,14 @@ function chooseFallbackWinner(
   candidates: CandidateManifest[],
   metricsByCandidate: Map<string, CandidateSelectionMetrics>,
   consultationProfile?: RunManifest["profileSelection"],
+  scorecardsByCandidate?: Map<string, CandidateScorecard>,
 ): RunRecommendation | undefined {
   const finalists = candidates.filter((candidate) => candidate.status === "promoted");
   if (finalists.length === 0) {
     return undefined;
   }
 
-  const ranked = [...finalists].sort((left, right) => {
-    const leftMetrics = metricsByCandidate.get(left.id);
-    const rightMetrics = metricsByCandidate.get(right.id);
-
-    const leftPenalty = buildPenalty(leftMetrics);
-    const rightPenalty = buildPenalty(rightMetrics);
-    if (leftPenalty !== rightPenalty) {
-      return leftPenalty - rightPenalty;
-    }
-
-    const leftPassCount = leftMetrics?.passCount ?? 0;
-    const rightPassCount = rightMetrics?.passCount ?? 0;
-    if (leftPassCount !== rightPassCount) {
-      return rightPassCount - leftPassCount;
-    }
-
-    const leftArtifactCount = leftMetrics?.artifactCount ?? 0;
-    const rightArtifactCount = rightMetrics?.artifactCount ?? 0;
-    if (leftArtifactCount !== rightArtifactCount) {
-      return rightArtifactCount - leftArtifactCount;
-    }
-
-    return left.id.localeCompare(right.id);
-  });
+  const ranked = rankFallbackCandidates(finalists, metricsByCandidate, scorecardsByCandidate);
 
   const winner = ranked[0];
   if (!winner) {
@@ -638,6 +681,132 @@ function chooseFallbackWinner(
   };
 }
 
+export function rankFallbackCandidates(
+  finalists: CandidateManifest[],
+  metricsByCandidate: Map<string, CandidateSelectionMetrics>,
+  scorecardsByCandidate?: Map<string, CandidateScorecard>,
+): CandidateManifest[] {
+  return [...finalists].sort((left, right) => {
+    const leftMetrics = metricsByCandidate.get(left.id);
+    const rightMetrics = metricsByCandidate.get(right.id);
+
+    const scorecardComparison = compareFallbackScorecards(
+      scorecardsByCandidate?.get(left.id),
+      scorecardsByCandidate?.get(right.id),
+    );
+    if (scorecardComparison !== 0) {
+      return scorecardComparison;
+    }
+
+    const leftPenalty = buildPenalty(leftMetrics);
+    const rightPenalty = buildPenalty(rightMetrics);
+    if (leftPenalty !== rightPenalty) {
+      return leftPenalty - rightPenalty;
+    }
+
+    const leftPassCount = leftMetrics?.passCount ?? 0;
+    const rightPassCount = rightMetrics?.passCount ?? 0;
+    if (leftPassCount !== rightPassCount) {
+      return rightPassCount - leftPassCount;
+    }
+
+    const leftArtifactCount = leftMetrics?.artifactCount ?? 0;
+    const rightArtifactCount = rightMetrics?.artifactCount ?? 0;
+    if (leftArtifactCount !== rightArtifactCount) {
+      return rightArtifactCount - leftArtifactCount;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function compareFallbackScorecards(
+  left: CandidateScorecard | undefined,
+  right: CandidateScorecard | undefined,
+): number {
+  if (!left && !right) {
+    return 0;
+  }
+  if (left && !right) {
+    return -1;
+  }
+  if (!left && right) {
+    return 1;
+  }
+
+  if (!left || !right) {
+    return 0;
+  }
+
+  const leftPenalty = buildScorecardPenalty(left);
+  const rightPenalty = buildScorecardPenalty(right);
+  if (leftPenalty !== rightPenalty) {
+    return leftPenalty - rightPenalty;
+  }
+
+  const leftCoverage = countCoveredWorkstreams(left);
+  const rightCoverage = countCoveredWorkstreams(right);
+  if (leftCoverage !== rightCoverage) {
+    return rightCoverage - leftCoverage;
+  }
+
+  const leftPassStages = countPassingStages(left);
+  const rightPassStages = countPassingStages(right);
+  if (leftPassStages !== rightPassStages) {
+    return rightPassStages - leftPassStages;
+  }
+
+  const leftRiskCount = left.unresolvedRisks.length;
+  const rightRiskCount = right.unresolvedRisks.length;
+  if (leftRiskCount !== rightRiskCount) {
+    return leftRiskCount - rightRiskCount;
+  }
+
+  if (left.artifactCoherence !== right.artifactCoherence) {
+    return (
+      rankArtifactCoherence(right.artifactCoherence) - rankArtifactCoherence(left.artifactCoherence)
+    );
+  }
+
+  return 0;
+}
+
+function buildScorecardPenalty(scorecard: CandidateScorecard): number {
+  return (
+    countNonPassingStages(scorecard) * 1_000 +
+    scorecard.violations.length * 100 +
+    scorecard.unresolvedRisks.length * 10
+  );
+}
+
+function countCoveredWorkstreams(scorecard: CandidateScorecard): number {
+  return scorecard.stageResults.reduce(
+    (total, stageResult) =>
+      total +
+      Object.values(stageResult.workstreamCoverage).filter((status) => status === "covered").length,
+    0,
+  );
+}
+
+function countPassingStages(scorecard: CandidateScorecard): number {
+  return scorecard.stageResults.filter((stageResult) => stageResult.status === "pass").length;
+}
+
+function countNonPassingStages(scorecard: CandidateScorecard): number {
+  return scorecard.stageResults.filter((stageResult) => stageResult.status !== "pass").length;
+}
+
+function rankArtifactCoherence(coherence: CandidateScorecard["artifactCoherence"]): number {
+  switch (coherence) {
+    case "strong":
+      return 3;
+    case "weak":
+      return 2;
+    case "unknown":
+      return 1;
+  }
+}
+
 function buildPenalty(metrics: CandidateSelectionMetrics | undefined): number {
   if (!metrics) {
     return Number.POSITIVE_INFINITY;
@@ -673,6 +842,182 @@ async function writeCandidateManifest(
   candidate: CandidateManifest,
 ): Promise<void> {
   await writeJsonFile(getCandidateManifestPath(projectRoot, runId, candidate.id), candidate);
+}
+
+function isExecutionGraphEnabled(
+  consultationPlan: ConsultationPlanArtifact | undefined,
+): consultationPlan is ConsultationPlanArtifact {
+  return (
+    consultationPlan !== undefined &&
+    consultationPlan.mode !== "standard" &&
+    consultationPlan.stagePlan.length > 0 &&
+    consultationPlan.workstreams.length > 0
+  );
+}
+
+async function evaluateEligibleConsultationPlanStages(options: {
+  candidateMap: Map<string, CandidateManifest>;
+  completedRoundIds: Set<string>;
+  consultationPlan: ConsultationPlanArtifact;
+  executionRecords: CandidateExecutionRecord[];
+  projectConfig: ProjectConfig;
+  projectRoot: string;
+  runId: string;
+  scorecardsByCandidate: Map<string, CandidateScorecard>;
+  selectionMetrics: Map<string, CandidateSelectionMetrics>;
+  survivors: Set<string>;
+  verdictsByCandidate: Map<string, OracleVerdict[]>;
+}): Promise<{ eliminatedCount: number; verdictCount: number }> {
+  let eliminatedCount = 0;
+  let verdictCount = 0;
+
+  for (const record of options.executionRecords) {
+    if (!options.survivors.has(record.candidate.id)) {
+      continue;
+    }
+
+    let currentCandidate = options.candidateMap.get(record.candidate.id) ?? record.candidate;
+    let scorecard =
+      options.scorecardsByCandidate.get(record.candidate.id) ??
+      candidateScorecardSchema.parse({
+        candidateId: currentCandidate.id,
+        mode: options.consultationPlan.mode,
+        stageResults: [],
+        violations: [],
+        unresolvedRisks: [],
+        artifactCoherence: deriveCandidateArtifactCoherence(record.result),
+        reversibility: "unknown",
+      });
+
+    let progress = true;
+    while (progress && options.survivors.has(currentCandidate.id)) {
+      progress = false;
+      for (const stage of options.consultationPlan.stagePlan) {
+        if (scorecard.stageResults.some((stageResult) => stageResult.stageId === stage.id)) {
+          continue;
+        }
+        if (!stage.roundIds.every((roundId) => options.completedRoundIds.has(roundId))) {
+          continue;
+        }
+        if (
+          !stage.dependsOn.every((dependencyId) =>
+            scorecard.stageResults.some(
+              (stageResult) =>
+                stageResult.stageId === dependencyId && stageResult.status === "pass",
+            ),
+          )
+        ) {
+          continue;
+        }
+
+        const stageEvaluation = await evaluateConsultationPlanStage({
+          candidate: currentCandidate,
+          completedStageResults: scorecard.stageResults,
+          consultationPlan: options.consultationPlan,
+          existingVerdicts: options.verdictsByCandidate.get(currentCandidate.id) ?? [],
+          projectConfig: options.projectConfig,
+          projectRoot: options.projectRoot,
+          result: record.result,
+          runId: options.runId,
+          stage,
+        });
+        const nextVerdicts = [
+          ...(options.verdictsByCandidate.get(currentCandidate.id) ?? []),
+          ...stageEvaluation.verdicts,
+        ];
+        options.verdictsByCandidate.set(currentCandidate.id, nextVerdicts);
+        verdictCount += stageEvaluation.verdicts.length;
+        recordVerdictMetrics(
+          options.selectionMetrics,
+          currentCandidate.id,
+          stageEvaluation.verdicts,
+        );
+        await Promise.all([
+          ...stageEvaluation.verdicts.map(async (verdict) =>
+            writeJsonFile(
+              getCandidateVerdictPath(
+                options.projectRoot,
+                options.runId,
+                currentCandidate.id,
+                stageEvaluation.roundId,
+                verdict.oracleId,
+              ),
+              verdict,
+            ),
+          ),
+          ...stageEvaluation.witnesses.map(async (witness) =>
+            writeJsonFile(
+              getCandidateWitnessPath(
+                options.projectRoot,
+                options.runId,
+                currentCandidate.id,
+                stageEvaluation.roundId,
+                witness.id,
+              ),
+              witness,
+            ),
+          ),
+        ]);
+
+        scorecard = candidateScorecardSchema.parse({
+          ...scorecard,
+          stageResults: [...scorecard.stageResults, stageEvaluation.stageResult],
+          violations: uniqueStrings([
+            ...scorecard.violations,
+            ...stageEvaluation.stageResult.violations,
+          ]),
+          unresolvedRisks: uniqueStrings([
+            ...scorecard.unresolvedRisks,
+            ...stageEvaluation.stageResult.unresolvedRisks,
+          ]),
+          artifactCoherence: deriveCandidateArtifactCoherence(record.result),
+        });
+        options.scorecardsByCandidate.set(currentCandidate.id, scorecard);
+        await writeJsonFile(
+          getCandidateScorecardPath(options.projectRoot, options.runId, currentCandidate.id),
+          scorecard,
+        );
+
+        if (stageEvaluation.stageResult.status !== "pass") {
+          options.survivors.delete(currentCandidate.id);
+          eliminatedCount += 1;
+          currentCandidate = candidateManifestSchema.parse({
+            ...currentCandidate,
+            status: "eliminated",
+          });
+          options.candidateMap.set(currentCandidate.id, currentCandidate);
+          await writeCandidateManifest(options.projectRoot, options.runId, currentCandidate);
+        }
+
+        progress = true;
+        break;
+      }
+    }
+  }
+
+  return {
+    eliminatedCount,
+    verdictCount,
+  };
+}
+
+function deriveCandidateArtifactCoherence(
+  result: AgentRunResult,
+): CandidateScorecard["artifactCoherence"] {
+  const reviewableKinds = new Set(["stdout", "transcript", "report", "patch"]);
+  if (result.artifacts.some((artifact) => reviewableKinds.has(artifact.kind))) {
+    return "strong";
+  }
+  if (
+    result.artifacts.some((artifact) => artifact.kind !== "prompt" && artifact.kind !== "stderr")
+  ) {
+    return "weak";
+  }
+  return "unknown";
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 interface MaterializeExecutionFailureOptions {

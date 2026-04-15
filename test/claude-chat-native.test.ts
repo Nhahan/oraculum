@@ -136,6 +136,7 @@ describe("Claude Code chat-native packaging", () => {
       "commands/consult.md",
       "commands/verdict.md",
       "commands/crown.md",
+      "commands/plan.md",
       "commands/draft.md",
       "commands/init.md",
     ]);
@@ -143,6 +144,7 @@ describe("Claude Code chat-native packaging", () => {
       ".claude-plugin/skills/consult/SKILL.md",
       ".claude-plugin/skills/verdict/SKILL.md",
       ".claude-plugin/skills/crown/SKILL.md",
+      ".claude-plugin/skills/plan/SKILL.md",
       ".claude-plugin/skills/draft/SKILL.md",
       ".claude-plugin/skills/init/SKILL.md",
     ]);
@@ -174,6 +176,7 @@ describe("Claude Code chat-native packaging", () => {
     );
 
     const consultSkill = skills.find((file) => file.path.includes("/consult/"));
+    const planSkill = skills.find((file) => file.path.includes("/plan/"));
     expect(consultSkill?.content).toContain('taskInput: "$ARGUMENTS"');
     expect(consultSkill?.content).toContain('agent: "claude-code"');
     expect(consultSkill?.content).toContain("relay that tool result and stop");
@@ -182,6 +185,10 @@ describe("Claude Code chat-native packaging", () => {
     );
     expect(consultSkill?.content).toContain(
       "Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`",
+    );
+    expect(planSkill?.content).toContain("`orc plan` is the optional planning lane.");
+    expect(planSkill?.content).toContain(
+      "Use `orc consult` later if the user wants to execute the planned consultation.",
     );
   });
 

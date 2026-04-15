@@ -38,6 +38,7 @@ interface RecommendConsultationPreflightOptions {
 }
 
 export interface RecommendedConsultationPreflight {
+  clarifyFollowUp?: ConsultationClarifyFollowUp;
   preflight: ConsultationPreflight;
   signals: Awaited<ReturnType<typeof collectProfileRepoSignals>>;
 }
@@ -163,6 +164,7 @@ export async function recommendConsultationPreflight(
   }
 
   return {
+    ...(clarifyFollowUp ? { clarifyFollowUp } : {}),
     preflight: consultationPreflightSchema.parse(
       researchBasisDrift !== undefined ? { ...preflight, researchBasisDrift } : preflight,
     ),

@@ -11,6 +11,8 @@ import {
   draftToolResponseSchema,
   initToolRequestSchema,
   initToolResponseSchema,
+  planToolRequestSchema,
+  planToolResponseSchema,
   setupStatusToolRequestSchema,
   setupStatusToolResponseSchema,
   verdictArchiveToolRequestSchema,
@@ -23,6 +25,7 @@ import {
   runCrownTool,
   runDraftTool,
   runInitTool,
+  runPlanTool,
   runSetupStatusTool,
   runVerdictArchiveTool,
   runVerdictTool,
@@ -56,10 +59,27 @@ export function createOraculumMcpServer(): McpServer {
   );
 
   server.registerTool(
+    "oraculum_plan",
+    {
+      title: "Oraculum Plan",
+      description: "Plan a consultation without executing candidates.",
+      inputSchema: planToolRequestSchema,
+      outputSchema: planToolResponseSchema,
+    },
+    async (request) => {
+      const response = await runPlanTool(request);
+      return {
+        content: [{ type: "text", text: response.summary }],
+        structuredContent: response,
+      };
+    },
+  );
+
+  server.registerTool(
     "oraculum_draft",
     {
       title: "Oraculum Draft",
-      description: "Stage a consultation without executing candidates.",
+      description: "Compatibility alias for planning a consultation without executing candidates.",
       inputSchema: draftToolRequestSchema,
       outputSchema: draftToolResponseSchema,
     },

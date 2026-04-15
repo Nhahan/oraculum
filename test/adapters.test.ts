@@ -424,6 +424,110 @@ if (out) {
     );
   });
 
+  it("includes plan-derived judging presets in winner-selection prompts", () => {
+    const winnerPrompt = buildWinnerSelectionPrompt({
+      runId: "run_plan_judging_prompt",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_plan_judging_prompt/reports",
+      taskPacket: createTaskPacket(),
+      plannedJudgingPreset: {
+        decisionDrivers: ["Target artifact path: docs/PRD.md"],
+        plannedJudgingCriteria: [
+          "Directly improves docs/PRD.md instead of only adjacent files.",
+          "Leaves the planned document result internally consistent and reviewable.",
+        ],
+        crownGates: [
+          "Do not recommend finalists that fail to materially change docs/PRD.md.",
+          "Abstain if no finalist leaves the planned document result reviewable and internally consistent.",
+        ],
+      },
+      finalists: [],
+    });
+
+    expect(winnerPrompt).toContain("Planned decision drivers:");
+    expect(winnerPrompt).toContain("Target artifact path: docs/PRD.md");
+    expect(winnerPrompt).toContain("Planned judging criteria:");
+    expect(winnerPrompt).toContain(
+      'Reuse these plan-derived criteria in JSON as "judgingCriteria"',
+    );
+    expect(winnerPrompt).toContain("Planned crown gates:");
+    expect(winnerPrompt).toContain(
+      "If no finalist clearly satisfies these gates, abstain instead of forcing a recommendation.",
+    );
+    expect(winnerPrompt).toContain(
+      '"decision":"select","candidateId":"cand-01","confidence":"high","summary":"short rationale","judgingCriteria":["criterion"]}',
+    );
+    expect(winnerPrompt).toContain(
+      "Respect the planned crown gates; abstain if no finalist clearly satisfies them.",
+    );
+  });
+
+  it("includes finalist planned scorecards in winner-selection prompts", () => {
+    const winnerPrompt = buildWinnerSelectionPrompt({
+      runId: "run_plan_scorecards_prompt",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_plan_scorecards_prompt/reports",
+      taskPacket: createTaskPacket(),
+      finalists: [
+        {
+          candidateId: "cand-01",
+          strategyLabel: "Minimal Change",
+          summary: "Candidate one summary.",
+          artifactKinds: ["stdout"],
+          verdicts: [],
+          changedPaths: ["src/session.ts"],
+          changeSummary: {
+            mode: "git-diff",
+            changedPathCount: 1,
+            createdPathCount: 0,
+            removedPathCount: 0,
+            modifiedPathCount: 1,
+            addedLineCount: 3,
+            deletedLineCount: 1,
+          },
+          witnessRollup: {
+            witnessCount: 0,
+            warningOrHigherCount: 0,
+            repairableCount: 0,
+            repairHints: [],
+            riskSummaries: [],
+            keyWitnesses: [],
+          },
+          repairSummary: {
+            attemptCount: 0,
+            repairedRounds: [],
+          },
+          plannedScorecard: {
+            mode: "complex",
+            stageResults: [
+              {
+                stageId: "contract-fit",
+                status: "pass",
+                workstreamCoverage: {
+                  "session-contract": "covered",
+                },
+                violations: [],
+                unresolvedRisks: [],
+              },
+            ],
+            violations: ["none"],
+            unresolvedRisks: ["watch integration"],
+            artifactCoherence: "strong",
+            reversibility: "unknown",
+          },
+        },
+      ],
+    });
+
+    expect(winnerPrompt).toContain("Planned scorecard rules:");
+    expect(winnerPrompt).toContain("Planned scorecard:");
+    expect(winnerPrompt).toContain("Mode: complex");
+    expect(winnerPrompt).toContain("Stage results:");
+    expect(winnerPrompt).toContain("contract-fit: pass");
+    expect(winnerPrompt).toContain("Violations:");
+    expect(winnerPrompt).toContain("Unresolved risks:");
+  });
+
   it("accepts null optional judging criteria from Codex structured output", async () => {
     const root = await createTempRoot();
     const logDir = join(root, "judge-null-criteria-logs");

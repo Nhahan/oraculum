@@ -61,7 +61,7 @@ orc consult tasks/fix-session-loss.md --timeout-ms 300000
 
 Use `--timeout-ms` only when you want to put an explicit operator-owned bound on consultation adapter calls.
 
-- The default `consult` and `draft` product path does not impose an Oraculum-level adapter timeout.
+- The default `consult` and `plan` product path does not impose an Oraculum-level adapter timeout.
 - `--timeout-ms` bounds runtime adapter calls only; it does not rewrite repo-local oracle policy.
 - Release and evidence harnesses may still apply their own defaults. For example, `scripts/host-native-smoke.mjs` defaults to `300000ms` per host call because it is a test harness, not the product default.
 - Repo-local oracle commands remain separate and can carry their own optional `timeoutMs` values in `.oraculum/advanced.json`.
@@ -265,13 +265,24 @@ orc init
 You usually do not need this because `consult` auto-initializes the project on first use.
 If you run `orc init --force`, Oraculum resets the quick-start config and removes any existing `.oraculum/advanced.json`.
 
-## Plan Only
+## Plan First
 
 ```text
-orc draft tasks/fix-session-loss.md
+orc plan tasks/fix-session-loss.md
 ```
 
-This is mainly for development or internal inspection. It scaffolds the consultation without executing candidates.
+Use this when the task is broad, risky, or still needs a stronger execution contract before candidate generation. Oraculum persists:
+
+- `.oraculum/runs/<consultation-id>/reports/consultation-plan.json`
+- `.oraculum/runs/<consultation-id>/reports/consultation-plan.md`
+
+The JSON artifact is rerunnable:
+
+```text
+orc consult .oraculum/runs/<consultation-id>/reports/consultation-plan.json
+```
+
+`orc draft ...` remains available as a compatibility alias for the same planning lane.
 
 ## Shell Setup And MCP Commands
 

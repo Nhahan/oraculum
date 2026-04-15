@@ -60,6 +60,7 @@ import {
   runCrownTool,
   runDraftTool,
   runInitTool,
+  runPlanTool,
   runSetupStatusTool,
   runVerdictArchiveTool,
   runVerdictTool,
@@ -347,12 +348,44 @@ describe("chat-native MCP tools", () => {
       taskInput: "fix session loss on refresh",
       agent: "claude-code",
       candidates: 1,
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+      },
       autoProfile: {
-        allowRuntime: false,
+        allowRuntime: true,
       },
     });
     expect(mockedExecuteRun).not.toHaveBeenCalled();
     expect(response.mode).toBe("draft");
+  });
+
+  it("runs plan without executing candidates", async () => {
+    const response = await runPlanTool({
+      cwd: "/tmp/project",
+      taskInput: "fix session loss on refresh",
+      agent: "codex",
+      candidates: 2,
+      timeoutMs: 2400,
+    });
+
+    expect(mockedPlanRun).toHaveBeenCalledWith({
+      cwd: "/tmp/project",
+      taskInput: "fix session loss on refresh",
+      agent: "codex",
+      candidates: 2,
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        timeoutMs: 2400,
+      },
+      autoProfile: {
+        allowRuntime: true,
+        timeoutMs: 2400,
+      },
+    });
+    expect(mockedExecuteRun).not.toHaveBeenCalled();
+    expect(response.mode).toBe("plan");
   });
 
   it("parses inline host command options before planning a draft", async () => {
@@ -366,8 +399,12 @@ describe("chat-native MCP tools", () => {
       taskInput: "fix session loss on refresh",
       agent: "codex",
       candidates: 3,
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+      },
       autoProfile: {
-        allowRuntime: false,
+        allowRuntime: true,
       },
     });
     expect(response.mode).toBe("draft");
@@ -384,8 +421,12 @@ describe("chat-native MCP tools", () => {
       taskInput: "C:\\Users\\me\\tasks\\fix.md",
       agent: "claude-code",
       candidates: 1,
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+      },
       autoProfile: {
-        allowRuntime: false,
+        allowRuntime: true,
       },
     });
     expect(response.mode).toBe("draft");

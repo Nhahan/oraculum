@@ -19,6 +19,8 @@ import {
   initToolResponseSchema,
   type McpToolId,
   mcpToolIdSchema,
+  planToolRequestSchema,
+  planToolResponseSchema,
   type SetupStatusToolResponse,
   setupStatusToolRequestSchema,
   setupStatusToolResponseSchema,
@@ -40,6 +42,10 @@ export const oraculumMcpSchemas = {
   oraculum_consult: {
     request: consultToolRequestSchema,
     response: consultToolResponseSchema,
+  },
+  oraculum_plan: {
+    request: planToolRequestSchema,
+    response: planToolResponseSchema,
   },
   oraculum_draft: {
     request: draftToolRequestSchema,
@@ -111,6 +117,8 @@ export const oraculumMcpToolSurface = [
     machineReadableArtifacts: [
       "run.json",
       "consultation-config.json",
+      "consultation-plan.json",
+      "consultation-plan.md",
       "preflight-readiness.json",
       "clarify-follow-up.json",
       "research-brief.json",
@@ -123,8 +131,49 @@ export const oraculumMcpToolSurface = [
     ],
   },
   {
+    id: "oraculum_plan",
+    purpose:
+      "Plan a consultation without executing candidates and return the persisted consultation-plan artifacts.",
+    requestShape: "planToolRequestSchema",
+    responseShape: "planToolResponseSchema",
+    bindings: [
+      {
+        kind: "existing-service",
+        module: "src/services/project.ts",
+        symbol: "ensureProjectInitialized",
+      },
+      {
+        kind: "existing-service",
+        module: "src/services/runs.ts",
+        symbol: "planRun",
+      },
+      {
+        kind: "existing-service",
+        module: "src/services/consultations.ts",
+        symbol: "renderConsultationSummary",
+      },
+      {
+        kind: "new-adapter-layer",
+        module: "src/services/chat-native.ts",
+        symbol: "buildConsultationArtifacts",
+        note: "Machine-readable MCP response assembly layer.",
+      },
+    ],
+    machineReadableArtifacts: [
+      "run.json",
+      "consultation-config.json",
+      "consultation-plan.json",
+      "consultation-plan.md",
+      "preflight-readiness.json",
+      "clarify-follow-up.json",
+      "research-brief.json",
+      "profile-selection.json",
+    ],
+  },
+  {
     id: "oraculum_draft",
-    purpose: "Plan a consultation without executing candidates and return the drafted run state.",
+    purpose:
+      "Compatibility alias for planning a consultation without executing candidates and returning the drafted run state.",
     requestShape: "draftToolRequestSchema",
     responseShape: "draftToolResponseSchema",
     bindings: [
@@ -150,7 +199,16 @@ export const oraculumMcpToolSurface = [
         note: "Machine-readable MCP response assembly layer.",
       },
     ],
-    machineReadableArtifacts: ["run.json", "consultation-config.json", "profile-selection.json"],
+    machineReadableArtifacts: [
+      "run.json",
+      "consultation-config.json",
+      "consultation-plan.json",
+      "consultation-plan.md",
+      "preflight-readiness.json",
+      "clarify-follow-up.json",
+      "research-brief.json",
+      "profile-selection.json",
+    ],
   },
   {
     id: "oraculum_verdict",
@@ -371,10 +429,48 @@ export const oraculumCommandManifest = [
     hostAdditions: {},
   },
   {
+    id: "plan",
+    prefix: "orc",
+    path: ["plan"],
+    summary: "Shape a consultation first and persist reusable planning artifacts.",
+    mcpTool: "oraculum_plan",
+    requestShape: "planToolRequestSchema",
+    responseShape: "planToolResponseSchema",
+    arguments: [
+      {
+        name: "taskInput",
+        kind: "string",
+        description: "Inline task text, a task note path, or a task packet path.",
+        required: true,
+        positional: true,
+      },
+      {
+        name: "agent",
+        kind: "string",
+        description: "Agent runtime override.",
+        option: "--agent",
+      },
+      {
+        name: "candidates",
+        kind: "integer",
+        description: "Number of candidate variants to plan.",
+        option: "--candidates",
+      },
+      {
+        name: "timeoutMs",
+        kind: "integer",
+        description: "Adapter timeout in milliseconds.",
+        option: "--timeout-ms",
+      },
+    ],
+    examples: ['orc plan "fix session loss on refresh"'],
+    hostAdditions: {},
+  },
+  {
     id: "draft",
     prefix: "orc",
     path: ["draft"],
-    summary: "Stage a consultation without executing candidates.",
+    summary: "Compatibility alias for `orc plan`.",
     mcpTool: "oraculum_draft",
     requestShape: "draftToolRequestSchema",
     responseShape: "draftToolResponseSchema",
@@ -397,6 +493,12 @@ export const oraculumCommandManifest = [
         kind: "integer",
         description: "Number of candidate variants to plan.",
         option: "--candidates",
+      },
+      {
+        name: "timeoutMs",
+        kind: "integer",
+        description: "Adapter timeout in milliseconds.",
+        option: "--timeout-ms",
       },
     ],
     examples: ['orc draft "fix session loss on refresh"'],
@@ -439,6 +541,8 @@ export function buildConsultationArtifacts(
 ): {
   consultationRoot: string;
   configPath?: string;
+  consultationPlanPath?: string;
+  consultationPlanMarkdownPath?: string;
   preflightReadinessPath?: string;
   clarifyFollowUpPath?: string;
   researchBriefPath?: string;

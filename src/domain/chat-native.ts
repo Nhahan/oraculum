@@ -47,6 +47,7 @@ export const commandPrefixSchema = z.literal("orc");
 
 export const mcpToolIdSchema = z.enum([
   "oraculum_consult",
+  "oraculum_plan",
   "oraculum_draft",
   "oraculum_verdict",
   "oraculum_verdict_archive",
@@ -113,6 +114,8 @@ export const consultToolRequestSchema = z.object({
 export const consultationArtifactPathsSchema = z.object({
   consultationRoot: z.string().min(1),
   configPath: z.string().min(1).optional(),
+  consultationPlanPath: z.string().min(1).optional(),
+  consultationPlanMarkdownPath: z.string().min(1).optional(),
   preflightReadinessPath: z.string().min(1).optional(),
   clarifyFollowUpPath: z.string().min(1).optional(),
   researchBriefPath: z.string().min(1).optional(),
@@ -140,11 +143,29 @@ export const consultToolResponseSchema = z.object({
   initializedProject: projectInitializationResultSchema.optional(),
 });
 
+export const planToolRequestSchema = z.object({
+  cwd: z.string().min(1),
+  taskInput: z.string().min(1),
+  agent: adapterSchema.optional(),
+  candidates: z.number().int().min(1).max(16).optional(),
+  timeoutMs: z.number().int().min(1).optional(),
+});
+
+export const planToolResponseSchema = z.object({
+  mode: z.literal("plan"),
+  consultation: runManifestSchema,
+  status: savedConsultationStatusSchema,
+  summary: z.string().min(1),
+  artifacts: consultationArtifactPathsSchema,
+  initializedProject: projectInitializationResultSchema.optional(),
+});
+
 export const draftToolRequestSchema = z.object({
   cwd: z.string().min(1),
   taskInput: z.string().min(1),
   agent: adapterSchema.optional(),
   candidates: z.number().int().min(1).max(16).optional(),
+  timeoutMs: z.number().int().min(1).optional(),
 });
 
 export const draftToolResponseSchema = z.object({
@@ -998,6 +1019,8 @@ export type CommandArgument = z.infer<typeof commandArgumentSchema>;
 export type CommandManifestEntry = z.infer<typeof commandManifestEntrySchema>;
 export type ConsultToolRequest = z.infer<typeof consultToolRequestSchema>;
 export type ConsultToolResponse = z.infer<typeof consultToolResponseSchema>;
+export type PlanToolRequest = z.infer<typeof planToolRequestSchema>;
+export type PlanToolResponse = z.infer<typeof planToolResponseSchema>;
 export type DraftToolRequest = z.infer<typeof draftToolRequestSchema>;
 export type DraftToolResponse = z.infer<typeof draftToolResponseSchema>;
 export type VerdictToolRequest = z.infer<typeof verdictToolRequestSchema>;

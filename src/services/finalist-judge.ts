@@ -1,9 +1,11 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { z } from "zod";
 
 import type { AgentAdapter, AgentJudgeResult, AgentRunResult } from "../adapters/types.js";
 import { agentJudgeResultSchema } from "../adapters/types.js";
 import {
+  getCandidateScorecardPath,
+  getFinalistScorecardsPath,
   getSecondOpinionWinnerJudgeLogsDir,
   getSecondOpinionWinnerSelectionPath,
   getWinnerJudgeLogsDir,
@@ -20,6 +22,9 @@ import type { OracleVerdict } from "../domain/oracle.js";
 import type { ConsultationProfileSelection } from "../domain/profile.js";
 import {
   type CandidateManifest,
+  type ConsultationPlanArtifact,
+  candidateScorecardSchema,
+  finalistScorecardBundleSchema,
   type RunRecommendation,
   runRecommendationSchema,
 } from "../domain/run.js";
@@ -32,6 +37,7 @@ interface RecommendWinnerOptions {
   adapter: AgentAdapter;
   candidateResults: AgentRunResult[];
   candidates: CandidateManifest[];
+  consultationPlan?: ConsultationPlanArtifact;
   projectRoot: string;
   runId: string;
   taskPacket: unknown;
@@ -247,6 +253,7 @@ interface RecommendSecondOpinionOptions {
   adapter: AgentAdapter;
   candidateResults: AgentRunResult[];
   candidates: CandidateManifest[];
+  consultationPlan?: ConsultationPlanArtifact;
   consultationProfile?: ConsultationProfileSelection;
   managedTreeRules?: ManagedTreeRules;
   primaryJudgeResult?: AgentJudgeResult;
@@ -273,9 +280,21 @@ export async function recommendWinnerWithJudge(
 
   const taskPacket = materializedTaskPacketSchema.parse(options.taskPacket);
   const projectRoot = resolveProjectRoot(options.projectRoot);
+  const finalistsWithScorecards = await attachPlannedScorecards({
+    finalists,
+    candidates: options.candidates,
+    projectRoot,
+    runId: options.runId,
+    ...(options.consultationPlan ? { consultationPlan: options.consultationPlan } : {}),
+  });
   const logDir = getWinnerJudgeLogsDir(projectRoot, options.runId);
   await mkdir(logDir, { recursive: true });
   const persistedResultPath = getWinnerSelectionPath(projectRoot, options.runId);
+  await persistFinalistScorecards({
+    finalists: finalistsWithScorecards,
+    projectRoot,
+    runId: options.runId,
+  });
 
   let judgeResult: AgentJudgeResult;
   try {
@@ -285,7 +304,16 @@ export async function recommendWinnerWithJudge(
         projectRoot,
         logDir,
         taskPacket,
-        finalists,
+        finalists: finalistsWithScorecards,
+        ...(options.consultationPlan
+          ? {
+              plannedJudgingPreset: {
+                decisionDrivers: options.consultationPlan.decisionDrivers,
+                plannedJudgingCriteria: options.consultationPlan.plannedJudgingCriteria,
+                crownGates: options.consultationPlan.crownGates,
+              },
+            }
+          : {}),
         ...(options.consultationProfile
           ? {
               consultationProfile: {
@@ -331,7 +359,7 @@ export async function recommendWinnerWithJudge(
     return { fallbackAllowed: false, judgeResult };
   }
 
-  const matchingFinalist = finalists.find(
+  const matchingFinalist = finalistsWithScorecards.find(
     (finalist) => finalist.candidateId === recommendation.candidateId,
   );
   if (!matchingFinalist) {
@@ -376,8 +404,17 @@ export async function recommendSecondOpinionWithJudge(
     return undefined;
   }
 
-  const triggerMatches = collectSecondOpinionTriggerMatches({
+  const projectRoot = resolveProjectRoot(options.projectRoot);
+  const finalistsWithScorecards = await attachPlannedScorecards({
     finalists,
+    candidates: options.candidates,
+    projectRoot,
+    runId: options.runId,
+    ...(options.consultationPlan ? { consultationPlan: options.consultationPlan } : {}),
+  });
+
+  const triggerMatches = collectSecondOpinionTriggerMatches({
+    finalists: finalistsWithScorecards,
     primaryRecommendation,
     secondOpinion: options.secondOpinion,
     ...(options.primaryJudgeResult ? { primaryJudgeResult: options.primaryJudgeResult } : {}),
@@ -388,7 +425,6 @@ export async function recommendSecondOpinionWithJudge(
   }
 
   const taskPacket = materializedTaskPacketSchema.parse(options.taskPacket);
-  const projectRoot = resolveProjectRoot(options.projectRoot);
   const logDir = getSecondOpinionWinnerJudgeLogsDir(projectRoot, options.runId);
   await mkdir(logDir, { recursive: true });
 
@@ -400,7 +436,16 @@ export async function recommendSecondOpinionWithJudge(
         projectRoot,
         logDir,
         taskPacket,
-        finalists,
+        finalists: finalistsWithScorecards,
+        ...(options.consultationPlan
+          ? {
+              plannedJudgingPreset: {
+                decisionDrivers: options.consultationPlan.decisionDrivers,
+                plannedJudgingCriteria: options.consultationPlan.plannedJudgingCriteria,
+                crownGates: options.consultationPlan.crownGates,
+              },
+            }
+          : {}),
         ...(options.consultationProfile
           ? {
               consultationProfile: {
@@ -433,6 +478,87 @@ export async function recommendSecondOpinionWithJudge(
   });
   await writeJsonFile(getSecondOpinionWinnerSelectionPath(projectRoot, options.runId), artifact);
   return artifact;
+}
+
+async function attachPlannedScorecards(options: {
+  finalists: Awaited<ReturnType<typeof buildEnrichedFinalistSummaries>>;
+  candidates: CandidateManifest[];
+  consultationPlan?: ConsultationPlanArtifact;
+  projectRoot: string;
+  runId: string;
+}): Promise<Awaited<ReturnType<typeof buildEnrichedFinalistSummaries>>> {
+  if (
+    !options.consultationPlan ||
+    options.consultationPlan.mode === "standard" ||
+    options.consultationPlan.stagePlan.length === 0
+  ) {
+    return options.finalists;
+  }
+
+  const candidateById = new Map(options.candidates.map((candidate) => [candidate.id, candidate]));
+  const scorecardsByCandidateId = new Map<string, z.infer<typeof candidateScorecardSchema>>();
+
+  await Promise.all(
+    options.finalists.map(async (finalist) => {
+      const candidate = candidateById.get(finalist.candidateId);
+      if (!candidate || candidate.status !== "promoted") {
+        return;
+      }
+
+      const scorecardPath = getCandidateScorecardPath(
+        options.projectRoot,
+        options.runId,
+        finalist.candidateId,
+      );
+      try {
+        const parsedScorecard = candidateScorecardSchema.parse(
+          JSON.parse(await readFile(scorecardPath, "utf8")) as unknown,
+        );
+        scorecardsByCandidateId.set(finalist.candidateId, parsedScorecard);
+      } catch {
+        return;
+      }
+    }),
+  );
+
+  return options.finalists.map((finalist) => {
+    const scorecard = scorecardsByCandidateId.get(finalist.candidateId);
+    return scorecard
+      ? {
+          ...finalist,
+          plannedScorecard: omitCandidateIdFromScorecard(scorecard),
+        }
+      : finalist;
+  });
+}
+
+async function persistFinalistScorecards(options: {
+  finalists: Awaited<ReturnType<typeof buildEnrichedFinalistSummaries>>;
+  projectRoot: string;
+  runId: string;
+}): Promise<void> {
+  const finalistsWithScorecards = options.finalists.filter((finalist) => finalist.plannedScorecard);
+  if (finalistsWithScorecards.length === 0) {
+    return;
+  }
+
+  const artifact = finalistScorecardBundleSchema.parse({
+    runId: options.runId,
+    generatedAt: new Date().toISOString(),
+    finalists: finalistsWithScorecards.map((finalist) => ({
+      candidateId: finalist.candidateId,
+      strategyLabel: finalist.strategyLabel,
+      ...finalist.plannedScorecard,
+    })),
+  });
+  await writeJsonFile(getFinalistScorecardsPath(options.projectRoot, options.runId), artifact);
+}
+
+function omitCandidateIdFromScorecard(
+  scorecard: z.infer<typeof candidateScorecardSchema>,
+): Awaited<ReturnType<typeof buildEnrichedFinalistSummaries>>[number]["plannedScorecard"] {
+  const { candidateId: _candidateId, ...rest } = scorecard;
+  return rest;
 }
 
 async function writeJudgeWarning(resultPath: string, message: string): Promise<void> {

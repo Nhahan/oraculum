@@ -7,6 +7,8 @@ import type { ZodTypeAny, z } from "zod";
 import { agentJudgeResultSchema } from "../adapters/types.js";
 import {
   getClarifyFollowUpPath,
+  getConsultationPlanMarkdownPath,
+  getConsultationPlanPath,
   getExportPlanPath,
   getFailureAnalysisPath,
   getFinalistComparisonJsonPath,
@@ -23,6 +25,7 @@ import {
 import { consultationProfileSelectionArtifactSchema } from "../domain/profile.js";
 import {
   consultationClarifyFollowUpSchema,
+  consultationPlanArtifactSchema,
   consultationPreflightReadinessArtifactSchema,
   consultationResearchBriefSchema,
   exportPlanSchema,
@@ -36,6 +39,8 @@ import { hasNonEmptyTextArtifact, hasNonEmptyTextArtifactSync } from "./project.
 export interface ConsultationArtifactPaths {
   consultationRoot: string;
   configPath?: string;
+  consultationPlanPath?: string;
+  consultationPlanMarkdownPath?: string;
   preflightReadinessPath?: string;
   clarifyFollowUpPath?: string;
   researchBriefPath?: string;
@@ -49,6 +54,7 @@ export interface ConsultationArtifactPaths {
 }
 
 export interface ConsultationArtifactState extends ConsultationArtifactPaths {
+  consultationPlan?: z.infer<typeof consultationPlanArtifactSchema>;
   preflightReadiness?: z.infer<typeof consultationPreflightReadinessArtifactSchema>;
   clarifyFollowUp?: z.infer<typeof consultationClarifyFollowUpSchema>;
   researchBrief?: z.infer<typeof consultationResearchBriefSchema>;
@@ -102,6 +108,8 @@ export function buildConsultationArtifactPathCandidates(
   return {
     consultationRoot: getRunDir(projectRoot, consultationId),
     configPath: getRunConfigPath(projectRoot, consultationId),
+    consultationPlanPath: getConsultationPlanPath(projectRoot, consultationId),
+    consultationPlanMarkdownPath: getConsultationPlanMarkdownPath(projectRoot, consultationId),
     preflightReadinessPath: getPreflightReadinessPath(projectRoot, consultationId),
     clarifyFollowUpPath: getClarifyFollowUpPath(projectRoot, consultationId),
     researchBriefPath: getResearchBriefPath(projectRoot, consultationId),
@@ -154,6 +162,8 @@ export async function readConsultationArtifacts(
   },
 ): Promise<ConsultationArtifactState> {
   const [
+    parsedConsultationPlan,
+    consultationPlanMarkdownAvailable,
     parsedPreflightReadiness,
     parsedClarifyFollowUp,
     parsedResearchBrief,
@@ -165,6 +175,10 @@ export async function readConsultationArtifacts(
     parsedSecondOpinionWinnerSelection,
     parsedCrowningRecord,
   ] = await Promise.all([
+    readJsonArtifact(paths.consultationPlanPath, consultationPlanArtifactSchema),
+    paths.consultationPlanMarkdownPath
+      ? hasNonEmptyTextArtifact(paths.consultationPlanMarkdownPath)
+      : Promise.resolve(false),
     readJsonArtifact(paths.preflightReadinessPath, consultationPreflightReadinessArtifactSchema),
     readJsonArtifact(paths.clarifyFollowUpPath, consultationClarifyFollowUpSchema),
     readJsonArtifact(paths.researchBriefPath, consultationResearchBriefSchema),
@@ -184,6 +198,9 @@ export async function readConsultationArtifacts(
 
   const expectedRunId = options?.expectedRunId;
   const preflightReadiness = filterArtifactForConsultationRun(parsedPreflightReadiness, {
+    expectedRunId,
+  });
+  const consultationPlan = filterArtifactForConsultationRun(parsedConsultationPlan, {
     expectedRunId,
   });
   const clarifyFollowUp = filterArtifactForConsultationRun(parsedClarifyFollowUp, {
@@ -219,6 +236,12 @@ export async function readConsultationArtifacts(
   return {
     consultationRoot: paths.consultationRoot,
     ...(paths.configPath && existsSync(paths.configPath) ? { configPath: paths.configPath } : {}),
+    ...(consultationPlan && paths.consultationPlanPath
+      ? { consultationPlanPath: paths.consultationPlanPath, consultationPlan }
+      : {}),
+    ...(consultationPlanMarkdownAvailable && paths.consultationPlanMarkdownPath
+      ? { consultationPlanMarkdownPath: paths.consultationPlanMarkdownPath }
+      : {}),
     ...(preflightReadiness && paths.preflightReadinessPath
       ? { preflightReadinessPath: paths.preflightReadinessPath, preflightReadiness }
       : {}),
@@ -266,6 +289,13 @@ export function readConsultationArtifactsSync(
     expectedRunId?: string;
   },
 ): ConsultationArtifactState {
+  const parsedConsultationPlan = readJsonArtifactSync(
+    paths.consultationPlanPath,
+    consultationPlanArtifactSchema,
+  );
+  const consultationPlanMarkdownAvailable = paths.consultationPlanMarkdownPath
+    ? hasNonEmptyTextArtifactSync(paths.consultationPlanMarkdownPath)
+    : false;
   const parsedPreflightReadiness = readJsonArtifactSync(
     paths.preflightReadinessPath,
     consultationPreflightReadinessArtifactSchema,
@@ -303,6 +333,9 @@ export function readConsultationArtifactsSync(
   );
   const parsedCrowningRecord = readJsonArtifactSync(paths.crowningRecordPath, exportPlanSchema);
   const expectedRunId = options?.expectedRunId;
+  const consultationPlan = filterArtifactForConsultationRun(parsedConsultationPlan, {
+    expectedRunId,
+  });
   const preflightReadiness = filterArtifactForConsultationRun(parsedPreflightReadiness, {
     expectedRunId,
   });
@@ -339,6 +372,12 @@ export function readConsultationArtifactsSync(
   return {
     consultationRoot: paths.consultationRoot,
     ...(paths.configPath && existsSync(paths.configPath) ? { configPath: paths.configPath } : {}),
+    ...(consultationPlan && paths.consultationPlanPath
+      ? { consultationPlanPath: paths.consultationPlanPath, consultationPlan }
+      : {}),
+    ...(consultationPlanMarkdownAvailable && paths.consultationPlanMarkdownPath
+      ? { consultationPlanMarkdownPath: paths.consultationPlanMarkdownPath }
+      : {}),
     ...(preflightReadiness && paths.preflightReadinessPath
       ? { preflightReadinessPath: paths.preflightReadinessPath, preflightReadiness }
       : {}),
@@ -389,6 +428,12 @@ export async function readPreflightReadinessArtifact(
   path: string | undefined,
 ): Promise<z.infer<typeof consultationPreflightReadinessArtifactSchema> | undefined> {
   return readJsonArtifact(path, consultationPreflightReadinessArtifactSchema);
+}
+
+export async function readConsultationPlanArtifact(
+  path: string | undefined,
+): Promise<z.infer<typeof consultationPlanArtifactSchema> | undefined> {
+  return readJsonArtifact(path, consultationPlanArtifactSchema);
 }
 
 export function readClarifyFollowUpArtifactSync(
@@ -457,6 +502,10 @@ export function toAvailableConsultationArtifactPaths(
   return {
     consultationRoot: state.consultationRoot,
     ...(state.configPath ? { configPath: state.configPath } : {}),
+    ...(state.consultationPlanPath ? { consultationPlanPath: state.consultationPlanPath } : {}),
+    ...(state.consultationPlanMarkdownPath
+      ? { consultationPlanMarkdownPath: state.consultationPlanMarkdownPath }
+      : {}),
     ...(state.preflightReadinessPath
       ? { preflightReadinessPath: state.preflightReadinessPath }
       : {}),

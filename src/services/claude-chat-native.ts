@@ -170,7 +170,9 @@ export function buildClaudeSkillFiles(
   manifest: readonly CommandManifestEntry[],
 ): Array<{ path: string; content: string }> {
   return manifest
-    .filter((entry) => new Set(["consult", "verdict", "crown", "draft", "init"]).has(entry.id))
+    .filter((entry) =>
+      new Set(["consult", "plan", "verdict", "crown", "draft", "init"]).has(entry.id),
+    )
     .map((entry) => ({
       path: `.claude-plugin/skills/${entry.id}/SKILL.md`,
       content: renderClaudeSkill(entry),
@@ -698,6 +700,7 @@ function renderClaudeSkill(entry: CommandManifestEntry): string {
 function buildClaudeSkillMcpArgs(entry: CommandManifestEntry): Record<string, unknown> {
   switch (entry.id) {
     case "consult":
+    case "plan":
     case "draft":
       return { cwd: "$CWD", taskInput: "$ARGUMENTS", agent: "claude-code" };
     case "verdict":
@@ -717,6 +720,8 @@ function buildUsageExamples(entry: CommandManifestEntry): string[] {
       return ["orc crown fix/session-loss", "orc crown"];
     case "consult":
       return ['orc consult "fix session loss on refresh"'];
+    case "plan":
+      return ['orc plan "fix session loss on refresh"'];
     case "draft":
       return ['orc draft "fix session loss on refresh"'];
     case "verdict":
@@ -735,6 +740,17 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
       "- After the MCP tool returns, relay that tool result and stop.",
       "- Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command even if the result suggests a next step; wait for explicit user instruction.",
       "- Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`; the user must send a separate follow-up command after this tool call finishes.",
+      "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
+    ];
+  }
+
+  if (entry.id === "plan") {
+    return [
+      "- This skill is intended for exact-prefix routing inside Claude Code.",
+      "- After the MCP tool returns, relay that tool result and stop.",
+      "- `orc plan` is the optional planning lane. It persists reusable consultation-plan artifacts but does not execute candidates.",
+      "- Use `orc consult` later if the user wants to execute the planned consultation.",
+      "- Do not automatically invoke `orc consult`, `orc crown`, or any other follow-up Oraculum command; wait for explicit user instruction.",
       "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
     ];
   }

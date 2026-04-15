@@ -52,6 +52,9 @@ describe("CLI argument parsing", () => {
     await expect(program.parseAsync(["consult"], { from: "user" })).rejects.toMatchObject({
       code: "commander.unknownCommand",
     });
+    await expect(program.parseAsync(["plan"], { from: "user" })).rejects.toMatchObject({
+      code: "commander.unknownCommand",
+    });
     await expect(program.parseAsync(["verdict"], { from: "user" })).rejects.toMatchObject({
       code: "commander.unknownCommand",
     });

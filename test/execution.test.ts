@@ -21,7 +21,8 @@ import {
   getSecondOpinionWinnerSelectionPath,
 } from "../src/core/paths.js";
 import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
-import { executeRun } from "../src/services/execution.js";
+import type { CandidateManifest, CandidateScorecard } from "../src/domain/run.js";
+import { executeRun, rankFallbackCandidates } from "../src/services/execution.js";
 import * as finalistReportService from "../src/services/finalist-report.js";
 import { initializeProject } from "../src/services/project.js";
 import { planRun, readRunManifest } from "../src/services/runs.js";
@@ -1456,6 +1457,110 @@ if (out) {
     expect(executed.manifest.recommendedWinner?.summary).toContain(
       "No package packaging smoke check was selected.",
     );
+  });
+
+  it("prefers finalists with stronger planned scorecards in fallback ranking", () => {
+    const finalists: CandidateManifest[] = [
+      {
+        id: "cand-01",
+        strategyId: "minimal-change",
+        strategyLabel: "Minimal Change",
+        status: "promoted",
+        workspaceDir: "/tmp/cand-01",
+        taskPacketPath: "/tmp/task-packet.json",
+        repairCount: 0,
+        repairedRounds: [],
+        createdAt: "2026-04-15T00:00:00.000Z",
+      },
+      {
+        id: "cand-02",
+        strategyId: "safety-first",
+        strategyLabel: "Safety First",
+        status: "promoted",
+        workspaceDir: "/tmp/cand-02",
+        taskPacketPath: "/tmp/task-packet.json",
+        repairCount: 0,
+        repairedRounds: [],
+        createdAt: "2026-04-15T00:00:00.000Z",
+      },
+    ];
+
+    const metricsByCandidate = new Map([
+      [
+        "cand-01",
+        {
+          candidateId: "cand-01",
+          passCount: 2,
+          repairableCount: 0,
+          warningCount: 0,
+          errorCount: 0,
+          criticalCount: 0,
+          artifactCount: 1,
+        },
+      ],
+      [
+        "cand-02",
+        {
+          candidateId: "cand-02",
+          passCount: 2,
+          repairableCount: 0,
+          warningCount: 0,
+          errorCount: 0,
+          criticalCount: 0,
+          artifactCount: 1,
+        },
+      ],
+    ]);
+
+    const betterScorecard: CandidateScorecard = {
+      candidateId: "cand-01",
+      mode: "complex",
+      stageResults: [
+        {
+          stageId: "contract-fit",
+          status: "pass",
+          workstreamCoverage: {
+            "session-contract": "covered",
+            "api-compat": "covered",
+          },
+          violations: [],
+          unresolvedRisks: [],
+        },
+      ],
+      violations: [],
+      unresolvedRisks: [],
+      artifactCoherence: "strong",
+      reversibility: "reversible",
+    };
+    const weakerScorecard: CandidateScorecard = {
+      candidateId: "cand-02",
+      mode: "complex",
+      stageResults: [
+        {
+          stageId: "contract-fit",
+          status: "repairable",
+          workstreamCoverage: {
+            "session-contract": "covered",
+            "api-compat": "missing",
+          },
+          violations: ["missed api compat workstream"],
+          unresolvedRisks: ["api compatibility not verified"],
+        },
+      ],
+      violations: ["missed api compat workstream"],
+      unresolvedRisks: ["api compatibility not verified"],
+      artifactCoherence: "weak",
+      reversibility: "unknown",
+    };
+
+    const scorecardsByCandidate = new Map<string, CandidateScorecard>([
+      ["cand-01", betterScorecard],
+      ["cand-02", weakerScorecard],
+    ]);
+
+    const ranked = rankFallbackCandidates(finalists, metricsByCandidate, scorecardsByCandidate);
+
+    expect(ranked.map((candidate) => candidate.id)).toEqual(["cand-01", "cand-02"]);
   });
 
   it("keeps finalists but leaves no recommendation when the judge abstains", async () => {

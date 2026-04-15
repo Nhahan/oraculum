@@ -41,12 +41,14 @@ describe("Codex chat-native packaging", () => {
       "skills/oraculum-verdict/SKILL.md",
       "skills/oraculum-verdict-archive/SKILL.md",
       "skills/oraculum-crown/SKILL.md",
+      "skills/oraculum-plan/SKILL.md",
       "skills/oraculum-draft/SKILL.md",
       "skills/oraculum-init/SKILL.md",
     ]);
 
     const crownSkill = skills.find((file) => file.path.includes("/oraculum-crown/"));
     const consultSkill = skills.find((file) => file.path.includes("/oraculum-consult/"));
+    const planSkill = skills.find((file) => file.path.includes("/oraculum-plan/"));
     expect(consultSkill?.content).toContain("default to `codex` when omitted");
     expect(consultSkill?.content).toContain(
       '`orc consult tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
@@ -57,6 +59,10 @@ describe("Codex chat-native packaging", () => {
     );
     expect(consultSkill?.content).toContain(
       "Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`",
+    );
+    expect(planSkill?.content).toContain("Call the MCP tool `oraculum_plan`.");
+    expect(planSkill?.content).toContain(
+      '`orc plan tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
     );
     expect(crownSkill?.content).toContain("Call the MCP tool `oraculum_crown`.");
     expect(crownSkill?.content).toContain("report the verified tool result concisely and stop");

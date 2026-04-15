@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { agentJudgeResultSchema } from "../src/adapters/types.js";
 import {
   getClarifyFollowUpPath,
+  getConsultationPlanMarkdownPath,
+  getConsultationPlanPath,
   getExportPlanPath,
   getFailureAnalysisPath,
   getFinalistComparisonJsonPath,
@@ -20,6 +22,7 @@ import {
 import { consultationProfileSelectionArtifactSchema } from "../src/domain/profile.js";
 import {
   consultationClarifyFollowUpSchema,
+  consultationPlanArtifactSchema,
   consultationPreflightReadinessArtifactSchema,
   consultationResearchBriefSchema,
   exportPlanSchema,
@@ -45,6 +48,71 @@ afterEach(async () => {
 });
 
 describe("consultation artifact resolver", () => {
+  it("resolves persisted consultation-plan artifacts", async () => {
+    const cwd = await createInitializedProject();
+    const runId = "run-plan-artifacts";
+    await mkdir(join(cwd, ".oraculum", "runs", runId, "reports"), { recursive: true });
+    await writeFile(
+      getConsultationPlanPath(cwd, runId),
+      `${JSON.stringify(
+        consultationPlanArtifactSchema.parse({
+          runId,
+          createdAt: "2026-04-14T00:00:00.000Z",
+          readyForConsult: true,
+          recommendedNextAction:
+            "Execute the planned consultation: `orc consult .oraculum/runs/run-plan-artifacts/reports/consultation-plan.json`.",
+          intendedResult: "recommended result",
+          decisionDrivers: ["Target artifact path: src/index.ts"],
+          openQuestions: [],
+          task: {
+            id: "task",
+            title: "Task",
+            intent: "Fix the issue.",
+            nonGoals: [],
+            acceptanceCriteria: [],
+            risks: [],
+            oracleHints: [],
+            strategyHints: [],
+            contextFiles: [],
+            source: {
+              kind: "task-note",
+              path: "/tmp/task.md",
+            },
+          },
+          candidateCount: 2,
+          plannedStrategies: [
+            {
+              id: "minimal-change",
+              label: "Minimal Change",
+            },
+          ],
+          oracleIds: ["lint-fast"],
+          roundOrder: [
+            {
+              id: "fast",
+              label: "Fast",
+            },
+          ],
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      getConsultationPlanMarkdownPath(cwd, runId),
+      "# Consultation Plan\n\n- Run: run-plan-artifacts\n",
+      "utf8",
+    );
+
+    for (const state of await resolveBoth(cwd, runId)) {
+      expect(state.consultationPlanPath).toBe(getConsultationPlanPath(cwd, runId));
+      expect(state.consultationPlanMarkdownPath).toBe(getConsultationPlanMarkdownPath(cwd, runId));
+      expect(state.consultationPlan?.runId).toBe(runId);
+      expect(state.consultationPlan?.readyForConsult).toBe(true);
+    }
+  });
+
   it("treats valid machine-readable comparison reports as available without markdown", async () => {
     const cwd = await createInitializedProject();
     const runId = "run-comparison-json-only";

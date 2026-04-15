@@ -267,6 +267,8 @@ export async function renderConsultationSummary(
   }
 
   lines.push("Entry paths:");
+  const consultationPlanPath = resolvedArtifacts.consultationPlanPath;
+  const consultationPlanMarkdownPath = resolvedArtifacts.consultationPlanMarkdownPath;
   const preflightReadinessPath = resolvedArtifacts.preflightReadinessPath;
   const preflightReadiness = resolvedArtifacts.preflightReadiness;
   const researchBriefPath = resolvedArtifacts.researchBriefPath;
@@ -282,6 +284,9 @@ export async function renderConsultationSummary(
   const winnerSelection = resolvedArtifacts.winnerSelection;
   const preflightReadinessSummaryPath =
     preflightReadiness && preflightReadinessPath ? preflightReadinessPath : undefined;
+  const consultationPlanSummaryPath =
+    resolvedArtifacts.consultationPlan && consultationPlanPath ? consultationPlanPath : undefined;
+  const consultationPlanMarkdownSummaryPath = consultationPlanMarkdownPath;
   const clarifyFollowUpSummaryPath =
     clarifyFollowUp && clarifyFollowUpPath ? clarifyFollowUpPath : undefined;
   const researchBriefSummaryPath =
@@ -298,6 +303,16 @@ export async function renderConsultationSummary(
       : undefined;
   lines.push(
     `- consultation root: ${toDisplayPath(projectRoot, getRunDir(projectRoot, manifest.id))}`,
+  );
+  lines.push(
+    consultationPlanSummaryPath
+      ? `- consultation plan: ${toDisplayPath(projectRoot, consultationPlanSummaryPath)}`
+      : "- consultation plan: not available",
+  );
+  lines.push(
+    consultationPlanMarkdownSummaryPath
+      ? `- consultation plan summary: ${toDisplayPath(projectRoot, consultationPlanMarkdownSummaryPath)}`
+      : "- consultation plan summary: not available",
   );
   lines.push(
     preflightReadinessSummaryPath
@@ -375,6 +390,9 @@ export async function renderConsultationSummary(
     currentResearchBriefExists: Boolean(researchBrief),
     ...(researchBriefPath ? { currentResearchBriefPath: researchBriefPath } : {}),
   });
+  const consultationPlanInputPath = consultationPlanSummaryPath
+    ? toDisplayPath(projectRoot, consultationPlanSummaryPath)
+    : undefined;
   if (
     recommendedCandidateId &&
     secondOpinionWinnerSelection &&
@@ -394,6 +412,19 @@ export async function renderConsultationSummary(
     lines.push(
       `- investigate the persisted failure analysis: ${toDisplayPath(projectRoot, failureAnalysisSummaryPath)}.`,
     );
+  } else if (
+    manifest.status === "planned" &&
+    status.outcomeType === "pending-execution" &&
+    consultationPlanInputPath
+  ) {
+    lines.push(
+      `- execute the persisted consultation plan: \`orc consult ${consultationPlanInputPath}\`.`,
+    );
+    if (consultationPlanMarkdownSummaryPath) {
+      lines.push(
+        `- inspect the human-readable plan summary first: ${toDisplayPath(projectRoot, consultationPlanMarkdownSummaryPath)}.`,
+      );
+    }
   } else if (status.outcomeType === "needs-clarification") {
     if (clarifyFollowUp && clarifyFollowUpSummaryPath) {
       lines.push(

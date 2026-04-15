@@ -11,6 +11,7 @@ import {
 import {
   type ConsultationClarifyFollowUp,
   type ConsultationPreflight,
+  candidateScorecardSchema,
   type clarifyPressureKindSchema,
   type clarifyScopeKeyTypeSchema,
   consultationClarifyFollowUpSchema,
@@ -92,6 +93,7 @@ export const finalistSummarySchema = z.object({
   changeSummary: finalistChangeSummarySchema,
   witnessRollup: finalistWitnessRollupSchema,
   repairSummary: finalistRepairSummarySchema,
+  plannedScorecard: candidateScorecardSchema.omit({ candidateId: true }).optional(),
 });
 
 export const agentJudgeRecommendationSchema = z.preprocess(
@@ -228,6 +230,11 @@ export interface AgentJudgeRequest {
   logDir: string;
   taskPacket: MaterializedTaskPacket;
   finalists: FinalistSummary[];
+  plannedJudgingPreset?: {
+    decisionDrivers: string[];
+    plannedJudgingCriteria: string[];
+    crownGates: string[];
+  };
   consultationProfile?: {
     confidence: DecisionConfidence;
     validationProfileId: string;

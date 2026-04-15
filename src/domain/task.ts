@@ -5,7 +5,12 @@ import { z } from "zod";
 
 import { decisionConfidenceSchema } from "./profile.js";
 
-export const taskSourceKindSchema = z.enum(["task-packet", "task-note", "research-brief"]);
+export const taskSourceKindSchema = z.enum([
+  "task-packet",
+  "task-note",
+  "research-brief",
+  "consultation-plan",
+]);
 export const taskResearchConflictHandlingSchema = z.enum(["accepted", "manual-review-required"]);
 export const taskResearchBasisStatusSchema = z.enum(["current", "stale", "unknown"]);
 export const taskResearchSourceSchema = z.object({

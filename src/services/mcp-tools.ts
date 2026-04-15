@@ -23,6 +23,10 @@ import {
   type InitToolResponse,
   initToolRequestSchema,
   initToolResponseSchema,
+  type PlanToolRequest,
+  type PlanToolResponse,
+  planToolRequestSchema,
+  planToolResponseSchema,
   type SetupStatusToolRequest,
   type SetupStatusToolResponse,
   setupStatusToolRequestSchema,
@@ -117,8 +121,20 @@ export async function runConsultTool(input: ConsultToolRequest): Promise<Consult
   });
 }
 
+export async function runPlanTool(input: PlanToolRequest): Promise<PlanToolResponse> {
+  const request = normalizePlanToolRequest(planToolRequestSchema.parse(input));
+  return planToolResponseSchema.parse(await runPlanningTool("plan", request));
+}
+
 export async function runDraftTool(input: DraftToolRequest): Promise<DraftToolResponse> {
   const request = normalizeDraftToolRequest(draftToolRequestSchema.parse(input));
+  return draftToolResponseSchema.parse(await runPlanningTool("draft", request));
+}
+
+async function runPlanningTool(
+  mode: "plan" | "draft",
+  request: PlanToolRequest | DraftToolRequest,
+) {
   const hostDefaultAgent = resolveHostAgentRuntime();
   const initialized = await ensureProjectInitialized(request.cwd, {
     ...(hostDefaultAgent ? { defaultAgent: hostDefaultAgent } : {}),
@@ -128,14 +144,20 @@ export async function runDraftTool(input: DraftToolRequest): Promise<DraftToolRe
     taskInput: request.taskInput,
     ...(request.agent ? { agent: request.agent } : {}),
     ...(request.candidates !== undefined ? { candidates: request.candidates } : {}),
+    writeConsultationPlanArtifacts: true,
+    preflight: {
+      allowRuntime: true,
+      ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
+    },
     autoProfile: {
-      allowRuntime: false,
+      allowRuntime: true,
+      ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
     },
   });
   const artifacts = await resolveToolConsultationArtifacts(request.cwd, manifest);
 
-  return draftToolResponseSchema.parse({
-    mode: "draft",
+  return {
+    mode,
     consultation: manifest,
     status: await buildArtifactAwareConsultationStatus(manifest, artifacts),
     summary: await renderConsultationSummary(manifest, request.cwd, {
@@ -143,7 +165,7 @@ export async function runDraftTool(input: DraftToolRequest): Promise<DraftToolRe
     }),
     artifacts: toAvailableConsultationArtifactPaths(artifacts),
     ...(initialized ? { initializedProject: buildProjectInitializationResult(initialized) } : {}),
-  });
+  };
 }
 
 export async function runVerdictTool(input: VerdictToolRequest): Promise<VerdictToolResponse> {
@@ -282,15 +304,29 @@ function normalizeConsultToolRequest(request: ConsultToolRequest): ConsultToolRe
   });
 }
 
+function normalizePlanToolRequest(request: PlanToolRequest): PlanToolRequest {
+  const parsed = parseInlineCommandOptions(request.taskInput, {
+    allowTimeoutMs: true,
+  });
+  return planToolRequestSchema.parse({
+    ...request,
+    taskInput: parsed.taskInput,
+    ...(parsed.agent ? { agent: parsed.agent } : {}),
+    ...(parsed.candidates !== undefined ? { candidates: parsed.candidates } : {}),
+    ...(parsed.timeoutMs !== undefined ? { timeoutMs: parsed.timeoutMs } : {}),
+  });
+}
+
 function normalizeDraftToolRequest(request: DraftToolRequest): DraftToolRequest {
   const parsed = parseInlineCommandOptions(request.taskInput, {
-    allowTimeoutMs: false,
+    allowTimeoutMs: true,
   });
   return draftToolRequestSchema.parse({
     ...request,
     taskInput: parsed.taskInput,
     ...(parsed.agent ? { agent: parsed.agent } : {}),
     ...(parsed.candidates !== undefined ? { candidates: parsed.candidates } : {}),
+    ...(parsed.timeoutMs !== undefined ? { timeoutMs: parsed.timeoutMs } : {}),
   });
 }
 

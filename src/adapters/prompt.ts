@@ -102,14 +102,19 @@ export function buildCandidatePrompt(request: AgentRunRequest): string {
 }
 
 export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
+  const plannedDecisionDrivers = request.plannedJudgingPreset?.decisionDrivers ?? [];
+  const plannedJudgingCriteria = request.plannedJudgingPreset?.plannedJudgingCriteria ?? [];
+  const plannedCrownGates = request.plannedJudgingPreset?.crownGates ?? [];
   const hasExplicitArtifactIntent = Boolean(
     request.taskPacket.artifactKind || request.taskPacket.targetArtifactPath,
   );
+  const hasPlannedJudgingPreset = plannedJudgingCriteria.length > 0 || plannedCrownGates.length > 0;
+  const shouldReturnJudgingCriteria = hasExplicitArtifactIntent || hasPlannedJudgingPreset;
   const sections: string[] = [
     "You are selecting the best Oraculum finalist.",
     "Either select the single safest finalist as the recommended result or abstain if no finalist is safe enough.",
     "Prefer the candidate that best satisfies the task while preserving repo rules and leaving the strongest reviewable evidence.",
-    `Return JSON only in one of these shapes: {"decision":"select","candidateId":"cand-01","confidence":"high","summary":"short rationale"${hasExplicitArtifactIntent ? ',"judgingCriteria":["criterion"]' : ""}} or {"decision":"abstain","confidence":"low","summary":"why no finalist is safe to recommend"${hasExplicitArtifactIntent ? ',"judgingCriteria":["criterion"]' : ""}}`,
+    `Return JSON only in one of these shapes: {"decision":"select","candidateId":"cand-01","confidence":"high","summary":"short rationale"${shouldReturnJudgingCriteria ? ',"judgingCriteria":["criterion"]' : ""}} or {"decision":"abstain","confidence":"low","summary":"why no finalist is safe to recommend"${shouldReturnJudgingCriteria ? ',"judgingCriteria":["criterion"]' : ""}}`,
     "",
     `Task ID: ${request.taskPacket.id}`,
     `Task Title: ${request.taskPacket.title}`,
@@ -131,6 +136,32 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
       "- Derive 2-5 concrete judging criteria from the explicit target result before comparing finalists.",
       '- Return those criteria in JSON as "judgingCriteria".',
       "- Reuse the same criteria whether you select a finalist or abstain.",
+    );
+  }
+
+  if (plannedDecisionDrivers.length > 0) {
+    sections.push(
+      "",
+      "Planned decision drivers:",
+      ...plannedDecisionDrivers.map((item) => `- ${item}`),
+    );
+  }
+
+  if (plannedJudgingCriteria.length > 0) {
+    sections.push(
+      "",
+      "Planned judging criteria:",
+      ...plannedJudgingCriteria.map((item) => `- ${item}`),
+      '- Reuse these plan-derived criteria in JSON as "judgingCriteria" unless a finalist-specific reason requires narrowing them.',
+    );
+  }
+
+  if (plannedCrownGates.length > 0) {
+    sections.push(
+      "",
+      "Planned crown gates:",
+      ...plannedCrownGates.map((item) => `- ${item}`),
+      "- If no finalist clearly satisfies these gates, abstain instead of forcing a recommendation.",
     );
   }
 
@@ -164,6 +195,17 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
         ...request.consultationProfile.validationGaps.map((item) => `- ${item}`),
       );
     }
+  }
+
+  const hasPlannedScorecards = request.finalists.some((finalist) => finalist.plannedScorecard);
+  if (hasPlannedScorecards) {
+    sections.push(
+      "",
+      "Planned scorecard rules:",
+      "- Prefer finalists with broader workstream coverage and cleaner staged execution.",
+      "- Fewer scorecard violations and unresolved risks are stronger deterministic evidence.",
+      "- If no finalist clearly clears the staged contract, abstain instead of forcing a recommendation.",
+    );
   }
 
   sections.push("", "Finalists:");
@@ -210,6 +252,44 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
         );
       }
     }
+
+    if (finalist.plannedScorecard) {
+      sections.push(
+        "  Planned scorecard:",
+        `    - Mode: ${finalist.plannedScorecard.mode}`,
+        `    - Artifact coherence: ${finalist.plannedScorecard.artifactCoherence}`,
+        `    - Reversibility: ${finalist.plannedScorecard.reversibility}`,
+      );
+      if (finalist.plannedScorecard.stageResults.length > 0) {
+        sections.push("    - Stage results:");
+        for (const stageResult of finalist.plannedScorecard.stageResults) {
+          const coveredCount = Object.values(stageResult.workstreamCoverage).filter(
+            (status) => status === "covered",
+          ).length;
+          const missingCount = Object.values(stageResult.workstreamCoverage).filter(
+            (status) => status === "missing",
+          ).length;
+          const blockedCount = Object.values(stageResult.workstreamCoverage).filter(
+            (status) => status === "blocked",
+          ).length;
+          sections.push(
+            `      - ${stageResult.stageId}: ${stageResult.status} (covered=${coveredCount}, missing=${missingCount}, blocked=${blockedCount})`,
+          );
+        }
+      }
+      if (finalist.plannedScorecard.violations.length > 0) {
+        sections.push(
+          "    - Violations:",
+          ...finalist.plannedScorecard.violations.map((item) => `      - ${item}`),
+        );
+      }
+      if (finalist.plannedScorecard.unresolvedRisks.length > 0) {
+        sections.push(
+          "    - Unresolved risks:",
+          ...finalist.plannedScorecard.unresolvedRisks.map((item) => `      - ${item}`),
+        );
+      }
+    }
   }
 
   sections.push(
@@ -219,10 +299,11 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
     "- If finalists are too weak, too close, or missing critical evidence, return decision=abstain.",
     "- Missing deep validation or profile gaps are valid reasons to abstain when the remaining evidence is not strong enough.",
     "- Do not invent a candidate ID.",
-    ...(hasExplicitArtifactIntent
-      ? [
-          "- Keep judgingCriteria concrete, target-specific, and limited to the explicit result contract.",
-        ]
+    ...(shouldReturnJudgingCriteria
+      ? ["- Keep judgingCriteria concrete and tied to the planned result contract."]
+      : []),
+    ...(hasPlannedJudgingPreset
+      ? ["- Respect the planned crown gates; abstain if no finalist clearly satisfies them."]
       : []),
     "- Keep the summary concise and concrete.",
     "- Return JSON only.",
@@ -543,6 +624,17 @@ function appendTaskSourceContext(sections: string[], taskPacket: MaterializedTas
   }
 
   if (taskPacket.source.kind !== "research-brief") {
+    if (taskPacket.source.kind !== "consultation-plan") {
+      return;
+    }
+
+    sections.push(
+      "",
+      "Consultation plan provenance:",
+      "- This task was resumed from a persisted consultation plan.",
+      `- Consultation plan path: ${taskPacket.source.path}`,
+      "- Treat the consultation plan context in the task intent as structured execution guidance.",
+    );
     return;
   }
 

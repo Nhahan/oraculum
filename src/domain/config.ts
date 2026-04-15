@@ -124,7 +124,13 @@ export const repoOracleSchema = z.object({
 });
 
 const reservedOracleIdsByRound: Record<RoundId, Set<string>> = {
-  fast: new Set(["agent-exit", "artifact-capture"]),
+  fast: new Set([
+    "agent-exit",
+    "artifact-capture",
+    "planned-required-changed-paths",
+    "planned-target-artifact",
+    "planned-protected-paths",
+  ]),
   impact: new Set(["reviewable-output", "materialized-patch"]),
   deep: new Set(),
 };

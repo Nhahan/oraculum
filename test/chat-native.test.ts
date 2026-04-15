@@ -8,6 +8,8 @@ import { agentJudgeResultSchema } from "../src/adapters/types.js";
 import { APP_VERSION } from "../src/core/constants.js";
 import {
   getClarifyFollowUpPath,
+  getConsultationPlanMarkdownPath,
+  getConsultationPlanPath,
   getExportPlanPath,
   getFailureAnalysisPath,
   getFinalistComparisonJsonPath,
@@ -31,6 +33,7 @@ import {
 import { consultationProfileSelectionArtifactSchema } from "../src/domain/profile.js";
 import {
   consultationClarifyFollowUpSchema,
+  consultationPlanArtifactSchema,
   consultationPreflightReadinessArtifactSchema,
   consultationResearchBriefSchema,
   exportPlanSchema,
@@ -54,6 +57,7 @@ import { initializeProject } from "../src/services/project.js";
 
 vi.mock("../src/services/mcp-tools.js", () => ({
   runConsultTool: vi.fn(),
+  runPlanTool: vi.fn(),
   runCrownTool: vi.fn(),
   runDraftTool: vi.fn(),
   runInitTool: vi.fn(),
@@ -257,6 +261,7 @@ describe("chat-native MCP surface", () => {
       "verdict",
       "verdict archive",
       "crown",
+      "plan",
       "draft",
       "init",
     ]);
@@ -269,11 +274,15 @@ describe("chat-native MCP surface", () => {
 
   it("describes consultation candidate counts in artifact-neutral terms", () => {
     const consultCommand = oraculumCommandManifest.find((entry) => entry.id === "consult");
+    const planCommand = oraculumCommandManifest.find((entry) => entry.id === "plan");
     const draftCommand = oraculumCommandManifest.find((entry) => entry.id === "draft");
     const crownCommand = oraculumCommandManifest.find((entry) => entry.id === "crown");
 
     expect(
       consultCommand?.arguments.find((argument) => argument.name === "candidates")?.description,
+    ).toBe("Number of candidate variants to plan.");
+    expect(
+      planCommand?.arguments.find((argument) => argument.name === "candidates")?.description,
     ).toBe("Number of candidate variants to plan.");
     expect(
       draftCommand?.arguments.find((argument) => argument.name === "candidates")?.description,
@@ -302,6 +311,64 @@ describe("chat-native MCP surface", () => {
     await mkdir(getRunDir(projectRoot, consultationId), { recursive: true });
     await mkdir(join(getRunDir(projectRoot, consultationId), "reports"), { recursive: true });
     await writeFile(getRunConfigPath(projectRoot, consultationId), "{}\n", "utf8");
+    await writeFile(
+      getConsultationPlanPath(projectRoot, consultationId),
+      `${JSON.stringify(
+        consultationPlanArtifactSchema.parse({
+          runId: consultationId,
+          createdAt: "2026-04-14T00:00:00.000Z",
+          readyForConsult: true,
+          recommendedNextAction:
+            "Execute the planned consultation: `orc consult .oraculum/runs/run_20260409_demo/reports/consultation-plan.json`.",
+          intendedResult: "recommended result",
+          decisionDrivers: ["Target artifact path: src/session.ts"],
+          openQuestions: [],
+          task: {
+            id: "task",
+            title: "Task",
+            intent: "Fix the session flow.",
+            nonGoals: [],
+            acceptanceCriteria: [],
+            risks: [],
+            oracleHints: [],
+            strategyHints: [],
+            contextFiles: [],
+            source: {
+              kind: "task-note",
+              path: "/tmp/task.md",
+            },
+          },
+          preflight: {
+            decision: "proceed",
+            confidence: "medium",
+            summary: "Proceed conservatively.",
+            researchPosture: "repo-only",
+          },
+          candidateCount: 2,
+          plannedStrategies: [
+            {
+              id: "minimal-change",
+              label: "Minimal Change",
+            },
+          ],
+          oracleIds: ["lint-fast"],
+          roundOrder: [
+            {
+              id: "fast",
+              label: "Fast",
+            },
+          ],
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      getConsultationPlanMarkdownPath(projectRoot, consultationId),
+      "# Consultation Plan\n\n- Run: run_20260409_demo\n",
+      "utf8",
+    );
     await writePreflightReadinessArtifact(projectRoot, consultationId);
     await writeFile(
       getFinalistComparisonJsonPath(projectRoot, consultationId),
@@ -528,6 +595,10 @@ describe("chat-native MCP surface", () => {
 
     expect(parsed.consultationRoot).toBe(getRunDir(projectRoot, consultationId));
     expect(parsed.configPath).toBe(getRunConfigPath(projectRoot, consultationId));
+    expect(parsed.consultationPlanPath).toBe(getConsultationPlanPath(projectRoot, consultationId));
+    expect(parsed.consultationPlanMarkdownPath).toBe(
+      getConsultationPlanMarkdownPath(projectRoot, consultationId),
+    );
     expect(parsed.preflightReadinessPath).toBe(
       getPreflightReadinessPath(projectRoot, consultationId),
     );

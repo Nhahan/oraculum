@@ -151,7 +151,9 @@ export async function uninstallCodexHost(
 }
 
 export function getExpectedCodexSkillDirs(): string[] {
-  return ["consult", "verdict", "verdict-archive", "crown", "draft", "init"].map(toCodexSkillDir);
+  return ["consult", "plan", "verdict", "verdict-archive", "crown", "draft", "init"].map(
+    toCodexSkillDir,
+  );
 }
 
 export function getExpectedCodexRuleFileName(): string {
@@ -243,12 +245,23 @@ function buildCodexSkillArgumentLines(entry: CommandManifestEntry): string[] {
         '- Example: `orc consult tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
         '- Example: `orc consult tasks/fix.md --agent claude-code --candidates 1` -> `{ taskInput: "tasks/fix.md", agent: "claude-code", candidates: 1 }`',
       ];
+    case "plan":
+      return [
+        ...shared,
+        "- `taskInput`: the first positional argument after removing recognized flags from the command",
+        "- optional `--agent <claude-code|codex>`; default to `codex` when omitted",
+        "- optional `--candidates <n>`",
+        "- optional `--timeout-ms <ms>`",
+        '- Example: `orc plan tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
+        '- Example: `orc plan tasks/fix.md --agent claude-code --candidates 2` -> `{ taskInput: "tasks/fix.md", agent: "claude-code", candidates: 2 }`',
+      ];
     case "draft":
       return [
         ...shared,
         "- `taskInput`: the first positional argument after removing recognized flags from the command",
         "- optional `--agent <claude-code|codex>`; default to `codex` when omitted",
         "- optional `--candidates <n>`",
+        "- optional `--timeout-ms <ms>`",
         '- Example: `orc draft tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
         '- Example: `orc draft tasks/fix.md --agent codex --candidates 2` -> `{ taskInput: "tasks/fix.md", agent: "codex", candidates: 2 }`',
       ];
