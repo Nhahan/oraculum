@@ -328,7 +328,7 @@ describe("project scaffold", () => {
     await expect(readFile(getAdvancedConfigPath(cwd), "utf8")).rejects.toThrow();
   });
 
-  it("drops orphaned advanced settings during auto-init when quick config is missing", async () => {
+  it("preserves valid advanced settings during auto-init when quick config is missing", async () => {
     const cwd = await createTempProject();
     await mkdir(join(cwd, ".oraculum"), { recursive: true });
     await writeFile(
@@ -356,8 +356,9 @@ describe("project scaffold", () => {
     await ensureProjectInitialized(cwd);
 
     const config = await loadProjectConfig(cwd);
-    expect(config.oracles).toHaveLength(0);
-    await expect(readFile(getAdvancedConfigPath(cwd), "utf8")).rejects.toThrow();
+    expect(config.oracles).toHaveLength(1);
+    expect(config.oracles[0]?.id).toBe("lint-fast");
+    await expect(readFile(getAdvancedConfigPath(cwd), "utf8")).resolves.toContain('"lint-fast"');
   });
 
   it("plans a run with candidate manifests", async () => {

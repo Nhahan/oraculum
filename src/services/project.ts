@@ -88,14 +88,9 @@ export async function ensureProjectInitialized(
 ): Promise<InitializeProjectResult | undefined> {
   const projectRoot = resolveProjectRoot(cwd);
   const configPath = getConfigPath(projectRoot);
-  const advancedConfigPath = getAdvancedConfigPath(projectRoot);
 
   if (await pathExists(configPath)) {
     return undefined;
-  }
-
-  if (await pathExists(advancedConfigPath)) {
-    await rm(advancedConfigPath, { force: true });
   }
 
   return initializeProject({
