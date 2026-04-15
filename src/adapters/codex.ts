@@ -51,12 +51,12 @@ export class CodexAdapter implements AgentAdapter {
 
   private readonly binaryPath: string;
   private readonly env: NodeJS.ProcessEnv | undefined;
-  private readonly timeoutMs: number;
+  private readonly timeoutMs: number | undefined;
 
   constructor(options: CodexAdapterOptions = {}) {
     this.binaryPath = options.binaryPath ?? process.env.ORACULUM_CODEX_BIN ?? "codex";
     this.env = options.env;
-    this.timeoutMs = options.timeoutMs ?? 10 * 60 * 1000;
+    this.timeoutMs = options.timeoutMs;
   }
 
   async runCandidate(request: AgentRunRequest): Promise<AgentRunResult> {
@@ -88,7 +88,7 @@ export class CodexAdapter implements AgentAdapter {
       ...(this.env ? { env: this.env } : {}),
       ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
       stdin: prompt,
-      timeoutMs: this.timeoutMs,
+      ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
     });
 
     await writeFile(stdoutPath, result.stdout, "utf8");
@@ -153,7 +153,7 @@ export class CodexAdapter implements AgentAdapter {
       ...(this.env ? { env: this.env } : {}),
       ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
       stdin: prompt,
-      timeoutMs: this.timeoutMs,
+      ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
     });
 
     await writeFile(stdoutPath, result.stdout, "utf8");
@@ -214,7 +214,7 @@ export class CodexAdapter implements AgentAdapter {
       ...(this.env ? { env: this.env } : {}),
       ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
       stdin: prompt,
-      timeoutMs: this.timeoutMs,
+      ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
     });
 
     await writeFile(stdoutPath, result.stdout, "utf8");
@@ -280,7 +280,7 @@ export class CodexAdapter implements AgentAdapter {
       ...(this.env ? { env: this.env } : {}),
       ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
       stdin: prompt,
-      timeoutMs: this.timeoutMs,
+      ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
     });
 
     await writeFile(stdoutPath, result.stdout, "utf8");
@@ -344,7 +344,7 @@ export class CodexAdapter implements AgentAdapter {
       ...(this.env ? { env: this.env } : {}),
       ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
       stdin: prompt,
-      timeoutMs: this.timeoutMs,
+      ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
     });
 
     await writeFile(stdoutPath, result.stdout, "utf8");
