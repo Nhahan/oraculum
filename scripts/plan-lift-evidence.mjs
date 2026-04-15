@@ -1556,6 +1556,944 @@ const scenarios = [
     },
   },
   {
+    id: "package-oracle-code-test-contract",
+    description:
+      "A package-scoped repo-local oracle validates runtime semantics, but only the strong candidate also updates the paired regression test artifact.",
+    weakCandidateId: "cand-01",
+    expectedRepoOracles: [{ id: "auth-runtime-impact", roundId: "impact" }],
+    initialFiles() {
+      return {
+        "packages/auth/src/session.ts":
+          "export function restoreSession(request) {\n  return null;\n}\n",
+        "packages/auth/test/session-refresh.test.ts":
+          'import { restoreSession } from "../src/session";\n\ntest("restoreSession keeps the signed-in user across refresh", () => {\n  // TODO add the regression expectation.\n});\n',
+        "packages/auth/check-session-runtime.mjs": [
+          'import { readFileSync } from "node:fs";',
+          'import { join } from "node:path";',
+          "",
+          "const workspaceRoot = process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR ?? process.cwd();",
+          'const source = readFileSync(join(workspaceRoot, "packages", "auth", "src", "session.ts"), "utf8");',
+          'if (!source.includes("return existingSession;")) {',
+          '  console.error("session runtime is still stale");',
+          "  process.exit(1);",
+          "}",
+          "",
+          'console.log("session runtime bundle looks valid");',
+        ].join("\n"),
+      };
+    },
+    taskPacket(root) {
+      return {
+        id: "package_oracle_code_test_bundle",
+        title: "Revise the package runtime and regression bundle for session restore",
+        intent:
+          "Revise packages/auth/src/session.ts into the canonical refresh restore implementation. Very complex success also requires updating packages/auth/test/session-refresh.test.ts so the regression contract matches the runtime behavior.",
+        artifactKind: "code",
+        targetArtifactPath: "packages/auth/src/session.ts",
+        nonGoals: [
+          "Do not stop after the implementation change if packages/auth/test/session-refresh.test.ts stays stale.",
+        ],
+        acceptanceCriteria: [
+          "packages/auth/src/session.ts restores the existing session on refresh.",
+          "packages/auth/test/session-refresh.test.ts records the concrete regression expectation.",
+        ],
+        risks: ["A code-only change leaves the regression contract stale."],
+        oracleHints: ["Keep the package-local runtime oracle green."],
+        strategyHints: ["Keep the runtime implementation and regression test aligned."],
+        contextFiles: [
+          join(root, "packages", "auth", "src", "session.ts"),
+          join(root, "packages", "auth", "test", "session-refresh.test.ts"),
+          join(root, "packages", "auth", "check-session-runtime.mjs"),
+        ],
+      };
+    },
+    analyze(root) {
+      const implementation = readFileSync(
+        join(root, "packages", "auth", "src", "session.ts"),
+        "utf8",
+      );
+      const regression = readFileSync(
+        join(root, "packages", "auth", "test", "session-refresh.test.ts"),
+        "utf8",
+      );
+      const implementationStrong = implementation.includes("return existingSession;");
+      const regressionStrong = regression.includes(
+        "expect(restoreSession(request)).toEqual(existingSession);",
+      );
+      return {
+        score: implementationStrong && regressionStrong ? 3 : implementationStrong ? 1 : 0,
+        implementationStrong,
+        regressionStrong,
+      };
+    },
+    advancedConfig() {
+      return {
+        version: 1,
+        oracles: [
+          {
+            id: "auth-runtime-impact",
+            roundId: "impact",
+            command: process.execPath,
+            args: ["check-session-runtime.mjs"],
+            cwd: "project",
+            relativeCwd: "packages/auth",
+            invariant:
+              "The auth package runtime must restore the existing session during a normal refresh.",
+            enforcement: "hard",
+            confidence: "high",
+            passSummary: "Auth package runtime oracle passed.",
+            failureSummary: "Auth package runtime oracle failed.",
+            repairHint:
+              "Update packages/auth/src/session.ts so the package-level session runtime check passes.",
+            safetyRationale: "Package-local deterministic runtime oracle for the auth workspace.",
+          },
+        ],
+      };
+    },
+    buildComplexPlan(plan) {
+      return {
+        ...plan,
+        mode: "complex",
+        decisionDrivers: [
+          ...plan.decisionDrivers,
+          "Complex package work must keep the implementation and regression test bundle in sync while preserving the package-local runtime oracle.",
+        ],
+        plannedJudgingCriteria: [
+          "Prefer finalists that update both packages/auth/src/session.ts and packages/auth/test/session-refresh.test.ts coherently.",
+          "Treat implementation-only changes as incomplete because the regression contract remains stale.",
+        ],
+        crownGates: [
+          "Do not recommend finalists that leave packages/auth/test/session-refresh.test.ts stale.",
+          "Abstain if every finalist changes the implementation but not the paired regression test artifact.",
+        ],
+        workstreams: [
+          {
+            id: "runtime-implementation",
+            label: "Runtime Implementation Contract",
+            goal: "Update packages/auth/src/session.ts with the session restore implementation.",
+            targetArtifacts: ["packages/auth/src/session.ts"],
+            requiredChangedPaths: ["packages/auth/src/session.ts"],
+            protectedPaths: [],
+            oracleIds: ["auth-runtime-impact"],
+            dependencies: [],
+            risks: [],
+            disqualifiers: [],
+          },
+          {
+            id: "regression-test",
+            label: "Regression Test Contract",
+            goal: "Update packages/auth/test/session-refresh.test.ts with the concrete regression expectation.",
+            targetArtifacts: ["packages/auth/test/session-refresh.test.ts"],
+            requiredChangedPaths: ["packages/auth/test/session-refresh.test.ts"],
+            protectedPaths: [],
+            oracleIds: [],
+            dependencies: ["runtime-implementation"],
+            risks: ["A stale regression test leaves the runtime bundle weak."],
+            disqualifiers: ["Do not leave packages/auth/test/session-refresh.test.ts unchanged."],
+          },
+        ],
+        stagePlan: [
+          {
+            id: "code-test-fit",
+            label: "Code Test Fit",
+            dependsOn: [],
+            workstreamIds: ["runtime-implementation", "regression-test"],
+            roundIds: ["impact"],
+            entryCriteria: ["Consultation plan basis remains current."],
+            exitCriteria: [
+              "Materially change packages/auth/src/session.ts.",
+              "Materially change packages/auth/test/session-refresh.test.ts.",
+            ],
+          },
+        ],
+        scorecardDefinition: {
+          dimensions: [
+            "workstream-coverage",
+            "required-path-coverage",
+            "artifact-coherence",
+            "oracle-pass-summary",
+          ],
+          abstentionTriggers: ["stale regression test contract"],
+        },
+        repairPolicy: {
+          maxAttemptsPerStage: 0,
+          immediateElimination: [],
+          repairable: ["missing-target-coverage", "partial-workstream-coverage"],
+          preferAbstainOverRetry: ["stale regression test contract", "weak-finalist-evidence"],
+        },
+      };
+    },
+  },
+  {
+    id: "project-oracle-api-schema-reviewability",
+    description:
+      "A project-scoped repo-local oracle validates the handler and schema bundle, but only the strong candidate leaves a concrete, operator-reviewable API result.",
+    weakCandidateId: "cand-01",
+    expectedRepoOracles: [{ id: "session-api-impact", roundId: "impact" }],
+    initialFiles() {
+      return {
+        "services/http/session_handler.py":
+          'def build_session_response(request):\n    return {"status": "pending"}\n',
+        "api/openapi/session.yaml": "status: pending\nlogout_behavior: pending\n",
+        "tools/check-session-api.mjs": [
+          'import { readFileSync } from "node:fs";',
+          'import { join } from "node:path";',
+          "",
+          "const workspaceRoot = process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR ?? process.cwd();",
+          'const handler = readFileSync(join(workspaceRoot, "services", "http", "session_handler.py"), "utf8");',
+          'const schema = readFileSync(join(workspaceRoot, "api", "openapi", "session.yaml"), "utf8");',
+          'if (handler.includes("pending") || schema.includes("pending")) {',
+          '  console.error("handler or schema is still pending");',
+          "  process.exit(1);",
+          "}",
+          "",
+          'console.log("handler and schema are no longer pending");',
+        ].join("\n"),
+      };
+    },
+    taskPacket(root) {
+      return {
+        id: "project_oracle_api_schema_reviewability",
+        title: "Revise the reviewable handler and API schema bundle",
+        intent:
+          "Revise services/http/session_handler.py and api/openapi/session.yaml into a coherent API bundle. Very complex success prefers concrete, operator-reviewable runtime and schema semantics over generic rewrites.",
+        artifactKind: "code",
+        targetArtifactPath: "services/http/session_handler.py",
+        nonGoals: ["Do not leave the handler and schema bundle at generic wording."],
+        acceptanceCriteria: [
+          "services/http/session_handler.py is materially updated.",
+          "api/openapi/session.yaml is materially updated.",
+        ],
+        risks: [
+          "Generic API wording makes the handler and schema bundle weakly reviewable even when both files changed.",
+        ],
+        oracleHints: ["Keep the project-level API bundle oracle green."],
+        strategyHints: ["Prefer concrete handler behavior and concrete API schema markers."],
+        contextFiles: [
+          join(root, "services", "http", "session_handler.py"),
+          join(root, "api", "openapi", "session.yaml"),
+          join(root, "tools", "check-session-api.mjs"),
+        ],
+      };
+    },
+    analyze(root) {
+      const handler = readFileSync(join(root, "services", "http", "session_handler.py"), "utf8");
+      const schema = readFileSync(join(root, "api", "openapi", "session.yaml"), "utf8");
+      const handlerSpecific =
+        handler.includes('"status": "restored"') &&
+        handler.includes('"logout_behavior": "clears-on-next-load"');
+      const schemaSpecific =
+        schema.includes("status: restored") &&
+        schema.includes("logout_behavior: clears-on-next-load");
+      return {
+        score: handlerSpecific && schemaSpecific ? 3 : 1,
+        handlerSpecific,
+        schemaSpecific,
+      };
+    },
+    advancedConfig() {
+      return {
+        version: 1,
+        oracles: [
+          {
+            id: "session-api-impact",
+            roundId: "impact",
+            command: process.execPath,
+            args: ["tools/check-session-api.mjs"],
+            cwd: "project",
+            invariant:
+              "The session handler and API schema must both move out of the pending state.",
+            enforcement: "hard",
+            confidence: "high",
+            passSummary: "Project API bundle oracle passed.",
+            failureSummary: "Project API bundle oracle failed.",
+            repairHint:
+              "Update the handler and schema so both artifacts leave the pending state together.",
+            safetyRationale: "Project-scoped deterministic API bundle oracle for the fixture.",
+          },
+        ],
+      };
+    },
+    buildComplexPlan(plan) {
+      return {
+        ...plan,
+        mode: "complex",
+        requiredChangedPaths: ["services/http/session_handler.py", "api/openapi/session.yaml"],
+        decisionDrivers: [
+          ...plan.decisionDrivers,
+          "Complex API work should prefer concrete, reviewable handler and schema bundles over generic rewrites while preserving the project API oracle.",
+        ],
+        plannedJudgingCriteria: [
+          "Prefer finalists that make services/http/session_handler.py and api/openapi/session.yaml concrete and operator-reviewable.",
+          "Treat generic API wording as materially weaker even when both files changed.",
+        ],
+        crownGates: [
+          "Do not recommend finalists that leave the handler and schema bundle generic.",
+          "Abstain if every finalist changes both files but keeps the API semantics too vague for review.",
+        ],
+        workstreams: [
+          {
+            id: "handler-runtime",
+            label: "Handler Runtime Contract",
+            goal: "Update services/http/session_handler.py with a concrete session restore response.",
+            targetArtifacts: ["services/http/session_handler.py"],
+            requiredChangedPaths: ["services/http/session_handler.py"],
+            protectedPaths: [],
+            oracleIds: ["session-api-impact"],
+            dependencies: [],
+            risks: [],
+            disqualifiers: [],
+          },
+          {
+            id: "openapi-schema",
+            label: "OpenAPI Schema Contract",
+            goal: "Update api/openapi/session.yaml with concrete schema markers that match the handler response.",
+            targetArtifacts: ["api/openapi/session.yaml"],
+            requiredChangedPaths: ["api/openapi/session.yaml"],
+            protectedPaths: [],
+            oracleIds: [],
+            dependencies: ["handler-runtime"],
+            risks: ["Generic schema wording keeps the API bundle weak."],
+            disqualifiers: [],
+          },
+        ],
+        stagePlan: [
+          {
+            id: "api-schema-fit",
+            label: "API Schema Fit",
+            dependsOn: [],
+            workstreamIds: ["handler-runtime", "openapi-schema"],
+            roundIds: ["impact"],
+            entryCriteria: ["Consultation plan basis remains current."],
+            exitCriteria: [
+              "Materially change services/http/session_handler.py.",
+              "Materially change api/openapi/session.yaml.",
+            ],
+          },
+        ],
+        scorecardDefinition: {
+          dimensions: ["workstream-coverage", "artifact-coherence", "oracle-pass-summary"],
+          abstentionTriggers: ["generic API bundle"],
+        },
+        repairPolicy: {
+          maxAttemptsPerStage: 0,
+          immediateElimination: [],
+          repairable: ["missing-target-coverage", "partial-workstream-coverage"],
+          preferAbstainOverRetry: ["generic API bundle", "weak-finalist-evidence"],
+        },
+      };
+    },
+  },
+  {
+    id: "workspace-oracle-package-config-contract",
+    description:
+      "A workspace-scoped package oracle validates the package runtime, but only the strong candidate also updates the paired package config artifact.",
+    weakCandidateId: "cand-01",
+    expectedRepoOracles: [{ id: "billing-runtime-workspace", roundId: "impact" }],
+    initialFiles() {
+      return {
+        "packages/billing/src/reconcile.ts":
+          "export function reconcileRestore(request) {\n  return null;\n}\n",
+        "packages/billing/config/reconcile.json":
+          '{\n  "restoreMode": "pending",\n  "logoutBehavior": "pending"\n}\n',
+        "packages/billing/check-reconcile-runtime.mjs": [
+          'import { readFileSync } from "node:fs";',
+          "",
+          'const source = readFileSync("src/reconcile.ts", "utf8");',
+          'if (!source.includes("return existingSession;")) {',
+          '  console.error("billing runtime is still stale");',
+          "  process.exit(1);",
+          "}",
+          "",
+          'console.log("billing runtime bundle looks valid");',
+        ].join("\n"),
+      };
+    },
+    taskPacket(root) {
+      return {
+        id: "workspace_oracle_package_config_bundle",
+        title: "Revise the package runtime and config bundle for billing session restore",
+        intent:
+          "Revise packages/billing/src/reconcile.ts into the canonical refresh restore implementation. Very complex success also requires updating packages/billing/config/reconcile.json so the package config matches the runtime behavior.",
+        artifactKind: "code",
+        targetArtifactPath: "packages/billing/src/reconcile.ts",
+        nonGoals: [
+          "Do not stop after the implementation change if packages/billing/config/reconcile.json stays stale.",
+        ],
+        acceptanceCriteria: [
+          "packages/billing/src/reconcile.ts restores the existing billing session on refresh.",
+          "packages/billing/config/reconcile.json records the concrete package runtime contract.",
+        ],
+        risks: ["A code-only change leaves the package config contract stale."],
+        oracleHints: ["Keep the workspace-scoped billing runtime oracle green."],
+        strategyHints: ["Keep the package runtime implementation and config aligned."],
+        contextFiles: [
+          join(root, "packages", "billing", "src", "reconcile.ts"),
+          join(root, "packages", "billing", "config", "reconcile.json"),
+          join(root, "packages", "billing", "check-reconcile-runtime.mjs"),
+        ],
+      };
+    },
+    analyze(root) {
+      const implementation = readFileSync(
+        join(root, "packages", "billing", "src", "reconcile.ts"),
+        "utf8",
+      );
+      const config = readFileSync(
+        join(root, "packages", "billing", "config", "reconcile.json"),
+        "utf8",
+      );
+      const implementationStrong = implementation.includes("return existingSession;");
+      const configStrong =
+        config.includes('"restoreMode": "existing-session"') &&
+        config.includes('"logoutBehavior": "clears-on-next-load"');
+      return {
+        score: implementationStrong && configStrong ? 3 : implementationStrong ? 1 : 0,
+        implementationStrong,
+        configStrong,
+      };
+    },
+    advancedConfig() {
+      return {
+        version: 1,
+        oracles: [
+          {
+            id: "billing-runtime-workspace",
+            roundId: "impact",
+            command: process.execPath,
+            args: ["check-reconcile-runtime.mjs"],
+            cwd: "workspace",
+            relativeCwd: "packages/billing",
+            invariant:
+              "The billing package runtime must restore the existing session during a normal refresh.",
+            enforcement: "hard",
+            confidence: "high",
+            passSummary: "Billing package runtime oracle passed.",
+            failureSummary: "Billing package runtime oracle failed.",
+            repairHint:
+              "Update packages/billing/src/reconcile.ts so the package-level billing runtime check passes.",
+            safetyRationale:
+              "Workspace-scoped deterministic runtime oracle for the billing package workspace.",
+          },
+        ],
+      };
+    },
+    buildComplexPlan(plan) {
+      return {
+        ...plan,
+        mode: "complex",
+        decisionDrivers: [
+          ...plan.decisionDrivers,
+          "Complex package work must keep the billing runtime implementation and package config bundle in sync while preserving the workspace-scoped package oracle.",
+        ],
+        plannedJudgingCriteria: [
+          "Prefer finalists that update both packages/billing/src/reconcile.ts and packages/billing/config/reconcile.json coherently.",
+          "Treat implementation-only changes as incomplete because the package config contract remains stale.",
+        ],
+        crownGates: [
+          "Do not recommend finalists that leave packages/billing/config/reconcile.json stale.",
+          "Abstain if every finalist changes the implementation but not the paired package config artifact.",
+        ],
+        workstreams: [
+          {
+            id: "billing-runtime",
+            label: "Billing Runtime Contract",
+            goal: "Update packages/billing/src/reconcile.ts with the billing session restore implementation.",
+            targetArtifacts: ["packages/billing/src/reconcile.ts"],
+            requiredChangedPaths: ["packages/billing/src/reconcile.ts"],
+            protectedPaths: [],
+            oracleIds: ["billing-runtime-workspace"],
+            dependencies: [],
+            risks: [],
+            disqualifiers: [],
+          },
+          {
+            id: "billing-config",
+            label: "Billing Config Contract",
+            goal: "Update packages/billing/config/reconcile.json with the concrete package runtime contract.",
+            targetArtifacts: ["packages/billing/config/reconcile.json"],
+            requiredChangedPaths: ["packages/billing/config/reconcile.json"],
+            protectedPaths: [],
+            oracleIds: [],
+            dependencies: ["billing-runtime"],
+            risks: ["A stale package config leaves the billing bundle weak."],
+            disqualifiers: ["Do not leave packages/billing/config/reconcile.json unchanged."],
+          },
+        ],
+        stagePlan: [
+          {
+            id: "billing-config-fit",
+            label: "Billing Config Fit",
+            dependsOn: [],
+            workstreamIds: ["billing-runtime", "billing-config"],
+            roundIds: ["impact"],
+            entryCriteria: ["Consultation plan basis remains current."],
+            exitCriteria: [
+              "Materially change packages/billing/src/reconcile.ts.",
+              "Materially change packages/billing/config/reconcile.json.",
+            ],
+          },
+        ],
+        scorecardDefinition: {
+          dimensions: [
+            "workstream-coverage",
+            "required-path-coverage",
+            "artifact-coherence",
+            "oracle-pass-summary",
+          ],
+          abstentionTriggers: ["stale billing package config contract"],
+        },
+        repairPolicy: {
+          maxAttemptsPerStage: 0,
+          immediateElimination: [],
+          repairable: ["missing-target-coverage", "partial-workstream-coverage"],
+          preferAbstainOverRetry: [
+            "stale billing package config contract",
+            "weak-finalist-evidence",
+          ],
+        },
+      };
+    },
+  },
+  {
+    id: "workspace-oracle-package-config-reviewability",
+    description:
+      "A workspace-scoped package oracle validates the package runtime, but only the strong candidate leaves a concrete, operator-reviewable package runtime bundle.",
+    weakCandidateId: "cand-01",
+    expectedRepoOracles: [{ id: "billing-runtime-workspace", roundId: "impact" }],
+    initialFiles() {
+      return {
+        "packages/billing/src/reconcile.ts":
+          "export function reconcileRestore(request) {\n  return null;\n}\n",
+        "packages/billing/config/reconcile.json":
+          '{\n  "restoreMode": "pending",\n  "logoutBehavior": "pending"\n}\n',
+        "packages/billing/check-reconcile-runtime.mjs": [
+          'import { readFileSync } from "node:fs";',
+          "",
+          'const source = readFileSync("src/reconcile.ts", "utf8");',
+          'if (!source.includes("return existingSession;")) {',
+          '  console.error("billing runtime is still stale");',
+          "  process.exit(1);",
+          "}",
+          "",
+          'console.log("billing runtime bundle looks valid");',
+        ].join("\n"),
+      };
+    },
+    taskPacket(root) {
+      return {
+        id: "workspace_oracle_package_config_reviewability",
+        title:
+          "Revise the reviewable package runtime and config bundle for billing session restore",
+        intent:
+          "Revise packages/billing/src/reconcile.ts and packages/billing/config/reconcile.json into a coherent billing package bundle. Very complex success prefers concrete, operator-reviewable runtime and config semantics over generic rewrites.",
+        artifactKind: "code",
+        targetArtifactPath: "packages/billing/src/reconcile.ts",
+        nonGoals: ["Do not leave the billing package bundle at generic wording."],
+        acceptanceCriteria: [
+          "packages/billing/src/reconcile.ts is materially updated.",
+          "packages/billing/config/reconcile.json is materially updated.",
+        ],
+        risks: [
+          "Generic package wording makes the runtime bundle weakly reviewable even when both files changed.",
+        ],
+        oracleHints: ["Keep the workspace-scoped billing runtime oracle green."],
+        strategyHints: ["Prefer concrete package runtime behavior and config markers."],
+        contextFiles: [
+          join(root, "packages", "billing", "src", "reconcile.ts"),
+          join(root, "packages", "billing", "config", "reconcile.json"),
+          join(root, "packages", "billing", "check-reconcile-runtime.mjs"),
+        ],
+      };
+    },
+    analyze(root) {
+      const implementation = readFileSync(
+        join(root, "packages", "billing", "src", "reconcile.ts"),
+        "utf8",
+      );
+      const config = readFileSync(
+        join(root, "packages", "billing", "config", "reconcile.json"),
+        "utf8",
+      );
+      const implementationSpecific =
+        implementation.includes("return existingSession;") &&
+        implementation.includes("if (!existingSession)");
+      const configSpecific =
+        config.includes('"restoreMode": "existing-session"') &&
+        config.includes('"logoutBehavior": "clears-on-next-load"');
+      return {
+        score: implementationSpecific && configSpecific ? 3 : 1,
+        implementationSpecific,
+        configSpecific,
+      };
+    },
+    advancedConfig() {
+      return {
+        version: 1,
+        oracles: [
+          {
+            id: "billing-runtime-workspace",
+            roundId: "impact",
+            command: process.execPath,
+            args: ["check-reconcile-runtime.mjs"],
+            cwd: "workspace",
+            relativeCwd: "packages/billing",
+            invariant:
+              "The billing package runtime must restore the existing session during a normal refresh.",
+            enforcement: "hard",
+            confidence: "high",
+            passSummary: "Billing package runtime oracle passed.",
+            failureSummary: "Billing package runtime oracle failed.",
+            repairHint:
+              "Update packages/billing/src/reconcile.ts so the package-level billing runtime check passes.",
+            safetyRationale:
+              "Workspace-scoped deterministic runtime oracle for the billing package workspace.",
+          },
+        ],
+      };
+    },
+    buildComplexPlan(plan) {
+      return {
+        ...plan,
+        mode: "complex",
+        requiredChangedPaths: [
+          "packages/billing/src/reconcile.ts",
+          "packages/billing/config/reconcile.json",
+        ],
+        decisionDrivers: [
+          ...plan.decisionDrivers,
+          "Complex package work should prefer concrete, reviewable billing runtime and config bundles while preserving the workspace-scoped package oracle.",
+        ],
+        plannedJudgingCriteria: [
+          "Prefer finalists that make packages/billing/src/reconcile.ts and packages/billing/config/reconcile.json concrete and operator-reviewable.",
+          "Treat generic package wording as materially weaker even when both files changed.",
+        ],
+        crownGates: [
+          "Do not recommend finalists that leave the billing package runtime bundle generic.",
+          "Abstain if every finalist changes both files but keeps the runtime semantics too vague for review.",
+        ],
+        workstreams: [
+          {
+            id: "billing-runtime",
+            label: "Billing Runtime Contract",
+            goal: "Update packages/billing/src/reconcile.ts with a concrete billing session restore response.",
+            targetArtifacts: ["packages/billing/src/reconcile.ts"],
+            requiredChangedPaths: ["packages/billing/src/reconcile.ts"],
+            protectedPaths: [],
+            oracleIds: ["billing-runtime-workspace"],
+            dependencies: [],
+            risks: [],
+            disqualifiers: [],
+          },
+          {
+            id: "billing-config",
+            label: "Billing Config Contract",
+            goal: "Update packages/billing/config/reconcile.json with concrete config markers that match the runtime behavior.",
+            targetArtifacts: ["packages/billing/config/reconcile.json"],
+            requiredChangedPaths: ["packages/billing/config/reconcile.json"],
+            protectedPaths: [],
+            oracleIds: [],
+            dependencies: ["billing-runtime"],
+            risks: ["Generic config wording keeps the billing package bundle weak."],
+            disqualifiers: [],
+          },
+        ],
+        stagePlan: [
+          {
+            id: "billing-reviewability-fit",
+            label: "Billing Reviewability Fit",
+            dependsOn: [],
+            workstreamIds: ["billing-runtime", "billing-config"],
+            roundIds: ["impact"],
+            entryCriteria: ["Consultation plan basis remains current."],
+            exitCriteria: [
+              "Materially change packages/billing/src/reconcile.ts.",
+              "Materially change packages/billing/config/reconcile.json.",
+            ],
+          },
+        ],
+        scorecardDefinition: {
+          dimensions: [
+            "workstream-coverage",
+            "artifact-coherence",
+            "required-path-coverage",
+            "oracle-pass-summary",
+          ],
+          abstentionTriggers: ["generic billing package bundle"],
+        },
+        repairPolicy: {
+          maxAttemptsPerStage: 0,
+          immediateElimination: [],
+          repairable: ["missing-target-coverage", "partial-workstream-coverage"],
+          preferAbstainOverRetry: ["generic billing package bundle", "weak-finalist-evidence"],
+        },
+      };
+    },
+  },
+  {
+    id: "code-test-contract-coverage",
+    description:
+      "The weak candidate updates only the implementation while the strong candidate also updates the paired regression test artifact.",
+    weakCandidateId: "cand-01",
+    initialFiles() {
+      return {
+        "packages/auth/src/session.ts":
+          "export function restoreSession(request) {\n  return null;\n}\n",
+        "packages/auth/test/session-refresh.test.ts":
+          'import { restoreSession } from "../src/session";\n\ntest("restoreSession keeps the signed-in user across refresh", () => {\n  // TODO add the regression expectation.\n});\n',
+      };
+    },
+    taskPacket(root) {
+      return {
+        id: "code_test_contract_bundle",
+        title: "Revise the runtime and regression bundle for session restore",
+        intent:
+          "Revise packages/auth/src/session.ts into the canonical refresh restore implementation. Very complex success also requires updating packages/auth/test/session-refresh.test.ts so the regression contract matches the runtime behavior.",
+        artifactKind: "code",
+        targetArtifactPath: "packages/auth/src/session.ts",
+        nonGoals: [
+          "Do not stop after the implementation change if packages/auth/test/session-refresh.test.ts stays stale.",
+        ],
+        acceptanceCriteria: [
+          "packages/auth/src/session.ts restores the existing session on refresh.",
+          "packages/auth/test/session-refresh.test.ts records the concrete regression expectation.",
+        ],
+        risks: ["A code-only change leaves the regression contract stale."],
+        oracleHints: [],
+        strategyHints: ["Keep the runtime implementation and regression test aligned."],
+        contextFiles: [
+          join(root, "packages", "auth", "src", "session.ts"),
+          join(root, "packages", "auth", "test", "session-refresh.test.ts"),
+        ],
+      };
+    },
+    analyze(root) {
+      const implementation = readFileSync(
+        join(root, "packages", "auth", "src", "session.ts"),
+        "utf8",
+      );
+      const regression = readFileSync(
+        join(root, "packages", "auth", "test", "session-refresh.test.ts"),
+        "utf8",
+      );
+      const implementationStrong = implementation.includes("return existingSession;");
+      const regressionStrong = regression.includes(
+        "expect(restoreSession(request)).toEqual(existingSession);",
+      );
+      return {
+        score: implementationStrong && regressionStrong ? 3 : implementationStrong ? 1 : 0,
+        implementationStrong,
+        regressionStrong,
+      };
+    },
+    advancedConfig() {
+      return {
+        version: 1,
+        oracles: [],
+      };
+    },
+    buildComplexPlan(plan) {
+      return {
+        ...plan,
+        mode: "complex",
+        decisionDrivers: [
+          ...plan.decisionDrivers,
+          "Complex runtime work must keep the implementation and regression test bundle in sync.",
+        ],
+        plannedJudgingCriteria: [
+          "Prefer finalists that update both packages/auth/src/session.ts and packages/auth/test/session-refresh.test.ts coherently.",
+          "Treat implementation-only changes as incomplete because the regression contract remains stale.",
+        ],
+        crownGates: [
+          "Do not recommend finalists that leave packages/auth/test/session-refresh.test.ts stale.",
+          "Abstain if every finalist changes the implementation but not the paired regression test artifact.",
+        ],
+        workstreams: [
+          {
+            id: "runtime-implementation",
+            label: "Runtime Implementation Contract",
+            goal: "Update packages/auth/src/session.ts with the session restore implementation.",
+            targetArtifacts: ["packages/auth/src/session.ts"],
+            requiredChangedPaths: ["packages/auth/src/session.ts"],
+            protectedPaths: [],
+            oracleIds: [],
+            dependencies: [],
+            risks: [],
+            disqualifiers: [],
+          },
+          {
+            id: "regression-test",
+            label: "Regression Test Contract",
+            goal: "Update packages/auth/test/session-refresh.test.ts with the concrete regression expectation.",
+            targetArtifacts: ["packages/auth/test/session-refresh.test.ts"],
+            requiredChangedPaths: ["packages/auth/test/session-refresh.test.ts"],
+            protectedPaths: [],
+            oracleIds: [],
+            dependencies: ["runtime-implementation"],
+            risks: ["A stale regression test leaves the runtime bundle weak."],
+            disqualifiers: ["Do not leave packages/auth/test/session-refresh.test.ts unchanged."],
+          },
+        ],
+        stagePlan: [
+          {
+            id: "code-test-fit",
+            label: "Code Test Fit",
+            dependsOn: [],
+            workstreamIds: ["runtime-implementation", "regression-test"],
+            roundIds: ["impact"],
+            entryCriteria: ["Consultation plan basis remains current."],
+            exitCriteria: [
+              "Materially change packages/auth/src/session.ts.",
+              "Materially change packages/auth/test/session-refresh.test.ts.",
+            ],
+          },
+        ],
+        scorecardDefinition: {
+          dimensions: [
+            "workstream-coverage",
+            "required-path-coverage",
+            "artifact-coherence",
+            "oracle-pass-summary",
+          ],
+          abstentionTriggers: ["stale regression test contract"],
+        },
+        repairPolicy: {
+          maxAttemptsPerStage: 0,
+          immediateElimination: [],
+          repairable: ["missing-target-coverage", "partial-workstream-coverage"],
+          preferAbstainOverRetry: ["stale regression test contract", "weak-finalist-evidence"],
+        },
+      };
+    },
+  },
+  {
+    id: "api-schema-reviewability-bias",
+    description:
+      "Both candidates satisfy the handler and schema file contract, but only the strong candidate leaves a concrete, operator-reviewable API bundle.",
+    weakCandidateId: "cand-01",
+    initialFiles() {
+      return {
+        "services/http/session_handler.py":
+          'def build_session_response(request):\n    return {"status": "pending"}\n',
+        "api/openapi/session.yaml": "status: pending\nlogout_behavior: review-later\n",
+      };
+    },
+    taskPacket(root) {
+      return {
+        id: "api_schema_reviewability",
+        title: "Revise the reviewable handler and API schema bundle",
+        intent:
+          "Revise services/http/session_handler.py and api/openapi/session.yaml into a coherent API bundle. Very complex success prefers concrete, operator-reviewable runtime and schema semantics over generic rewrites.",
+        artifactKind: "code",
+        targetArtifactPath: "services/http/session_handler.py",
+        nonGoals: ["Do not leave the handler and schema bundle at generic wording."],
+        acceptanceCriteria: [
+          "services/http/session_handler.py is materially updated.",
+          "api/openapi/session.yaml is materially updated.",
+        ],
+        risks: [
+          "Generic API wording makes the handler and schema bundle weakly reviewable even when both files changed.",
+        ],
+        oracleHints: [],
+        strategyHints: ["Prefer concrete handler behavior and concrete API schema markers."],
+        contextFiles: [
+          join(root, "services", "http", "session_handler.py"),
+          join(root, "api", "openapi", "session.yaml"),
+        ],
+      };
+    },
+    analyze(root) {
+      const handler = readFileSync(join(root, "services", "http", "session_handler.py"), "utf8");
+      const schema = readFileSync(join(root, "api", "openapi", "session.yaml"), "utf8");
+      const handlerSpecific =
+        handler.includes('"status": "restored"') &&
+        handler.includes('"logout_behavior": "clears-on-next-load"');
+      const schemaSpecific =
+        schema.includes("status: restored") &&
+        schema.includes("logout_behavior: clears-on-next-load");
+      return {
+        score: handlerSpecific && schemaSpecific ? 3 : 1,
+        handlerSpecific,
+        schemaSpecific,
+      };
+    },
+    advancedConfig() {
+      return {
+        version: 1,
+        oracles: [],
+      };
+    },
+    buildComplexPlan(plan) {
+      return {
+        ...plan,
+        mode: "complex",
+        requiredChangedPaths: ["services/http/session_handler.py", "api/openapi/session.yaml"],
+        decisionDrivers: [
+          ...plan.decisionDrivers,
+          "Complex API work should prefer concrete, reviewable handler and schema bundles over generic rewrites.",
+        ],
+        plannedJudgingCriteria: [
+          "Prefer finalists that make services/http/session_handler.py and api/openapi/session.yaml concrete and operator-reviewable.",
+          "Treat generic API wording as materially weaker even when both files changed.",
+        ],
+        crownGates: [
+          "Do not recommend finalists that leave the handler and schema bundle generic.",
+          "Abstain if every finalist changes both files but keeps the API semantics too vague for review.",
+        ],
+        workstreams: [
+          {
+            id: "handler-runtime",
+            label: "Handler Runtime Contract",
+            goal: "Update services/http/session_handler.py with a concrete session restore response.",
+            targetArtifacts: ["services/http/session_handler.py"],
+            requiredChangedPaths: ["services/http/session_handler.py"],
+            protectedPaths: [],
+            oracleIds: [],
+            dependencies: [],
+            risks: [],
+            disqualifiers: [],
+          },
+          {
+            id: "openapi-schema",
+            label: "OpenAPI Schema Contract",
+            goal: "Update api/openapi/session.yaml with concrete schema markers that match the handler response.",
+            targetArtifacts: ["api/openapi/session.yaml"],
+            requiredChangedPaths: ["api/openapi/session.yaml"],
+            protectedPaths: [],
+            oracleIds: [],
+            dependencies: ["handler-runtime"],
+            risks: ["Generic schema wording keeps the API bundle weak."],
+            disqualifiers: [],
+          },
+        ],
+        stagePlan: [
+          {
+            id: "api-schema-fit",
+            label: "API Schema Fit",
+            dependsOn: [],
+            workstreamIds: ["handler-runtime", "openapi-schema"],
+            roundIds: ["impact"],
+            entryCriteria: ["Consultation plan basis remains current."],
+            exitCriteria: [
+              "Materially change services/http/session_handler.py.",
+              "Materially change api/openapi/session.yaml.",
+            ],
+          },
+        ],
+        scorecardDefinition: {
+          dimensions: ["workstream-coverage", "artifact-coherence", "oracle-pass-summary"],
+          abstentionTriggers: ["generic API bundle"],
+        },
+        repairPolicy: {
+          maxAttemptsPerStage: 0,
+          immediateElimination: [],
+          repairable: ["missing-target-coverage", "partial-workstream-coverage"],
+          preferAbstainOverRetry: ["generic API bundle", "weak-finalist-evidence"],
+        },
+      };
+    },
+  },
+  {
     id: "rust-config-reviewability-bias",
     description:
       "Both candidates satisfy the Rust and YAML file contract, but only the strong candidate leaves a concrete, operator-reviewable runtime bundle.",
@@ -1681,6 +2619,1137 @@ const scenarios = [
       };
     },
   },
+  {
+    id: "dual-oracle-migration-rollback-reviewability",
+    description:
+      "Workspace-scoped runtime and project-scoped migration rollback oracles both pass, but only the strong candidate leaves a concrete, operator-reviewable migration bundle.",
+    weakCandidateId: "cand-01",
+    expectedRepoOracles: [
+      { id: "payments-runtime-workspace", roundId: "impact" },
+      { id: "migration-rollback-impact", roundId: "impact" },
+    ],
+    initialFiles() {
+      return {
+        "packages/payments/src/migration.ts":
+          'export function currentRestoreMode() {\n  return "pending";\n}\n',
+        "db/migrations/20260416_add_session_restore.sql":
+          "-- pending migration\nALTER TABLE sessions ADD COLUMN restore_mode TEXT;\n",
+        "docs/ROLLBACK.md": "# Rollback\n\n- pending rollback steps\n- pending operator notes\n",
+        "packages/payments/check-migration-runtime.mjs": [
+          'import { readFileSync } from "node:fs";',
+          "",
+          'const source = readFileSync("src/migration.ts", "utf8");',
+          'if (!source.includes("session_restore_enabled")) {',
+          '  console.error("payments runtime is still stale");',
+          "  process.exit(1);",
+          "}",
+          "",
+          'console.log("payments runtime bundle looks valid");',
+        ].join("\n"),
+        "tools/check-migration-rollback.mjs": [
+          'import { readFileSync } from "node:fs";',
+          'import { join } from "node:path";',
+          "",
+          "const workspaceRoot = process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR ?? process.cwd();",
+          "const migration = readFileSync(",
+          '  join(workspaceRoot, "db", "migrations", "20260416_add_session_restore.sql"),',
+          '  "utf8",',
+          ");",
+          'const rollback = readFileSync(join(workspaceRoot, "docs", "ROLLBACK.md"), "utf8");',
+          'if (migration.includes("pending") || rollback.includes("pending")) {',
+          '  console.error("migration or rollback bundle is still pending");',
+          "  process.exit(1);",
+          "}",
+          "",
+          'console.log("migration and rollback bundle cleared pending state");',
+        ].join("\n"),
+      };
+    },
+    taskPacket(root) {
+      return {
+        id: "dual_oracle_migration_rollback_reviewability",
+        title: "Revise the migration runtime and rollback bundle for session restore",
+        intent:
+          "Revise packages/payments/src/migration.ts, db/migrations/20260416_add_session_restore.sql, and docs/ROLLBACK.md into a coherent migration bundle. Very complex success prefers concrete, operator-reviewable runtime, migration, and rollback semantics over generic rewrites.",
+        artifactKind: "code",
+        targetArtifactPath: "packages/payments/src/migration.ts",
+        nonGoals: ["Do not leave the migration and rollback bundle at generic wording."],
+        acceptanceCriteria: [
+          "packages/payments/src/migration.ts is materially updated.",
+          "db/migrations/20260416_add_session_restore.sql is materially updated.",
+          "docs/ROLLBACK.md is materially updated.",
+        ],
+        risks: [
+          "Generic migration or rollback language makes the release bundle weakly reviewable even when both oracles pass.",
+        ],
+        oracleHints: [
+          "Keep the workspace-scoped payments runtime oracle green.",
+          "Keep the project-scoped migration and rollback oracle green.",
+        ],
+        strategyHints: ["Prefer concrete migration defaults and rollback steps."],
+        contextFiles: [
+          join(root, "packages", "payments", "src", "migration.ts"),
+          join(root, "db", "migrations", "20260416_add_session_restore.sql"),
+          join(root, "docs", "ROLLBACK.md"),
+          join(root, "packages", "payments", "check-migration-runtime.mjs"),
+          join(root, "tools", "check-migration-rollback.mjs"),
+        ],
+      };
+    },
+    analyze(root) {
+      const runtime = readFileSync(
+        join(root, "packages", "payments", "src", "migration.ts"),
+        "utf8",
+      );
+      const migration = readFileSync(
+        join(root, "db", "migrations", "20260416_add_session_restore.sql"),
+        "utf8",
+      );
+      const rollback = readFileSync(join(root, "docs", "ROLLBACK.md"), "utf8");
+      const runtimeSpecific =
+        runtime.includes("session_restore_enabled") && runtime.includes("existing-session");
+      const migrationSpecific =
+        migration.includes("DEFAULT 'existing-session'") &&
+        migration.includes("UPDATE sessions SET restore_mode = 'existing-session'");
+      const rollbackSpecific =
+        rollback.includes("Disable the session-restore release flag before rollback.") &&
+        rollback.includes("ALTER TABLE sessions DROP COLUMN restore_mode;");
+      return {
+        score: runtimeSpecific && migrationSpecific && rollbackSpecific ? 3 : 1,
+        runtimeSpecific,
+        migrationSpecific,
+        rollbackSpecific,
+      };
+    },
+    advancedConfig() {
+      return {
+        version: 1,
+        oracles: [
+          {
+            id: "payments-runtime-workspace",
+            roundId: "impact",
+            command: process.execPath,
+            args: ["check-migration-runtime.mjs"],
+            cwd: "workspace",
+            relativeCwd: "packages/payments",
+            invariant:
+              "The payments package runtime must enable the session restore migration path.",
+            enforcement: "hard",
+            confidence: "high",
+            passSummary: "Payments workspace runtime oracle passed.",
+            failureSummary: "Payments workspace runtime oracle failed.",
+            repairHint:
+              "Update packages/payments/src/migration.ts so the payments runtime check passes.",
+            safetyRationale:
+              "Workspace-scoped deterministic oracle for the payments package runtime.",
+          },
+          {
+            id: "migration-rollback-impact",
+            roundId: "impact",
+            command: process.execPath,
+            args: ["tools/check-migration-rollback.mjs"],
+            cwd: "project",
+            invariant: "The migration SQL and rollback runbook must both leave the pending state.",
+            enforcement: "hard",
+            confidence: "high",
+            passSummary: "Migration rollback project oracle passed.",
+            failureSummary: "Migration rollback project oracle failed.",
+            repairHint:
+              "Update the migration SQL and rollback runbook so both artifacts leave the pending state together.",
+            safetyRationale:
+              "Project-scoped deterministic oracle for the migration and rollback bundle.",
+          },
+        ],
+      };
+    },
+    buildComplexPlan(plan) {
+      return {
+        ...plan,
+        mode: "complex",
+        requiredChangedPaths: [
+          "packages/payments/src/migration.ts",
+          "db/migrations/20260416_add_session_restore.sql",
+          "docs/ROLLBACK.md",
+        ],
+        decisionDrivers: [
+          ...plan.decisionDrivers,
+          "Complex migration work should prefer concrete runtime, migration, and rollback bundles even when both repo-local oracles already pass.",
+        ],
+        plannedJudgingCriteria: [
+          "Prefer finalists that make packages/payments/src/migration.ts, db/migrations/20260416_add_session_restore.sql, and docs/ROLLBACK.md concrete and operator-reviewable while preserving both repo-local oracles.",
+          "Treat generic migration defaults or rollback wording as materially weaker even when both repo-local oracles pass.",
+        ],
+        crownGates: [
+          "Do not recommend finalists that leave the migration or rollback bundle generic.",
+          "Abstain if every finalist passes the oracles but keeps the migration bundle too vague for operator review.",
+        ],
+        workstreams: [
+          {
+            id: "payments-runtime",
+            label: "Payments Runtime Contract",
+            goal: "Update packages/payments/src/migration.ts with the concrete session restore runtime mode.",
+            targetArtifacts: ["packages/payments/src/migration.ts"],
+            requiredChangedPaths: ["packages/payments/src/migration.ts"],
+            protectedPaths: [],
+            oracleIds: ["payments-runtime-workspace"],
+            dependencies: [],
+            risks: [],
+            disqualifiers: [],
+          },
+          {
+            id: "migration-sql",
+            label: "Migration SQL Contract",
+            goal: "Update db/migrations/20260416_add_session_restore.sql with concrete migration defaults.",
+            targetArtifacts: ["db/migrations/20260416_add_session_restore.sql"],
+            requiredChangedPaths: ["db/migrations/20260416_add_session_restore.sql"],
+            protectedPaths: [],
+            oracleIds: ["migration-rollback-impact"],
+            dependencies: ["payments-runtime"],
+            risks: ["Generic migration defaults weaken the release bundle."],
+            disqualifiers: [],
+          },
+          {
+            id: "rollback-runbook",
+            label: "Rollback Runbook Contract",
+            goal: "Update docs/ROLLBACK.md with concrete operator rollback steps that match the migration SQL.",
+            targetArtifacts: ["docs/ROLLBACK.md"],
+            requiredChangedPaths: ["docs/ROLLBACK.md"],
+            protectedPaths: [],
+            oracleIds: ["migration-rollback-impact"],
+            dependencies: ["migration-sql"],
+            risks: ["Generic rollback wording leaves the migration bundle weak."],
+            disqualifiers: [],
+          },
+        ],
+        stagePlan: [
+          {
+            id: "migration-runtime-fit",
+            label: "Migration Runtime Fit",
+            dependsOn: [],
+            workstreamIds: ["payments-runtime", "migration-sql", "rollback-runbook"],
+            roundIds: ["impact"],
+            entryCriteria: ["Consultation plan basis remains current."],
+            exitCriteria: [
+              "Materially change packages/payments/src/migration.ts.",
+              "Materially change db/migrations/20260416_add_session_restore.sql.",
+              "Materially change docs/ROLLBACK.md.",
+            ],
+          },
+        ],
+        scorecardDefinition: {
+          dimensions: [
+            "workstream-coverage",
+            "required-path-coverage",
+            "artifact-coherence",
+            "oracle-pass-summary",
+          ],
+          abstentionTriggers: ["generic migration rollback bundle"],
+        },
+        repairPolicy: {
+          maxAttemptsPerStage: 0,
+          immediateElimination: [],
+          repairable: ["missing-target-coverage", "partial-workstream-coverage"],
+          preferAbstainOverRetry: ["generic migration rollback bundle", "weak-finalist-evidence"],
+        },
+      };
+    },
+  },
+  {
+    id: "package-script-project-oracle-reviewability",
+    description:
+      "A workspace package script oracle and a project-scoped migration oracle both pass, but only the strong candidate leaves a concrete, operator-reviewable release bundle.",
+    weakCandidateId: "cand-01",
+    expectedRepoOracles: [
+      { id: "workspace-session-test", roundId: "impact" },
+      { id: "release-rollback-impact", roundId: "impact" },
+    ],
+    initialFiles() {
+      return {
+        "packages/web/package.json": JSON.stringify(
+          {
+            name: "@fixture/web",
+            private: true,
+            scripts: {
+              "test:session": "node ./check-session-runtime.mjs",
+            },
+          },
+          null,
+          2,
+        ).concat("\n"),
+        "packages/web/src/session.ts":
+          "export function restoreSession(request) {\n  return null;\n}\n",
+        "packages/web/check-session-runtime.mjs": [
+          'import { readFileSync } from "node:fs";',
+          "",
+          'const source = readFileSync("./src/session.ts", "utf8");',
+          'if (!source.includes("return existingSession;")) {',
+          '  console.error("workspace package runtime is still stale");',
+          "  process.exit(1);",
+          "}",
+          "",
+          'console.log("workspace package runtime looks valid");',
+        ].join("\n"),
+        "db/migrations/20260416_release_session_restore.sql":
+          "-- pending release migration\nALTER TABLE sessions ADD COLUMN restore_mode TEXT;\n",
+        "docs/ROLLBACK.md":
+          "# Rollback\n\n- pending release rollback\n- pending operator guidance\n",
+        "tools/check-release-rollback.mjs": [
+          'import { readFileSync } from "node:fs";',
+          'import { join } from "node:path";',
+          "",
+          "const workspaceRoot = process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR ?? process.cwd();",
+          "const migration = readFileSync(",
+          '  join(workspaceRoot, "db", "migrations", "20260416_release_session_restore.sql"),',
+          '  "utf8",',
+          ");",
+          'const rollback = readFileSync(join(workspaceRoot, "docs", "ROLLBACK.md"), "utf8");',
+          'if (migration.includes("pending") || rollback.includes("pending")) {',
+          '  console.error("release migration or rollback bundle is still pending");',
+          "  process.exit(1);",
+          "}",
+          "",
+          'console.log("release migration and rollback bundle cleared pending state");',
+        ].join("\n"),
+      };
+    },
+    async afterWrite(root) {
+      await writeNodeBinary(
+        join(root, "bin"),
+        "pnpm",
+        [
+          'const { spawnSync } = require("node:child_process");',
+          "const args = process.argv.slice(2);",
+          "if (args[0] === 'run' && args[1] === 'test:session') {",
+          `  const result = spawnSync(${JSON.stringify(process.execPath)}, ['check-session-runtime.mjs'], {`,
+          "    cwd: process.cwd(),",
+          '    stdio: "inherit",',
+          "    env: process.env,",
+          "  });",
+          "  process.exit(result.status ?? 1);",
+          "}",
+          "process.stderr.write('unsupported pnpm invocation: ' + args.join(' ') + '\\n');",
+          "process.exit(1);",
+        ].join("\n"),
+      );
+    },
+    taskPacket(root) {
+      return {
+        id: "package_script_project_oracle_reviewability",
+        title: "Revise the package-tested release migration bundle for session restore",
+        intent:
+          "Revise packages/web/src/session.ts, db/migrations/20260416_release_session_restore.sql, and docs/ROLLBACK.md into a coherent release bundle. Very complex success prefers concrete, operator-reviewable runtime, migration, and rollback semantics over generic rewrites while preserving both repo-local oracles.",
+        artifactKind: "code",
+        targetArtifactPath: "packages/web/src/session.ts",
+        nonGoals: ["Do not leave the runtime or release bundle at generic wording."],
+        acceptanceCriteria: [
+          "packages/web/src/session.ts is materially updated.",
+          "db/migrations/20260416_release_session_restore.sql is materially updated.",
+          "docs/ROLLBACK.md is materially updated.",
+        ],
+        risks: [
+          "Generic migration or rollback language can still be weak even when the package test and release oracle pass.",
+        ],
+        oracleHints: [
+          "Keep the workspace package script oracle green.",
+          "Keep the project-scoped release rollback oracle green.",
+        ],
+        strategyHints: ["Prefer concrete runtime markers and explicit rollback steps."],
+        contextFiles: [
+          join(root, "packages", "web", "package.json"),
+          join(root, "packages", "web", "src", "session.ts"),
+          join(root, "packages", "web", "check-session-runtime.mjs"),
+          join(root, "db", "migrations", "20260416_release_session_restore.sql"),
+          join(root, "docs", "ROLLBACK.md"),
+          join(root, "tools", "check-release-rollback.mjs"),
+        ],
+      };
+    },
+    analyze(root) {
+      const runtime = readFileSync(join(root, "packages", "web", "src", "session.ts"), "utf8");
+      const migration = readFileSync(
+        join(root, "db", "migrations", "20260416_release_session_restore.sql"),
+        "utf8",
+      );
+      const rollback = readFileSync(join(root, "docs", "ROLLBACK.md"), "utf8");
+      const runtimeSpecific =
+        runtime.includes("return existingSession;") && runtime.includes("if (!existingSession)");
+      const migrationSpecific =
+        migration.includes("DEFAULT 'existing-session'") &&
+        migration.includes("UPDATE sessions SET restore_mode = 'existing-session'");
+      const rollbackSpecific =
+        rollback.includes("Disable the session-restore release flag before rollback.") &&
+        rollback.includes("ALTER TABLE sessions DROP COLUMN restore_mode;");
+      return {
+        score: runtimeSpecific && migrationSpecific && rollbackSpecific ? 3 : 1,
+        runtimeSpecific,
+        migrationSpecific,
+        rollbackSpecific,
+      };
+    },
+    advancedConfig() {
+      return {
+        version: 1,
+        oracles: [
+          {
+            id: "workspace-session-test",
+            roundId: "impact",
+            command: "pnpm",
+            args: ["run", "test:session"],
+            cwd: "workspace",
+            relativeCwd: "packages/web",
+            invariant:
+              "The web workspace package script must keep the session runtime valid during refresh.",
+            enforcement: "hard",
+            confidence: "high",
+            passSummary: "Workspace package script oracle passed.",
+            failureSummary: "Workspace package script oracle failed.",
+            repairHint:
+              "Update packages/web/src/session.ts until the package-local test:session script passes.",
+            safetyRationale:
+              "Uses a workspace package.json script from packages/web for deterministic session validation.",
+          },
+          {
+            id: "release-rollback-impact",
+            roundId: "impact",
+            command: process.execPath,
+            args: ["tools/check-release-rollback.mjs"],
+            cwd: "project",
+            invariant:
+              "The release migration SQL and rollback runbook must both leave the pending state.",
+            enforcement: "hard",
+            confidence: "high",
+            passSummary: "Release rollback project oracle passed.",
+            failureSummary: "Release rollback project oracle failed.",
+            repairHint:
+              "Update the release migration SQL and rollback runbook so both artifacts leave the pending state together.",
+            safetyRationale:
+              "Project-scoped deterministic oracle for the release migration and rollback bundle.",
+          },
+        ],
+      };
+    },
+    buildComplexPlan(plan) {
+      return {
+        ...plan,
+        mode: "complex",
+        requiredChangedPaths: [
+          "packages/web/src/session.ts",
+          "db/migrations/20260416_release_session_restore.sql",
+          "docs/ROLLBACK.md",
+        ],
+        decisionDrivers: [
+          ...plan.decisionDrivers,
+          "Complex release work should prefer concrete runtime, migration, and rollback bundles even when the workspace package script and project rollback oracle already pass.",
+        ],
+        plannedJudgingCriteria: [
+          "Prefer finalists that make packages/web/src/session.ts, db/migrations/20260416_release_session_restore.sql, and docs/ROLLBACK.md concrete and operator-reviewable while preserving both repo-local oracles.",
+          "Treat generic release defaults or rollback wording as materially weaker even when both repo-local oracles pass.",
+        ],
+        crownGates: [
+          "Do not recommend finalists that leave the release migration or rollback bundle generic.",
+          "Abstain if every finalist passes the oracles but keeps the release bundle too vague for operator review.",
+        ],
+        workstreams: [
+          {
+            id: "workspace-runtime",
+            label: "Workspace Runtime Contract",
+            goal: "Update packages/web/src/session.ts with the concrete session restore runtime behavior.",
+            targetArtifacts: ["packages/web/src/session.ts"],
+            requiredChangedPaths: ["packages/web/src/session.ts"],
+            protectedPaths: [],
+            oracleIds: ["workspace-session-test"],
+            dependencies: [],
+            risks: [],
+            disqualifiers: [],
+          },
+          {
+            id: "release-migration",
+            label: "Release Migration Contract",
+            goal: "Update db/migrations/20260416_release_session_restore.sql with concrete release defaults.",
+            targetArtifacts: ["db/migrations/20260416_release_session_restore.sql"],
+            requiredChangedPaths: ["db/migrations/20260416_release_session_restore.sql"],
+            protectedPaths: [],
+            oracleIds: ["release-rollback-impact"],
+            dependencies: ["workspace-runtime"],
+            risks: ["Generic migration defaults weaken the release bundle."],
+            disqualifiers: [],
+          },
+          {
+            id: "release-rollback",
+            label: "Release Rollback Contract",
+            goal: "Update docs/ROLLBACK.md with concrete operator rollback steps that match the release migration.",
+            targetArtifacts: ["docs/ROLLBACK.md"],
+            requiredChangedPaths: ["docs/ROLLBACK.md"],
+            protectedPaths: [],
+            oracleIds: ["release-rollback-impact"],
+            dependencies: ["release-migration"],
+            risks: ["Generic rollback wording leaves the release bundle weak."],
+            disqualifiers: [],
+          },
+        ],
+        stagePlan: [
+          {
+            id: "release-bundle-fit",
+            label: "Release Bundle Fit",
+            dependsOn: [],
+            workstreamIds: ["workspace-runtime", "release-migration", "release-rollback"],
+            roundIds: ["impact"],
+            entryCriteria: ["Consultation plan basis remains current."],
+            exitCriteria: [
+              "Materially change packages/web/src/session.ts.",
+              "Materially change db/migrations/20260416_release_session_restore.sql.",
+              "Materially change docs/ROLLBACK.md.",
+            ],
+          },
+        ],
+        scorecardDefinition: {
+          dimensions: [
+            "workstream-coverage",
+            "required-path-coverage",
+            "artifact-coherence",
+            "oracle-pass-summary",
+          ],
+          abstentionTriggers: ["generic release migration bundle"],
+        },
+        repairPolicy: {
+          maxAttemptsPerStage: 0,
+          immediateElimination: [],
+          repairable: ["missing-target-coverage", "partial-workstream-coverage"],
+          preferAbstainOverRetry: ["generic release migration bundle", "weak-finalist-evidence"],
+        },
+      };
+    },
+  },
+  {
+    id: "package-script-fallback-stage-guard",
+    description:
+      "The winner judge fails after a workspace package script oracle and a project rollback oracle both pass, so direct falls back to an incomplete finalist while the planned stage graph removes it first.",
+    weakCandidateId: "cand-01",
+    expectedRepoOracles: [
+      { id: "workspace-session-test", roundId: "impact" },
+      { id: "release-rollback-impact", roundId: "impact" },
+    ],
+    initialFiles() {
+      return {
+        "packages/web/package.json": JSON.stringify(
+          {
+            name: "@fixture/web",
+            private: true,
+            scripts: {
+              "test:session": "node ./check-session-runtime.mjs",
+            },
+          },
+          null,
+          2,
+        ).concat("\n"),
+        "packages/web/src/session.ts":
+          "export function restoreSession(request) {\n  return null;\n}\n",
+        "packages/web/check-session-runtime.mjs": [
+          'import { readFileSync } from "node:fs";',
+          "",
+          'const source = readFileSync("./src/session.ts", "utf8");',
+          'if (!source.includes("return existingSession;")) {',
+          '  console.error("workspace package runtime is still stale");',
+          "  process.exit(1);",
+          "}",
+          "",
+          'console.log("workspace package runtime looks valid");',
+        ].join("\n"),
+        "db/migrations/20260416_release_session_restore.sql":
+          "-- pending release migration\nALTER TABLE sessions ADD COLUMN restore_mode TEXT;\n",
+        "docs/ROLLBACK.md":
+          "# Rollback\n\n- pending release rollback\n- pending operator guidance\n",
+        "docs/VERIFY.md": "# Verify\n\nPlaceholder.\n",
+        "tools/check-release-rollback.mjs": [
+          'import { readFileSync } from "node:fs";',
+          'import { join } from "node:path";',
+          "",
+          "const workspaceRoot = process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR ?? process.cwd();",
+          "const migration = readFileSync(",
+          '  join(workspaceRoot, "db", "migrations", "20260416_release_session_restore.sql"),',
+          '  "utf8",',
+          ");",
+          'const rollback = readFileSync(join(workspaceRoot, "docs", "ROLLBACK.md"), "utf8");',
+          'if (migration.includes("pending") || rollback.includes("pending")) {',
+          '  console.error("release migration or rollback bundle is still pending");',
+          "  process.exit(1);",
+          "}",
+          "",
+          'console.log("release migration and rollback bundle cleared pending state");',
+        ].join("\n"),
+      };
+    },
+    async afterWrite(root) {
+      await writeNodeBinary(
+        join(root, "bin"),
+        "pnpm",
+        [
+          'const { spawnSync } = require("node:child_process");',
+          "const args = process.argv.slice(2);",
+          "if (args[0] === 'run' && args[1] === 'test:session') {",
+          `  const result = spawnSync(${JSON.stringify(process.execPath)}, ['check-session-runtime.mjs'], {`,
+          "    cwd: process.cwd(),",
+          '    stdio: "inherit",',
+          "    env: process.env,",
+          "  });",
+          "  process.exit(result.status ?? 1);",
+          "}",
+          "process.stderr.write('unsupported pnpm invocation: ' + args.join(' ') + '\\n');",
+          "process.exit(1);",
+        ].join("\n"),
+      );
+    },
+    taskPacket(root) {
+      return {
+        id: "package_script_fallback_stage_guard",
+        title: "Revise the staged release bundle with fallback-safe verification",
+        intent:
+          "Revise packages/web/src/session.ts, db/migrations/20260416_release_session_restore.sql, and docs/ROLLBACK.md into a coherent release bundle. Very complex success also requires finishing docs/VERIFY.md so fallback winner selection still sees a complete staged bundle after the repo-local oracles pass.",
+        artifactKind: "code",
+        targetArtifactPath: "packages/web/src/session.ts",
+        nonGoals: [
+          "Do not stop before docs/VERIFY.md if the release bundle must survive fallback winner selection.",
+        ],
+        acceptanceCriteria: [
+          "packages/web/src/session.ts is materially updated.",
+          "db/migrations/20260416_release_session_restore.sql is materially updated.",
+          "docs/ROLLBACK.md is materially updated.",
+          "docs/VERIFY.md is materially updated.",
+        ],
+        risks: [
+          "If the judge fails, fallback should still avoid incomplete release bundles that stop before verification.",
+        ],
+        oracleHints: [
+          "Keep the workspace package script oracle green.",
+          "Keep the project-scoped release rollback oracle green.",
+        ],
+        strategyHints: ["Close the full staged release bundle so fallback ranking is safe."],
+        contextFiles: [
+          join(root, "packages", "web", "package.json"),
+          join(root, "packages", "web", "src", "session.ts"),
+          join(root, "packages", "web", "check-session-runtime.mjs"),
+          join(root, "db", "migrations", "20260416_release_session_restore.sql"),
+          join(root, "docs", "ROLLBACK.md"),
+          join(root, "docs", "VERIFY.md"),
+          join(root, "tools", "check-release-rollback.mjs"),
+        ],
+      };
+    },
+    analyze(root) {
+      const runtime = readFileSync(join(root, "packages", "web", "src", "session.ts"), "utf8");
+      const migration = readFileSync(
+        join(root, "db", "migrations", "20260416_release_session_restore.sql"),
+        "utf8",
+      );
+      const rollback = readFileSync(join(root, "docs", "ROLLBACK.md"), "utf8");
+      const verify = readFileSync(join(root, "docs", "VERIFY.md"), "utf8");
+      const runtimeStrong = runtime.includes("return existingSession;");
+      const migrationStrong = migration.includes("existing-session");
+      const rollbackStrong = rollback.includes(
+        "Disable the session-restore release flag before rollback.",
+      );
+      const verifyStrong = verify.includes(
+        "Operators can verify the fallback-safe release bundle.",
+      );
+      return {
+        score:
+          runtimeStrong && migrationStrong && rollbackStrong && verifyStrong
+            ? 3
+            : runtimeStrong && migrationStrong && rollbackStrong
+              ? 1
+              : 0,
+        runtimeStrong,
+        migrationStrong,
+        rollbackStrong,
+        verifyStrong,
+      };
+    },
+    advancedConfig() {
+      return {
+        version: 1,
+        oracles: [
+          {
+            id: "workspace-session-test",
+            roundId: "impact",
+            command: "pnpm",
+            args: ["run", "test:session"],
+            cwd: "workspace",
+            relativeCwd: "packages/web",
+            invariant:
+              "The web workspace package script must keep the session runtime valid during refresh.",
+            enforcement: "hard",
+            confidence: "high",
+            passSummary: "Workspace package script oracle passed.",
+            failureSummary: "Workspace package script oracle failed.",
+            repairHint:
+              "Update packages/web/src/session.ts until the package-local test:session script passes.",
+            safetyRationale:
+              "Uses a workspace package.json script from packages/web for deterministic session validation.",
+          },
+          {
+            id: "release-rollback-impact",
+            roundId: "impact",
+            command: process.execPath,
+            args: ["tools/check-release-rollback.mjs"],
+            cwd: "project",
+            invariant:
+              "The release migration SQL and rollback runbook must both leave the pending state.",
+            enforcement: "hard",
+            confidence: "high",
+            passSummary: "Release rollback project oracle passed.",
+            failureSummary: "Release rollback project oracle failed.",
+            repairHint:
+              "Update the release migration SQL and rollback runbook so both artifacts leave the pending state together.",
+            safetyRationale:
+              "Project-scoped deterministic oracle for the release migration and rollback bundle.",
+          },
+        ],
+      };
+    },
+    buildComplexPlan(plan) {
+      return {
+        ...plan,
+        mode: "complex",
+        decisionDrivers: [
+          ...plan.decisionDrivers,
+          "Even fallback winner selection must not recommend an incomplete release bundle after the repo-local oracles already passed.",
+        ],
+        plannedJudgingCriteria: [
+          "Prefer finalists that close packages/web/src/session.ts, db/migrations/20260416_release_session_restore.sql, docs/ROLLBACK.md, and docs/VERIFY.md as one staged release bundle.",
+          "Treat finalists that stop before docs/VERIFY.md as incomplete even when both repo-local oracles pass.",
+        ],
+        crownGates: [
+          "Do not recommend finalists that leave docs/VERIFY.md stale.",
+          "Abstain if every finalist leaves the staged release verification bundle incomplete.",
+        ],
+        workstreams: [
+          {
+            id: "workspace-runtime",
+            label: "Workspace Runtime Contract",
+            goal: "Update packages/web/src/session.ts with the concrete session restore runtime behavior.",
+            targetArtifacts: ["packages/web/src/session.ts"],
+            requiredChangedPaths: ["packages/web/src/session.ts"],
+            protectedPaths: [],
+            oracleIds: ["workspace-session-test"],
+            dependencies: [],
+            risks: [],
+            disqualifiers: [],
+          },
+          {
+            id: "release-migration",
+            label: "Release Migration Contract",
+            goal: "Update db/migrations/20260416_release_session_restore.sql with concrete release defaults.",
+            targetArtifacts: ["db/migrations/20260416_release_session_restore.sql"],
+            requiredChangedPaths: ["db/migrations/20260416_release_session_restore.sql"],
+            protectedPaths: [],
+            oracleIds: ["release-rollback-impact"],
+            dependencies: ["workspace-runtime"],
+            risks: [],
+            disqualifiers: [],
+          },
+          {
+            id: "release-rollback",
+            label: "Release Rollback Contract",
+            goal: "Update docs/ROLLBACK.md with concrete operator rollback steps that match the release migration.",
+            targetArtifacts: ["docs/ROLLBACK.md"],
+            requiredChangedPaths: ["docs/ROLLBACK.md"],
+            protectedPaths: [],
+            oracleIds: ["release-rollback-impact"],
+            dependencies: ["release-migration"],
+            risks: [],
+            disqualifiers: [],
+          },
+          {
+            id: "release-verify",
+            label: "Release Verification Bundle",
+            goal: "Finish docs/VERIFY.md so fallback winner selection still sees a complete release bundle.",
+            targetArtifacts: ["docs/VERIFY.md"],
+            requiredChangedPaths: ["docs/VERIFY.md"],
+            protectedPaths: [],
+            oracleIds: [],
+            dependencies: ["release-rollback"],
+            risks: ["A missing verify bundle leaves fallback winner selection unsafe."],
+            disqualifiers: ["Do not stop before the verification stage."],
+          },
+        ],
+        stagePlan: [
+          {
+            id: "release-contract-fit",
+            label: "Release Contract Fit",
+            dependsOn: [],
+            workstreamIds: ["workspace-runtime", "release-migration", "release-rollback"],
+            roundIds: ["impact"],
+            entryCriteria: ["Consultation plan basis remains current."],
+            exitCriteria: [
+              "Materially change packages/web/src/session.ts.",
+              "Materially change db/migrations/20260416_release_session_restore.sql.",
+              "Materially change docs/ROLLBACK.md.",
+            ],
+          },
+          {
+            id: "fallback-ready",
+            label: "Fallback Ready",
+            dependsOn: ["release-contract-fit"],
+            workstreamIds: ["release-verify"],
+            roundIds: ["impact"],
+            entryCriteria: ["The release contract stage already passed."],
+            exitCriteria: ["Materially change docs/VERIFY.md."],
+          },
+        ],
+        scorecardDefinition: {
+          dimensions: [
+            "workstream-coverage",
+            "stage-completion",
+            "artifact-coherence",
+            "oracle-pass-summary",
+          ],
+          abstentionTriggers: ["missing release verification stage"],
+        },
+        repairPolicy: {
+          maxAttemptsPerStage: 0,
+          immediateElimination: [],
+          repairable: ["missing-target-coverage", "partial-workstream-coverage"],
+          preferAbstainOverRetry: ["missing release verification stage", "weak-finalist-evidence"],
+        },
+      };
+    },
+  },
+  {
+    id: "package-script-repair-stage-guard",
+    description:
+      "A repairable review-note oracle saves the weak finalist after repo-local checks pass, but the planned stage graph still removes the incomplete staged bundle before winner selection.",
+    weakCandidateId: "cand-01",
+    expectedRepoOracles: [
+      { id: "workspace-session-test", roundId: "impact" },
+      { id: "release-rollback-impact", roundId: "impact" },
+      { id: "release-review-note", roundId: "impact" },
+    ],
+    initialFiles() {
+      return {
+        "packages/web/package.json": JSON.stringify(
+          {
+            name: "@fixture/web",
+            private: true,
+            scripts: {
+              "test:session": "node ./check-session-runtime.mjs",
+            },
+          },
+          null,
+          2,
+        ).concat("\n"),
+        "packages/web/src/session.ts":
+          "export function restoreSession(request) {\n  return null;\n}\n",
+        "packages/web/check-session-runtime.mjs": [
+          'import { readFileSync } from "node:fs";',
+          "",
+          'const source = readFileSync("./src/session.ts", "utf8");',
+          'if (!source.includes("return existingSession;")) {',
+          '  console.error("workspace package runtime is still stale");',
+          "  process.exit(1);",
+          "}",
+          "",
+          'console.log("workspace package runtime looks valid");',
+        ].join("\n"),
+        "db/migrations/20260416_release_session_restore.sql":
+          "-- pending release migration\nALTER TABLE sessions ADD COLUMN restore_mode TEXT;\n",
+        "docs/ROLLBACK.md":
+          "# Rollback\n\n- pending release rollback\n- pending operator guidance\n",
+        "docs/VERIFY.md": "# Verify\n\nPlaceholder.\n",
+        "docs/REPAIR.md": "# Repair\n\nPlaceholder.\n",
+        "tools/check-release-rollback.mjs": [
+          'import { readFileSync } from "node:fs";',
+          'import { join } from "node:path";',
+          "",
+          "const workspaceRoot = process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR ?? process.cwd();",
+          "const migration = readFileSync(",
+          '  join(workspaceRoot, "db", "migrations", "20260416_release_session_restore.sql"),',
+          '  "utf8",',
+          ");",
+          'const rollback = readFileSync(join(workspaceRoot, "docs", "ROLLBACK.md"), "utf8");',
+          'if (migration.includes("pending") || rollback.includes("pending")) {',
+          '  console.error("release migration or rollback bundle is still pending");',
+          "  process.exit(1);",
+          "}",
+          "",
+          'console.log("release migration and rollback bundle cleared pending state");',
+        ].join("\n"),
+        "tools/check-release-review-note.mjs": [
+          'import { readFileSync } from "node:fs";',
+          'import { join } from "node:path";',
+          "",
+          "const workspaceRoot = process.env.ORACULUM_CANDIDATE_WORKSPACE_DIR ?? process.cwd();",
+          'const reviewNote = readFileSync(join(workspaceRoot, "docs", "REPAIR.md"), "utf8");',
+          'if (!reviewNote.includes("repair marker: added release review note")) {',
+          '  console.error("missing repair marker");',
+          "  process.exit(1);",
+          "}",
+          "",
+          'console.log("repair marker looks valid");',
+        ].join("\n"),
+      };
+    },
+    async afterWrite(root) {
+      await writeNodeBinary(
+        join(root, "bin"),
+        "pnpm",
+        [
+          'const { spawnSync } = require("node:child_process");',
+          "const args = process.argv.slice(2);",
+          "if (args[0] === 'run' && args[1] === 'test:session') {",
+          `  const result = spawnSync(${JSON.stringify(process.execPath)}, ['check-session-runtime.mjs'], {`,
+          "    cwd: process.cwd(),",
+          '    stdio: "inherit",',
+          "    env: process.env,",
+          "  });",
+          "  process.exit(result.status ?? 1);",
+          "}",
+          "process.stderr.write('unsupported pnpm invocation: ' + args.join(' ') + '\\n');",
+          "process.exit(1);",
+        ].join("\n"),
+      );
+    },
+    taskPacket(root) {
+      return {
+        id: "package_script_repair_stage_guard",
+        title: "Revise the staged release bundle and repair missing review evidence when needed",
+        intent:
+          "Revise packages/web/src/session.ts, db/migrations/20260416_release_session_restore.sql, and docs/ROLLBACK.md into a coherent release bundle. Very complex success also requires docs/VERIFY.md and a concrete release review note so the bundle remains reviewable after repairable checks.",
+        artifactKind: "code",
+        targetArtifactPath: "packages/web/src/session.ts",
+        nonGoals: [
+          "Do not rely on a repair-only review note if docs/VERIFY.md still leaves the staged release bundle incomplete.",
+        ],
+        acceptanceCriteria: [
+          "packages/web/src/session.ts is materially updated.",
+          "db/migrations/20260416_release_session_restore.sql is materially updated.",
+          "docs/ROLLBACK.md is materially updated.",
+          "docs/VERIFY.md is materially updated.",
+        ],
+        risks: [
+          "A repair loop can rescue missing review evidence without fixing the deeper staged bundle gap.",
+        ],
+        oracleHints: [
+          "Keep the workspace package script oracle green.",
+          "Keep the project-scoped release rollback oracle green.",
+          "The release review note can be repaired if needed.",
+        ],
+        strategyHints: [
+          "Close the staged release bundle instead of relying only on repair output.",
+        ],
+        contextFiles: [
+          join(root, "packages", "web", "package.json"),
+          join(root, "packages", "web", "src", "session.ts"),
+          join(root, "packages", "web", "check-session-runtime.mjs"),
+          join(root, "db", "migrations", "20260416_release_session_restore.sql"),
+          join(root, "docs", "ROLLBACK.md"),
+          join(root, "docs", "VERIFY.md"),
+          join(root, "docs", "REPAIR.md"),
+          join(root, "tools", "check-release-rollback.mjs"),
+          join(root, "tools", "check-release-review-note.mjs"),
+        ],
+      };
+    },
+    analyze(root) {
+      const runtime = readFileSync(join(root, "packages", "web", "src", "session.ts"), "utf8");
+      const migration = readFileSync(
+        join(root, "db", "migrations", "20260416_release_session_restore.sql"),
+        "utf8",
+      );
+      const rollback = readFileSync(join(root, "docs", "ROLLBACK.md"), "utf8");
+      const verify = readFileSync(join(root, "docs", "VERIFY.md"), "utf8");
+      const runtimeStrong = runtime.includes("return existingSession;");
+      const migrationStrong = migration.includes("existing-session");
+      const rollbackStrong = rollback.includes(
+        "Disable the session-restore release flag before rollback.",
+      );
+      const verifyStrong = verify.includes(
+        "Operators can verify the repaired release bundle end to end.",
+      );
+      return {
+        score:
+          runtimeStrong && migrationStrong && rollbackStrong && verifyStrong
+            ? 3
+            : runtimeStrong && migrationStrong && rollbackStrong
+              ? 1
+              : 0,
+        runtimeStrong,
+        migrationStrong,
+        rollbackStrong,
+        verifyStrong,
+      };
+    },
+    advancedConfig() {
+      return {
+        version: 1,
+        oracles: [
+          {
+            id: "workspace-session-test",
+            roundId: "impact",
+            command: "pnpm",
+            args: ["run", "test:session"],
+            cwd: "workspace",
+            relativeCwd: "packages/web",
+            invariant:
+              "The web workspace package script must keep the session runtime valid during refresh.",
+            enforcement: "hard",
+            confidence: "high",
+            passSummary: "Workspace package script oracle passed.",
+            failureSummary: "Workspace package script oracle failed.",
+            repairHint:
+              "Update packages/web/src/session.ts until the package-local test:session script passes.",
+            safetyRationale:
+              "Uses a workspace package.json script from packages/web for deterministic session validation.",
+          },
+          {
+            id: "release-rollback-impact",
+            roundId: "impact",
+            command: process.execPath,
+            args: ["tools/check-release-rollback.mjs"],
+            cwd: "project",
+            invariant:
+              "The release migration SQL and rollback runbook must both leave the pending state.",
+            enforcement: "hard",
+            confidence: "high",
+            passSummary: "Release rollback project oracle passed.",
+            failureSummary: "Release rollback project oracle failed.",
+            repairHint:
+              "Update the release migration SQL and rollback runbook so both artifacts leave the pending state together.",
+            safetyRationale:
+              "Project-scoped deterministic oracle for the release migration and rollback bundle.",
+          },
+          {
+            id: "release-review-note",
+            roundId: "impact",
+            command: process.execPath,
+            args: ["tools/check-release-review-note.mjs"],
+            cwd: "project",
+            invariant:
+              "The release bundle must include a concrete repair/review note once the runtime and rollback artifacts are ready.",
+            enforcement: "repairable",
+            confidence: "high",
+            passSummary: "Release review note oracle passed.",
+            failureSummary: "Release review note oracle failed.",
+            repairHint: "Produce the missing release review note with the repair marker.",
+            safetyRationale:
+              "Project-scoped repairable oracle for deterministic release review evidence.",
+          },
+        ],
+      };
+    },
+    buildComplexPlan(plan) {
+      return {
+        ...plan,
+        mode: "complex",
+        decisionDrivers: [
+          ...plan.decisionDrivers,
+          "A repair loop may rescue missing review evidence, but complex release work is still incomplete until the verification stage closes.",
+        ],
+        plannedJudgingCriteria: [
+          "Prefer finalists that close packages/web/src/session.ts, db/migrations/20260416_release_session_restore.sql, docs/ROLLBACK.md, and docs/VERIFY.md as one staged release bundle.",
+          "Treat finalists that only repair docs/REPAIR.md while leaving docs/VERIFY.md stale as incomplete.",
+        ],
+        crownGates: [
+          "Do not recommend finalists that leave docs/VERIFY.md stale even if repairable oracles recovered.",
+          "Abstain if every finalist relies on repair-only evidence while the staged release bundle remains incomplete.",
+        ],
+        workstreams: [
+          {
+            id: "workspace-runtime",
+            label: "Workspace Runtime Contract",
+            goal: "Update packages/web/src/session.ts with the concrete session restore runtime behavior.",
+            targetArtifacts: ["packages/web/src/session.ts"],
+            requiredChangedPaths: ["packages/web/src/session.ts"],
+            protectedPaths: [],
+            oracleIds: ["workspace-session-test"],
+            dependencies: [],
+            risks: [],
+            disqualifiers: [],
+          },
+          {
+            id: "release-migration",
+            label: "Release Migration Contract",
+            goal: "Update db/migrations/20260416_release_session_restore.sql with concrete release defaults.",
+            targetArtifacts: ["db/migrations/20260416_release_session_restore.sql"],
+            requiredChangedPaths: ["db/migrations/20260416_release_session_restore.sql"],
+            protectedPaths: [],
+            oracleIds: ["release-rollback-impact"],
+            dependencies: ["workspace-runtime"],
+            risks: [],
+            disqualifiers: [],
+          },
+          {
+            id: "release-rollback",
+            label: "Release Rollback Contract",
+            goal: "Update docs/ROLLBACK.md with concrete operator rollback steps that match the release migration.",
+            targetArtifacts: ["docs/ROLLBACK.md"],
+            requiredChangedPaths: ["docs/ROLLBACK.md"],
+            protectedPaths: [],
+            oracleIds: ["release-rollback-impact", "release-review-note"],
+            dependencies: ["release-migration"],
+            risks: [],
+            disqualifiers: [],
+          },
+          {
+            id: "release-verify",
+            label: "Release Verification Bundle",
+            goal: "Finish docs/VERIFY.md so the repaired release bundle is still fully reviewable.",
+            targetArtifacts: ["docs/VERIFY.md"],
+            requiredChangedPaths: ["docs/VERIFY.md"],
+            protectedPaths: [],
+            oracleIds: [],
+            dependencies: ["release-rollback"],
+            risks: ["A missing verify bundle leaves a repaired finalist incomplete."],
+            disqualifiers: ["Do not stop at repair-only evidence."],
+          },
+        ],
+        stagePlan: [
+          {
+            id: "release-contract-fit",
+            label: "Release Contract Fit",
+            dependsOn: [],
+            workstreamIds: ["workspace-runtime", "release-migration", "release-rollback"],
+            roundIds: ["impact"],
+            entryCriteria: ["Consultation plan basis remains current."],
+            exitCriteria: [
+              "Materially change packages/web/src/session.ts.",
+              "Materially change db/migrations/20260416_release_session_restore.sql.",
+              "Materially change docs/ROLLBACK.md.",
+            ],
+          },
+          {
+            id: "repair-aware-verify",
+            label: "Repair Aware Verify",
+            dependsOn: ["release-contract-fit"],
+            workstreamIds: ["release-verify"],
+            roundIds: ["impact"],
+            entryCriteria: [
+              "The release contract stage already passed, including any repair loop needed for review evidence.",
+            ],
+            exitCriteria: ["Materially change docs/VERIFY.md."],
+          },
+        ],
+        scorecardDefinition: {
+          dimensions: [
+            "workstream-coverage",
+            "stage-completion",
+            "artifact-coherence",
+            "oracle-pass-summary",
+          ],
+          abstentionTriggers: ["repair-only release bundle", "missing release verification stage"],
+        },
+        repairPolicy: {
+          maxAttemptsPerStage: 0,
+          immediateElimination: [],
+          repairable: ["missing-target-coverage", "partial-workstream-coverage"],
+          preferAbstainOverRetry: [
+            "repair-only release bundle",
+            "missing release verification stage",
+            "weak-finalist-evidence",
+          ],
+        },
+      };
+    },
+  },
 ];
 
 function buildFakeCodexSource(planLiftHarness) {
@@ -1774,6 +3843,10 @@ function buildFakeCodexSource(planLiftHarness) {
     "    process.stderr.write('winner unavailable for fallback evidence\\\\n');",
     "    process.exit(1);",
     "  }",
+    "  if (scenarioId === 'package-script-fallback-stage-guard') {",
+    "    process.stderr.write('winner unavailable for fallback evidence\\\\n');",
+    "    process.exit(1);",
+    "  }",
     "  if (scenarioId === 'code-config-contract-coverage') {",
     "    respond({ decision: 'select', candidateId: planned ? 'cand-02' : 'cand-01', confidence: 'high', summary: planned ? 'cand-02 updated the Python implementation and paired runtime config coherently.' : 'cand-01 changed the implementation with the leanest visible diff.', judgingCriteria: planned ? ['Prefer finalists that update both src/session.py and config/session.yaml coherently.'] : ['Prioritize the implementation artifact when both finalists remain reviewable.'] });",
     "    process.exit(0);",
@@ -1792,6 +3865,42 @@ function buildFakeCodexSource(planLiftHarness) {
     "  }",
     "  if (scenarioId === 'python-rust-contract-coverage') {",
     "    respond({ decision: 'select', candidateId: planned ? 'cand-02' : 'cand-01', confidence: 'high', summary: planned ? 'cand-02 updated the Python runtime and Rust core artifacts coherently.' : 'cand-01 changed the Python runtime with the leanest visible diff.', judgingCriteria: planned ? ['Prefer finalists that update both services/session/restore.py and crates/session_core/src/lib.rs coherently.'] : ['Prioritize the Python runtime artifact when both finalists remain reviewable.'] });",
+    "    process.exit(0);",
+    "  }",
+    "  if (scenarioId === 'package-oracle-code-test-contract') {",
+    "    respond({ decision: 'select', candidateId: planned ? 'cand-02' : 'cand-01', confidence: 'high', summary: planned ? 'cand-02 updated the runtime implementation and regression bundle while keeping the package oracle green.' : 'cand-01 changed the implementation with the leanest visible diff.', judgingCriteria: planned ? ['Prefer finalists that update both packages/auth/src/session.ts and packages/auth/test/session-refresh.test.ts while preserving the package-local runtime oracle.'] : ['Prioritize the implementation artifact when both finalists keep the package runtime valid.'] });",
+    "    process.exit(0);",
+    "  }",
+    "  if (scenarioId === 'project-oracle-api-schema-reviewability') {",
+    "    respond({ decision: 'select', candidateId: planned ? 'cand-02' : 'cand-01', confidence: 'high', summary: planned ? 'cand-02 leaves a concrete, operator-reviewable handler and schema bundle while preserving the project API oracle.' : 'cand-01 keeps the handler and schema bundle aligned with the most compact visible rewrite.', judgingCriteria: planned ? ['Prefer finalists that make services/http/session_handler.py and api/openapi/session.yaml concrete and operator-reviewable while preserving the project API oracle.'] : ['Prefer the finalist that keeps the API bundle aligned with the leanest visible rewrite.'] });",
+    "    process.exit(0);",
+    "  }",
+    "  if (scenarioId === 'workspace-oracle-package-config-contract') {",
+    "    respond({ decision: 'select', candidateId: planned ? 'cand-02' : 'cand-01', confidence: 'high', summary: planned ? 'cand-02 updated the billing runtime and package config bundle while keeping the workspace oracle green.' : 'cand-01 changed the billing runtime with the leanest visible diff.', judgingCriteria: planned ? ['Prefer finalists that update both packages/billing/src/reconcile.ts and packages/billing/config/reconcile.json while preserving the workspace-scoped billing runtime oracle.'] : ['Prioritize the billing runtime artifact when both finalists keep the package oracle valid.'] });",
+    "    process.exit(0);",
+    "  }",
+    "  if (scenarioId === 'workspace-oracle-package-config-reviewability') {",
+    "    respond({ decision: 'select', candidateId: planned ? 'cand-02' : 'cand-01', confidence: 'high', summary: planned ? 'cand-02 leaves a concrete, operator-reviewable billing runtime bundle while preserving the workspace oracle.' : 'cand-01 keeps the billing package bundle aligned with the most compact visible rewrite.', judgingCriteria: planned ? ['Prefer finalists that make packages/billing/src/reconcile.ts and packages/billing/config/reconcile.json concrete and operator-reviewable while preserving the workspace-scoped billing runtime oracle.'] : ['Prefer the finalist that keeps the billing package bundle aligned with the leanest visible rewrite.'] });",
+    "    process.exit(0);",
+    "  }",
+    "  if (scenarioId === 'dual-oracle-migration-rollback-reviewability') {",
+    "    respond({ decision: 'select', candidateId: planned ? 'cand-02' : 'cand-01', confidence: 'high', summary: planned ? 'cand-02 leaves a concrete migration, rollback, and runtime bundle while preserving both repo-local oracles.' : 'cand-01 keeps the migration bundle aligned with the most compact visible rewrite that still passes the oracles.', judgingCriteria: planned ? ['Prefer finalists that make packages/payments/src/migration.ts, db/migrations/20260416_add_session_restore.sql, and docs/ROLLBACK.md concrete and operator-reviewable while preserving both repo-local oracles.'] : ['Prefer the finalist that keeps the migration bundle aligned with the leanest visible rewrite while the oracles stay green.'] });",
+    "    process.exit(0);",
+    "  }",
+    "  if (scenarioId === 'package-script-project-oracle-reviewability') {",
+    "    respond({ decision: 'select', candidateId: planned ? 'cand-02' : 'cand-01', confidence: 'high', summary: planned ? 'cand-02 leaves a concrete release bundle while preserving the workspace package script and project rollback oracles.' : 'cand-01 keeps the release bundle aligned with the most compact visible rewrite that still passes both oracles.', judgingCriteria: planned ? ['Prefer finalists that make packages/web/src/session.ts, db/migrations/20260416_release_session_restore.sql, and docs/ROLLBACK.md concrete and operator-reviewable while preserving both repo-local oracles.'] : ['Prefer the finalist that keeps the release bundle aligned with the leanest visible rewrite while both oracles stay green.'] });",
+    "    process.exit(0);",
+    "  }",
+    "  if (scenarioId === 'package-script-repair-stage-guard') {",
+    "    respond({ decision: 'select', candidateId: planned ? 'cand-02' : 'cand-01', confidence: 'high', summary: planned ? 'cand-02 closes the staged release bundle instead of relying only on repaired review evidence.' : 'cand-01 repaired the missing review note with the leanest visible diff.', judgingCriteria: planned ? ['Prefer finalists that finish docs/VERIFY.md and the staged release bundle instead of relying only on repair output.'] : ['Prefer the finalist that recovered review evidence with the leanest visible rewrite.'] });",
+    "    process.exit(0);",
+    "  }",
+    "  if (scenarioId === 'code-test-contract-coverage') {",
+    "    respond({ decision: 'select', candidateId: planned ? 'cand-02' : 'cand-01', confidence: 'high', summary: planned ? 'cand-02 updated the implementation and paired regression test coherently.' : 'cand-01 changed the implementation with the leanest visible diff.', judgingCriteria: planned ? ['Prefer finalists that update both packages/auth/src/session.ts and packages/auth/test/session-refresh.test.ts coherently.'] : ['Prioritize the implementation artifact when both finalists remain reviewable.'] });",
+    "    process.exit(0);",
+    "  }",
+    "  if (scenarioId === 'api-schema-reviewability-bias') {",
+    "    respond({ decision: 'select', candidateId: planned ? 'cand-02' : 'cand-01', confidence: 'high', summary: planned ? 'cand-02 leaves a concrete, operator-reviewable handler and schema bundle.' : 'cand-01 keeps the API bundle aligned with the most compact visible rewrite.', judgingCriteria: planned ? ['Prefer finalists that make services/http/session_handler.py and api/openapi/session.yaml concrete and operator-reviewable.'] : ['Prefer the finalist that keeps the API bundle aligned with the leanest visible rewrite.'] });",
     "    process.exit(0);",
     "  }",
     "  if (scenarioId === 'rust-config-reviewability-bias') {",
@@ -1882,6 +3991,21 @@ function buildFakeCodexSource(planLiftHarness) {
     "  respond('Closed the staged operations bundle so fallback can safely select the survivor.');",
     "  process.exit(0);",
     "}",
+    "if (scenarioId === 'package-script-fallback-stage-guard') {",
+    "  if (candidateId === 'cand-01') {",
+    "    write('packages/web/src/session.ts', ['export function restoreSession(request) {','  const existingSession = request.session;','  return existingSession;','}',''].join('\\\\n'));",
+    "    write('db/migrations/20260416_release_session_restore.sql', ['ALTER TABLE sessions ADD COLUMN restore_mode TEXT DEFAULT \\'existing-session\\';','UPDATE sessions SET restore_mode = \\'existing-session\\' WHERE restore_mode IS NULL;',''].join('\\\\n'));",
+    "    write('docs/ROLLBACK.md', ['# Rollback','- Disable the session-restore release flag before rollback.','- ALTER TABLE sessions DROP COLUMN restore_mode;',''].join('\\\\n'));",
+    "    respond('Closed the release contract stage only; verification stayed stale.');",
+    "    process.exit(0);",
+    "  }",
+    "  write('packages/web/src/session.ts', ['export function restoreSession(request) {','  const existingSession = request.session;','  if (!existingSession) {','    return null;','  }','  return existingSession;','}',''].join('\\\\n'));",
+    "  write('db/migrations/20260416_release_session_restore.sql', ['ALTER TABLE sessions ADD COLUMN restore_mode TEXT DEFAULT \\'existing-session\\';','UPDATE sessions SET restore_mode = \\'existing-session\\' WHERE restore_mode IS NULL;',''].join('\\\\n'));",
+    "  write('docs/ROLLBACK.md', ['# Rollback','- Disable the session-restore release flag before rollback.','- ALTER TABLE sessions DROP COLUMN restore_mode;','- Re-run the workspace session test after rollback.',''].join('\\\\n'));",
+    "  write('docs/VERIFY.md', ['# Verify','- Operators can verify the fallback-safe release bundle.','- Review runtime, migration, rollback, and verification notes together before approval.',''].join('\\\\n'));",
+    "  respond('Closed the full staged release bundle so fallback can safely select the survivor.');",
+    "  process.exit(0);",
+    "}",
     "if (scenarioId === 'code-config-contract-coverage') {",
     "  if (candidateId === 'cand-01') {",
     "    write('src/session.py', ['def restore_session(request):','    existing_session = request.session','    if existing_session is None:','        return None','    return existing_session',''].join('\\\\n'));",
@@ -1939,6 +4063,128 @@ function buildFakeCodexSource(planLiftHarness) {
     "  respond('Updated the Python runtime and paired Rust core artifact.');",
     "  process.exit(0);",
     "}",
+    "if (scenarioId === 'package-oracle-code-test-contract') {",
+    "  if (candidateId === 'cand-01') {",
+    "    write('packages/auth/src/session.ts', ['export function restoreSession(request) {','  const existingSession = request.session;','  if (!existingSession) {','    return null;','  }','  return existingSession;','}',''].join('\\\\n'));",
+    "    respond('Updated only the package runtime implementation artifact.');",
+    "    process.exit(0);",
+    "  }",
+    "  write('packages/auth/src/session.ts', ['export function restoreSession(request) {','  const existingSession = request.session;','  if (!existingSession) {','    return null;','  }','  return existingSession;','}',''].join('\\\\n'));",
+    "  write('packages/auth/test/session-refresh.test.ts', ['import { expect, test } from \"vitest\";','import { restoreSession } from \"../src/session\";','','test(\"restoreSession keeps the signed-in user across refresh\", () => {','  const existingSession = { userId: \"user-123\" };','  const request = { session: existingSession };','  expect(restoreSession(request)).toEqual(existingSession);','});',''].join('\\\\n'));",
+    "  respond('Updated the package runtime implementation and paired regression test artifact.');",
+    "  process.exit(0);",
+    "}",
+    "if (scenarioId === 'project-oracle-api-schema-reviewability') {",
+    "  if (candidateId === 'cand-01') {",
+    "    write('services/http/session_handler.py', ['def build_session_response(request):','    return {\"status\": \"ready\"}',''].join('\\\\n'));",
+    "    write('api/openapi/session.yaml', ['status: ready','logout_behavior: review-later',''].join('\\\\n'));",
+    "    respond('Updated the handler and schema bundle with a compact generic rewrite.');",
+    "    process.exit(0);",
+    "  }",
+    "  write('services/http/session_handler.py', ['def build_session_response(request):','    existing_session = request.session','    if existing_session is None:','        return None','    return {\"status\": \"restored\", \"logout_behavior\": \"clears-on-next-load\"}',''].join('\\\\n'));",
+    "  write('api/openapi/session.yaml', ['status: restored','logout_behavior: clears-on-next-load','review_notes: concrete-and-ready',''].join('\\\\n'));",
+    "  respond('Updated the handler and schema bundle with a concrete, operator-reviewable API contract.');",
+    "  process.exit(0);",
+    "}",
+    "if (scenarioId === 'workspace-oracle-package-config-contract') {",
+    "  if (candidateId === 'cand-01') {",
+    "    write('packages/billing/src/reconcile.ts', ['export function reconcileRestore(request) {','  const existingSession = request.session;','  return existingSession;','}',''].join('\\\\n'));",
+    "    respond('Updated only the billing package runtime artifact.');",
+    "    process.exit(0);",
+    "  }",
+    "  write('packages/billing/src/reconcile.ts', ['export function reconcileRestore(request) {','  const existingSession = request.session;','  return existingSession;','}',''].join('\\\\n'));",
+    "  write('packages/billing/config/reconcile.json', ['{','  \"restoreMode\": \"existing-session\",','  \"logoutBehavior\": \"clears-on-next-load\"','}',''].join('\\\\n'));",
+    "  respond('Updated the billing package runtime and paired config artifact.');",
+    "  process.exit(0);",
+    "}",
+    "if (scenarioId === 'workspace-oracle-package-config-reviewability') {",
+    "  if (candidateId === 'cand-01') {",
+    "    write('packages/billing/src/reconcile.ts', ['export function reconcileRestore(request) {','  const existingSession = request.session;','  return existingSession;','}',''].join('\\\\n'));",
+    "    write('packages/billing/config/reconcile.json', ['{','  \"restoreMode\": \"steady-improvement\",','  \"logoutBehavior\": \"review-later\"','}',''].join('\\\\n'));",
+    "    respond('Updated the billing package bundle with a compact generic rewrite.');",
+    "    process.exit(0);",
+    "  }",
+    "  write('packages/billing/src/reconcile.ts', ['export function reconcileRestore(request) {','  const existingSession = request.session;','  if (!existingSession) {','    return null;','  }','  return existingSession;','}',''].join('\\\\n'));",
+    "  write('packages/billing/config/reconcile.json', ['{','  \"restoreMode\": \"existing-session\",','  \"logoutBehavior\": \"clears-on-next-load\"','}',''].join('\\\\n'));",
+    "  respond('Updated the billing package bundle with a concrete, operator-reviewable runtime contract.');",
+    "  process.exit(0);",
+    "}",
+    "if (scenarioId === 'dual-oracle-migration-rollback-reviewability') {",
+    "  if (candidateId === 'cand-01') {",
+    "    write('packages/payments/src/migration.ts', ['export function currentRestoreMode() {','  return \"session_restore_enabled\";','}',''].join('\\\\n'));",
+    "    write('db/migrations/20260416_add_session_restore.sql', ['ALTER TABLE sessions ADD COLUMN restore_mode TEXT;','UPDATE sessions SET restore_mode = \"enabled\";',''].join('\\\\n'));",
+    "    write('docs/ROLLBACK.md', ['# Rollback','- Revert the migration if needed.','- Review operator impact before rollback.',''].join('\\\\n'));",
+    "    respond('Updated the migration bundle with a compact generic rewrite that still satisfies both repo-local oracles.');",
+    "    process.exit(0);",
+    "  }",
+    "  write('packages/payments/src/migration.ts', ['export function currentRestoreMode() {','  return \"session_restore_enabled:existing-session\";','}',''].join('\\\\n'));",
+    "  write('db/migrations/20260416_add_session_restore.sql', ['ALTER TABLE sessions ADD COLUMN restore_mode TEXT DEFAULT \\'existing-session\\';','UPDATE sessions SET restore_mode = \\'existing-session\\' WHERE restore_mode IS NULL;',''].join('\\\\n'));",
+    "  write('docs/ROLLBACK.md', ['# Rollback','- Disable the session-restore release flag before rollback.','- ALTER TABLE sessions DROP COLUMN restore_mode;','- Re-run the payments migration smoke check after rollback.',''].join('\\\\n'));",
+    "  respond('Updated the migration, rollback, and runtime bundle with concrete operator-reviewable semantics.');",
+    "  process.exit(0);",
+    "}",
+    "if (scenarioId === 'package-script-project-oracle-reviewability') {",
+    "  if (candidateId === 'cand-01') {",
+    "    write('packages/web/src/session.ts', ['export function restoreSession(request) {','  const existingSession = request.session;','  return existingSession;','}',''].join('\\\\n'));",
+    "    write('db/migrations/20260416_release_session_restore.sql', ['ALTER TABLE sessions ADD COLUMN restore_mode TEXT;','UPDATE sessions SET restore_mode = \"enabled\";',''].join('\\\\n'));",
+    "    write('docs/ROLLBACK.md', ['# Rollback','- Revert the release migration if needed.','- Review operator impact before rollback.',''].join('\\\\n'));",
+    "    respond('Updated the release bundle with a compact generic rewrite that still satisfies both repo-local oracles.');",
+    "    process.exit(0);",
+    "  }",
+    "  write('packages/web/src/session.ts', ['export function restoreSession(request) {','  const existingSession = request.session;','  if (!existingSession) {','    return null;','  }','  return existingSession;','}',''].join('\\\\n'));",
+    "  write('db/migrations/20260416_release_session_restore.sql', ['ALTER TABLE sessions ADD COLUMN restore_mode TEXT DEFAULT \\'existing-session\\';','UPDATE sessions SET restore_mode = \\'existing-session\\' WHERE restore_mode IS NULL;',''].join('\\\\n'));",
+    "  write('docs/ROLLBACK.md', ['# Rollback','- Disable the session-restore release flag before rollback.','- ALTER TABLE sessions DROP COLUMN restore_mode;','- Re-run the workspace session test after rollback.',''].join('\\\\n'));",
+    "  respond('Updated the release bundle with concrete runtime, migration, and rollback semantics.');",
+    "  process.exit(0);",
+    "}",
+    "if (scenarioId === 'package-script-repair-stage-guard') {",
+    "  if (prompt.includes('Repair context:')) {",
+    "    if (candidateId === 'cand-01') {",
+    "      write('docs/REPAIR.md', ['# Repair','','- repair marker: added release review note','- Reviewers can inspect the repaired release note.',''].join('\\\\n'));",
+    "      respond('Repaired the missing release review note without reopening the staged verification bundle.');",
+    "      process.exit(0);",
+    "    }",
+    "    respond('Repair context was not needed because the release evidence was already complete.');",
+    "    process.exit(0);",
+    "  }",
+    "  if (candidateId === 'cand-01') {",
+    "    write('packages/web/src/session.ts', ['export function restoreSession(request) {','  const existingSession = request.session;','  return existingSession;','}',''].join('\\\\n'));",
+    "    write('db/migrations/20260416_release_session_restore.sql', ['ALTER TABLE sessions ADD COLUMN restore_mode TEXT DEFAULT \\'existing-session\\';','UPDATE sessions SET restore_mode = \\'existing-session\\' WHERE restore_mode IS NULL;',''].join('\\\\n'));",
+    "    write('docs/ROLLBACK.md', ['# Rollback','- Disable the session-restore release flag before rollback.','- ALTER TABLE sessions DROP COLUMN restore_mode;','- Re-run the workspace session test after rollback.',''].join('\\\\n'));",
+    "    respond('Closed the release contract stage only; verification and repair evidence stayed incomplete.');",
+    "    process.exit(0);",
+    "  }",
+    "  write('packages/web/src/session.ts', ['export function restoreSession(request) {','  const existingSession = request.session;','  if (!existingSession) {','    return null;','  }','  return existingSession;','}',''].join('\\\\n'));",
+    "  write('db/migrations/20260416_release_session_restore.sql', ['ALTER TABLE sessions ADD COLUMN restore_mode TEXT DEFAULT \\'existing-session\\';','UPDATE sessions SET restore_mode = \\'existing-session\\' WHERE restore_mode IS NULL;',''].join('\\\\n'));",
+    "  write('docs/ROLLBACK.md', ['# Rollback','- Disable the session-restore release flag before rollback.','- ALTER TABLE sessions DROP COLUMN restore_mode;','- Re-run the workspace session test after rollback.',''].join('\\\\n'));",
+    "  write('docs/VERIFY.md', ['# Verify','- Operators can verify the repaired release bundle end to end.','- Review runtime, migration, rollback, verification, and repair notes together before approval.',''].join('\\\\n'));",
+    "  write('docs/REPAIR.md', ['# Repair','','- repair marker: added release review note','- Reviewers can inspect the repaired release note.',''].join('\\\\n'));",
+    "  respond('Closed the full staged release bundle and preemptively wrote the review note evidence.');",
+    "  process.exit(0);",
+    "}",
+    "if (scenarioId === 'code-test-contract-coverage') {",
+    "  if (candidateId === 'cand-01') {",
+    "    write('packages/auth/src/session.ts', ['export function restoreSession(request) {','  const existingSession = request.session;','  if (!existingSession) {','    return null;','  }','  return existingSession;','}',''].join('\\\\n'));",
+    "    respond('Updated only the implementation artifact.');",
+    "    process.exit(0);",
+    "  }",
+    "  write('packages/auth/src/session.ts', ['export function restoreSession(request) {','  const existingSession = request.session;','  if (!existingSession) {','    return null;','  }','  return existingSession;','}',''].join('\\\\n'));",
+    "  write('packages/auth/test/session-refresh.test.ts', ['import { expect, test } from \"vitest\";','import { restoreSession } from \"../src/session\";','','test(\"restoreSession keeps the signed-in user across refresh\", () => {','  const existingSession = { userId: \"user-123\" };','  const request = { session: existingSession };','  expect(restoreSession(request)).toEqual(existingSession);','});',''].join('\\\\n'));",
+    "  respond('Updated the implementation and paired regression test artifact.');",
+    "  process.exit(0);",
+    "}",
+    "if (scenarioId === 'api-schema-reviewability-bias') {",
+    "  if (candidateId === 'cand-01') {",
+    "    write('services/http/session_handler.py', ['def build_session_response(request):','    return {\"status\": \"ready\"}',''].join('\\\\n'));",
+    "    write('api/openapi/session.yaml', ['status: ready','logout_behavior: review-later',''].join('\\\\n'));",
+    "    respond('Updated the handler and schema bundle with a compact generic rewrite.');",
+    "    process.exit(0);",
+    "  }",
+    "  write('services/http/session_handler.py', ['def build_session_response(request):','    existing_session = request.session','    if existing_session is None:','        return None','    return {\"status\": \"restored\", \"logout_behavior\": \"clears-on-next-load\"}',''].join('\\\\n'));",
+    "  write('api/openapi/session.yaml', ['status: restored','logout_behavior: clears-on-next-load',''].join('\\\\n'));",
+    "  respond('Updated the handler and schema bundle with concrete API contract markers.');",
+    "  process.exit(0);",
+    "}",
     "if (scenarioId === 'rust-config-reviewability-bias') {",
     "  if (candidateId === 'cand-01') {",
     "    write('crates/session_core/src/lib.rs', ['pub const SESSION_RESTORE_MODE: &str = \"steady-improvement\";',''].join('\\\\n'));",
@@ -1974,6 +4220,9 @@ async function writeFixture(root, scenario) {
     await mkdir(dirname(join(root, relativePath)), { recursive: true });
     await writeFile(join(root, relativePath), contents, "utf8");
   }
+  if (typeof scenario.afterWrite === "function") {
+    await scenario.afterWrite(root);
+  }
   await writeJson(join(root, "tasks", "task.json"), scenario.taskPacket(root));
 }
 
@@ -1996,6 +4245,35 @@ function patchEnv(pairs) {
       }
     }
   };
+}
+
+function getCandidateVerdictPath(root, runId, candidateId, roundId, oracleId) {
+  return join(
+    root,
+    ".oraculum",
+    "runs",
+    runId,
+    "candidates",
+    candidateId,
+    "verdicts",
+    `${roundId}--${oracleId}.json`,
+  );
+}
+
+function collectExecutedRepoOracleIds(root, manifest, expectedRepoOracles = []) {
+  const executed = new Set();
+  for (const candidate of manifest.candidates) {
+    for (const oracle of expectedRepoOracles) {
+      if (
+        existsSync(
+          getCandidateVerdictPath(root, manifest.id, candidate.id, oracle.roundId, oracle.id),
+        )
+      ) {
+        executed.add(oracle.id);
+      }
+    }
+  }
+  return [...executed].sort();
 }
 
 async function readWinnerCriteria(artifacts) {
@@ -2024,6 +4302,12 @@ async function promoteScenarioPlanIfNeeded(scenario, consultationPlanPath, runDo
 function candidateStatuses(manifest) {
   return Object.fromEntries(
     manifest.candidates.map((candidate) => [candidate.id, candidate.status]),
+  );
+}
+
+function candidateRepairCounts(manifest) {
+  return Object.fromEntries(
+    manifest.candidates.map((candidate) => [candidate.id, candidate.repairCount ?? 0]),
   );
 }
 
@@ -2090,8 +4374,14 @@ async function runRoute(root, scenario, mode, fakeCodex, mcpTools, runDomain) {
       return {
         winner: consult.consultation.recommendedWinner ?? null,
         candidateStatuses: candidateStatuses(consult.consultation),
+        repairCounts: candidateRepairCounts(consult.consultation),
         crownVerified,
         ...(crownError ? { crownError } : {}),
+        executedRepoOracleIds: collectExecutedRepoOracleIds(
+          root,
+          consult.consultation,
+          scenario.expectedRepoOracles,
+        ),
         judgingCriteria: await readWinnerCriteria(consult.artifacts),
         quality: scenario.analyze(root),
       };
@@ -2126,8 +4416,14 @@ async function runRoute(root, scenario, mode, fakeCodex, mcpTools, runDomain) {
     return {
       winner: consult.consultation.recommendedWinner ?? null,
       candidateStatuses: candidateStatuses(consult.consultation),
+      repairCounts: candidateRepairCounts(consult.consultation),
       crownVerified,
       ...(crownError ? { crownError } : {}),
+      executedRepoOracleIds: collectExecutedRepoOracleIds(
+        root,
+        consult.consultation,
+        scenario.expectedRepoOracles,
+      ),
       judgingCriteria: await readWinnerCriteria(consult.artifacts),
       quality: scenario.analyze(root),
     };
