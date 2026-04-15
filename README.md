@@ -1,5 +1,5 @@
 <p align="right">
-  <strong>English</strong> | <a href="https://github.com/Nhahan/oraculum/blob/main/README.ko.md">한국어</a>
+  <strong>English</strong>
 </p>
 
 # Oraculum
@@ -87,7 +87,9 @@ That flow initializes Oraculum on first use, runs the tournament, and prints the
 
 In a Git-backed project, `crown` creates the named branch and materializes the recommended result there. In a non-Git project, use bare `orc crown`; it syncs the recommended result back into the project folder without requiring a fake branch name.
 
-If you want to reopen the latest consultation later, inspect an older one, browse consultation history, or use setup/MCP/debug commands from the shell binary, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md).
+By default, `consult` and `draft` do not impose an Oraculum-level adapter timeout. Use `--timeout-ms <ms>` only when you want to bound a specific consultation explicitly. Repo-local oracle commands remain independent and can still carry their own bounded `timeoutMs` values in `.oraculum/advanced.json`.
+
+If you want to reopen the latest consultation later, inspect an older one, browse consultation history, or use setup/MCP/debug commands from the shell binary, see [Advanced Usage](./docs/advanced-usage.md).
 
 ## How It Works
 
@@ -101,4 +103,4 @@ Results are saved under `.oraculum/`. The source of truth is the saved run state
 
 ## Advanced Usage
 
-If you want more control over consultation-scoped validation posture selection, runtimes, consultation history, repo-local oracle configuration, research artifacts, setup diagnostics, MCP wiring details, or host uninstall instructions, see [Advanced Usage](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; operator controls belong in `.oraculum/advanced.json`.
+If you want more control over consultation-scoped validation posture selection, runtimes, consultation history, repo-local oracle configuration, research artifacts, setup diagnostics, MCP wiring details, host uninstall instructions, or explicit consultation timeouts, see [Advanced Usage](./docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; operator controls belong in `.oraculum/advanced.json`.

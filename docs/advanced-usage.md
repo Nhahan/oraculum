@@ -53,6 +53,19 @@ Both runtimes support structured validation-posture selection:
 
 That structured step is what lets Oraculum treat validation posture choice as a bounded selection problem instead of an unstructured free-form guess.
 
+## Optional Consultation Timeout
+
+```text
+orc consult tasks/fix-session-loss.md --timeout-ms 300000
+```
+
+Use `--timeout-ms` only when you want to put an explicit operator-owned bound on consultation adapter calls.
+
+- The default `consult` and `draft` product path does not impose an Oraculum-level adapter timeout.
+- `--timeout-ms` bounds runtime adapter calls only; it does not rewrite repo-local oracle policy.
+- Release and evidence harnesses may still apply their own defaults. For example, `scripts/host-native-smoke.mjs` defaults to `300000ms` per host call because it is a test harness, not the product default.
+- Repo-local oracle commands remain separate and can carry their own optional `timeoutMs` values in `.oraculum/advanced.json`.
+
 ## Automatic Validation Posture Selection
 
 Each consultation now writes a validation-posture selection artifact under:
@@ -321,7 +334,8 @@ Example:
       "relativeCwd": "packages/app",
       "pathPolicy": "inherit",
       "invariant": "The candidate must satisfy lint checks.",
-      "enforcement": "hard"
+      "enforcement": "hard",
+      "timeoutMs": 300000
     }
   ]
 }
@@ -330,6 +344,7 @@ Example:
 Use `command` with `args` when you want an exact executable invocation. Use a shell-style command string only when that is the behavior you want.
 `cwd` can be `workspace` or `project`; add `relativeCwd` when a monorepo or polyglot check must run below that scope. `relativeCwd` must stay inside the selected scope, so absolute paths and `..` traversal are rejected.
 `pathPolicy` defaults to `local-only`, which exposes only discovered candidate/project local tool paths; an explicit oracle `env.PATH` overrides that computed value. Use `pathPolicy: "inherit"` only when the oracle intentionally needs the host global `PATH`, for example an operator-owned package-manager command.
+`timeoutMs` is optional and applies only to that oracle command. Use it when the repository wants a bounded long-running check; leaving it out does not inherit a product-wide adapter timeout.
 
 Supported enforcement levels:
 
