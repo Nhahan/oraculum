@@ -173,12 +173,12 @@ That artifact does not replace the blocked preflight decision. It records:
 
 `orc verdict` and saved consultation summaries replay that artifact into rerun guidance so the operator can answer the bounded question before reopening the consultation.
 
-## P3 Evidence Review
+## Pressure Evidence Review
 
-P3 intelligence stays evidence-gated even after the first shipped baselines. Before widening the clarify path further or making second-opinion judging more aggressive, collect pressure from saved consultations first:
+Pressure evidence stays decision-gated even after the first shipped baselines. Before widening the clarify path further or making second-opinion judging more aggressive, collect pressure from saved consultations first:
 
 ```bash
-npm run evidence:p3 -- --no-write
+npm run evidence:pressure -- --no-write
 ```
 
 The collector scans saved consultations and summarizes:
@@ -191,19 +191,19 @@ The collector scans saved consultations and summarizes:
 - artifact coverage and blind spots, including pressure-local gaps such as missing comparison reports or research briefs
 - missing-artifact breakdowns per pressure lane
 - an inspection queue showing which saved artifacts should be opened next, with run-manifest fallback entries when the expected artifact was never written
-- a bounded `hold` vs `open-P3` promotion signal
+- a bounded `hold` vs `promote` promotion signal
 
 If you want a replayable snapshot, omit `--no-write` and Oraculum will persist:
 
 ```text
-.oraculum/p3-evidence.json
+.oraculum/pressure-evidence.json
 ```
 
 Operational cadence:
 
-- rerun `npm run evidence:p3 -- --no-write` after workflow-shape changes
+- rerun `npm run evidence:pressure -- --no-write` after workflow-shape changes
 - rerun it again after saved consultations have accumulated meaningfully
-- keep P3 closed while both promotion signals remain `hold`
+- keep the deeper workflow closed while both promotion signals remain `hold`
 - only deepen clarify behavior further when clarify pressure repeats on the same scope
 - only widen second-opinion judging when judge abstain, manual crowning, or low-confidence winner selection repeats on the same scope
 
@@ -220,7 +220,7 @@ This keeps the default path short while leaving richer review material in the ad
 
 ## Optional Second-Opinion Judge
 
-Keep this off by default. Turn it on only after `npm run evidence:p3 -- --no-write` shows recurring finalist-selection pressure on the same scope.
+Keep this off by default. Turn it on only after `npm run evidence:pressure -- --no-write` shows recurring finalist-selection pressure on the same scope.
 
 ```json
 {
