@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/services/base-snapshots.js", () => ({
   assertManagedProjectSnapshotUnchanged: vi.fn(),
@@ -29,18 +29,12 @@ vi.mock("../src/services/runs.js", () => ({
 
 import { materializeExport } from "../src/services/exports.js";
 import { prepareExportPlan, readRunManifest } from "../src/services/runs.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 
 const mockedPrepareExportPlan = vi.mocked(prepareExportPlan);
 const mockedReadRunManifest = vi.mocked(readRunManifest);
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-");
+tempRootHarness.registerCleanup();
 
 describe("workspace backup cleanup", () => {
   beforeEach(() => {
@@ -150,9 +144,7 @@ describe("workspace backup cleanup", () => {
 });
 
 async function createTempRoot(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "oraculum-"));
-  tempRoots.push(path);
-  return path;
+  return tempRootHarness.createTempRoot();
 }
 
 async function listBackupDirs(runId: string): Promise<string[]> {

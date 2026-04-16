@@ -1,23 +1,16 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   assertManagedProjectSnapshotUnchanged,
   captureManagedProjectSnapshot,
 } from "../src/services/base-snapshots.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-snapshots-");
+tempRootHarness.registerCleanup();
 
 describe("managed project snapshots", () => {
   it("captures large binary files as managed byte content and detects changes", async () => {
@@ -52,7 +45,5 @@ describe("managed project snapshots", () => {
 });
 
 async function createTempRoot(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "oraculum-snapshots-"));
-  tempRoots.push(path);
-  return path;
+  return tempRootHarness.createTempRoot();
 }

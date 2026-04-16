@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   getFinalistComparisonJsonPath,
@@ -12,16 +12,11 @@ import {
 import type { OracleVerdict } from "../src/domain/oracle.js";
 import { deriveResearchSignalFingerprint } from "../src/domain/task.js";
 import { writeFinalistComparisonReport } from "../src/services/finalist-report.js";
+import { createTaskPacketSummaryFixture } from "./helpers/contract-fixtures.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-finalist-report-");
+tempRootHarness.registerCleanup();
 
 describe("finalist comparison reports", () => {
   it("writes comparison artifacts with recommendation and verdict counts", async () => {
@@ -36,7 +31,7 @@ describe("finalist comparison reports", () => {
     const result = await writeFinalistComparisonReport({
       agent: "codex",
       runId: "run_1",
-      taskPacket: {
+      taskPacket: createTaskPacketSummaryFixture({
         id: "task-1",
         title: "Fix session loss",
         sourceKind: "task-note",
@@ -68,7 +63,7 @@ describe("finalist comparison reports", () => {
         },
         originKind: "task-note",
         originPath: join(projectRoot, "task.md"),
-      },
+      }),
       recommendedWinner: {
         candidateId: "cand-01",
         confidence: "high",
@@ -279,7 +274,7 @@ describe("finalist comparison reports", () => {
     await writeFinalistComparisonReport({
       agent: "claude-code",
       runId: "run_2",
-      taskPacket: {
+      taskPacket: createTaskPacketSummaryFixture({
         id: "task-2",
         title: "Fix auth regression",
         sourceKind: "task-note",
@@ -288,7 +283,7 @@ describe("finalist comparison reports", () => {
         targetArtifactPath: "src/auth/session.ts",
         originKind: "task-note",
         originPath: join(projectRoot, "task.md"),
-      },
+      }),
       candidates: [
         {
           id: "cand-01",
@@ -337,7 +332,7 @@ describe("finalist comparison reports", () => {
     const result = await writeFinalistComparisonReport({
       agent: "codex",
       runId: "run_3",
-      taskPacket: {
+      taskPacket: createTaskPacketSummaryFixture({
         id: "task-3",
         title: "Fix session loss",
         sourceKind: "research-brief",
@@ -354,7 +349,7 @@ describe("finalist comparison reports", () => {
           unresolvedConflicts: [],
           conflictHandling: "accepted",
         },
-      },
+      }),
       preflight: {
         decision: "proceed",
         confidence: "medium",
@@ -393,14 +388,14 @@ describe("finalist comparison reports", () => {
     const result = await writeFinalistComparisonReport({
       agent: "codex",
       runId: "run_external_target",
-      taskPacket: {
+      taskPacket: createTaskPacketSummaryFixture({
         id: "task_external_target",
         title: "Draft plan",
         sourceKind: "task-note",
         sourcePath: join(projectRoot, "task.md"),
         artifactKind: "document",
         targetArtifactPath: externalTargetArtifactPath,
-      },
+      }),
       candidates: [],
       candidateResults: [],
       verdictsByCandidate: new Map(),
@@ -426,7 +421,5 @@ describe("finalist comparison reports", () => {
 });
 
 async function createTempRoot(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "oraculum-finalist-report-"));
-  tempRoots.push(path);
-  return path;
+  return tempRootHarness.createTempRoot();
 }

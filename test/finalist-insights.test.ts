@@ -1,8 +1,7 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { AgentRunResult } from "../src/adapters/types.js";
 import type { OracleVerdict } from "../src/domain/oracle.js";
@@ -10,16 +9,10 @@ import type { CandidateManifest } from "../src/domain/run.js";
 import { captureManagedProjectSnapshot } from "../src/services/base-snapshots.js";
 import { buildEnrichedFinalistSummaries } from "../src/services/finalist-insights.js";
 import { writeJsonFile } from "../src/services/project.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-finalist-insights-");
+tempRootHarness.registerCleanup();
 
 describe("finalist insights", () => {
   it("enriches promoted finalists with change summaries, witness rollups, and repair detail", async () => {
@@ -114,7 +107,5 @@ describe("finalist insights", () => {
 });
 
 async function createTempRoot(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "oraculum-finalist-insights-"));
-  tempRoots.push(path);
-  return path;
+  return tempRootHarness.createTempRoot();
 }

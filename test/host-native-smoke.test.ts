@@ -1,21 +1,14 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 // @ts-expect-error host-native smoke is an untyped ESM script.
 import { waitForCompletedRun, waitForExportPlan } from "../scripts/host-native-smoke.mjs";
+import { createTempRootHarness, writeJsonArtifact } from "./helpers/fs.js";
 
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-host-native-smoke-test-");
+tempRootHarness.registerCleanup();
 
 describe("host-native smoke polling", () => {
   it("waits until the latest run manifest reaches completed status", async () => {
@@ -31,13 +24,13 @@ describe("host-native smoke polling", () => {
     });
 
     setTimeout(async () => {
-      await writeJson(join(root, ".oraculum", "latest-run.json"), { runId });
-      await writeJson(join(runDir, "run.json"), {
+      await writeJsonArtifact(join(root, ".oraculum", "latest-run.json"), { runId });
+      await writeJsonArtifact(join(runDir, "run.json"), {
         id: runId,
         status: "running",
       });
       setTimeout(async () => {
-        await writeJson(join(runDir, "run.json"), {
+        await writeJsonArtifact(join(runDir, "run.json"), {
           id: runId,
           status: "completed",
           candidates: [],
@@ -60,7 +53,7 @@ describe("host-native smoke polling", () => {
     const runId = "run_wait_export";
     const reportsDir = join(root, ".oraculum", "runs", runId, "reports");
     await mkdir(reportsDir, { recursive: true });
-    await writeJson(join(root, ".oraculum", "runs", runId, "run.json"), {
+    await writeJsonArtifact(join(root, ".oraculum", "runs", runId, "run.json"), {
       id: runId,
       status: "completed",
       candidates: [{ id: "cand-01", status: "promoted" }],
@@ -73,13 +66,13 @@ describe("host-native smoke polling", () => {
     });
 
     setTimeout(async () => {
-      await writeJson(join(reportsDir, "export-plan.json"), {
+      await writeJsonArtifact(join(reportsDir, "export-plan.json"), {
         runId,
         candidateId: "cand-01",
         mode: "workspace-sync",
       });
       setTimeout(async () => {
-        await writeJson(join(root, ".oraculum", "runs", runId, "run.json"), {
+        await writeJsonArtifact(join(root, ".oraculum", "runs", runId, "run.json"), {
           id: runId,
           status: "completed",
           candidates: [{ id: "cand-01", status: "exported" }],
@@ -92,12 +85,5 @@ describe("host-native smoke polling", () => {
 });
 
 async function createTempRoot(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "oraculum-host-native-smoke-test-"));
-  tempRoots.push(root);
-  return root;
-}
-
-async function writeJson(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  return tempRootHarness.createTempRoot();
 }

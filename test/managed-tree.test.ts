@@ -1,17 +1,7 @@
-import {
-  lstat,
-  mkdir,
-  mkdtemp,
-  readFile,
-  readlink,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { lstat, mkdir, readFile, readlink, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   copyManagedProjectTree,
@@ -19,17 +9,11 @@ import {
   shouldLinkProjectDependencyTree,
   shouldManageProjectPath,
 } from "../src/services/managed-tree.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 import { createDirectoryLink, normalizeLinkedPath } from "./helpers/platform.js";
 
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-");
+tempRootHarness.registerCleanup();
 
 describe("managed tree symlink semantics", () => {
   it("allows explicit management of ambiguous generated directories without overriding protected paths", async () => {
@@ -241,9 +225,7 @@ nativeWindowsDescribe("managed tree native Windows reparse-point semantics", () 
 });
 
 async function createTempRoot(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "oraculum-"));
-  tempRoots.push(path);
-  return path;
+  return tempRootHarness.createTempRoot();
 }
 
 function overridePlatform(platform: NodeJS.Platform): () => void {

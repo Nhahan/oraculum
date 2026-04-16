@@ -1,8 +1,7 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { oraculumCommandManifest } from "../src/services/chat-native.js";
 import {
@@ -14,16 +13,10 @@ import {
   setupCodexHost,
   uninstallCodexHost,
 } from "../src/services/codex-chat-native.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-codex-setup-");
+tempRootHarness.registerCleanup();
 
 describe("Codex chat-native packaging", () => {
   it("generates rules and skills from the shared manifest", () => {
@@ -89,8 +82,7 @@ describe("Codex chat-native packaging", () => {
 
 describe("Codex setup", () => {
   it("installs packaged skills and rules and registers the MCP server through Codex CLI", async () => {
-    const root = await mkdtemp(join(tmpdir(), "oraculum-codex-setup-"));
-    tempRoots.push(root);
+    const root = await tempRootHarness.createTempRoot("oraculum-codex-setup-");
     const homeDir = join(root, "home");
     const statePath = join(root, "fake-codex-state.json");
     const cliPath = join(root, "fake-codex.mjs");
@@ -184,8 +176,7 @@ describe("Codex setup", () => {
   });
 
   it("uninstalls Codex MCP wiring and removes managed skills and rules", async () => {
-    const root = await mkdtemp(join(tmpdir(), "oraculum-codex-uninstall-"));
-    tempRoots.push(root);
+    const root = await tempRootHarness.createTempRoot("oraculum-codex-uninstall-");
     const homeDir = join(root, "home");
     const statePath = join(root, "fake-codex-state.json");
     const cliPath = join(root, "fake-codex.mjs");
@@ -276,8 +267,7 @@ describe("Codex setup", () => {
   });
 
   it("best-effort cleans local Codex wiring when the Codex binary is unavailable", async () => {
-    const root = await mkdtemp(join(tmpdir(), "oraculum-codex-uninstall-missing-"));
-    tempRoots.push(root);
+    const root = await tempRootHarness.createTempRoot("oraculum-codex-uninstall-missing-");
     const homeDir = join(root, "home");
     const statePath = join(root, "fake-codex-state.json");
     const cliPath = join(root, "fake-codex.mjs");

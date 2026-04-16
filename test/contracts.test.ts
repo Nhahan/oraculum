@@ -1,8 +1,7 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   type AgentAdapter,
@@ -32,16 +31,10 @@ import {
 import { initializeProject } from "../src/services/project.js";
 import { planRun } from "../src/services/runs.js";
 import { loadTaskPacket } from "../src/services/task-packets.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-contracts-");
+tempRootHarness.registerCleanup();
 
 describe("task packet contracts", () => {
   it("materializes a markdown task note into a task packet", async () => {
@@ -731,9 +724,7 @@ describe("run scaffold artifacts", () => {
 });
 
 async function createTempProject(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "oraculum-contracts-"));
-  tempRoots.push(path);
-  return path;
+  return tempRootHarness.createTempRoot();
 }
 
 function buildProjectConfigWithOracle(oracle: Record<string, unknown>): Record<string, unknown> {

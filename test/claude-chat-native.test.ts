@@ -1,8 +1,7 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { APP_VERSION } from "../src/core/constants.js";
 import { oraculumCommandManifest } from "../src/services/chat-native.js";
 import {
@@ -15,8 +14,10 @@ import {
   setupClaudeCodeHost,
   uninstallClaudeCodeHost,
 } from "../src/services/claude-chat-native.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 
-const tempRoots: string[] = [];
+const tempRootHarness = createTempRootHarness("oraculum-claude-setup-");
+tempRootHarness.registerCleanup();
 
 interface ClaudeMarketplaceManifestShape {
   name: string;
@@ -58,17 +59,8 @@ function normalizePluginInstallPaths(
   });
 }
 
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
-
 async function createFakeClaudeSetupFixture(initialState?: Partial<FakeClaudeState>) {
-  const root = await mkdtemp(join(tmpdir(), "oraculum-claude-setup-"));
-  tempRoots.push(root);
+  const root = await tempRootHarness.createTempRoot();
   const homeDir = join(root, "home");
   const statePath = join(root, "fake-claude-state.json");
   const cliPath = join(root, "fake-claude.mjs");

@@ -12,11 +12,11 @@ import type {
   AgentProfileRequest,
   AgentRunRequest,
 } from "../src/adapters/types.js";
-import { materializedTaskPacketSchema } from "../src/domain/task.js";
 import { classifyPlanLiftHarnessPrompt } from "../src/services/plan-lift-harness.js";
+import { createMaterializedTaskPacketFixture } from "./helpers/contract-fixtures.js";
 
 function createTaskPacket() {
-  return materializedTaskPacketSchema.parse({
+  return createMaterializedTaskPacketFixture({
     id: "task",
     title: "Revise the canonical session contract bundle",
     intent:

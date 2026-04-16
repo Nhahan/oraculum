@@ -1,8 +1,7 @@
-import { mkdir, mkdtemp, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   getAdvancedConfigPath,
@@ -15,16 +14,10 @@ import { executeRun } from "../src/services/execution.js";
 import { initializeProject } from "../src/services/project.js";
 import { planRun } from "../src/services/runs.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-consultation-plan-");
+tempRootHarness.registerCleanup();
 
 describe("consultation plan execution presets", () => {
   it("writes judging presets into generated consultation plan artifacts", async () => {
@@ -1697,9 +1690,7 @@ if (out) {
 });
 
 async function createTempProject(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "oraculum-consultation-plan-"));
-  tempRoots.push(path);
-  return path;
+  return tempRootHarness.createTempRoot();
 }
 
 async function writeAdvancedConfig(

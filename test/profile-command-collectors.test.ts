@@ -1,8 +1,7 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join, posix } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { buildCommandCatalog } from "../src/services/profile-command-catalog.js";
 import { collectExplicitCommandCatalog } from "../src/services/profile-explicit-command-collector.js";
@@ -15,16 +14,10 @@ import {
 } from "../src/services/profile-explicit-command-task-runners.js";
 import { collectProfileRepoFacts } from "../src/services/profile-repo-facts.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-profile-collectors-");
+tempRootHarness.registerCleanup();
 
 describe("profile repo facts collector", () => {
   it("records manifests and lockfiles across root and workspace markers", async () => {
@@ -801,9 +794,7 @@ describe("profile explicit command collector", () => {
 });
 
 async function createTempRoot(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "oraculum-profile-collectors-"));
-  tempRoots.push(path);
-  return path;
+  return tempRootHarness.createTempRoot();
 }
 
 async function withProcessPlatform<T>(

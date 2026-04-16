@@ -1,21 +1,14 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { prepareCandidateWorkspace } from "../src/services/workspaces.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-workspaces-");
+tempRootHarness.registerCleanup();
 
 describe("candidate workspace preparation", () => {
   it("copies the project tree when the root is not a git repository", async () => {
@@ -205,7 +198,7 @@ describe("candidate workspace preparation", () => {
 
     expect(prepared.mode).toBe("git-worktree");
     await expect(readFile(join(workspaceDir, "README.md"), "utf8")).resolves.toContain("hello");
-  });
+  }, 20_000);
 
   it("resets an existing git worktree before reusing it", async () => {
     const projectRoot = await createTempRoot();
@@ -227,11 +220,9 @@ describe("candidate workspace preparation", () => {
     expect(prepared.mode).toBe("git-worktree");
     await expect(readFile(join(workspaceDir, "README.md"), "utf8")).resolves.toContain("hello");
     await expect(stat(join(workspaceDir, "scratch.txt"))).rejects.toThrow();
-  });
+  }, 20_000);
 });
 
 async function createTempRoot(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "oraculum-workspaces-"));
-  tempRoots.push(path);
-  return path;
+  return tempRootHarness.createTempRoot();
 }

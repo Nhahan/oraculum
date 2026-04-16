@@ -1,26 +1,18 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { consultationPlanArtifactSchema } from "../src/domain/run.js";
 import { loadTaskPacket, readConsultationPlanArtifact } from "../src/services/task-packets.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-task-packets-");
+tempRootHarness.registerCleanup();
 
 describe("task packet loading", () => {
   it("materializes consultation plans as rerunnable task packets", async () => {
-    const root = await mkdtemp(join(tmpdir(), "oraculum-task-packets-"));
-    tempRoots.push(root);
+    const root = await createTempRoot();
     const originalTaskPath = join(root, "tasks", "fix-session.md");
     const planPath = join(
       root,
@@ -121,8 +113,7 @@ describe("task packet loading", () => {
   });
 
   it("materializes complex consultation plan graphs into the task intent", async () => {
-    const root = await mkdtemp(join(tmpdir(), "oraculum-task-packets-"));
-    tempRoots.push(root);
+    const root = await createTempRoot();
     const originalTaskPath = join(root, "tasks", "complex-session.md");
     const planPath = join(
       root,
@@ -255,8 +246,7 @@ describe("task packet loading", () => {
   });
 
   it("parses legacy consultation plans without execution-graph metadata", async () => {
-    const root = await mkdtemp(join(tmpdir(), "oraculum-task-packets-"));
-    tempRoots.push(root);
+    const root = await createTempRoot();
     const originalTaskPath = join(root, "tasks", "legacy-session.md");
     const planPath = join(
       root,
@@ -344,3 +334,7 @@ describe("task packet loading", () => {
     });
   });
 });
+
+async function createTempRoot(): Promise<string> {
+  return tempRootHarness.createTempRoot();
+}

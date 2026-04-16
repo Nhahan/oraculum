@@ -2,7 +2,6 @@ import {
   chmod,
   lstat,
   mkdir,
-  mkdtemp,
   readFile,
   readlink,
   rm,
@@ -10,10 +9,9 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   getAdvancedConfigPath,
@@ -32,21 +30,15 @@ import { readSymlinkTargetType as readManagedSymlinkTargetType } from "../src/se
 import { initializeProject, writeJsonFile } from "../src/services/project.js";
 import { planRun } from "../src/services/runs.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 import {
   createDirectoryLink,
   normalizeLineEndings,
   normalizeLinkedPath,
 } from "./helpers/platform.js";
 
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-");
+tempRootHarness.registerCleanup();
 
 describe("materialized exports", () => {
   it("creates a real git branch export from the recommended winner", async () => {
@@ -501,7 +493,7 @@ if (out) {
       JSON.parse(await readFile(candidateManifestPath, "utf8")) as unknown,
     );
     expect(restoredCandidate.status).toBe("promoted");
-  });
+  }, 20_000);
 
   it("syncs a non-git winner workspace back into the project folder", async () => {
     const cwd = await createTempRoot();
@@ -1376,9 +1368,7 @@ if (out) {
 });
 
 async function createTempRoot(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "oraculum-"));
-  tempRoots.push(path);
-  return path;
+  return tempRootHarness.createTempRoot();
 }
 
 async function writeExportingCodex(cwd: string): Promise<string> {

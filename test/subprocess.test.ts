@@ -1,21 +1,14 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { runSubprocess } from "../src/core/subprocess.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-subprocess-");
+tempRootHarness.registerCleanup();
 
 describe("subprocess execution", () => {
   it("escalates to SIGKILL after the timeout when the child ignores SIGTERM", async () => {
@@ -122,7 +115,5 @@ process.stderr.write("y".repeat(32));
 });
 
 async function createTempRoot(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "oraculum-subprocess-"));
-  tempRoots.push(path);
-  return path;
+  return tempRootHarness.createTempRoot();
 }

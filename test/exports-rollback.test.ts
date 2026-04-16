@@ -1,8 +1,7 @@
-import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/core/subprocess.js", () => ({
   runSubprocess: vi.fn(),
@@ -24,20 +23,14 @@ import { runManifestSchema } from "../src/domain/run.js";
 import { materializeExport } from "../src/services/exports.js";
 import * as projectService from "../src/services/project.js";
 import { prepareExportPlan, readRunManifest } from "../src/services/runs.js";
+import { createTempRootHarness } from "./helpers/fs.js";
 
 const mockedRunSubprocess = vi.mocked(runSubprocess);
 const mockedPrepareExportPlan = vi.mocked(prepareExportPlan);
 const mockedReadRunManifest = vi.mocked(readRunManifest);
 
-const tempRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    tempRoots.splice(0).map(async (path) => {
-      await rm(path, { recursive: true, force: true });
-    }),
-  );
-});
+const tempRootHarness = createTempRootHarness("oraculum-");
+tempRootHarness.registerCleanup();
 
 describe("git export rollback", () => {
   beforeEach(() => {
@@ -664,9 +657,7 @@ describe("git export rollback", () => {
 });
 
 async function createTempRoot(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "oraculum-"));
-  tempRoots.push(path);
-  return path;
+  return tempRootHarness.createTempRoot();
 }
 
 function result(input: {
