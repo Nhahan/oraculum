@@ -12,18 +12,21 @@ import {
   registerAdaptersTempRootCleanup,
 } from "./helpers/adapters.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
+import { EXECUTION_TEST_TIMEOUT_MS, FAKE_AGENT_TIMEOUT_MS } from "./helpers/integration.js";
 
 registerAdaptersTempRootCleanup();
 
 describe("agent adapters winner selection", () => {
-  it("asks Codex to recommend a winner and parses structured output", async () => {
-    const root = await createTempRoot();
-    const logDir = join(root, "judge-logs");
+  it(
+    "asks Codex to recommend a winner and parses structured output",
+    async () => {
+      const root = await createTempRoot();
+      const logDir = join(root, "judge-logs");
 
-    const binaryPath = await writeNodeBinary(
-      root,
-      "fake-codex",
-      `const fs = require("node:fs");
+      const binaryPath = await writeNodeBinary(
+        root,
+        "fake-codex",
+        `const fs = require("node:fs");
 fs.readFileSync(0, "utf8");
 let out = "";
 for (let index = 0; index < process.argv.length; index += 1) {
@@ -40,138 +43,140 @@ if (out) {
   );
 }
 `,
-    );
+      );
 
-    const adapter = new CodexAdapter({
-      binaryPath,
-      timeoutMs: 5_000,
-    });
+      const adapter = new CodexAdapter({
+        binaryPath,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    const result = await adapter.recommendWinner({
-      runId: "run_1",
-      projectRoot: root,
-      logDir,
-      taskPacket: createTaskPacket(),
-      finalists: [
-        {
-          candidateId: "cand-01",
-          strategyLabel: "Minimal Change",
-          summary: "Small diff.",
-          artifactKinds: ["report"],
-          changedPaths: ["src/auth/session.ts"],
-          changeSummary: {
-            mode: "git-diff",
-            changedPathCount: 1,
-            createdPathCount: 0,
-            removedPathCount: 0,
-            modifiedPathCount: 1,
-            addedLineCount: 8,
-            deletedLineCount: 2,
+      const result = await adapter.recommendWinner({
+        runId: "run_1",
+        projectRoot: root,
+        logDir,
+        taskPacket: createTaskPacket(),
+        finalists: [
+          {
+            candidateId: "cand-01",
+            strategyLabel: "Minimal Change",
+            summary: "Small diff.",
+            artifactKinds: ["report"],
+            changedPaths: ["src/auth/session.ts"],
+            changeSummary: {
+              mode: "git-diff",
+              changedPathCount: 1,
+              createdPathCount: 0,
+              removedPathCount: 0,
+              modifiedPathCount: 1,
+              addedLineCount: 8,
+              deletedLineCount: 2,
+            },
+            witnessRollup: {
+              witnessCount: 1,
+              warningOrHigherCount: 1,
+              repairableCount: 0,
+              repairHints: [],
+              riskSummaries: ["Touches auth session restoration."],
+              keyWitnesses: [
+                {
+                  roundId: "impact",
+                  oracleId: "api-impact",
+                  kind: "command-output",
+                  title: "Auth flow touched",
+                  detail: "Session restore path changed.",
+                },
+              ],
+            },
+            repairSummary: {
+              attemptCount: 0,
+              repairedRounds: [],
+            },
+            verdicts: [],
           },
-          witnessRollup: {
-            witnessCount: 1,
-            warningOrHigherCount: 1,
-            repairableCount: 0,
-            repairHints: [],
-            riskSummaries: ["Touches auth session restoration."],
-            keyWitnesses: [
-              {
-                roundId: "impact",
-                oracleId: "api-impact",
-                kind: "command-output",
-                title: "Auth flow touched",
-                detail: "Session restore path changed.",
-              },
-            ],
+          {
+            candidateId: "cand-02",
+            strategyLabel: "Safety First",
+            summary: "More evidence.",
+            artifactKinds: ["report", "transcript"],
+            changedPaths: ["src/auth/session.ts", "test/auth/session.test.ts"],
+            changeSummary: {
+              mode: "git-diff",
+              changedPathCount: 2,
+              createdPathCount: 1,
+              removedPathCount: 0,
+              modifiedPathCount: 1,
+              addedLineCount: 14,
+              deletedLineCount: 3,
+            },
+            witnessRollup: {
+              witnessCount: 2,
+              warningOrHigherCount: 1,
+              repairableCount: 1,
+              repairHints: ["Persist a clearer patch summary."],
+              riskSummaries: ["Public API drift needs review."],
+              keyWitnesses: [
+                {
+                  roundId: "impact",
+                  oracleId: "reviewable-output",
+                  kind: "file",
+                  title: "Reviewable output",
+                  detail: "Transcript and patch were captured.",
+                },
+              ],
+            },
+            repairSummary: {
+              attemptCount: 1,
+              repairedRounds: ["impact"],
+            },
+            verdicts: [],
           },
-          repairSummary: {
-            attemptCount: 0,
-            repairedRounds: [],
-          },
-          verdicts: [],
-        },
-        {
-          candidateId: "cand-02",
-          strategyLabel: "Safety First",
-          summary: "More evidence.",
-          artifactKinds: ["report", "transcript"],
-          changedPaths: ["src/auth/session.ts", "test/auth/session.test.ts"],
-          changeSummary: {
-            mode: "git-diff",
-            changedPathCount: 2,
-            createdPathCount: 1,
-            removedPathCount: 0,
-            modifiedPathCount: 1,
-            addedLineCount: 14,
-            deletedLineCount: 3,
-          },
-          witnessRollup: {
-            witnessCount: 2,
-            warningOrHigherCount: 1,
-            repairableCount: 1,
-            repairHints: ["Persist a clearer patch summary."],
-            riskSummaries: ["Public API drift needs review."],
-            keyWitnesses: [
-              {
-                roundId: "impact",
-                oracleId: "reviewable-output",
-                kind: "file",
-                title: "Reviewable output",
-                detail: "Transcript and patch were captured.",
-              },
-            ],
-          },
-          repairSummary: {
-            attemptCount: 1,
-            repairedRounds: ["impact"],
-          },
-          verdicts: [],
-        },
-      ],
-    });
+        ],
+      });
 
-    expect(result.status).toBe("completed");
-    expect(result.recommendation?.candidateId).toBe("cand-02");
-    expect(result.recommendation?.confidence).toBe("medium");
-    expect(result.recommendation?.judgingCriteria).toEqual([
-      "Leaves the target artifact internally consistent.",
-    ]);
-    await expect(
-      readFile(join(logDir, "winner-judge.final-message.txt"), "utf8"),
-    ).resolves.toContain('"decision":"select"');
-    await expect(readFile(join(logDir, "winner-judge.stdout.jsonl"), "utf8")).resolves.toContain(
-      '"--output-schema"',
-    );
-    await expect(readFile(join(logDir, "winner-judge.stdout.jsonl"), "utf8")).resolves.toContain(
-      '"read-only"',
-    );
-    await expect(readFile(join(logDir, "winner-judge.schema.json"), "utf8")).resolves.toContain(
-      '"judgingCriteria"',
-    );
-    const winnerSchema = JSON.parse(
-      await readFile(join(logDir, "winner-judge.schema.json"), "utf8"),
-    ) as {
-      type?: string;
-      oneOf?: unknown;
-      properties?: Record<string, { anyOf?: Array<{ type?: string }> }>;
-      required?: string[];
-    };
-    expect(winnerSchema.type).toBe("object");
-    expect(winnerSchema.oneOf).toBeUndefined();
-    expect(winnerSchema.required).toEqual(
-      expect.arrayContaining(["decision", "confidence", "summary", "judgingCriteria"]),
-    );
-    expect(winnerSchema.required).toEqual(expect.arrayContaining(["candidateId"]));
-    expect(winnerSchema.properties?.candidateId?.anyOf).toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: "string" }), { type: "null" }]),
-    );
-    await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "Change summary: mode=git-diff, changed=2, created=1, removed=0, modified=1, +14, -3",
-    );
-    await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "Repair summary: attempts=1, rounds=impact",
-    );
-  }, 20_000);
+      expect(result.status).toBe("completed");
+      expect(result.recommendation?.candidateId).toBe("cand-02");
+      expect(result.recommendation?.confidence).toBe("medium");
+      expect(result.recommendation?.judgingCriteria).toEqual([
+        "Leaves the target artifact internally consistent.",
+      ]);
+      await expect(
+        readFile(join(logDir, "winner-judge.final-message.txt"), "utf8"),
+      ).resolves.toContain('"decision":"select"');
+      await expect(readFile(join(logDir, "winner-judge.stdout.jsonl"), "utf8")).resolves.toContain(
+        '"--output-schema"',
+      );
+      await expect(readFile(join(logDir, "winner-judge.stdout.jsonl"), "utf8")).resolves.toContain(
+        '"read-only"',
+      );
+      await expect(readFile(join(logDir, "winner-judge.schema.json"), "utf8")).resolves.toContain(
+        '"judgingCriteria"',
+      );
+      const winnerSchema = JSON.parse(
+        await readFile(join(logDir, "winner-judge.schema.json"), "utf8"),
+      ) as {
+        type?: string;
+        oneOf?: unknown;
+        properties?: Record<string, { anyOf?: Array<{ type?: string }> }>;
+        required?: string[];
+      };
+      expect(winnerSchema.type).toBe("object");
+      expect(winnerSchema.oneOf).toBeUndefined();
+      expect(winnerSchema.required).toEqual(
+        expect.arrayContaining(["decision", "confidence", "summary", "judgingCriteria"]),
+      );
+      expect(winnerSchema.required).toEqual(expect.arrayContaining(["candidateId"]));
+      expect(winnerSchema.properties?.candidateId?.anyOf).toEqual(
+        expect.arrayContaining([expect.objectContaining({ type: "string" }), { type: "null" }]),
+      );
+      await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
+        "Change summary: mode=git-diff, changed=2, created=1, removed=0, modified=1, +14, -3",
+      );
+      await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
+        "Repair summary: attempts=1, rounds=impact",
+      );
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
 
   it("includes consultation profile gaps in winner-selection prompts", async () => {
     const root = await createTempRoot();
@@ -199,7 +204,7 @@ if (out) {
 
     const adapter = new CodexAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     await adapter.recommendWinner({
@@ -305,7 +310,7 @@ if (out) {
 
     const adapter = new CodexAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     const result = await adapter.recommendWinner({
@@ -380,7 +385,7 @@ if (out) {
 
     const adapter = new CodexAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     const result = await adapter.recommendWinner({
@@ -425,7 +430,7 @@ if (out) {
 
     const adapter = new CodexAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     const result = await adapter.recommendWinner({
@@ -468,7 +473,7 @@ process.stdout.write(JSON.stringify({
 
     const adapter = new ClaudeAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     const result = await adapter.recommendWinner({

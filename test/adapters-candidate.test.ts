@@ -11,6 +11,7 @@ import {
   registerAdaptersTempRootCleanup,
 } from "./helpers/adapters.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
+import { FAKE_AGENT_TIMEOUT_MS } from "./helpers/integration.js";
 
 registerAdaptersTempRootCleanup();
 
@@ -39,7 +40,7 @@ process.stderr.write("claude stderr");
 
     const adapter = new ClaudeAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     const result = await adapter.runCandidate({
@@ -123,7 +124,7 @@ if (out) {
 
     const adapter = new CodexAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     const result = await adapter.runCandidate({

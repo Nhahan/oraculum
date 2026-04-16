@@ -34,6 +34,7 @@ import {
   readLatestRunId,
 } from "../src/services/runs.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
+import { FAKE_AGENT_TIMEOUT_MS, PROJECT_FLOWS_TEST_TIMEOUT_MS } from "./helpers/integration.js";
 import { normalizePathForAssertion } from "./helpers/platform.js";
 import {
   createInitializedProject,
@@ -164,13 +165,15 @@ describe("project flows", () => {
     await expect(readdir(getRunsDir(cwd))).resolves.toEqual([]);
   });
 
-  it("creates an export plan for a selected candidate", async () => {
-    const cwd = await createInitializedProject();
-    await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
-    const fakeCodex = await writeNodeBinary(
-      cwd,
-      "fake-codex",
-      `const fs = require("node:fs");
+  it(
+    "creates an export plan for a selected candidate",
+    async () => {
+      const cwd = await createInitializedProject();
+      await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
+      const fakeCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex",
+        `const fs = require("node:fs");
 const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
@@ -189,46 +192,48 @@ if (out) {
   fs.writeFileSync(out, body, "utf8");
 }
 `,
-    );
+      );
 
-    const manifest = await planRun({
-      cwd,
-      taskInput: "tasks/fix-session-loss.md",
-      agent: "codex",
-      candidates: 2,
-    });
-    await executeRun({
-      cwd,
-      runId: manifest.id,
-      codexBinaryPath: fakeCodex,
-      timeoutMs: 5_000,
-    });
+      const manifest = await planRun({
+        cwd,
+        taskInput: "tasks/fix-session-loss.md",
+        agent: "codex",
+        candidates: 2,
+      });
+      await executeRun({
+        cwd,
+        runId: manifest.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    const result = await buildExportPlan({
-      cwd,
-      runId: manifest.id,
-      winnerId: "cand-01",
-      branchName: "manual-sync-label",
-      withReport: true,
-    });
+      const result = await buildExportPlan({
+        cwd,
+        runId: manifest.id,
+        winnerId: "cand-01",
+        branchName: "manual-sync-label",
+        withReport: true,
+      });
 
-    const saved = exportPlanSchema.parse(
-      JSON.parse(await readFile(getExportPlanPath(cwd, manifest.id), "utf8")) as unknown,
-    );
+      const saved = exportPlanSchema.parse(
+        JSON.parse(await readFile(getExportPlanPath(cwd, manifest.id), "utf8")) as unknown,
+      );
 
-    expect(result.plan.winnerId).toBe("cand-01");
-    expect(saved.branchName).toBeUndefined();
-    expect(saved.materializationMode).toBe("workspace-sync");
-    expect(saved.materializationLabel).toBe("manual-sync-label");
-    expect(saved.withReport).toBe(true);
-    expect(saved.reportBundle?.files).toEqual(
-      expect.arrayContaining([
-        getFinalistComparisonJsonPath(cwd, manifest.id),
-        getFinalistComparisonMarkdownPath(cwd, manifest.id),
-        getWinnerSelectionPath(cwd, manifest.id),
-      ]),
-    );
-  }, 20_000);
+      expect(result.plan.winnerId).toBe("cand-01");
+      expect(saved.branchName).toBeUndefined();
+      expect(saved.materializationMode).toBe("workspace-sync");
+      expect(saved.materializationLabel).toBe("manual-sync-label");
+      expect(saved.withReport).toBe(true);
+      expect(saved.reportBundle?.files).toEqual(
+        expect.arrayContaining([
+          getFinalistComparisonJsonPath(cwd, manifest.id),
+          getFinalistComparisonMarkdownPath(cwd, manifest.id),
+          getWinnerSelectionPath(cwd, manifest.id),
+        ]),
+      );
+    },
+    PROJECT_FLOWS_TEST_TIMEOUT_MS,
+  );
 
   it("rejects export plans for candidates that were not promoted", async () => {
     const cwd = await createInitializedProject();
@@ -298,7 +303,7 @@ if (out) {
       agent: "codex",
       preflight: {
         codexBinaryPath: fakeCodex,
-        timeoutMs: 5_000,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
       },
     });
 
@@ -576,7 +581,7 @@ if (out) {
       agent: "codex",
       preflight: {
         codexBinaryPath: fakeCodex,
-        timeoutMs: 5_000,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
       },
     });
 
@@ -669,13 +674,15 @@ if (out) {
     expect(taskNote).toContain("fix/session-loss-on-refresh");
   });
 
-  it("uses the latest run by default when building an export plan", async () => {
-    const cwd = await createInitializedProject();
-    await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
-    const fakeCodex = await writeNodeBinary(
-      cwd,
-      "fake-codex",
-      `const fs = require("node:fs");
+  it(
+    "uses the latest run by default when building an export plan",
+    async () => {
+      const cwd = await createInitializedProject();
+      await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
+      const fakeCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex",
+        `const fs = require("node:fs");
 const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
@@ -694,46 +701,48 @@ if (out) {
   fs.writeFileSync(out, body, "utf8");
 }
 `,
-    );
+      );
 
-    const manifest = await planRun({
-      cwd,
-      taskInput: "tasks/fix-session-loss.md",
-      agent: "codex",
-      candidates: 1,
-    });
-    await executeRun({
-      cwd,
-      runId: manifest.id,
-      codexBinaryPath: fakeCodex,
-      timeoutMs: 5_000,
-    });
+      const manifest = await planRun({
+        cwd,
+        taskInput: "tasks/fix-session-loss.md",
+        agent: "codex",
+        candidates: 1,
+      });
+      await executeRun({
+        cwd,
+        runId: manifest.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    const result = await buildExportPlan({
-      cwd,
-      branchName: "fix/session-loss",
-      withReport: true,
-    });
+      const result = await buildExportPlan({
+        cwd,
+        branchName: "fix/session-loss",
+        withReport: true,
+      });
 
-    expect(result.plan.runId).toBe(manifest.id);
-    expect(result.plan.winnerId).toBe("cand-01");
-    expect(result.plan.reportBundle?.files).toEqual(
-      expect.arrayContaining([
-        getFinalistComparisonJsonPath(cwd, manifest.id),
-        getFinalistComparisonMarkdownPath(cwd, manifest.id),
-      ]),
-    );
+      expect(result.plan.runId).toBe(manifest.id);
+      expect(result.plan.winnerId).toBe("cand-01");
+      expect(result.plan.reportBundle?.files).toEqual(
+        expect.arrayContaining([
+          getFinalistComparisonJsonPath(cwd, manifest.id),
+          getFinalistComparisonMarkdownPath(cwd, manifest.id),
+        ]),
+      );
 
-    const latestRunState = latestRunStateSchema.parse(
-      JSON.parse(await readFile(getLatestRunStatePath(cwd), "utf8")) as unknown,
-    );
-    expect(latestRunState.runId).toBe(manifest.id);
+      const latestRunState = latestRunStateSchema.parse(
+        JSON.parse(await readFile(getLatestRunStatePath(cwd), "utf8")) as unknown,
+      );
+      expect(latestRunState.runId).toBe(manifest.id);
 
-    const latestExportableRunState = latestRunStateSchema.parse(
-      JSON.parse(await readFile(getLatestExportableRunStatePath(cwd), "utf8")) as unknown,
-    );
-    expect(latestExportableRunState.runId).toBe(manifest.id);
-  }, 20_000);
+      const latestExportableRunState = latestRunStateSchema.parse(
+        JSON.parse(await readFile(getLatestExportableRunStatePath(cwd), "utf8")) as unknown,
+      );
+      expect(latestExportableRunState.runId).toBe(manifest.id);
+    },
+    PROJECT_FLOWS_TEST_TIMEOUT_MS,
+  );
 
   it("rejects implicit export when no recommended survivor exists", async () => {
     const cwd = await createInitializedProject();
@@ -1004,13 +1013,15 @@ if (out) {
     expect(plan.materializationPatchPath).toBe("/tmp/export.patch");
   });
 
-  it("keeps the latest exportable run when a later run is only planned", async () => {
-    const cwd = await createInitializedProject();
-    await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
-    const fakeCodex = await writeNodeBinary(
-      cwd,
-      "fake-codex",
-      `const fs = require("node:fs");
+  it(
+    "keeps the latest exportable run when a later run is only planned",
+    async () => {
+      const cwd = await createInitializedProject();
+      await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# fix session loss\n", "utf8");
+      const fakeCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex",
+        `const fs = require("node:fs");
 const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
@@ -1029,36 +1040,38 @@ if (out) {
   fs.writeFileSync(out, body, "utf8");
 }
 `,
-    );
+      );
 
-    const completedRun = await planRun({
-      cwd,
-      taskInput: "tasks/fix-session-loss.md",
-      agent: "codex",
-      candidates: 1,
-    });
-    await executeRun({
-      cwd,
-      runId: completedRun.id,
-      codexBinaryPath: fakeCodex,
-      timeoutMs: 5_000,
-    });
+      const completedRun = await planRun({
+        cwd,
+        taskInput: "tasks/fix-session-loss.md",
+        agent: "codex",
+        candidates: 1,
+      });
+      await executeRun({
+        cwd,
+        runId: completedRun.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    await planRun({
-      cwd,
-      taskInput: "tasks/fix-session-loss.md",
-      candidates: 1,
-    });
+      await planRun({
+        cwd,
+        taskInput: "tasks/fix-session-loss.md",
+        candidates: 1,
+      });
 
-    const result = await buildExportPlan({
-      cwd,
-      branchName: "fix/session-loss",
-      withReport: false,
-    });
+      const result = await buildExportPlan({
+        cwd,
+        branchName: "fix/session-loss",
+        withReport: false,
+      });
 
-    expect(result.plan.runId).toBe(completedRun.id);
-    expect(await readLatestExportableRunId(cwd)).toBe(completedRun.id);
-  });
+      expect(result.plan.runId).toBe(completedRun.id);
+      expect(await readLatestExportableRunId(cwd)).toBe(completedRun.id);
+    },
+    PROJECT_FLOWS_TEST_TIMEOUT_MS,
+  );
 
   it("rejects older exportable runs that do not record base metadata", async () => {
     const cwd = await createInitializedProject();

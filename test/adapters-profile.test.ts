@@ -12,6 +12,7 @@ import {
   registerAdaptersTempRootCleanup,
 } from "./helpers/adapters.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
+import { EXECUTION_TEST_TIMEOUT_MS, FAKE_AGENT_TIMEOUT_MS } from "./helpers/integration.js";
 
 registerAdaptersTempRootCleanup();
 
@@ -47,7 +48,7 @@ if (out) {
 
     const adapter = new CodexAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     const result = await adapter.recommendProfile({
@@ -179,7 +180,7 @@ if (out) {
 
     const adapter = new CodexAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     const result = await adapter.recommendProfile({
@@ -205,14 +206,16 @@ if (out) {
     );
   });
 
-  it("asks Claude to recommend a consultation profile with json-schema output", async () => {
-    const root = await createTempRoot();
-    const logDir = join(root, "profile-logs");
+  it(
+    "asks Claude to recommend a consultation profile with json-schema output",
+    async () => {
+      const root = await createTempRoot();
+      const logDir = join(root, "profile-logs");
 
-    const binaryPath = await writeNodeBinary(
-      root,
-      "fake-claude",
-      `process.stderr.write(JSON.stringify({ argv: process.argv.slice(2) }));
+      const binaryPath = await writeNodeBinary(
+        root,
+        "fake-claude",
+        `process.stderr.write(JSON.stringify({ argv: process.argv.slice(2) }));
 process.stdout.write(JSON.stringify({
   type: "result",
   structured_output: {
@@ -225,84 +228,88 @@ process.stdout.write(JSON.stringify({
     validationGaps: [],
   },
 }));`,
-    );
+      );
 
-    const adapter = new ClaudeAdapter({
-      binaryPath,
-      timeoutMs: 5_000,
-    });
+      const adapter = new ClaudeAdapter({
+        binaryPath,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    const result = await adapter.recommendProfile({
-      runId: "run_1",
-      projectRoot: root,
-      logDir,
-      taskPacket: createTaskPacket(),
-      signals: {
-        packageManager: "pnpm",
-        scripts: ["build", "e2e"],
-        dependencies: ["react", "vite"],
-        files: ["package.json", "vite.config.ts", "playwright.config.ts"],
-        workspaceRoots: [],
-        workspaceMetadata: [],
-        notes: [],
-        capabilities: [],
-        provenance: [],
-        skippedCommandCandidates: [],
-        commandCatalog: [
-          {
-            id: "build-impact",
-            roundId: "impact",
-            label: "Build",
-            command: "pnpm",
-            args: ["run", "build"],
-            invariant: "The project should build successfully after the patch.",
-          },
-          {
-            id: "e2e-deep",
-            roundId: "deep",
-            label: "End-to-end checks",
-            command: "pnpm",
-            args: ["run", "e2e"],
-            invariant: "Deep end-to-end validation should pass.",
-          },
+      const result = await adapter.recommendProfile({
+        runId: "run_1",
+        projectRoot: root,
+        logDir,
+        taskPacket: createTaskPacket(),
+        signals: {
+          packageManager: "pnpm",
+          scripts: ["build", "e2e"],
+          dependencies: ["react", "vite"],
+          files: ["package.json", "vite.config.ts", "playwright.config.ts"],
+          workspaceRoots: [],
+          workspaceMetadata: [],
+          notes: [],
+          capabilities: [],
+          provenance: [],
+          skippedCommandCandidates: [],
+          commandCatalog: [
+            {
+              id: "build-impact",
+              roundId: "impact",
+              label: "Build",
+              command: "pnpm",
+              args: ["run", "build"],
+              invariant: "The project should build successfully after the patch.",
+            },
+            {
+              id: "e2e-deep",
+              roundId: "deep",
+              label: "End-to-end checks",
+              command: "pnpm",
+              args: ["run", "e2e"],
+              invariant: "Deep end-to-end validation should pass.",
+            },
+          ],
+        },
+        validationPostureOptions: [
+          { id: "library", description: "Library work." },
+          { id: "frontend", description: "Frontend work." },
+          { id: "migration", description: "Migration work." },
         ],
-      },
-      validationPostureOptions: [
-        { id: "library", description: "Library work." },
-        { id: "frontend", description: "Frontend work." },
-        { id: "migration", description: "Migration work." },
-      ],
-    });
+      });
 
-    expect(result.status).toBe("completed");
-    expect(result.recommendation?.profileId).toBe("frontend");
-    expect(result.recommendation?.validationProfileId).toBe("frontend");
-    expect(result.recommendation?.summary).toBe("Frontend build and e2e signals are present.");
-    expect(result.recommendation?.validationSummary).toBe(
-      "Frontend build and e2e signals are present.",
-    );
-    await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "Command catalog:",
-    );
-    await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
-      'Use validationProfileId "generic" when the repository has no strong command-grounded or repo-local profile evidence.',
-    );
-    await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toContain(
-      '"--permission-mode","plan"',
-    );
-    await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toMatch(
-      /validationProfileId/u,
-    );
-  }, 20_000);
+      expect(result.status).toBe("completed");
+      expect(result.recommendation?.profileId).toBe("frontend");
+      expect(result.recommendation?.validationProfileId).toBe("frontend");
+      expect(result.recommendation?.summary).toBe("Frontend build and e2e signals are present.");
+      expect(result.recommendation?.validationSummary).toBe(
+        "Frontend build and e2e signals are present.",
+      );
+      await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
+        "Command catalog:",
+      );
+      await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
+        'Use validationProfileId "generic" when the repository has no strong command-grounded or repo-local profile evidence.',
+      );
+      await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toContain(
+        '"--permission-mode","plan"',
+      );
+      await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toMatch(
+        /validationProfileId/u,
+      );
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
 
-  it("ignores unrelated Claude nested objects that do not satisfy the full profile recommendation shape", async () => {
-    const root = await createTempRoot();
-    const logDir = join(root, "profile-nested-noise-logs");
+  it(
+    "ignores unrelated Claude nested objects that do not satisfy the full profile recommendation shape",
+    async () => {
+      const root = await createTempRoot();
+      const logDir = join(root, "profile-nested-noise-logs");
 
-    const binaryPath = await writeNodeBinary(
-      root,
-      "fake-claude",
-      `process.stderr.write(JSON.stringify({ argv: process.argv.slice(2) }));
+      const binaryPath = await writeNodeBinary(
+        root,
+        "fake-claude",
+        `process.stderr.write(JSON.stringify({ argv: process.argv.slice(2) }));
 process.stdout.write(JSON.stringify({
   type: "result",
   metadata: {
@@ -321,70 +328,74 @@ process.stdout.write(JSON.stringify({
     validationGaps: []
   },
 }));`,
-    );
+      );
 
-    const adapter = new ClaudeAdapter({
-      binaryPath,
-      timeoutMs: 5_000,
-    });
+      const adapter = new ClaudeAdapter({
+        binaryPath,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    const result = await adapter.recommendProfile({
-      runId: "run_1",
-      projectRoot: root,
-      logDir,
-      taskPacket: createTaskPacket(),
-      signals: {
-        packageManager: "pnpm",
-        scripts: ["build", "e2e"],
-        dependencies: ["react", "vite"],
-        files: ["package.json", "vite.config.ts", "playwright.config.ts"],
-        workspaceRoots: [],
-        workspaceMetadata: [],
-        notes: [],
-        capabilities: [],
-        provenance: [],
-        skippedCommandCandidates: [],
-        commandCatalog: [
-          {
-            id: "build-impact",
-            roundId: "impact",
-            label: "Build",
-            command: "pnpm",
-            args: ["run", "build"],
-            invariant: "The project should build successfully after the patch.",
-          },
-          {
-            id: "e2e-deep",
-            roundId: "deep",
-            label: "End-to-end checks",
-            command: "pnpm",
-            args: ["run", "e2e"],
-            invariant: "Deep end-to-end validation should pass.",
-          },
+      const result = await adapter.recommendProfile({
+        runId: "run_1",
+        projectRoot: root,
+        logDir,
+        taskPacket: createTaskPacket(),
+        signals: {
+          packageManager: "pnpm",
+          scripts: ["build", "e2e"],
+          dependencies: ["react", "vite"],
+          files: ["package.json", "vite.config.ts", "playwright.config.ts"],
+          workspaceRoots: [],
+          workspaceMetadata: [],
+          notes: [],
+          capabilities: [],
+          provenance: [],
+          skippedCommandCandidates: [],
+          commandCatalog: [
+            {
+              id: "build-impact",
+              roundId: "impact",
+              label: "Build",
+              command: "pnpm",
+              args: ["run", "build"],
+              invariant: "The project should build successfully after the patch.",
+            },
+            {
+              id: "e2e-deep",
+              roundId: "deep",
+              label: "End-to-end checks",
+              command: "pnpm",
+              args: ["run", "e2e"],
+              invariant: "Deep end-to-end validation should pass.",
+            },
+          ],
+        },
+        validationPostureOptions: [
+          { id: "frontend", description: "Frontend work." },
+          { id: "generic", description: "Generic work." },
         ],
-      },
-      validationPostureOptions: [
-        { id: "frontend", description: "Frontend work." },
-        { id: "generic", description: "Generic work." },
-      ],
-    });
+      });
 
-    expect(result.status).toBe("completed");
-    expect(result.recommendation?.validationProfileId).toBe("frontend");
-    expect(result.recommendation?.validationSummary).toBe(
-      "Frontend build and e2e signals are present.",
-    );
-    expect(result.recommendation?.selectedCommandIds).toEqual(["build-impact", "e2e-deep"]);
-  }, 20_000);
+      expect(result.status).toBe("completed");
+      expect(result.recommendation?.validationProfileId).toBe("frontend");
+      expect(result.recommendation?.validationSummary).toBe(
+        "Frontend build and e2e signals are present.",
+      );
+      expect(result.recommendation?.selectedCommandIds).toEqual(["build-impact", "e2e-deep"]);
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
 
-  it("continues past invalid Claude nested profile objects and reads the next valid recommendation", async () => {
-    const root = await createTempRoot();
-    const logDir = join(root, "profile-nested-invalid-logs");
+  it(
+    "continues past invalid Claude nested profile objects and reads the next valid recommendation",
+    async () => {
+      const root = await createTempRoot();
+      const logDir = join(root, "profile-nested-invalid-logs");
 
-    const binaryPath = await writeNodeBinary(
-      root,
-      "fake-claude",
-      `process.stderr.write(JSON.stringify({ argv: process.argv.slice(2) }));
+      const binaryPath = await writeNodeBinary(
+        root,
+        "fake-claude",
+        `process.stderr.write(JSON.stringify({ argv: process.argv.slice(2) }));
 process.stdout.write(JSON.stringify({
   type: "result",
   metadata: {
@@ -408,58 +419,60 @@ process.stdout.write(JSON.stringify({
     validationGaps: []
   },
 }));`,
-    );
+      );
 
-    const adapter = new ClaudeAdapter({
-      binaryPath,
-      timeoutMs: 5_000,
-    });
+      const adapter = new ClaudeAdapter({
+        binaryPath,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    const result = await adapter.recommendProfile({
-      runId: "run_1",
-      projectRoot: root,
-      logDir,
-      taskPacket: createTaskPacket(),
-      signals: {
-        packageManager: "pnpm",
-        scripts: ["build", "e2e"],
-        dependencies: ["react", "vite"],
-        files: ["package.json", "vite.config.ts", "playwright.config.ts"],
-        workspaceRoots: [],
-        workspaceMetadata: [],
-        notes: [],
-        capabilities: [],
-        provenance: [],
-        skippedCommandCandidates: [],
-        commandCatalog: [
-          {
-            id: "build-impact",
-            roundId: "impact",
-            label: "Build",
-            command: "pnpm",
-            args: ["run", "build"],
-            invariant: "The project should build successfully after the patch.",
-          },
-          {
-            id: "e2e-deep",
-            roundId: "deep",
-            label: "End-to-end checks",
-            command: "pnpm",
-            args: ["run", "e2e"],
-            invariant: "Deep end-to-end validation should pass.",
-          },
+      const result = await adapter.recommendProfile({
+        runId: "run_1",
+        projectRoot: root,
+        logDir,
+        taskPacket: createTaskPacket(),
+        signals: {
+          packageManager: "pnpm",
+          scripts: ["build", "e2e"],
+          dependencies: ["react", "vite"],
+          files: ["package.json", "vite.config.ts", "playwright.config.ts"],
+          workspaceRoots: [],
+          workspaceMetadata: [],
+          notes: [],
+          capabilities: [],
+          provenance: [],
+          skippedCommandCandidates: [],
+          commandCatalog: [
+            {
+              id: "build-impact",
+              roundId: "impact",
+              label: "Build",
+              command: "pnpm",
+              args: ["run", "build"],
+              invariant: "The project should build successfully after the patch.",
+            },
+            {
+              id: "e2e-deep",
+              roundId: "deep",
+              label: "End-to-end checks",
+              command: "pnpm",
+              args: ["run", "e2e"],
+              invariant: "Deep end-to-end validation should pass.",
+            },
+          ],
+        },
+        validationPostureOptions: [
+          { id: "frontend", description: "Frontend work." },
+          { id: "generic", description: "Generic work." },
         ],
-      },
-      validationPostureOptions: [
-        { id: "frontend", description: "Frontend work." },
-        { id: "generic", description: "Generic work." },
-      ],
-    });
+      });
 
-    expect(result.status).toBe("completed");
-    expect(result.recommendation?.validationProfileId).toBe("frontend");
-    expect(result.recommendation?.selectedCommandIds).toEqual(["build-impact", "e2e-deep"]);
-  }, 20_000);
+      expect(result.status).toBe("completed");
+      expect(result.recommendation?.validationProfileId).toBe("frontend");
+      expect(result.recommendation?.selectedCommandIds).toEqual(["build-impact", "e2e-deep"]);
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
 
   it("rejects conflicting legacy and validation profile aliases", async () => {
     const root = await createTempRoot();
@@ -487,7 +500,7 @@ if (out) {
 
     const adapter = new CodexAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     const result = await adapter.recommendProfile({
@@ -544,7 +557,7 @@ if (out) {
 
     const adapter = new CodexAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     const result = await adapter.recommendProfile({

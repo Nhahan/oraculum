@@ -25,19 +25,25 @@ import {
   registerExecutionTempRootCleanup,
 } from "./helpers/execution.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
+import { EXECUTION_TEST_TIMEOUT_MS, FAKE_AGENT_TIMEOUT_MS } from "./helpers/integration.js";
 
 registerExecutionTempRootCleanup();
 
 describe("run execution candidates", () => {
-  it("executes candidates and persists agent run artifacts", async () => {
-    const cwd = await createTempRoot();
-    await initializeProject({ cwd, force: false });
-    await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# Fix session loss\nKeep auth.\n");
+  it(
+    "executes candidates and persists agent run artifacts",
+    async () => {
+      const cwd = await createTempRoot();
+      await initializeProject({ cwd, force: false });
+      await writeFile(
+        join(cwd, "tasks", "fix-session-loss.md"),
+        "# Fix session loss\nKeep auth.\n",
+      );
 
-    const fakeCodex = await writeNodeBinary(
-      cwd,
-      "fake-codex",
-      `const fs = require("node:fs");
+      const fakeCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex",
+        `const fs = require("node:fs");
 const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
@@ -57,118 +63,124 @@ if (out) {
   fs.writeFileSync(out, body, "utf8");
 }
 `,
-    );
+      );
 
-    const planned = await planRun({
-      cwd,
-      taskInput: "tasks/fix-session-loss.md",
-      agent: "codex",
-      candidates: 1,
-    });
+      const planned = await planRun({
+        cwd,
+        taskInput: "tasks/fix-session-loss.md",
+        agent: "codex",
+        candidates: 1,
+      });
 
-    const executed = await executeRun({
-      cwd,
-      runId: planned.id,
-      codexBinaryPath: fakeCodex,
-      timeoutMs: 5_000,
-    });
+      const executed = await executeRun({
+        cwd,
+        runId: planned.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    expect(executed.candidateResults[0]?.status).toBe("completed");
-    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
-    expect(executed.manifest.candidates[0]?.workspaceMode).toBe("copy");
-    expect(executed.manifest.recommendedWinner?.candidateId).toBe("cand-01");
-    expect(executed.manifest.recommendedWinner?.confidence).toBe("high");
-    expect(executed.manifest.recommendedWinner?.source).toBe("llm-judge");
-    expect(executed.manifest.outcome?.type).toBe("recommended-survivor");
-    expect(executed.manifest.outcome?.verificationLevel).toBe("standard");
-    expect(executed.manifest.updatedAt).toBeTruthy();
-    expect(executed.manifest.updatedAt).not.toBe(executed.manifest.createdAt);
+      expect(executed.candidateResults[0]?.status).toBe("completed");
+      expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+      expect(executed.manifest.candidates[0]?.workspaceMode).toBe("copy");
+      expect(executed.manifest.recommendedWinner?.candidateId).toBe("cand-01");
+      expect(executed.manifest.recommendedWinner?.confidence).toBe("high");
+      expect(executed.manifest.recommendedWinner?.source).toBe("llm-judge");
+      expect(executed.manifest.outcome?.type).toBe("recommended-survivor");
+      expect(executed.manifest.outcome?.verificationLevel).toBe("standard");
+      expect(executed.manifest.updatedAt).toBeTruthy();
+      expect(executed.manifest.updatedAt).not.toBe(executed.manifest.createdAt);
 
-    const savedManifest = await readRunManifest(cwd, planned.id);
-    expect(savedManifest.status).toBe("completed");
-    expect(savedManifest.candidates[0]?.status).toBe("promoted");
-    expect(savedManifest.recommendedWinner?.candidateId).toBe("cand-01");
-    expect(savedManifest.outcome?.type).toBe("recommended-survivor");
-    expect(savedManifest.updatedAt).toBe(executed.manifest.updatedAt);
+      const savedManifest = await readRunManifest(cwd, planned.id);
+      expect(savedManifest.status).toBe("completed");
+      expect(savedManifest.candidates[0]?.status).toBe("promoted");
+      expect(savedManifest.recommendedWinner?.candidateId).toBe("cand-01");
+      expect(savedManifest.outcome?.type).toBe("recommended-survivor");
+      expect(savedManifest.updatedAt).toBe(executed.manifest.updatedAt);
 
-    const resultPath = getCandidateAgentResultPath(cwd, planned.id, "cand-01");
-    const parsedResult = agentRunResultSchema.parse(
-      JSON.parse(await readFile(resultPath, "utf8")) as unknown,
-    );
-    expect(parsedResult.summary).toContain("Codex finished candidate patch");
+      const resultPath = getCandidateAgentResultPath(cwd, planned.id, "cand-01");
+      const parsedResult = agentRunResultSchema.parse(
+        JSON.parse(await readFile(resultPath, "utf8")) as unknown,
+      );
+      expect(parsedResult.summary).toContain("Codex finished candidate patch");
 
-    const verdictPath = getCandidateVerdictPath(cwd, planned.id, "cand-01", "fast", "agent-exit");
-    const verdict = oracleVerdictSchema.parse(
-      JSON.parse(await readFile(verdictPath, "utf8")) as unknown,
-    );
-    expect(verdict.status).toBe("pass");
-    expect(verdict.roundId).toBe("fast");
+      const verdictPath = getCandidateVerdictPath(cwd, planned.id, "cand-01", "fast", "agent-exit");
+      const verdict = oracleVerdictSchema.parse(
+        JSON.parse(await readFile(verdictPath, "utf8")) as unknown,
+      );
+      expect(verdict.status).toBe("pass");
+      expect(verdict.roundId).toBe("fast");
 
-    const witnessPath = getCandidateWitnessPath(
-      cwd,
-      planned.id,
-      "cand-01",
-      "fast",
-      "cand-01-agent-exit",
-    );
-    const witness = witnessSchema.parse(JSON.parse(await readFile(witnessPath, "utf8")) as unknown);
-    expect(witness.detail).toContain("status=completed");
-    expect(savedManifest.rounds.map((round) => round.status)).toEqual([
-      "completed",
-      "completed",
-      "completed",
-    ]);
-    expect(savedManifest.rounds[0]?.verdictCount).toBeGreaterThan(0);
-    expect(savedManifest.rounds[1]?.verdictCount).toBeGreaterThan(0);
-    expect(savedManifest.rounds[2]?.verdictCount).toBe(0);
+      const witnessPath = getCandidateWitnessPath(
+        cwd,
+        planned.id,
+        "cand-01",
+        "fast",
+        "cand-01-agent-exit",
+      );
+      const witness = witnessSchema.parse(
+        JSON.parse(await readFile(witnessPath, "utf8")) as unknown,
+      );
+      expect(witness.detail).toContain("status=completed");
+      expect(savedManifest.rounds.map((round) => round.status)).toEqual([
+        "completed",
+        "completed",
+        "completed",
+      ]);
+      expect(savedManifest.rounds[0]?.verdictCount).toBeGreaterThan(0);
+      expect(savedManifest.rounds[1]?.verdictCount).toBeGreaterThan(0);
+      expect(savedManifest.rounds[2]?.verdictCount).toBe(0);
 
-    const comparisonJson = JSON.parse(
-      await readFile(getFinalistComparisonJsonPath(cwd, planned.id), "utf8"),
-    ) as {
-      recommendedWinner?: { candidateId: string };
-      finalistCount: number;
-      targetResultLabel: string;
-    };
-    expect(comparisonJson.finalistCount).toBe(1);
-    expect(comparisonJson.recommendedWinner?.candidateId).toBe("cand-01");
-    expect(comparisonJson.targetResultLabel).toBe("recommended survivor");
-    await expect(
-      readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
-    ).resolves.toContain("Finalist Comparison");
-  }, 20_000);
+      const comparisonJson = JSON.parse(
+        await readFile(getFinalistComparisonJsonPath(cwd, planned.id), "utf8"),
+      ) as {
+        recommendedWinner?: { candidateId: string };
+        finalistCount: number;
+        targetResultLabel: string;
+      };
+      expect(comparisonJson.finalistCount).toBe(1);
+      expect(comparisonJson.recommendedWinner?.candidateId).toBe("cand-01");
+      expect(comparisonJson.targetResultLabel).toBe("recommended survivor");
+      await expect(
+        readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
+      ).resolves.toContain("Finalist Comparison");
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
 
-  it("keeps the primary winner recommendation while persisting an advisory second opinion", async () => {
-    const cwd = await createTempRoot();
-    await initializeProject({ cwd, force: false });
-    await writeFile(
-      join(cwd, "tasks", "second-opinion.md"),
-      "# Second opinion\nCheck the judge.\n",
-    );
-    await writeFile(
-      getAdvancedConfigPath(cwd),
-      `${JSON.stringify(
-        {
-          version: 1,
-          judge: {
-            secondOpinion: {
-              enabled: true,
-              adapter: "claude-code",
-              triggers: ["many-changed-paths"],
-              minChangedPaths: 1,
-              minChangedLines: 200,
+  it(
+    "keeps the primary winner recommendation while persisting an advisory second opinion",
+    async () => {
+      const cwd = await createTempRoot();
+      await initializeProject({ cwd, force: false });
+      await writeFile(
+        join(cwd, "tasks", "second-opinion.md"),
+        "# Second opinion\nCheck the judge.\n",
+      );
+      await writeFile(
+        getAdvancedConfigPath(cwd),
+        `${JSON.stringify(
+          {
+            version: 1,
+            judge: {
+              secondOpinion: {
+                enabled: true,
+                adapter: "claude-code",
+                triggers: ["many-changed-paths"],
+                minChangedPaths: 1,
+                minChangedLines: 200,
+              },
             },
           },
-        },
-        null,
-        2,
-      )}\n`,
-      "utf8",
-    );
+          null,
+          2,
+        )}\n`,
+        "utf8",
+      );
 
-    const fakeCodex = await writeNodeBinary(
-      cwd,
-      "fake-codex-second-opinion",
-      `const fs = require("node:fs");
+      const fakeCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex-second-opinion",
+        `const fs = require("node:fs");
 const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
@@ -187,11 +199,11 @@ if (out) {
   fs.writeFileSync(out, body, "utf8");
 }
 `,
-    );
-    const fakeClaude = await writeNodeBinary(
-      cwd,
-      "fake-claude-second-opinion",
-      `const fs = require("node:fs");
+      );
+      const fakeClaude = await writeNodeBinary(
+        cwd,
+        "fake-claude-second-opinion",
+        `const fs = require("node:fs");
 const prompt = fs.readFileSync(0, "utf8");
 if (prompt.includes("You are selecting the best Oraculum finalist.")) {
   process.stdout.write(JSON.stringify({
@@ -203,70 +215,76 @@ if (prompt.includes("You are selecting the best Oraculum finalist.")) {
   process.stdout.write(JSON.stringify({ summary: "unused" }));
 }
 `,
-    );
+      );
 
-    const planned = await planRun({
-      cwd,
-      taskInput: "tasks/second-opinion.md",
-      agent: "codex",
-      candidates: 1,
-    });
+      const planned = await planRun({
+        cwd,
+        taskInput: "tasks/second-opinion.md",
+        agent: "codex",
+        candidates: 1,
+      });
 
-    const executed = await executeRun({
-      cwd,
-      runId: planned.id,
-      codexBinaryPath: fakeCodex,
-      claudeBinaryPath: fakeClaude,
-      timeoutMs: 5_000,
-    });
+      const executed = await executeRun({
+        cwd,
+        runId: planned.id,
+        codexBinaryPath: fakeCodex,
+        claudeBinaryPath: fakeClaude,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    expect(executed.manifest.recommendedWinner?.candidateId).toBe("cand-01");
-    expect(executed.manifest.recommendedWinner?.source).toBe("llm-judge");
-    await expect(
-      readFile(getSecondOpinionWinnerSelectionPath(cwd, planned.id), "utf8"),
-    ).resolves.toContain('"agreement": "disagrees-select-vs-abstain"');
-    await expect(
-      readFile(getSecondOpinionWinnerSelectionPath(cwd, planned.id), "utf8"),
-    ).resolves.toContain('"adapter": "claude-code"');
-  }, 20_000);
+      expect(executed.manifest.recommendedWinner?.candidateId).toBe("cand-01");
+      expect(executed.manifest.recommendedWinner?.source).toBe("llm-judge");
+      await expect(
+        readFile(getSecondOpinionWinnerSelectionPath(cwd, planned.id), "utf8"),
+      ).resolves.toContain('"agreement": "disagrees-select-vs-abstain"');
+      await expect(
+        readFile(getSecondOpinionWinnerSelectionPath(cwd, planned.id), "utf8"),
+      ).resolves.toContain('"adapter": "claude-code"');
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
 
-  it("eliminates candidates when the adapter exits non-zero", async () => {
-    const cwd = await createTempRoot();
-    await initializeProject({ cwd, force: false });
-    await writeFile(join(cwd, "tasks", "fail.md"), "# Fail\nReturn non-zero.\n");
+  it(
+    "eliminates candidates when the adapter exits non-zero",
+    async () => {
+      const cwd = await createTempRoot();
+      await initializeProject({ cwd, force: false });
+      await writeFile(join(cwd, "tasks", "fail.md"), "# Fail\nReturn non-zero.\n");
 
-    const fakeCodex = await writeNodeBinary(
-      cwd,
-      "fake-codex",
-      `process.stdout.write('{"event":"started"}\\n');
+      const fakeCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex",
+        `process.stdout.write('{"event":"started"}\\n');
 process.exit(3);
 `,
-    );
+      );
 
-    const planned = await planRun({
-      cwd,
-      taskInput: "tasks/fail.md",
-      agent: "codex",
-      candidates: 1,
-    });
+      const planned = await planRun({
+        cwd,
+        taskInput: "tasks/fail.md",
+        agent: "codex",
+        candidates: 1,
+      });
 
-    const executed = await executeRun({
-      cwd,
-      runId: planned.id,
-      codexBinaryPath: fakeCodex,
-      timeoutMs: 5_000,
-    });
+      const executed = await executeRun({
+        cwd,
+        runId: planned.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    expect(executed.candidateResults[0]?.status).toBe("failed");
-    expect(executed.manifest.candidates[0]?.status).toBe("eliminated");
-    expect(executed.manifest.recommendedWinner).toBeUndefined();
+      expect(executed.candidateResults[0]?.status).toBe("failed");
+      expect(executed.manifest.candidates[0]?.status).toBe("eliminated");
+      expect(executed.manifest.recommendedWinner).toBeUndefined();
 
-    const verdictPath = getCandidateVerdictPath(cwd, planned.id, "cand-01", "fast", "agent-exit");
-    const verdict = oracleVerdictSchema.parse(
-      JSON.parse(await readFile(verdictPath, "utf8")) as unknown,
-    );
-    expect(verdict.status).toBe("fail");
-  });
+      const verdictPath = getCandidateVerdictPath(cwd, planned.id, "cand-01", "fast", "agent-exit");
+      const verdict = oracleVerdictSchema.parse(
+        JSON.parse(await readFile(verdictPath, "utf8")) as unknown,
+      );
+      expect(verdict.status).toBe("fail");
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
 
   it("marks the candidate terminal and completes the run when the host binary cannot start", async () => {
     const cwd = await createTempRoot();
@@ -284,7 +302,7 @@ process.exit(3);
       cwd,
       runId: planned.id,
       codexBinaryPath: join(cwd, "missing-codex"),
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     expect(executed.manifest.status).toBe("completed");
@@ -330,7 +348,7 @@ process.exit(3);
       cwd,
       runId: planned.id,
       codexBinaryPath: join(cwd, "missing-codex"),
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     await expect(
@@ -347,15 +365,20 @@ process.exit(3);
     ).rejects.toThrow();
   });
 
-  it("eliminates candidates that never materialize a patch in the workspace", async () => {
-    const cwd = await createTempRoot();
-    await initializeProject({ cwd, force: false });
-    await writeFile(join(cwd, "tasks", "no-materialized-patch.md"), "# No patch\nExplain only.\n");
+  it(
+    "eliminates candidates that never materialize a patch in the workspace",
+    async () => {
+      const cwd = await createTempRoot();
+      await initializeProject({ cwd, force: false });
+      await writeFile(
+        join(cwd, "tasks", "no-materialized-patch.md"),
+        "# No patch\nExplain only.\n",
+      );
 
-    const fakeCodex = await writeNodeBinary(
-      cwd,
-      "fake-codex",
-      `const fs = require("node:fs");
+      const fakeCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex",
+        `const fs = require("node:fs");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
 for (let index = 0; index < process.argv.length; index += 1) {
@@ -370,51 +393,55 @@ if (out) {
   fs.writeFileSync(out, body, "utf8");
 }
 `,
-    );
+      );
 
-    const planned = await planRun({
-      cwd,
-      taskInput: "tasks/no-materialized-patch.md",
-      agent: "codex",
-      candidates: 1,
-    });
+      const planned = await planRun({
+        cwd,
+        taskInput: "tasks/no-materialized-patch.md",
+        agent: "codex",
+        candidates: 1,
+      });
 
-    const executed = await executeRun({
-      cwd,
-      runId: planned.id,
-      codexBinaryPath: fakeCodex,
-      timeoutMs: 5_000,
-    });
+      const executed = await executeRun({
+        cwd,
+        runId: planned.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    expect(executed.manifest.candidates[0]?.status).toBe("eliminated");
-    expect(executed.manifest.recommendedWinner).toBeUndefined();
+      expect(executed.manifest.candidates[0]?.status).toBe("eliminated");
+      expect(executed.manifest.recommendedWinner).toBeUndefined();
 
-    const verdictPath = getCandidateVerdictPath(
-      cwd,
-      planned.id,
-      "cand-01",
-      "impact",
-      "materialized-patch",
-    );
-    const verdict = oracleVerdictSchema.parse(
-      JSON.parse(await readFile(verdictPath, "utf8")) as unknown,
-    );
-    expect(verdict.status).toBe("repairable");
-    expect(verdict.summary).toContain("did not leave materialized file changes");
-  }, 20_000);
+      const verdictPath = getCandidateVerdictPath(
+        cwd,
+        planned.id,
+        "cand-01",
+        "impact",
+        "materialized-patch",
+      );
+      const verdict = oracleVerdictSchema.parse(
+        JSON.parse(await readFile(verdictPath, "utf8")) as unknown,
+      );
+      expect(verdict.status).toBe("repairable");
+      expect(verdict.summary).toContain("did not leave materialized file changes");
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
 
-  it("ignores unmanaged runtime state files when checking for a materialized patch", async () => {
-    const cwd = await createTempRoot();
-    await initializeProject({ cwd, force: false });
-    await writeFile(
-      join(cwd, "tasks", "unmanaged-only.md"),
-      "# Unmanaged only\nWrite runtime state only.\n",
-    );
+  it(
+    "ignores unmanaged runtime state files when checking for a materialized patch",
+    async () => {
+      const cwd = await createTempRoot();
+      await initializeProject({ cwd, force: false });
+      await writeFile(
+        join(cwd, "tasks", "unmanaged-only.md"),
+        "# Unmanaged only\nWrite runtime state only.\n",
+      );
 
-    const fakeCodex = await writeNodeBinary(
-      cwd,
-      "fake-codex",
-      `const fs = require("node:fs");
+      const fakeCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex",
+        `const fs = require("node:fs");
 const path = require("node:path");
 let out = "";
 for (let index = 0; index < process.argv.length; index += 1) {
@@ -428,23 +455,25 @@ if (out) {
   fs.writeFileSync(out, "runtime state only", "utf8");
 }
 `,
-    );
+      );
 
-    const planned = await planRun({
-      cwd,
-      taskInput: "tasks/unmanaged-only.md",
-      agent: "codex",
-      candidates: 1,
-    });
+      const planned = await planRun({
+        cwd,
+        taskInput: "tasks/unmanaged-only.md",
+        agent: "codex",
+        candidates: 1,
+      });
 
-    const executed = await executeRun({
-      cwd,
-      runId: planned.id,
-      codexBinaryPath: fakeCodex,
-      timeoutMs: 5_000,
-    });
+      const executed = await executeRun({
+        cwd,
+        runId: planned.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    expect(executed.manifest.candidates[0]?.status).toBe("eliminated");
-    expect(executed.manifest.recommendedWinner).toBeUndefined();
-  }, 20_000);
+      expect(executed.manifest.candidates[0]?.status).toBe("eliminated");
+      expect(executed.manifest.recommendedWinner).toBeUndefined();
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
 });

@@ -19,19 +19,22 @@ import {
   writeWorkspaceExportableNpmLibraryProfileProject,
 } from "./helpers/execution.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
+import { EXECUTION_TEST_TIMEOUT_MS, FAKE_AGENT_TIMEOUT_MS } from "./helpers/integration.js";
 
 registerExecutionTempRootCleanup();
 
 describe("run execution selection", () => {
-  it("falls back to deterministic winner selection when the judge exits non-zero", async () => {
-    const cwd = await createTempRoot();
-    await initializeProject({ cwd, force: false });
-    await writeFile(join(cwd, "tasks", "judge-failure.md"), "# Judge failure\nUse fallback.\n");
+  it(
+    "falls back to deterministic winner selection when the judge exits non-zero",
+    async () => {
+      const cwd = await createTempRoot();
+      await initializeProject({ cwd, force: false });
+      await writeFile(join(cwd, "tasks", "judge-failure.md"), "# Judge failure\nUse fallback.\n");
 
-    const fakeCodex = await writeNodeBinary(
-      cwd,
-      "fake-codex",
-      `const fs = require("node:fs");
+      const fakeCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex",
+        `const fs = require("node:fs");
 const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
@@ -54,43 +57,47 @@ if (out) {
   fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
 }
 `,
-    );
+      );
 
-    const planned = await planRun({
-      cwd,
-      taskInput: "tasks/judge-failure.md",
-      agent: "codex",
-      candidates: 1,
-    });
+      const planned = await planRun({
+        cwd,
+        taskInput: "tasks/judge-failure.md",
+        agent: "codex",
+        candidates: 1,
+      });
 
-    const executed = await executeRun({
-      cwd,
-      runId: planned.id,
-      codexBinaryPath: fakeCodex,
-      timeoutMs: 5_000,
-    });
+      const executed = await executeRun({
+        cwd,
+        runId: planned.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
-    expect(executed.manifest.recommendedWinner?.candidateId).toBe("cand-01");
-    expect(executed.manifest.recommendedWinner?.source).toBe("fallback-policy");
-    await expect(
-      readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
-    ).resolves.toContain("fallback-policy");
-  });
+      expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+      expect(executed.manifest.recommendedWinner?.candidateId).toBe("cand-01");
+      expect(executed.manifest.recommendedWinner?.source).toBe("fallback-policy");
+      await expect(
+        readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
+      ).resolves.toContain("fallback-policy");
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
 
-  it("mentions validation gaps in fallback winner summaries using the selected validation posture", async () => {
-    const cwd = await createTempRoot();
-    await initializeProject({ cwd, force: false });
-    await writeFile(
-      join(cwd, "tasks", "judge-failure-with-validation-gaps.md"),
-      "# Judge failure\nUse fallback with validation gaps.\n",
-    );
-    await writeWorkspaceExportableNpmLibraryProfileProject(cwd);
+  it(
+    "mentions validation gaps in fallback winner summaries using the selected validation posture",
+    async () => {
+      const cwd = await createTempRoot();
+      await initializeProject({ cwd, force: false });
+      await writeFile(
+        join(cwd, "tasks", "judge-failure-with-validation-gaps.md"),
+        "# Judge failure\nUse fallback with validation gaps.\n",
+      );
+      await writeWorkspaceExportableNpmLibraryProfileProject(cwd);
 
-    const fakeProfileCodex = await writeNodeBinary(
-      cwd,
-      "fake-codex-workspace-gap-profile",
-      `const fs = require("node:fs");
+      const fakeProfileCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex-workspace-gap-profile",
+        `const fs = require("node:fs");
 let out = "";
 for (let index = 0; index < process.argv.length; index += 1) {
   if (process.argv[index] === "-o") {
@@ -105,12 +112,12 @@ if (out) {
   );
 }
 `,
-    );
+      );
 
-    const fakeCandidateCodex = await writeNodeBinary(
-      cwd,
-      "fake-codex-judge-failure-with-validation-gaps",
-      `const fs = require("node:fs");
+      const fakeCandidateCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex-judge-failure-with-validation-gaps",
+        `const fs = require("node:fs");
 const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
@@ -139,34 +146,36 @@ if (out) {
   fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
 }
 `,
-    );
+      );
 
-    const planned = await planRun({
-      cwd,
-      taskInput: "tasks/judge-failure-with-validation-gaps.md",
-      agent: "codex",
-      candidates: 1,
-      autoProfile: {
-        codexBinaryPath: fakeProfileCodex,
-        timeoutMs: 5_000,
-      },
-    });
+      const planned = await planRun({
+        cwd,
+        taskInput: "tasks/judge-failure-with-validation-gaps.md",
+        agent: "codex",
+        candidates: 1,
+        autoProfile: {
+          codexBinaryPath: fakeProfileCodex,
+          timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+        },
+      });
 
-    const executed = await executeRun({
-      cwd,
-      runId: planned.id,
-      codexBinaryPath: fakeCandidateCodex,
-      timeoutMs: 5_000,
-    });
+      const executed = await executeRun({
+        cwd,
+        runId: planned.id,
+        codexBinaryPath: fakeCandidateCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    expect(executed.manifest.recommendedWinner?.source).toBe("fallback-policy");
-    expect(executed.manifest.recommendedWinner?.summary).toContain(
-      "selected validation posture (library) still has validation gaps",
-    );
-    expect(executed.manifest.recommendedWinner?.summary).toContain(
-      "No package packaging smoke check was selected.",
-    );
-  }, 20_000);
+      expect(executed.manifest.recommendedWinner?.source).toBe("fallback-policy");
+      expect(executed.manifest.recommendedWinner?.summary).toContain(
+        "selected validation posture (library) still has validation gaps",
+      );
+      expect(executed.manifest.recommendedWinner?.summary).toContain(
+        "No package packaging smoke check was selected.",
+      );
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
 
   it("prefers finalists with stronger planned scorecards in fallback ranking", () => {
     const finalists: CandidateManifest[] = [
@@ -272,18 +281,20 @@ if (out) {
     expect(ranked.map((candidate) => candidate.id)).toEqual(["cand-01", "cand-02"]);
   });
 
-  it("keeps finalists but leaves no recommendation when the judge abstains", async () => {
-    const cwd = await createTempRoot();
-    await initializeProject({ cwd, force: false });
-    await writeFile(
-      join(cwd, "tasks", "judge-abstains.md"),
-      "# Judge abstains\nDo not force a winner.\n",
-    );
+  it(
+    "keeps finalists but leaves no recommendation when the judge abstains",
+    async () => {
+      const cwd = await createTempRoot();
+      await initializeProject({ cwd, force: false });
+      await writeFile(
+        join(cwd, "tasks", "judge-abstains.md"),
+        "# Judge abstains\nDo not force a winner.\n",
+      );
 
-    const fakeCodex = await writeNodeBinary(
-      cwd,
-      "fake-codex",
-      `const fs = require("node:fs");
+      const fakeCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex",
+        `const fs = require("node:fs");
 const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
@@ -306,50 +317,57 @@ if (out) {
   fs.writeFileSync(out, "Codex finished candidate patch", "utf8");
 }
 `,
-    );
+      );
 
-    const planned = await planRun({
-      cwd,
-      taskInput: "tasks/judge-abstains.md",
-      agent: "codex",
-      candidates: 1,
-    });
+      const planned = await planRun({
+        cwd,
+        taskInput: "tasks/judge-abstains.md",
+        agent: "codex",
+        candidates: 1,
+      });
 
-    const executed = await executeRun({
-      cwd,
-      runId: planned.id,
-      codexBinaryPath: fakeCodex,
-      timeoutMs: 5_000,
-    });
+      const executed = await executeRun({
+        cwd,
+        runId: planned.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    expect(executed.manifest.candidates[0]?.status).toBe("promoted");
-    expect(executed.manifest.recommendedWinner).toBeUndefined();
-    await expect(
-      readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
-    ).resolves.not.toContain("fallback-policy");
-    const failureAnalysis = JSON.parse(
-      await readFile(getFailureAnalysisPath(cwd, planned.id), "utf8"),
-    ) as {
-      trigger: string;
-      summary: string;
-      recommendedAction: string;
-      candidates: Array<{ candidateId: string }>;
-    };
-    expect(failureAnalysis.trigger).toBe("judge-abstained");
-    expect(failureAnalysis.summary).toContain("judge abstained");
-    expect(failureAnalysis.recommendedAction).toBe("investigate-root-cause-before-rerun");
-    expect(failureAnalysis.candidates[0]?.candidateId).toBe("cand-01");
-  }, 20_000);
+      expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+      expect(executed.manifest.recommendedWinner).toBeUndefined();
+      await expect(
+        readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
+      ).resolves.not.toContain("fallback-policy");
+      const failureAnalysis = JSON.parse(
+        await readFile(getFailureAnalysisPath(cwd, planned.id), "utf8"),
+      ) as {
+        trigger: string;
+        summary: string;
+        recommendedAction: string;
+        candidates: Array<{ candidateId: string }>;
+      };
+      expect(failureAnalysis.trigger).toBe("judge-abstained");
+      expect(failureAnalysis.summary).toContain("judge abstained");
+      expect(failureAnalysis.recommendedAction).toBe("investigate-root-cause-before-rerun");
+      expect(failureAnalysis.candidates[0]?.candidateId).toBe("cand-01");
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
 
-  it("does not advance latest consultation pointers when comparison reporting fails", async () => {
-    const cwd = await createTempRoot();
-    await initializeProject({ cwd, force: false });
-    await writeFile(join(cwd, "tasks", "fix-session-loss.md"), "# Fix session loss\nKeep auth.\n");
+  it(
+    "does not advance latest consultation pointers when comparison reporting fails",
+    async () => {
+      const cwd = await createTempRoot();
+      await initializeProject({ cwd, force: false });
+      await writeFile(
+        join(cwd, "tasks", "fix-session-loss.md"),
+        "# Fix session loss\nKeep auth.\n",
+      );
 
-    const fakeCodex = await writeNodeBinary(
-      cwd,
-      "fake-codex",
-      `const fs = require("node:fs");
+      const fakeCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex",
+        `const fs = require("node:fs");
 const path = require("node:path");
 const prompt = fs.readFileSync(0, "utf8");
 let out = "";
@@ -368,33 +386,35 @@ if (out) {
   fs.writeFileSync(out, body, "utf8");
 }
 `,
-    );
+      );
 
-    const reportSpy = vi
-      .spyOn(finalistReportService, "writeFinalistComparisonReport")
-      .mockRejectedValueOnce(new Error("report write failed"));
+      const reportSpy = vi
+        .spyOn(finalistReportService, "writeFinalistComparisonReport")
+        .mockRejectedValueOnce(new Error("report write failed"));
 
-    try {
-      const planned = await planRun({
-        cwd,
-        taskInput: "tasks/fix-session-loss.md",
-        agent: "codex",
-        candidates: 1,
-      });
-
-      await expect(
-        executeRun({
+      try {
+        const planned = await planRun({
           cwd,
-          runId: planned.id,
-          codexBinaryPath: fakeCodex,
-          timeoutMs: 5_000,
-        }),
-      ).rejects.toThrow("report write failed");
+          taskInput: "tasks/fix-session-loss.md",
+          agent: "codex",
+          candidates: 1,
+        });
 
-      await expect(readFile(getLatestRunStatePath(cwd), "utf8")).rejects.toThrow();
-      await expect(readFile(getLatestExportableRunStatePath(cwd), "utf8")).rejects.toThrow();
-    } finally {
-      reportSpy.mockRestore();
-    }
-  }, 20_000);
+        await expect(
+          executeRun({
+            cwd,
+            runId: planned.id,
+            codexBinaryPath: fakeCodex,
+            timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+          }),
+        ).rejects.toThrow("report write failed");
+
+        await expect(readFile(getLatestRunStatePath(cwd), "utf8")).rejects.toThrow();
+        await expect(readFile(getLatestExportableRunStatePath(cwd), "utf8")).rejects.toThrow();
+      } finally {
+        reportSpy.mockRestore();
+      }
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
 });

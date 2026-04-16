@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { prepareCandidateWorkspace } from "../src/services/workspaces.js";
 import { createTempRootHarness } from "./helpers/fs.js";
+import { WORKSPACES_TEST_TIMEOUT_MS } from "./helpers/integration.js";
 
 const tempRootHarness = createTempRootHarness("oraculum-workspaces-");
 tempRootHarness.registerCleanup();
@@ -183,44 +184,52 @@ describe("candidate workspace preparation", () => {
     ).resolves.toContain("export const value = 1");
   });
 
-  it("creates a git worktree when the root is a git repository", async () => {
-    const projectRoot = await createTempRoot();
-    const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");
+  it(
+    "creates a git worktree when the root is a git repository",
+    async () => {
+      const projectRoot = await createTempRoot();
+      const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");
 
-    execFileSync("git", ["init", "-q"], { cwd: projectRoot });
-    execFileSync("git", ["config", "user.name", "Test User"], { cwd: projectRoot });
-    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: projectRoot });
-    await writeFile(join(projectRoot, "README.md"), "hello\n", "utf8");
-    execFileSync("git", ["add", "README.md"], { cwd: projectRoot });
-    execFileSync("git", ["commit", "-qm", "init"], { cwd: projectRoot });
+      execFileSync("git", ["init", "-q"], { cwd: projectRoot });
+      execFileSync("git", ["config", "user.name", "Test User"], { cwd: projectRoot });
+      execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: projectRoot });
+      await writeFile(join(projectRoot, "README.md"), "hello\n", "utf8");
+      execFileSync("git", ["add", "README.md"], { cwd: projectRoot });
+      execFileSync("git", ["commit", "-qm", "init"], { cwd: projectRoot });
 
-    const prepared = await prepareCandidateWorkspace({ projectRoot, workspaceDir });
+      const prepared = await prepareCandidateWorkspace({ projectRoot, workspaceDir });
 
-    expect(prepared.mode).toBe("git-worktree");
-    await expect(readFile(join(workspaceDir, "README.md"), "utf8")).resolves.toContain("hello");
-  }, 20_000);
+      expect(prepared.mode).toBe("git-worktree");
+      await expect(readFile(join(workspaceDir, "README.md"), "utf8")).resolves.toContain("hello");
+    },
+    WORKSPACES_TEST_TIMEOUT_MS,
+  );
 
-  it("resets an existing git worktree before reusing it", async () => {
-    const projectRoot = await createTempRoot();
-    const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");
+  it(
+    "resets an existing git worktree before reusing it",
+    async () => {
+      const projectRoot = await createTempRoot();
+      const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");
 
-    execFileSync("git", ["init", "-q"], { cwd: projectRoot });
-    execFileSync("git", ["config", "user.name", "Test User"], { cwd: projectRoot });
-    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: projectRoot });
-    await writeFile(join(projectRoot, "README.md"), "hello\n", "utf8");
-    execFileSync("git", ["add", "README.md"], { cwd: projectRoot });
-    execFileSync("git", ["commit", "-qm", "init"], { cwd: projectRoot });
+      execFileSync("git", ["init", "-q"], { cwd: projectRoot });
+      execFileSync("git", ["config", "user.name", "Test User"], { cwd: projectRoot });
+      execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: projectRoot });
+      await writeFile(join(projectRoot, "README.md"), "hello\n", "utf8");
+      execFileSync("git", ["add", "README.md"], { cwd: projectRoot });
+      execFileSync("git", ["commit", "-qm", "init"], { cwd: projectRoot });
 
-    await prepareCandidateWorkspace({ projectRoot, workspaceDir });
-    await writeFile(join(workspaceDir, "README.md"), "modified\n", "utf8");
-    await writeFile(join(workspaceDir, "scratch.txt"), "temp\n", "utf8");
+      await prepareCandidateWorkspace({ projectRoot, workspaceDir });
+      await writeFile(join(workspaceDir, "README.md"), "modified\n", "utf8");
+      await writeFile(join(workspaceDir, "scratch.txt"), "temp\n", "utf8");
 
-    const prepared = await prepareCandidateWorkspace({ projectRoot, workspaceDir });
+      const prepared = await prepareCandidateWorkspace({ projectRoot, workspaceDir });
 
-    expect(prepared.mode).toBe("git-worktree");
-    await expect(readFile(join(workspaceDir, "README.md"), "utf8")).resolves.toContain("hello");
-    await expect(stat(join(workspaceDir, "scratch.txt"))).rejects.toThrow();
-  }, 20_000);
+      expect(prepared.mode).toBe("git-worktree");
+      await expect(readFile(join(workspaceDir, "README.md"), "utf8")).resolves.toContain("hello");
+      await expect(stat(join(workspaceDir, "scratch.txt"))).rejects.toThrow();
+    },
+    WORKSPACES_TEST_TIMEOUT_MS,
+  );
 });
 
 async function createTempRoot(): Promise<string> {

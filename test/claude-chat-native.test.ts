@@ -15,6 +15,7 @@ import {
   uninstallClaudeCodeHost,
 } from "../src/services/claude-chat-native.js";
 import { createTempRootHarness } from "./helpers/fs.js";
+import { HOST_SETUP_TEST_TIMEOUT_MS } from "./helpers/integration.js";
 
 const tempRootHarness = createTempRootHarness("oraculum-claude-setup-");
 tempRootHarness.registerCleanup();
@@ -199,224 +200,252 @@ describe("Claude Code chat-native packaging", () => {
 });
 
 describe("Claude Code setup", () => {
-  it("merges MCP config and installs the packaged plugin through the Claude CLI", async () => {
-    const { cliPath, homeDir, packagedRoot, statePath } = await createFakeClaudeSetupFixture();
+  it(
+    "merges MCP config and installs the packaged plugin through the Claude CLI",
+    async () => {
+      const { cliPath, homeDir, packagedRoot, statePath } = await createFakeClaudeSetupFixture();
 
-    const result = await setupClaudeCodeHost({
-      claudeBinaryPath: process.execPath,
-      claudeArgs: [cliPath],
-      env: {
-        ORACULUM_FAKE_CLAUDE_STATE: statePath,
-        ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
-      },
-      homeDir,
-      packagedRoot,
-    });
+      const result = await setupClaudeCodeHost({
+        claudeBinaryPath: process.execPath,
+        claudeArgs: [cliPath],
+        env: {
+          ORACULUM_FAKE_CLAUDE_STATE: statePath,
+          ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
+        },
+        homeDir,
+        packagedRoot,
+      });
 
-    const mcpConfig = JSON.parse(await readFile(result.mcpConfigPath, "utf8")) as {
-      mcpServers: Record<string, { args: string[]; command: string; env?: Record<string, string> }>;
-    };
-    const effectivePluginMcpConfig = JSON.parse(
-      await readFile(result.effectiveMcpConfigPath, "utf8"),
-    ) as {
-      mcpServers: Record<string, { args: string[]; command: string; env?: Record<string, string> }>;
-    };
-    const state = JSON.parse(await readFile(statePath, "utf8")) as {
-      marketplaces: Array<{
-        installLocation?: string;
-        name: string;
-        path?: string;
-        source?: string;
-      }>;
-      ops: string[];
-      plugins: Array<{ id: string; name?: string; version?: string }>;
-    };
+      const mcpConfig = JSON.parse(await readFile(result.mcpConfigPath, "utf8")) as {
+        mcpServers: Record<
+          string,
+          { args: string[]; command: string; env?: Record<string, string> }
+        >;
+      };
+      const effectivePluginMcpConfig = JSON.parse(
+        await readFile(result.effectiveMcpConfigPath, "utf8"),
+      ) as {
+        mcpServers: Record<
+          string,
+          { args: string[]; command: string; env?: Record<string, string> }
+        >;
+      };
+      const state = JSON.parse(await readFile(statePath, "utf8")) as {
+        marketplaces: Array<{
+          installLocation?: string;
+          name: string;
+          path?: string;
+          source?: string;
+        }>;
+        ops: string[];
+        plugins: Array<{ id: string; name?: string; version?: string }>;
+      };
 
-    expect(mcpConfig.mcpServers.oraculum?.command).toBe(process.execPath);
-    expect(mcpConfig.mcpServers.oraculum?.args.at(-2)).toBe("mcp");
-    expect(mcpConfig.mcpServers.oraculum?.args.at(-1)).toBe("serve");
-    expect(mcpConfig.mcpServers.oraculum?.env?.ORACULUM_AGENT_RUNTIME).toBe("claude-code");
-    expect(effectivePluginMcpConfig.mcpServers.oraculum?.args.at(-2)).toBe("mcp");
-    expect(effectivePluginMcpConfig.mcpServers.oraculum?.args.at(-1)).toBe("serve");
-    expect(effectivePluginMcpConfig.mcpServers.oraculum?.env?.ORACULUM_AGENT_RUNTIME).toBe(
-      "claude-code",
-    );
-    expect(result.installRoot).toContain(".oraculum");
-    expect(state.marketplaces).toEqual([
-      {
-        installLocation: result.installRoot,
-        name: "oraculum",
-        path: result.installRoot,
-        source: "directory",
-      },
-    ]);
-    expect(normalizePluginInstallPaths(state.plugins)).toEqual([
-      {
-        id: "oraculum@oraculum",
-        installPath: `/fake-cache/oraculum/oraculum/${APP_VERSION}`,
-        name: "oraculum",
-        version: APP_VERSION,
-      },
-    ]);
-    expect(state.ops).toEqual([
-      "plugin validate",
-      `marketplace add ${result.installRoot}`,
-      "plugin install oraculum",
-    ]);
-    expect(result.pluginInstalled).toBe(true);
-  });
-
-  it("replaces stale Claude marketplace and plugin installs when their path or version drifts", async () => {
-    const { cliPath, homeDir, packagedRoot, statePath } = await createFakeClaudeSetupFixture();
-    const staleState: FakeClaudeState = {
-      marketplaces: [
+      expect(mcpConfig.mcpServers.oraculum?.command).toBe(process.execPath);
+      expect(mcpConfig.mcpServers.oraculum?.args.at(-2)).toBe("mcp");
+      expect(mcpConfig.mcpServers.oraculum?.args.at(-1)).toBe("serve");
+      expect(mcpConfig.mcpServers.oraculum?.env?.ORACULUM_AGENT_RUNTIME).toBe("claude-code");
+      expect(effectivePluginMcpConfig.mcpServers.oraculum?.args.at(-2)).toBe("mcp");
+      expect(effectivePluginMcpConfig.mcpServers.oraculum?.args.at(-1)).toBe("serve");
+      expect(effectivePluginMcpConfig.mcpServers.oraculum?.env?.ORACULUM_AGENT_RUNTIME).toBe(
+        "claude-code",
+      );
+      expect(result.installRoot).toContain(".oraculum");
+      expect(state.marketplaces).toEqual([
         {
-          installLocation: join(homeDir, ".oraculum", "chat-native", "claude-code", "0.1.0-beta.5"),
+          installLocation: result.installRoot,
           name: "oraculum",
-          path: join(homeDir, ".oraculum", "chat-native", "claude-code", "0.1.0-beta.5"),
+          path: result.installRoot,
           source: "directory",
         },
-      ],
-      ops: [],
-      plugins: [
-        {
-          id: "oraculum@oraculum",
-          installPath: "/fake-cache/oraculum/oraculum/0.1.0-beta.5",
-          name: "oraculum",
-          version: "0.1.0-beta.5",
-        },
-      ],
-    };
-    await writeFile(statePath, JSON.stringify(staleState), "utf8");
-
-    const result = await setupClaudeCodeHost({
-      claudeBinaryPath: process.execPath,
-      claudeArgs: [cliPath],
-      env: {
-        ORACULUM_FAKE_CLAUDE_STATE: statePath,
-        ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
-      },
-      homeDir,
-      packagedRoot,
-    });
-
-    const state = JSON.parse(await readFile(statePath, "utf8")) as FakeClaudeState;
-
-    expect(state.marketplaces).toEqual([
-      {
-        installLocation: result.installRoot,
-        name: "oraculum",
-        path: result.installRoot,
-        source: "directory",
-      },
-    ]);
-    expect(normalizePluginInstallPaths(state.plugins)).toEqual([
-      {
-        id: "oraculum@oraculum",
-        installPath: `/fake-cache/oraculum/oraculum/${APP_VERSION}`,
-        name: "oraculum",
-        version: APP_VERSION,
-      },
-    ]);
-    expect(state.ops).toEqual([
-      "plugin validate",
-      "marketplace remove oraculum",
-      `marketplace add ${result.installRoot}`,
-      "plugin uninstall oraculum",
-      "plugin install oraculum",
-    ]);
-  });
-
-  it("keeps an already aligned Claude marketplace and plugin install untouched", async () => {
-    const { cliPath, homeDir, packagedRoot, statePath } = await createFakeClaudeSetupFixture();
-    const alignedState: FakeClaudeState = {
-      marketplaces: [
-        {
-          installLocation: join(homeDir, ".oraculum", "chat-native", "claude-code", APP_VERSION),
-          name: "oraculum",
-          path: join(homeDir, ".oraculum", "chat-native", "claude-code", APP_VERSION),
-          source: "directory",
-        },
-      ],
-      ops: [],
-      plugins: [
+      ]);
+      expect(normalizePluginInstallPaths(state.plugins)).toEqual([
         {
           id: "oraculum@oraculum",
           installPath: `/fake-cache/oraculum/oraculum/${APP_VERSION}`,
           name: "oraculum",
           version: APP_VERSION,
         },
-      ],
-    };
-    await writeFile(statePath, JSON.stringify(alignedState), "utf8");
+      ]);
+      expect(state.ops).toEqual([
+        "plugin validate",
+        `marketplace add ${result.installRoot}`,
+        "plugin install oraculum",
+      ]);
+      expect(result.pluginInstalled).toBe(true);
+    },
+    HOST_SETUP_TEST_TIMEOUT_MS,
+  );
 
-    await setupClaudeCodeHost({
-      claudeBinaryPath: process.execPath,
-      claudeArgs: [cliPath],
-      env: {
-        ORACULUM_FAKE_CLAUDE_STATE: statePath,
-        ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
-      },
-      homeDir,
-      packagedRoot,
-    });
-
-    const state = JSON.parse(await readFile(statePath, "utf8")) as FakeClaudeState;
-    expect(state.ops).toEqual(["plugin validate"]);
-  });
-
-  it("uninstalls Claude marketplace/plugin wiring and removes the MCP entry", async () => {
-    const { cliPath, homeDir, packagedRoot, statePath } = await createFakeClaudeSetupFixture();
-    await setupClaudeCodeHost({
-      claudeBinaryPath: process.execPath,
-      claudeArgs: [cliPath],
-      env: {
-        ORACULUM_FAKE_CLAUDE_STATE: statePath,
-        ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
-      },
-      homeDir,
-      packagedRoot,
-    });
-    await writeFile(
-      join(homeDir, ".claude", "mcp.json"),
-      `${JSON.stringify(
-        {
-          mcpServers: {
-            other: { command: "echo", args: ["ok"] },
-            oraculum: { command: "node", args: ["cli.js", "mcp", "serve"] },
+  it(
+    "replaces stale Claude marketplace and plugin installs when their path or version drifts",
+    async () => {
+      const { cliPath, homeDir, packagedRoot, statePath } = await createFakeClaudeSetupFixture();
+      const staleState: FakeClaudeState = {
+        marketplaces: [
+          {
+            installLocation: join(
+              homeDir,
+              ".oraculum",
+              "chat-native",
+              "claude-code",
+              "0.1.0-beta.5",
+            ),
+            name: "oraculum",
+            path: join(homeDir, ".oraculum", "chat-native", "claude-code", "0.1.0-beta.5"),
+            source: "directory",
           },
+        ],
+        ops: [],
+        plugins: [
+          {
+            id: "oraculum@oraculum",
+            installPath: "/fake-cache/oraculum/oraculum/0.1.0-beta.5",
+            name: "oraculum",
+            version: "0.1.0-beta.5",
+          },
+        ],
+      };
+      await writeFile(statePath, JSON.stringify(staleState), "utf8");
+
+      const result = await setupClaudeCodeHost({
+        claudeBinaryPath: process.execPath,
+        claudeArgs: [cliPath],
+        env: {
+          ORACULUM_FAKE_CLAUDE_STATE: statePath,
+          ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
         },
-        null,
-        2,
-      )}\n`,
-      "utf8",
-    );
+        homeDir,
+        packagedRoot,
+      });
 
-    const result = await uninstallClaudeCodeHost({
-      claudeBinaryPath: process.execPath,
-      claudeArgs: [cliPath],
-      env: {
-        ORACULUM_FAKE_CLAUDE_STATE: statePath,
-        ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
-      },
-      homeDir,
-    });
+      const state = JSON.parse(await readFile(statePath, "utf8")) as FakeClaudeState;
 
-    const state = JSON.parse(await readFile(statePath, "utf8")) as FakeClaudeState;
-    const mcpConfig = JSON.parse(await readFile(result.mcpConfigPath, "utf8")) as {
-      mcpServers?: Record<string, unknown>;
-    };
+      expect(state.marketplaces).toEqual([
+        {
+          installLocation: result.installRoot,
+          name: "oraculum",
+          path: result.installRoot,
+          source: "directory",
+        },
+      ]);
+      expect(normalizePluginInstallPaths(state.plugins)).toEqual([
+        {
+          id: "oraculum@oraculum",
+          installPath: `/fake-cache/oraculum/oraculum/${APP_VERSION}`,
+          name: "oraculum",
+          version: APP_VERSION,
+        },
+      ]);
+      expect(state.ops).toEqual([
+        "plugin validate",
+        "marketplace remove oraculum",
+        `marketplace add ${result.installRoot}`,
+        "plugin uninstall oraculum",
+        "plugin install oraculum",
+      ]);
+    },
+    HOST_SETUP_TEST_TIMEOUT_MS,
+  );
 
-    expect(result.marketplaceRemoved).toBe(true);
-    expect(result.pluginRemoved).toBe(true);
-    expect(state.marketplaces).toEqual([]);
-    expect(state.plugins).toEqual([]);
-    expect(state.ops.at(-2)).toBe("marketplace remove oraculum");
-    expect(state.ops.at(-1)).toBe("plugin uninstall oraculum");
-    expect(mcpConfig.mcpServers).toEqual({
-      other: { command: "echo", args: ["ok"] },
-    });
-  });
+  it(
+    "keeps an already aligned Claude marketplace and plugin install untouched",
+    async () => {
+      const { cliPath, homeDir, packagedRoot, statePath } = await createFakeClaudeSetupFixture();
+      const alignedState: FakeClaudeState = {
+        marketplaces: [
+          {
+            installLocation: join(homeDir, ".oraculum", "chat-native", "claude-code", APP_VERSION),
+            name: "oraculum",
+            path: join(homeDir, ".oraculum", "chat-native", "claude-code", APP_VERSION),
+            source: "directory",
+          },
+        ],
+        ops: [],
+        plugins: [
+          {
+            id: "oraculum@oraculum",
+            installPath: `/fake-cache/oraculum/oraculum/${APP_VERSION}`,
+            name: "oraculum",
+            version: APP_VERSION,
+          },
+        ],
+      };
+      await writeFile(statePath, JSON.stringify(alignedState), "utf8");
+
+      await setupClaudeCodeHost({
+        claudeBinaryPath: process.execPath,
+        claudeArgs: [cliPath],
+        env: {
+          ORACULUM_FAKE_CLAUDE_STATE: statePath,
+          ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
+        },
+        homeDir,
+        packagedRoot,
+      });
+
+      const state = JSON.parse(await readFile(statePath, "utf8")) as FakeClaudeState;
+      expect(state.ops).toEqual(["plugin validate"]);
+    },
+    HOST_SETUP_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "uninstalls Claude marketplace/plugin wiring and removes the MCP entry",
+    async () => {
+      const { cliPath, homeDir, packagedRoot, statePath } = await createFakeClaudeSetupFixture();
+      await setupClaudeCodeHost({
+        claudeBinaryPath: process.execPath,
+        claudeArgs: [cliPath],
+        env: {
+          ORACULUM_FAKE_CLAUDE_STATE: statePath,
+          ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
+        },
+        homeDir,
+        packagedRoot,
+      });
+      await writeFile(
+        join(homeDir, ".claude", "mcp.json"),
+        `${JSON.stringify(
+          {
+            mcpServers: {
+              other: { command: "echo", args: ["ok"] },
+              oraculum: { command: "node", args: ["cli.js", "mcp", "serve"] },
+            },
+          },
+          null,
+          2,
+        )}\n`,
+        "utf8",
+      );
+
+      const result = await uninstallClaudeCodeHost({
+        claudeBinaryPath: process.execPath,
+        claudeArgs: [cliPath],
+        env: {
+          ORACULUM_FAKE_CLAUDE_STATE: statePath,
+          ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
+        },
+        homeDir,
+      });
+
+      const state = JSON.parse(await readFile(statePath, "utf8")) as FakeClaudeState;
+      const mcpConfig = JSON.parse(await readFile(result.mcpConfigPath, "utf8")) as {
+        mcpServers?: Record<string, unknown>;
+      };
+
+      expect(result.marketplaceRemoved).toBe(true);
+      expect(result.pluginRemoved).toBe(true);
+      expect(state.marketplaces).toEqual([]);
+      expect(state.plugins).toEqual([]);
+      expect(state.ops.at(-2)).toBe("marketplace remove oraculum");
+      expect(state.ops.at(-1)).toBe("plugin uninstall oraculum");
+      expect(mcpConfig.mcpServers).toEqual({
+        other: { command: "echo", args: ["ok"] },
+      });
+    },
+    HOST_SETUP_TEST_TIMEOUT_MS,
+  );
 
   it("best-effort cleans local Claude artifacts when the Claude binary is unavailable", async () => {
     const { cliPath, homeDir, packagedRoot, statePath } = await createFakeClaudeSetupFixture();

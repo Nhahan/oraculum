@@ -12,6 +12,7 @@ import {
   registerAdaptersTempRootCleanup,
 } from "./helpers/adapters.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
+import { FAKE_AGENT_TIMEOUT_MS } from "./helpers/integration.js";
 
 registerAdaptersTempRootCleanup();
 
@@ -43,7 +44,7 @@ if (out) {
 
     const adapter = new CodexAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     const result = await adapter.recommendPreflight({
@@ -114,7 +115,7 @@ if (out) {
 
     const adapter = new CodexAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     const result = await adapter.recommendPreflight({
@@ -157,7 +158,7 @@ process.stdout.write(JSON.stringify({
 
     const adapter = new ClaudeAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     const result = await adapter.recommendPreflight({

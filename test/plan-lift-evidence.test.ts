@@ -5,6 +5,7 @@ import { runPlanLiftEvidence } from "../scripts/plan-lift-evidence.mjs";
 import * as runDomain from "../src/domain/run.js";
 import * as mcpTools from "../src/services/mcp-tools.js";
 import * as planLiftHarness from "../src/services/plan-lift-harness.js";
+import { PLAN_LIFT_EVIDENCE_HOOK_TIMEOUT_MS } from "./helpers/integration.js";
 
 interface PlanLiftEvidenceResult {
   aggregate: Record<string, number>;
@@ -36,7 +37,7 @@ describe.sequential("plan lift evidence baseline", () => {
       planLiftHarness,
       runDomain,
     })) as PlanLiftEvidenceResult;
-  }, 180_000);
+  }, PLAN_LIFT_EVIDENCE_HOOK_TIMEOUT_MS);
 
   it("keeps the validated complex-task lift baseline", () => {
     expect(evidence.aggregate.lift).toBeGreaterThanOrEqual(23);

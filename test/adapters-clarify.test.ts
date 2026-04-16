@@ -13,6 +13,7 @@ import {
   registerAdaptersTempRootCleanup,
 } from "./helpers/adapters.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
+import { EXECUTION_TEST_TIMEOUT_MS, FAKE_AGENT_TIMEOUT_MS } from "./helpers/integration.js";
 
 registerAdaptersTempRootCleanup();
 
@@ -44,7 +45,7 @@ if (out) {
 
     const adapter = new CodexAdapter({
       binaryPath,
-      timeoutMs: 5_000,
+      timeoutMs: FAKE_AGENT_TIMEOUT_MS,
     });
 
     const result = await adapter.recommendClarifyFollowUp({
@@ -109,14 +110,16 @@ if (out) {
     );
   });
 
-  it("asks Claude to recommend a clarify follow-up with json-schema output", async () => {
-    const root = await createTempRoot();
-    const logDir = join(root, "clarify-follow-up-claude-logs");
+  it(
+    "asks Claude to recommend a clarify follow-up with json-schema output",
+    async () => {
+      const root = await createTempRoot();
+      const logDir = join(root, "clarify-follow-up-claude-logs");
 
-    const binaryPath = await writeNodeBinary(
-      root,
-      "fake-claude",
-      `const schemaIndex = process.argv.indexOf("--json-schema");
+      const binaryPath = await writeNodeBinary(
+        root,
+        "fake-claude",
+        `const schemaIndex = process.argv.indexOf("--json-schema");
 const schema = schemaIndex >= 0 ? process.argv[schemaIndex + 1] : "";
 process.stderr.write(JSON.stringify({ argv: process.argv.slice(2), schema }));
 process.stdout.write(JSON.stringify({
@@ -128,71 +131,73 @@ process.stdout.write(JSON.stringify({
     missingJudgingBasis: "The review basis does not yet define how to judge the completed PRD artifact.",
   },
 }));`,
-    );
+      );
 
-    const adapter = new ClaudeAdapter({
-      binaryPath,
-      timeoutMs: 5_000,
-    });
+      const adapter = new ClaudeAdapter({
+        binaryPath,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
 
-    const result = await adapter.recommendClarifyFollowUp({
-      runId: "run_1",
-      projectRoot: root,
-      logDir,
-      taskPacket: createTaskPacket({
-        artifactKind: "document",
-        targetArtifactPath: "docs/PRD.md",
-      }),
-      signals: createRepoSignals(),
-      preflight: {
-        decision: "external-research-required",
-        confidence: "high",
-        summary: "Official docs are still required before execution.",
-        researchPosture: "external-research-required",
-        researchQuestion: "What should docs/PRD.md cover for this launch?",
-      },
-      pressureContext: {
-        scopeKeyType: "target-artifact",
-        scopeKey: "docs/PRD.md",
-        repeatedCaseCount: 2,
-        repeatedKinds: ["external-research-required"],
-        recurringReasons: ["What should docs/PRD.md cover for this launch?"],
-        priorQuestions: ["What should docs/PRD.md cover for this launch?"],
-      },
-    });
+      const result = await adapter.recommendClarifyFollowUp({
+        runId: "run_1",
+        projectRoot: root,
+        logDir,
+        taskPacket: createTaskPacket({
+          artifactKind: "document",
+          targetArtifactPath: "docs/PRD.md",
+        }),
+        signals: createRepoSignals(),
+        preflight: {
+          decision: "external-research-required",
+          confidence: "high",
+          summary: "Official docs are still required before execution.",
+          researchPosture: "external-research-required",
+          researchQuestion: "What should docs/PRD.md cover for this launch?",
+        },
+        pressureContext: {
+          scopeKeyType: "target-artifact",
+          scopeKey: "docs/PRD.md",
+          repeatedCaseCount: 2,
+          repeatedKinds: ["external-research-required"],
+          recurringReasons: ["What should docs/PRD.md cover for this launch?"],
+          priorQuestions: ["What should docs/PRD.md cover for this launch?"],
+        },
+      });
 
-    expect(result.status).toBe("completed");
-    expect(result.recommendation).toEqual({
-      summary: "Repeated clarify blockers still leave the PRD contract underspecified.",
-      keyQuestion: "Which sections and acceptance bullets must docs/PRD.md include?",
-      missingResultContract:
-        "A concrete section-level result contract for docs/PRD.md is still missing.",
-      missingJudgingBasis:
-        "The review basis does not yet define how to judge the completed PRD artifact.",
-    });
-    await expect(readFile(join(logDir, "clarify-follow-up.prompt.txt"), "utf8")).resolves.toContain(
-      "Current blocked decision: external-research-required",
-    );
-    await expect(readFile(join(logDir, "clarify-follow-up.prompt.txt"), "utf8")).resolves.toContain(
-      "Current confidence: high",
-    );
-    await expect(readFile(join(logDir, "clarify-follow-up.stderr.txt"), "utf8")).resolves.toContain(
-      '"--json-schema"',
-    );
-    const stderr = await readFile(join(logDir, "clarify-follow-up.stderr.txt"), "utf8");
-    const parsedStderr = parseLoggedJson(stderr) as { schema?: string };
-    const parsedSchema = JSON.parse(parsedStderr.schema ?? "{}") as {
-      required?: string[];
-      properties?: Record<string, unknown>;
-    };
-    expect(parsedSchema.properties).toHaveProperty("keyQuestion");
-    expect(parsedSchema.required).toEqual(
-      expect.arrayContaining([
-        "summary",
-        "keyQuestion",
-        "missingResultContract",
-        "missingJudgingBasis",
-      ]),
-    );
-  }, 20_000);
+      expect(result.status).toBe("completed");
+      expect(result.recommendation).toEqual({
+        summary: "Repeated clarify blockers still leave the PRD contract underspecified.",
+        keyQuestion: "Which sections and acceptance bullets must docs/PRD.md include?",
+        missingResultContract:
+          "A concrete section-level result contract for docs/PRD.md is still missing.",
+        missingJudgingBasis:
+          "The review basis does not yet define how to judge the completed PRD artifact.",
+      });
+      await expect(
+        readFile(join(logDir, "clarify-follow-up.prompt.txt"), "utf8"),
+      ).resolves.toContain("Current blocked decision: external-research-required");
+      await expect(
+        readFile(join(logDir, "clarify-follow-up.prompt.txt"), "utf8"),
+      ).resolves.toContain("Current confidence: high");
+      await expect(
+        readFile(join(logDir, "clarify-follow-up.stderr.txt"), "utf8"),
+      ).resolves.toContain('"--json-schema"');
+      const stderr = await readFile(join(logDir, "clarify-follow-up.stderr.txt"), "utf8");
+      const parsedStderr = parseLoggedJson(stderr) as { schema?: string };
+      const parsedSchema = JSON.parse(parsedStderr.schema ?? "{}") as {
+        required?: string[];
+        properties?: Record<string, unknown>;
+      };
+      expect(parsedSchema.properties).toHaveProperty("keyQuestion");
+      expect(parsedSchema.required).toEqual(
+        expect.arrayContaining([
+          "summary",
+          "keyQuestion",
+          "missingResultContract",
+          "missingJudgingBasis",
+        ]),
+      );
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
 });
