@@ -24,7 +24,7 @@ import {
 
 import { normalizeConsultationScopePath } from "./consultation-artifacts.js";
 import { collectProfileRepoSignals } from "./consultation-profile.js";
-import { collectP3Evidence } from "./p3-evidence.js";
+import { collectPressureEvidence } from "./pressure-evidence.js";
 import { type ProjectConfigLayers, writeJsonFile } from "./project.js";
 
 interface RecommendConsultationPreflightOptions {
@@ -352,7 +352,7 @@ async function resolveClarifyPressureContext(
   projectRoot: string,
   taskPacket: MaterializedTaskPacket,
 ): Promise<ClarifyPressureContext | undefined> {
-  const report = await collectP3Evidence(projectRoot);
+  const report = await collectPressureEvidence(projectRoot);
   if (!report.clarifyPressure.promotionSignal.shouldPromote) {
     return undefined;
   }
@@ -384,7 +384,7 @@ async function resolveClarifyPressureContext(
 function buildClarifyPressureContext(
   scopeKeyType: "target-artifact" | "task-source",
   scopeKey: string,
-  matchingCases: Awaited<ReturnType<typeof collectP3Evidence>>["clarifyPressure"]["cases"],
+  matchingCases: Awaited<ReturnType<typeof collectPressureEvidence>>["clarifyPressure"]["cases"],
 ): ClarifyPressureContext {
   const repeatedKinds = Array.from(
     new Set(

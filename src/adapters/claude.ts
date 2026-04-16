@@ -1,7 +1,3 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
-import { runSubprocess } from "../core/subprocess.js";
 import {
   type AgentProfileRecommendation,
   agentProfileRecommendationSchema,
@@ -9,7 +5,7 @@ import {
 } from "../domain/profile.js";
 import { consultationPreflightSchema } from "../domain/run.js";
 
-import { shouldUseWindowsShell } from "./platform.js";
+import { buildAdapterResultBase, createAdapterPaths, executeAdapterCommand } from "./execution.js";
 import {
   buildCandidatePrompt,
   buildClarifyFollowUpPrompt,
@@ -60,59 +56,45 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   async runCandidate(request: AgentRunRequest): Promise<AgentRunResult> {
-    await mkdir(request.logDir, { recursive: true });
-
     const prompt = buildCandidatePrompt(request);
-    const promptPath = join(request.logDir, "prompt.txt");
-    const stdoutPath = join(request.logDir, "claude.stdout.txt");
-    const stderrPath = join(request.logDir, "claude.stderr.txt");
-    const startedAt = new Date().toISOString();
-
-    await writeFile(promptPath, prompt, "utf8");
-
-    const result = await runSubprocess({
-      command: this.binaryPath,
-      args: ["-p", "--output-format", "json", "--permission-mode", "bypassPermissions"],
-      cwd: request.workspaceDir,
-      ...(this.env ? { env: this.env } : {}),
-      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
-      stdin: prompt,
-      ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
+    const paths = createAdapterPaths(request.logDir, {
+      prompt: "prompt.txt",
+      stderr: "claude.stderr.txt",
+      stdout: "claude.stdout.txt",
     });
 
-    await writeFile(stdoutPath, result.stdout, "utf8");
-    await writeFile(stderrPath, result.stderr, "utf8");
+    const execution = await executeAdapterCommand({
+      args: ["-p", "--output-format", "json", "--permission-mode", "bypassPermissions"],
+      binaryPath: this.binaryPath,
+      cwd: request.workspaceDir,
+      ...(this.env ? { env: this.env } : {}),
+      paths,
+      prompt,
+      stdoutKind: "stdout",
+      ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
+    });
 
     return agentRunResultSchema.parse({
       runId: request.runId,
       candidateId: request.candidateId,
       adapter: this.name,
-      status: result.timedOut ? "timed-out" : result.exitCode === 0 ? "completed" : "failed",
-      startedAt,
-      completedAt: new Date().toISOString(),
-      exitCode: result.exitCode,
-      summary: summarizeAgentOutput(result.stdout, "Claude candidate execution finished."),
-      artifacts: [
-        { kind: "prompt", path: promptPath },
-        { kind: "stdout", path: stdoutPath },
-        { kind: "stderr", path: stderrPath },
-      ],
+      ...buildAdapterResultBase(execution),
+      summary: summarizeAgentOutput(
+        execution.subprocessResult.stdout,
+        "Claude candidate execution finished.",
+      ),
     });
   }
 
   async recommendWinner(request: AgentJudgeRequest): Promise<AgentJudgeResult> {
-    await mkdir(request.logDir, { recursive: true });
-
     const prompt = buildWinnerSelectionPrompt(request);
-    const promptPath = join(request.logDir, "winner-judge.prompt.txt");
-    const stdoutPath = join(request.logDir, "winner-judge.stdout.txt");
-    const stderrPath = join(request.logDir, "winner-judge.stderr.txt");
-    const startedAt = new Date().toISOString();
+    const paths = createAdapterPaths(request.logDir, {
+      prompt: "winner-judge.prompt.txt",
+      stderr: "winner-judge.stderr.txt",
+      stdout: "winner-judge.stdout.txt",
+    });
 
-    await writeFile(promptPath, prompt, "utf8");
-
-    const result = await runSubprocess({
-      command: this.binaryPath,
+    const execution = await executeAdapterCommand({
       args: [
         "-p",
         "--output-format",
@@ -122,46 +104,36 @@ export class ClaudeAdapter implements AgentAdapter {
         "--json-schema",
         JSON.stringify(buildWinnerRecommendationSchema()),
       ],
+      binaryPath: this.binaryPath,
       cwd: request.projectRoot,
       ...(this.env ? { env: this.env } : {}),
-      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
-      stdin: prompt,
+      paths,
+      prompt,
+      stdoutKind: "stdout",
       ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
     });
-
-    await writeFile(stdoutPath, result.stdout, "utf8");
-    await writeFile(stderrPath, result.stderr, "utf8");
 
     return agentJudgeResultSchema.parse({
       runId: request.runId,
       adapter: this.name,
-      status: result.timedOut ? "timed-out" : result.exitCode === 0 ? "completed" : "failed",
-      startedAt,
-      completedAt: new Date().toISOString(),
-      exitCode: result.exitCode,
-      summary: summarizeAgentOutput(result.stdout, "Claude winner selection finished."),
-      recommendation: extractRecommendation(result.stdout),
-      artifacts: [
-        { kind: "prompt", path: promptPath },
-        { kind: "stdout", path: stdoutPath },
-        { kind: "stderr", path: stderrPath },
-      ],
+      ...buildAdapterResultBase(execution),
+      summary: summarizeAgentOutput(
+        execution.subprocessResult.stdout,
+        "Claude winner selection finished.",
+      ),
+      recommendation: extractRecommendation(execution.subprocessResult.stdout),
     });
   }
 
   async recommendPreflight(request: AgentPreflightRequest): Promise<AgentPreflightResult> {
-    await mkdir(request.logDir, { recursive: true });
-
     const prompt = buildPreflightPrompt(request);
-    const promptPath = join(request.logDir, "preflight-judge.prompt.txt");
-    const stdoutPath = join(request.logDir, "preflight-judge.stdout.txt");
-    const stderrPath = join(request.logDir, "preflight-judge.stderr.txt");
-    const startedAt = new Date().toISOString();
+    const paths = createAdapterPaths(request.logDir, {
+      prompt: "preflight-judge.prompt.txt",
+      stderr: "preflight-judge.stderr.txt",
+      stdout: "preflight-judge.stdout.txt",
+    });
 
-    await writeFile(promptPath, prompt, "utf8");
-
-    const result = await runSubprocess({
-      command: this.binaryPath,
+    const execution = await executeAdapterCommand({
       args: [
         "-p",
         "--output-format",
@@ -171,48 +143,38 @@ export class ClaudeAdapter implements AgentAdapter {
         "--json-schema",
         JSON.stringify(buildAgentPreflightJsonSchema()),
       ],
+      binaryPath: this.binaryPath,
       cwd: request.projectRoot,
       ...(this.env ? { env: this.env } : {}),
-      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
-      stdin: prompt,
+      paths,
+      prompt,
+      stdoutKind: "stdout",
       ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
     });
-
-    await writeFile(stdoutPath, result.stdout, "utf8");
-    await writeFile(stderrPath, result.stderr, "utf8");
 
     return agentPreflightResultSchema.parse({
       runId: request.runId,
       adapter: this.name,
-      status: result.timedOut ? "timed-out" : result.exitCode === 0 ? "completed" : "failed",
-      startedAt,
-      completedAt: new Date().toISOString(),
-      exitCode: result.exitCode,
-      summary: summarizeAgentOutput(result.stdout, "Claude preflight readiness finished."),
-      recommendation: extractPreflightRecommendation(result.stdout),
-      artifacts: [
-        { kind: "prompt", path: promptPath },
-        { kind: "stdout", path: stdoutPath },
-        { kind: "stderr", path: stderrPath },
-      ],
+      ...buildAdapterResultBase(execution),
+      summary: summarizeAgentOutput(
+        execution.subprocessResult.stdout,
+        "Claude preflight readiness finished.",
+      ),
+      recommendation: extractPreflightRecommendation(execution.subprocessResult.stdout),
     });
   }
 
   async recommendClarifyFollowUp(
     request: AgentClarifyFollowUpRequest,
   ): Promise<AgentClarifyFollowUpResult> {
-    await mkdir(request.logDir, { recursive: true });
-
     const prompt = buildClarifyFollowUpPrompt(request);
-    const promptPath = join(request.logDir, "clarify-follow-up.prompt.txt");
-    const stdoutPath = join(request.logDir, "clarify-follow-up.stdout.txt");
-    const stderrPath = join(request.logDir, "clarify-follow-up.stderr.txt");
-    const startedAt = new Date().toISOString();
+    const paths = createAdapterPaths(request.logDir, {
+      prompt: "clarify-follow-up.prompt.txt",
+      stderr: "clarify-follow-up.stderr.txt",
+      stdout: "clarify-follow-up.stdout.txt",
+    });
 
-    await writeFile(promptPath, prompt, "utf8");
-
-    const result = await runSubprocess({
-      command: this.binaryPath,
+    const execution = await executeAdapterCommand({
       args: [
         "-p",
         "--output-format",
@@ -222,46 +184,36 @@ export class ClaudeAdapter implements AgentAdapter {
         "--json-schema",
         JSON.stringify(buildAgentClarifyFollowUpJsonSchema()),
       ],
+      binaryPath: this.binaryPath,
       cwd: request.projectRoot,
       ...(this.env ? { env: this.env } : {}),
-      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
-      stdin: prompt,
+      paths,
+      prompt,
+      stdoutKind: "stdout",
       ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
     });
-
-    await writeFile(stdoutPath, result.stdout, "utf8");
-    await writeFile(stderrPath, result.stderr, "utf8");
 
     return agentClarifyFollowUpResultSchema.parse({
       runId: request.runId,
       adapter: this.name,
-      status: result.timedOut ? "timed-out" : result.exitCode === 0 ? "completed" : "failed",
-      startedAt,
-      completedAt: new Date().toISOString(),
-      exitCode: result.exitCode,
-      summary: summarizeAgentOutput(result.stdout, "Claude clarify follow-up finished."),
-      recommendation: extractClarifyFollowUpRecommendation(result.stdout),
-      artifacts: [
-        { kind: "prompt", path: promptPath },
-        { kind: "stdout", path: stdoutPath },
-        { kind: "stderr", path: stderrPath },
-      ],
+      ...buildAdapterResultBase(execution),
+      summary: summarizeAgentOutput(
+        execution.subprocessResult.stdout,
+        "Claude clarify follow-up finished.",
+      ),
+      recommendation: extractClarifyFollowUpRecommendation(execution.subprocessResult.stdout),
     });
   }
 
   async recommendProfile(request: AgentProfileRequest): Promise<AgentProfileResult> {
-    await mkdir(request.logDir, { recursive: true });
-
     const prompt = buildProfileSelectionPrompt(request);
-    const promptPath = join(request.logDir, "profile-judge.prompt.txt");
-    const stdoutPath = join(request.logDir, "profile-judge.stdout.txt");
-    const stderrPath = join(request.logDir, "profile-judge.stderr.txt");
-    const startedAt = new Date().toISOString();
+    const paths = createAdapterPaths(request.logDir, {
+      prompt: "profile-judge.prompt.txt",
+      stderr: "profile-judge.stderr.txt",
+      stdout: "profile-judge.stdout.txt",
+    });
 
-    await writeFile(promptPath, prompt, "utf8");
-
-    const result = await runSubprocess({
-      command: this.binaryPath,
+    const execution = await executeAdapterCommand({
       args: [
         "-p",
         "--output-format",
@@ -271,30 +223,24 @@ export class ClaudeAdapter implements AgentAdapter {
         "--json-schema",
         JSON.stringify(buildAgentProfileRecommendationJsonSchema()),
       ],
+      binaryPath: this.binaryPath,
       cwd: request.projectRoot,
       ...(this.env ? { env: this.env } : {}),
-      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
-      stdin: prompt,
+      paths,
+      prompt,
+      stdoutKind: "stdout",
       ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
     });
-
-    await writeFile(stdoutPath, result.stdout, "utf8");
-    await writeFile(stderrPath, result.stderr, "utf8");
 
     return agentProfileResultSchema.parse({
       runId: request.runId,
       adapter: this.name,
-      status: result.timedOut ? "timed-out" : result.exitCode === 0 ? "completed" : "failed",
-      startedAt,
-      completedAt: new Date().toISOString(),
-      exitCode: result.exitCode,
-      summary: summarizeAgentOutput(result.stdout, "Claude profile selection finished."),
-      recommendation: extractProfileRecommendation(result.stdout),
-      artifacts: [
-        { kind: "prompt", path: promptPath },
-        { kind: "stdout", path: stdoutPath },
-        { kind: "stderr", path: stderrPath },
-      ],
+      ...buildAdapterResultBase(execution),
+      summary: summarizeAgentOutput(
+        execution.subprocessResult.stdout,
+        "Claude profile selection finished.",
+      ),
+      recommendation: extractProfileRecommendation(execution.subprocessResult.stdout),
     });
   }
 }

@@ -1,7 +1,3 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
-import { runSubprocess } from "../core/subprocess.js";
 import {
   type AgentProfileRecommendation,
   agentProfileRecommendationSchema,
@@ -9,7 +5,7 @@ import {
 } from "../domain/profile.js";
 import { consultationPreflightSchema } from "../domain/run.js";
 
-import { shouldUseWindowsShell } from "./platform.js";
+import { buildAdapterResultBase, createAdapterPaths, executeAdapterCommand } from "./execution.js";
 import {
   buildCandidatePrompt,
   buildClarifyFollowUpPrompt,
@@ -60,19 +56,15 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   async runCandidate(request: AgentRunRequest): Promise<AgentRunResult> {
-    await mkdir(request.logDir, { recursive: true });
-
     const prompt = buildCandidatePrompt(request);
-    const promptPath = join(request.logDir, "prompt.txt");
-    const stdoutPath = join(request.logDir, "codex.stdout.jsonl");
-    const stderrPath = join(request.logDir, "codex.stderr.txt");
-    const finalMessagePath = join(request.logDir, "codex.final-message.txt");
-    const startedAt = new Date().toISOString();
+    const paths = createAdapterPaths(request.logDir, {
+      finalMessage: "codex.final-message.txt",
+      prompt: "prompt.txt",
+      stderr: "codex.stderr.txt",
+      stdout: "codex.stdout.jsonl",
+    });
 
-    await writeFile(promptPath, prompt, "utf8");
-
-    const result = await runSubprocess({
-      command: this.binaryPath,
+    const execution = await executeAdapterCommand({
       args: [
         "-a",
         "never",
@@ -82,60 +74,43 @@ export class CodexAdapter implements AgentAdapter {
         "--skip-git-repo-check",
         "--json",
         "-o",
-        finalMessagePath,
+        paths.finalMessage,
       ],
+      binaryPath: this.binaryPath,
       cwd: request.workspaceDir,
       ...(this.env ? { env: this.env } : {}),
-      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
-      stdin: prompt,
+      paths,
+      prompt,
+      readOptionalArtifacts: [{ kind: "report", path: paths.finalMessage }],
+      stdoutKind: "transcript",
       ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
     });
 
-    await writeFile(stdoutPath, result.stdout, "utf8");
-    await writeFile(stderrPath, result.stderr, "utf8");
-
-    const finalMessage = await readOptionalFile(finalMessagePath);
+    const finalMessage = execution.optionalArtifactContents.get(paths.finalMessage);
 
     return agentRunResultSchema.parse({
       runId: request.runId,
       candidateId: request.candidateId,
       adapter: this.name,
-      status: result.timedOut ? "timed-out" : result.exitCode === 0 ? "completed" : "failed",
-      startedAt,
-      completedAt: new Date().toISOString(),
-      exitCode: result.exitCode,
+      ...buildAdapterResultBase(execution),
       summary: summarizeAgentOutput(
-        finalMessage ?? result.stdout,
+        finalMessage ?? execution.subprocessResult.stdout,
         "Codex candidate execution finished.",
       ),
-      artifacts: [
-        { kind: "prompt", path: promptPath },
-        { kind: "transcript", path: stdoutPath },
-        { kind: "stderr", path: stderrPath },
-        ...(finalMessage ? [{ kind: "report" as const, path: finalMessagePath }] : []),
-      ],
     });
   }
 
   async recommendWinner(request: AgentJudgeRequest): Promise<AgentJudgeResult> {
-    await mkdir(request.logDir, { recursive: true });
-
     const prompt = buildWinnerSelectionPrompt(request);
-    const promptPath = join(request.logDir, "winner-judge.prompt.txt");
-    const schemaPath = join(request.logDir, "winner-judge.schema.json");
-    const stdoutPath = join(request.logDir, "winner-judge.stdout.jsonl");
-    const stderrPath = join(request.logDir, "winner-judge.stderr.txt");
-    const finalMessagePath = join(request.logDir, "winner-judge.final-message.txt");
-    const startedAt = new Date().toISOString();
+    const paths = createAdapterPaths(request.logDir, {
+      finalMessage: "winner-judge.final-message.txt",
+      prompt: "winner-judge.prompt.txt",
+      schema: "winner-judge.schema.json",
+      stderr: "winner-judge.stderr.txt",
+      stdout: "winner-judge.stdout.jsonl",
+    });
 
-    await writeFile(promptPath, prompt, "utf8");
-    await writeFile(
-      schemaPath,
-      `${JSON.stringify(buildCodexWinnerRecommendationSchema(), null, 2)}\n`,
-    );
-
-    const result = await runSubprocess({
-      command: this.binaryPath,
+    const execution = await executeAdapterCommand({
       args: [
         "-a",
         "never",
@@ -145,58 +120,50 @@ export class CodexAdapter implements AgentAdapter {
         "--skip-git-repo-check",
         "--json",
         "--output-schema",
-        schemaPath,
+        paths.schema,
         "-o",
-        finalMessagePath,
+        paths.finalMessage,
       ],
+      binaryPath: this.binaryPath,
       cwd: request.projectRoot,
       ...(this.env ? { env: this.env } : {}),
-      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
-      stdin: prompt,
+      paths,
+      prompt,
+      readOptionalArtifacts: [{ kind: "report", path: paths.finalMessage }],
+      sidecarWrites: [
+        {
+          kind: "report",
+          path: paths.schema,
+          content: `${JSON.stringify(buildCodexWinnerRecommendationSchema(), null, 2)}\n`,
+        },
+      ],
+      stdoutKind: "transcript",
       ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
     });
 
-    await writeFile(stdoutPath, result.stdout, "utf8");
-    await writeFile(stderrPath, result.stderr, "utf8");
-
-    const finalMessage = await readOptionalFile(finalMessagePath);
-    const judgeOutput = finalMessage ?? result.stdout;
+    const finalMessage = execution.optionalArtifactContents.get(paths.finalMessage);
+    const judgeOutput = finalMessage ?? execution.subprocessResult.stdout;
 
     return agentJudgeResultSchema.parse({
       runId: request.runId,
       adapter: this.name,
-      status: result.timedOut ? "timed-out" : result.exitCode === 0 ? "completed" : "failed",
-      startedAt,
-      completedAt: new Date().toISOString(),
-      exitCode: result.exitCode,
+      ...buildAdapterResultBase(execution),
       summary: summarizeAgentOutput(judgeOutput, "Codex winner selection finished."),
       recommendation: extractRecommendation(judgeOutput),
-      artifacts: [
-        { kind: "prompt", path: promptPath },
-        { kind: "report", path: schemaPath },
-        { kind: "transcript", path: stdoutPath },
-        { kind: "stderr", path: stderrPath },
-        ...(finalMessage ? [{ kind: "report" as const, path: finalMessagePath }] : []),
-      ],
     });
   }
 
   async recommendPreflight(request: AgentPreflightRequest): Promise<AgentPreflightResult> {
-    await mkdir(request.logDir, { recursive: true });
-
     const prompt = buildPreflightPrompt(request);
-    const promptPath = join(request.logDir, "preflight-judge.prompt.txt");
-    const schemaPath = join(request.logDir, "preflight-judge.schema.json");
-    const stdoutPath = join(request.logDir, "preflight-judge.stdout.jsonl");
-    const stderrPath = join(request.logDir, "preflight-judge.stderr.txt");
-    const finalMessagePath = join(request.logDir, "preflight-judge.final-message.txt");
-    const startedAt = new Date().toISOString();
+    const paths = createAdapterPaths(request.logDir, {
+      finalMessage: "preflight-judge.final-message.txt",
+      prompt: "preflight-judge.prompt.txt",
+      schema: "preflight-judge.schema.json",
+      stderr: "preflight-judge.stderr.txt",
+      stdout: "preflight-judge.stdout.jsonl",
+    });
 
-    await writeFile(promptPath, prompt, "utf8");
-    await writeFile(schemaPath, `${JSON.stringify(buildCodexPreflightJsonSchema(), null, 2)}\n`);
-
-    const result = await runSubprocess({
-      command: this.binaryPath,
+    const execution = await executeAdapterCommand({
       args: [
         "-a",
         "never",
@@ -206,63 +173,52 @@ export class CodexAdapter implements AgentAdapter {
         "--skip-git-repo-check",
         "--json",
         "--output-schema",
-        schemaPath,
+        paths.schema,
         "-o",
-        finalMessagePath,
+        paths.finalMessage,
       ],
+      binaryPath: this.binaryPath,
       cwd: request.projectRoot,
       ...(this.env ? { env: this.env } : {}),
-      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
-      stdin: prompt,
+      paths,
+      prompt,
+      readOptionalArtifacts: [{ kind: "report", path: paths.finalMessage }],
+      sidecarWrites: [
+        {
+          kind: "report",
+          path: paths.schema,
+          content: `${JSON.stringify(buildCodexPreflightJsonSchema(), null, 2)}\n`,
+        },
+      ],
+      stdoutKind: "transcript",
       ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
     });
 
-    await writeFile(stdoutPath, result.stdout, "utf8");
-    await writeFile(stderrPath, result.stderr, "utf8");
-
-    const finalMessage = await readOptionalFile(finalMessagePath);
-    const judgeOutput = finalMessage ?? result.stdout;
+    const finalMessage = execution.optionalArtifactContents.get(paths.finalMessage);
+    const judgeOutput = finalMessage ?? execution.subprocessResult.stdout;
 
     return agentPreflightResultSchema.parse({
       runId: request.runId,
       adapter: this.name,
-      status: result.timedOut ? "timed-out" : result.exitCode === 0 ? "completed" : "failed",
-      startedAt,
-      completedAt: new Date().toISOString(),
-      exitCode: result.exitCode,
+      ...buildAdapterResultBase(execution),
       summary: summarizeAgentOutput(judgeOutput, "Codex preflight readiness finished."),
       recommendation: extractPreflightRecommendation(judgeOutput),
-      artifacts: [
-        { kind: "prompt", path: promptPath },
-        { kind: "report", path: schemaPath },
-        { kind: "transcript", path: stdoutPath },
-        { kind: "stderr", path: stderrPath },
-        ...(finalMessage ? [{ kind: "report" as const, path: finalMessagePath }] : []),
-      ],
     });
   }
 
   async recommendClarifyFollowUp(
     request: AgentClarifyFollowUpRequest,
   ): Promise<AgentClarifyFollowUpResult> {
-    await mkdir(request.logDir, { recursive: true });
-
     const prompt = buildClarifyFollowUpPrompt(request);
-    const promptPath = join(request.logDir, "clarify-follow-up.prompt.txt");
-    const schemaPath = join(request.logDir, "clarify-follow-up.schema.json");
-    const stdoutPath = join(request.logDir, "clarify-follow-up.stdout.jsonl");
-    const stderrPath = join(request.logDir, "clarify-follow-up.stderr.txt");
-    const finalMessagePath = join(request.logDir, "clarify-follow-up.final-message.txt");
-    const startedAt = new Date().toISOString();
+    const paths = createAdapterPaths(request.logDir, {
+      finalMessage: "clarify-follow-up.final-message.txt",
+      prompt: "clarify-follow-up.prompt.txt",
+      schema: "clarify-follow-up.schema.json",
+      stderr: "clarify-follow-up.stderr.txt",
+      stdout: "clarify-follow-up.stdout.jsonl",
+    });
 
-    await writeFile(promptPath, prompt, "utf8");
-    await writeFile(
-      schemaPath,
-      `${JSON.stringify(buildAgentClarifyFollowUpJsonSchema(), null, 2)}\n`,
-    );
-
-    const result = await runSubprocess({
-      command: this.binaryPath,
+    const execution = await executeAdapterCommand({
       args: [
         "-a",
         "never",
@@ -272,61 +228,50 @@ export class CodexAdapter implements AgentAdapter {
         "--skip-git-repo-check",
         "--json",
         "--output-schema",
-        schemaPath,
+        paths.schema,
         "-o",
-        finalMessagePath,
+        paths.finalMessage,
       ],
+      binaryPath: this.binaryPath,
       cwd: request.projectRoot,
       ...(this.env ? { env: this.env } : {}),
-      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
-      stdin: prompt,
+      paths,
+      prompt,
+      readOptionalArtifacts: [{ kind: "report", path: paths.finalMessage }],
+      sidecarWrites: [
+        {
+          kind: "report",
+          path: paths.schema,
+          content: `${JSON.stringify(buildAgentClarifyFollowUpJsonSchema(), null, 2)}\n`,
+        },
+      ],
+      stdoutKind: "transcript",
       ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
     });
 
-    await writeFile(stdoutPath, result.stdout, "utf8");
-    await writeFile(stderrPath, result.stderr, "utf8");
-
-    const finalMessage = await readOptionalFile(finalMessagePath);
-    const judgeOutput = finalMessage ?? result.stdout;
+    const finalMessage = execution.optionalArtifactContents.get(paths.finalMessage);
+    const judgeOutput = finalMessage ?? execution.subprocessResult.stdout;
 
     return agentClarifyFollowUpResultSchema.parse({
       runId: request.runId,
       adapter: this.name,
-      status: result.timedOut ? "timed-out" : result.exitCode === 0 ? "completed" : "failed",
-      startedAt,
-      completedAt: new Date().toISOString(),
-      exitCode: result.exitCode,
+      ...buildAdapterResultBase(execution),
       summary: summarizeAgentOutput(judgeOutput, "Codex clarify follow-up finished."),
       recommendation: extractClarifyFollowUpRecommendation(judgeOutput),
-      artifacts: [
-        { kind: "prompt", path: promptPath },
-        { kind: "report", path: schemaPath },
-        { kind: "transcript", path: stdoutPath },
-        { kind: "stderr", path: stderrPath },
-        ...(finalMessage ? [{ kind: "report" as const, path: finalMessagePath }] : []),
-      ],
     });
   }
 
   async recommendProfile(request: AgentProfileRequest): Promise<AgentProfileResult> {
-    await mkdir(request.logDir, { recursive: true });
-
     const prompt = buildProfileSelectionPrompt(request);
-    const promptPath = join(request.logDir, "profile-judge.prompt.txt");
-    const schemaPath = join(request.logDir, "profile-judge.schema.json");
-    const stdoutPath = join(request.logDir, "profile-judge.stdout.jsonl");
-    const stderrPath = join(request.logDir, "profile-judge.stderr.txt");
-    const finalMessagePath = join(request.logDir, "profile-judge.final-message.txt");
-    const startedAt = new Date().toISOString();
+    const paths = createAdapterPaths(request.logDir, {
+      finalMessage: "profile-judge.final-message.txt",
+      prompt: "profile-judge.prompt.txt",
+      schema: "profile-judge.schema.json",
+      stderr: "profile-judge.stderr.txt",
+      stdout: "profile-judge.stdout.jsonl",
+    });
 
-    await writeFile(promptPath, prompt, "utf8");
-    await writeFile(
-      schemaPath,
-      `${JSON.stringify(buildCodexProfileRecommendationJsonSchema(), null, 2)}\n`,
-    );
-
-    const result = await runSubprocess({
-      command: this.binaryPath,
+    const execution = await executeAdapterCommand({
       args: [
         "-a",
         "never",
@@ -336,48 +281,37 @@ export class CodexAdapter implements AgentAdapter {
         "--skip-git-repo-check",
         "--json",
         "--output-schema",
-        schemaPath,
+        paths.schema,
         "-o",
-        finalMessagePath,
+        paths.finalMessage,
       ],
+      binaryPath: this.binaryPath,
       cwd: request.projectRoot,
       ...(this.env ? { env: this.env } : {}),
-      ...(shouldUseWindowsShell(this.binaryPath) ? { shell: true } : {}),
-      stdin: prompt,
+      paths,
+      prompt,
+      readOptionalArtifacts: [{ kind: "report", path: paths.finalMessage }],
+      sidecarWrites: [
+        {
+          kind: "report",
+          path: paths.schema,
+          content: `${JSON.stringify(buildCodexProfileRecommendationJsonSchema(), null, 2)}\n`,
+        },
+      ],
+      stdoutKind: "transcript",
       ...(this.timeoutMs !== undefined ? { timeoutMs: this.timeoutMs } : {}),
     });
 
-    await writeFile(stdoutPath, result.stdout, "utf8");
-    await writeFile(stderrPath, result.stderr, "utf8");
-
-    const finalMessage = await readOptionalFile(finalMessagePath);
-    const judgeOutput = finalMessage ?? result.stdout;
+    const finalMessage = execution.optionalArtifactContents.get(paths.finalMessage);
+    const judgeOutput = finalMessage ?? execution.subprocessResult.stdout;
 
     return agentProfileResultSchema.parse({
       runId: request.runId,
       adapter: this.name,
-      status: result.timedOut ? "timed-out" : result.exitCode === 0 ? "completed" : "failed",
-      startedAt,
-      completedAt: new Date().toISOString(),
-      exitCode: result.exitCode,
+      ...buildAdapterResultBase(execution),
       summary: summarizeAgentOutput(judgeOutput, "Codex profile selection finished."),
       recommendation: extractProfileRecommendation(judgeOutput),
-      artifacts: [
-        { kind: "prompt", path: promptPath },
-        { kind: "report", path: schemaPath },
-        { kind: "transcript", path: stdoutPath },
-        { kind: "stderr", path: stderrPath },
-        ...(finalMessage ? [{ kind: "report" as const, path: finalMessagePath }] : []),
-      ],
     });
-  }
-}
-
-async function readOptionalFile(path: string): Promise<string | undefined> {
-  try {
-    return await readFile(path, "utf8");
-  } catch {
-    return undefined;
   }
 }
 

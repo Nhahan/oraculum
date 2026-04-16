@@ -1,4 +1,8 @@
-import type { ProfileCommandCandidate, ProfileSignalProvenance } from "../domain/profile.js";
+import type {
+  ProfileCommandCandidate,
+  ProfileSignalProvenance,
+  ProfileSkippedCommandCandidate,
+} from "../domain/profile.js";
 
 export const DEDUPED_PACKAGE_SCRIPT_CAPABILITIES = new Set([
   "build",
@@ -130,4 +134,27 @@ export function normalizeCommandName(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/gu, "-")
     .replace(/^-+|-+$/gu, "");
+}
+
+export function pushUniqueSkippedCommandCandidate(
+  skippedCommandCandidates: ProfileSkippedCommandCandidate[],
+  candidate: ProfileSkippedCommandCandidate,
+): void {
+  const key = buildSkippedCommandCandidateKey(candidate);
+  const alreadyRecorded = skippedCommandCandidates.some(
+    (existing) => buildSkippedCommandCandidateKey(existing) === key,
+  );
+  if (!alreadyRecorded) {
+    skippedCommandCandidates.push(candidate);
+  }
+}
+
+function buildSkippedCommandCandidateKey(candidate: ProfileSkippedCommandCandidate): string {
+  return [
+    candidate.id,
+    candidate.reason,
+    candidate.capability,
+    candidate.provenance?.signal ?? "",
+    candidate.provenance?.path ?? "",
+  ].join("\0");
 }
