@@ -15,6 +15,7 @@ import {
 import { getPackagedClaudeCodeRoot } from "./packaged.js";
 import {
   CLAUDE_MARKETPLACE_NAME,
+  CLAUDE_MCP_TIMEOUT_SECONDS,
   CLAUDE_PLUGIN_NAME,
   type ClaudeSetupOptions,
   type ClaudeSetupResult,
@@ -233,7 +234,7 @@ function buildClaudePluginMcpConfigFromInvocation(invocation: {
           ORACULUM_AGENT_RUNTIME: "claude-code",
           ORACULUM_LLM_BACKEND: "claude-code",
         },
-        timeout: 600,
+        timeout: CLAUDE_MCP_TIMEOUT_SECONDS,
       },
     },
   };

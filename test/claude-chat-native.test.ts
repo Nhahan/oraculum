@@ -124,6 +124,7 @@ describe("Claude Code chat-native packaging", () => {
       (mcp.mcpServers as Record<string, { env?: Record<string, string> }>).oraculum?.env
         ?.ORACULUM_AGENT_RUNTIME,
     ).toBe("claude-code");
+    expect((mcp.mcpServers as Record<string, { timeout?: number }>).oraculum?.timeout).toBe(1800);
 
     expect(commands.map((file) => file.path)).toEqual([
       "commands/consult.md",
@@ -165,14 +166,18 @@ describe("Claude Code chat-native packaging", () => {
     );
     expect(crownSkill?.content).toContain("`orc crown` for non-Git projects");
     expect(crownSkill?.content).toContain(
-      "After the MCP tool succeeds, report the verified materialization result and stop",
+      "After the MCP tool succeeds, report only the verified materialization result and stop",
     );
 
     const consultSkill = skills.find((file) => file.path.includes("/consult/"));
     const planSkill = skills.find((file) => file.path.includes("/plan/"));
     expect(consultSkill?.content).toContain('taskInput: "$ARGUMENTS"');
     expect(consultSkill?.content).toContain('agent: "claude-code"');
-    expect(consultSkill?.content).toContain("relay that tool result and stop");
+    expect(consultSkill?.content).toContain("Call the MCP tool immediately with no preamble.");
+    expect(consultSkill?.content).toContain("relay only the user-relevant result and stop");
+    expect(consultSkill?.content).toContain(
+      "Do not mention AGENTS.md, skills, MCP, routing, or internal tool calls.",
+    );
     expect(consultSkill?.content).toContain(
       "Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command",
     );
@@ -180,6 +185,7 @@ describe("Claude Code chat-native packaging", () => {
       "Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`",
     );
     expect(planSkill?.content).toContain("`orc plan` is the optional planning lane.");
+    expect(planSkill?.content).toContain("Call the MCP tool immediately with no preamble.");
     expect(planSkill?.content).toContain(
       "Use `orc consult` later if the user wants to execute the planned consultation.",
     );
@@ -219,7 +225,7 @@ describe("Claude Code setup", () => {
       const mcpConfig = JSON.parse(await readFile(result.mcpConfigPath, "utf8")) as {
         mcpServers: Record<
           string,
-          { args: string[]; command: string; env?: Record<string, string> }
+          { args: string[]; command: string; env?: Record<string, string>; timeout?: number }
         >;
       };
       const effectivePluginMcpConfig = JSON.parse(
@@ -227,7 +233,7 @@ describe("Claude Code setup", () => {
       ) as {
         mcpServers: Record<
           string,
-          { args: string[]; command: string; env?: Record<string, string> }
+          { args: string[]; command: string; env?: Record<string, string>; timeout?: number }
         >;
       };
       const state = JSON.parse(await readFile(statePath, "utf8")) as {
@@ -245,11 +251,13 @@ describe("Claude Code setup", () => {
       expect(mcpConfig.mcpServers.oraculum?.args.at(-2)).toBe("mcp");
       expect(mcpConfig.mcpServers.oraculum?.args.at(-1)).toBe("serve");
       expect(mcpConfig.mcpServers.oraculum?.env?.ORACULUM_AGENT_RUNTIME).toBe("claude-code");
+      expect(mcpConfig.mcpServers.oraculum?.timeout).toBe(1800);
       expect(effectivePluginMcpConfig.mcpServers.oraculum?.args.at(-2)).toBe("mcp");
       expect(effectivePluginMcpConfig.mcpServers.oraculum?.args.at(-1)).toBe("serve");
       expect(effectivePluginMcpConfig.mcpServers.oraculum?.env?.ORACULUM_AGENT_RUNTIME).toBe(
         "claude-code",
       );
+      expect(effectivePluginMcpConfig.mcpServers.oraculum?.timeout).toBe(1800);
       expect(result.installRoot).toContain(".oraculum");
       expect(state.marketplaces).toEqual([
         {

@@ -55,6 +55,7 @@ export interface ClaudePluginEntry {
 export const CLAUDE_MARKETPLACE_NAME = "oraculum";
 export const CLAUDE_PLUGIN_NAME = "oraculum";
 export const CLAUDE_PLUGIN_VERSION = APP_VERSION;
+export const CLAUDE_MCP_TIMEOUT_SECONDS = 1800;
 
 export function normalizePortablePath(value: string): string {
   return value.replaceAll("\\", "/");

@@ -2,7 +2,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { CommandManifestEntry } from "../../domain/chat-native.js";
-import { CLAUDE_MARKETPLACE_NAME, CLAUDE_PLUGIN_NAME, CLAUDE_PLUGIN_VERSION } from "./shared.js";
+import {
+  CLAUDE_MARKETPLACE_NAME,
+  CLAUDE_MCP_TIMEOUT_SECONDS,
+  CLAUDE_PLUGIN_NAME,
+  CLAUDE_PLUGIN_VERSION,
+} from "./shared.js";
 
 export function getPackagedClaudeCodeRoot(): string {
   return fileURLToPath(new URL("../../../dist/chat-native/claude-code", import.meta.url));
@@ -74,7 +79,7 @@ export function buildClaudePluginMcpConfig(): Record<string, unknown> {
           ORACULUM_AGENT_RUNTIME: "claude-code",
           ORACULUM_LLM_BACKEND: "claude-code",
         },
-        timeout: 600,
+        timeout: CLAUDE_MCP_TIMEOUT_SECONDS,
       },
     },
   };
@@ -191,7 +196,9 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
   if (entry.id === "consult") {
     return [
       "- This skill is intended for exact-prefix routing inside Claude Code.",
-      "- After the MCP tool returns, relay that tool result and stop.",
+      "- Call the MCP tool immediately with no preamble.",
+      "- After the MCP tool returns, relay only the user-relevant result and stop.",
+      "- Do not mention AGENTS.md, skills, MCP, routing, or internal tool calls.",
       "- Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command even if the result suggests a next step; wait for explicit user instruction.",
       "- Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`; the user must send a separate follow-up command after this tool call finishes.",
       "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
@@ -201,7 +208,9 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
   if (entry.id === "plan") {
     return [
       "- This skill is intended for exact-prefix routing inside Claude Code.",
-      "- After the MCP tool returns, relay that tool result and stop.",
+      "- Call the MCP tool immediately with no preamble.",
+      "- After the MCP tool returns, relay only the user-relevant result and stop.",
+      "- Do not mention AGENTS.md, skills, MCP, routing, or internal tool calls.",
       "- `orc plan` is the optional planning lane. It persists reusable consultation-plan artifacts but does not execute candidates.",
       "- Use `orc consult` later if the user wants to execute the planned consultation.",
       "- Do not automatically invoke `orc consult`, `orc crown`, or any other follow-up Oraculum command; wait for explicit user instruction.",
@@ -215,7 +224,9 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
       "- In non-Git workspace-sync mode, `orc crown` may omit the first argument; if one is present, Oraculum records it as a materialization label rather than a Git branch.",
       "- The MCP request also accepts `materializationName` as the canonical alias for the first crowning argument.",
       "- It crowns the recommended result from the latest eligible consultation and materializes it.",
-      "- After the MCP tool succeeds, report the verified materialization result and stop; do not re-apply the materialized result or run extra Bash, Edit, or Write steps unless the user explicitly asks.",
+      "- Call the MCP tool immediately with no preamble.",
+      "- After the MCP tool succeeds, report only the verified materialization result and stop; do not re-apply the materialized result or run extra Bash, Edit, or Write steps unless the user explicitly asks.",
+      "- Do not mention AGENTS.md, skills, MCP, routing, or internal tool calls.",
       "- The shared chat-native surface is `orc crown <branch-name>` for Git projects and `orc crown` for non-Git projects.",
       "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
     ];
@@ -223,7 +234,9 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
 
   return [
     "- This skill is intended for exact-prefix routing inside Claude Code.",
-    "- After the MCP tool returns, relay that tool result and stop.",
+    "- Call the MCP tool immediately with no preamble.",
+    "- After the MCP tool returns, relay only the user-relevant result and stop.",
+    "- Do not mention AGENTS.md, skills, MCP, routing, or internal tool calls.",
     "- Do not automatically invoke another `orc ...` command based on suggested next steps; wait for explicit user instruction.",
     "- The Oraculum MCP server must already be registered through `oraculum setup --runtime claude-code`.",
   ];

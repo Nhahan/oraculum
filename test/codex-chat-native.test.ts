@@ -46,7 +46,13 @@ describe("Codex chat-native packaging", () => {
     expect(consultSkill?.content).toContain(
       '`orc consult tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
     );
-    expect(consultSkill?.content).toContain("report the verified tool result concisely and stop");
+    expect(consultSkill?.content).toContain("Call the MCP tool immediately with no preamble");
+    expect(consultSkill?.content).toContain(
+      "report only the user-relevant result concisely and stop",
+    );
+    expect(consultSkill?.content).toContain(
+      "do not mention AGENTS.md, skills, MCP, routing, or internal tool calls",
+    );
     expect(consultSkill?.content).toContain(
       "Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command",
     );
@@ -54,11 +60,15 @@ describe("Codex chat-native packaging", () => {
       "Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`",
     );
     expect(planSkill?.content).toContain("Call the MCP tool `oraculum_plan`.");
+    expect(planSkill?.content).toContain("Call the MCP tool immediately with no preamble");
     expect(planSkill?.content).toContain(
       '`orc plan tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
     );
     expect(crownSkill?.content).toContain("Call the MCP tool `oraculum_crown`.");
-    expect(crownSkill?.content).toContain("report the verified tool result concisely and stop");
+    expect(crownSkill?.content).toContain("Call the MCP tool immediately with no preamble");
+    expect(crownSkill?.content).toContain(
+      "report only the user-relevant result concisely and stop",
+    );
     expect(crownSkill?.content).toContain("required only for branch materialization");
     expect(crownSkill?.content).toContain(
       "compatibility note: the MCP request still accepts legacy `branchName`",
@@ -123,14 +133,14 @@ describe("Codex setup", () => {
         "  mkdirSync(dirname(configPath), { recursive: true });",
         "  const envLines = env.map((entry) => { const [key, value] = entry.split('='); return key + ' = \"' + value + '\"'; });",
         "  const argsLine = 'args = [' + commandArgs.map((value) => '\"' + value + '\"').join(', ') + ']';",
-        "  const lines = ['[mcp_servers.oraculum]', 'command = \"' + command + '\"', argsLine, '', '[mcp_servers.oraculum.env]', ...envLines];",
+        "  const lines = ['[mcp_servers.oraculum]', 'command = \"' + command + '\"', argsLine, 'startup_timeout_sec = 60', 'tool_timeout_sec = 1800', '', '[mcp_servers.oraculum.env]', ...envLines];",
         "  writeFileSync(configPath, lines.join('\\n') + '\\n');",
         "  process.exit(0);",
         "}",
         "if (args[0] === 'mcp' && args[1] === 'get' && args[2] === 'oraculum' && args[3] === '--json') {",
         "  const state = readState();",
         "  if (!state) process.exit(1);",
-        "  process.stdout.write(JSON.stringify({ ...state, enabled: true, disabled_reason: null, enabled_tools: null, disabled_tools: null, startup_timeout_sec: null, tool_timeout_sec: null }));",
+        "  process.stdout.write(JSON.stringify({ ...state, enabled: true, disabled_reason: null, enabled_tools: null, disabled_tools: null, startup_timeout_sec: 60, tool_timeout_sec: 1800 }));",
         "  process.exit(0);",
         "}",
         "process.stderr.write('unexpected args: ' + args.join(' ')); process.exit(9);",
@@ -161,6 +171,8 @@ describe("Codex setup", () => {
 
     expect(configToml).toContain("[mcp_servers.oraculum]");
     expect(configToml).toContain('ORACULUM_AGENT_RUNTIME = "codex"');
+    expect(configToml).toContain("startup_timeout_sec = 60");
+    expect(configToml).toContain("tool_timeout_sec = 1800");
     expect(state.transport.command).toBe(process.execPath);
     expect(state.transport.args.at(-2)).toBe("mcp");
     expect(state.transport.args.at(-1)).toBe("serve");
@@ -217,14 +229,14 @@ describe("Codex setup", () => {
         "  mkdirSync(dirname(configPath), { recursive: true });",
         "  const envLines = env.map((entry) => { const [key, value] = entry.split('='); return key + ' = \"' + value + '\"'; });",
         "  const argsLine = 'args = [' + commandArgs.map((value) => '\"' + value + '\"').join(', ') + ']';",
-        "  const lines = ['[mcp_servers.oraculum]', 'command = \"' + command + '\"', argsLine, '', '[mcp_servers.oraculum.env]', ...envLines];",
+        "  const lines = ['[mcp_servers.oraculum]', 'command = \"' + command + '\"', argsLine, 'startup_timeout_sec = 60', 'tool_timeout_sec = 1800', '', '[mcp_servers.oraculum.env]', ...envLines];",
         "  writeFileSync(configPath, lines.join('\\n') + '\\n');",
         "  process.exit(0);",
         "}",
         "if (args[0] === 'mcp' && args[1] === 'get' && args[2] === 'oraculum' && args[3] === '--json') {",
         "  const state = readState();",
         "  if (!state) process.exit(1);",
-        "  process.stdout.write(JSON.stringify({ ...state, enabled: true, disabled_reason: null, enabled_tools: null, disabled_tools: null, startup_timeout_sec: null, tool_timeout_sec: null }));",
+        "  process.stdout.write(JSON.stringify({ ...state, enabled: true, disabled_reason: null, enabled_tools: null, disabled_tools: null, startup_timeout_sec: 60, tool_timeout_sec: 1800 }));",
         "  process.exit(0);",
         "}",
         "process.stderr.write('unexpected args: ' + args.join(' ')); process.exit(9);",
@@ -308,14 +320,14 @@ describe("Codex setup", () => {
         "  mkdirSync(dirname(configPath), { recursive: true });",
         "  const envLines = env.map((entry) => { const [key, value] = entry.split('='); return key + ' = \"' + value + '\"'; });",
         "  const argsLine = 'args = [' + commandArgs.map((value) => '\"' + value + '\"').join(', ') + ']';",
-        "  const lines = ['[mcp_servers.oraculum]', 'command = \"' + command + '\"', argsLine, '', '[mcp_servers.oraculum.env]', ...envLines];",
+        "  const lines = ['[mcp_servers.oraculum]', 'command = \"' + command + '\"', argsLine, 'startup_timeout_sec = 60', 'tool_timeout_sec = 1800', '', '[mcp_servers.oraculum.env]', ...envLines];",
         "  writeFileSync(configPath, lines.join('\\n') + '\\n');",
         "  process.exit(0);",
         "}",
         "if (args[0] === 'mcp' && args[1] === 'get' && args[2] === 'oraculum' && args[3] === '--json') {",
         "  const state = readState();",
         "  if (!state) process.exit(1);",
-        "  process.stdout.write(JSON.stringify({ ...state, enabled: true, disabled_reason: null, enabled_tools: null, disabled_tools: null, startup_timeout_sec: null, tool_timeout_sec: null }));",
+        "  process.stdout.write(JSON.stringify({ ...state, enabled: true, disabled_reason: null, enabled_tools: null, disabled_tools: null, startup_timeout_sec: 60, tool_timeout_sec: 1800 }));",
         "  process.exit(0);",
         "}",
         "process.stderr.write('unexpected args: ' + args.join(' ')); process.exit(9);",

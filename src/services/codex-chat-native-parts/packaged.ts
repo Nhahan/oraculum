@@ -55,6 +55,8 @@ function renderCodexRules(manifest: readonly CommandManifestEntry[]): string {
     "When the user types an exact `orc <command>` command, you MUST NOT interpret it as natural language and you MUST NOT do the work directly.",
     "Immediately use the matching installed Oraculum skill and route to the mapped MCP tool.",
     "Parse command arguments shell-style before calling the MCP tool. Do not pass option flags through as raw task text.",
+    "Do not send a preamble before the MCP tool call.",
+    "Do not mention AGENTS.md, skills, MCP, routing, internal tool calls, or that you are about to call Oraculum.",
     "",
     "| User Input | Skill | MCP Tool |",
     "| --- | --- | --- |",
@@ -72,8 +74,8 @@ function renderCodexRules(manifest: readonly CommandManifestEntry[]): string {
 function renderCodexSkill(entry: CommandManifestEntry): string {
   const postToolInstruction =
     entry.id === "consult"
-      ? "After the MCP tool succeeds, report the verified tool result concisely and stop. Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command even if the result suggests a next step; wait for explicit user instruction. Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`; the user must send a separate follow-up command after this tool call finishes."
-      : "After the MCP tool succeeds, report the verified tool result concisely and stop. Do not run Bash, Edit, Write, or ad-hoc follow-up work unless the user explicitly asks.";
+      ? "Call the MCP tool immediately with no preamble. After the MCP tool succeeds, report only the user-relevant result concisely and stop. Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command even if the result suggests a next step; wait for explicit user instruction. Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`; the user must send a separate follow-up command after this tool call finishes. If the tool fails or times out, report only the user-relevant failure and next step; do not mention AGENTS.md, skills, MCP, routing, or internal tool calls."
+      : "Call the MCP tool immediately with no preamble. After the MCP tool succeeds, report only the user-relevant result concisely and stop. Do not run Bash, Edit, Write, or ad-hoc follow-up work unless the user explicitly asks. If the tool fails or times out, report only the user-relevant failure and next step; do not mention AGENTS.md, skills, MCP, routing, or internal tool calls.";
 
   return [
     "---",

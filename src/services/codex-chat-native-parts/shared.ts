@@ -42,6 +42,8 @@ export const CODEX_SKILL_PREFIX = "oraculum-";
 export const CODEX_MCP_SERVER_NAME = "oraculum";
 export const CODEX_SETUP_GUIDANCE = "Run `oraculum setup --runtime codex`.";
 export const CODEX_INSTALL_VERSION = APP_VERSION;
+export const CODEX_MCP_STARTUP_TIMEOUT_SEC = 60;
+export const CODEX_MCP_TOOL_TIMEOUT_SEC = 1800;
 
 export function extractSubprocessError(result: { stderr: string; stdout: string }): string {
   const stderr = result.stderr.trim();
