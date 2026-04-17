@@ -6,6 +6,15 @@ import { OraculumError } from "../core/errors.js";
 import { projectConfigSchema } from "../domain/config.js";
 import type { OracleVerdict } from "../domain/oracle.js";
 import { isPreflightBlockedConsultation, type RunManifest } from "../domain/run.js";
+import {
+  type ConsultProgressReporter,
+  candidatesLaunchingEvent,
+  comparingFinalistsEvent,
+  noSurvivorsEvent,
+  secondOpinionRecordedEvent,
+  secondOpinionRequestedEvent,
+  verdictReadyEvent,
+} from "./consult-progress.js";
 import { executeInitialCandidates } from "./execution/initial-candidates.js";
 import { writeRunManifest } from "./execution/persistence.js";
 import { runExecutionRounds } from "./execution/rounds.js";
@@ -24,6 +33,7 @@ interface ExecuteRunOptions {
   codexBinaryPath?: string;
   cwd: string;
   env?: NodeJS.ProcessEnv;
+  onProgress?: ConsultProgressReporter | undefined;
   runId: string;
   timeoutMs?: number;
 }
@@ -73,6 +83,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
 
   manifest.status = "running";
   manifest = await writeRunManifest(store, manifest);
+  await options.onProgress?.(candidatesLaunchingEvent(manifest.candidateCount));
 
   const verdictsByCandidate = new Map<string, OracleVerdict[]>();
   const executionGraphEnabled = isExecutionGraphEnabled(consultationPlan);
@@ -82,6 +93,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
       ...(consultationPlan ? { consultationPlan } : {}),
       executionGraphEnabled,
       manifest,
+      ...(options.onProgress ? { onProgress: options.onProgress } : {}),
       projectConfig,
       projectRoot,
       store,
@@ -93,6 +105,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     executionGraphEnabled,
     executionRecords,
     manifest,
+    ...(options.onProgress ? { onProgress: options.onProgress } : {}),
     projectConfig,
     projectRoot,
     scorecardsByCandidate,
@@ -103,6 +116,12 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
   manifest = roundExecution.manifest;
 
   const candidateResults = executionRecords.map((record) => record.result);
+  const finalists = Array.from(candidateMap.values()).filter(
+    (candidate) => candidate.status === "promoted",
+  );
+  await options.onProgress?.(
+    finalists.length > 0 ? comparingFinalistsEvent(finalists.length) : noSurvivorsEvent(),
+  );
   const taskPacket = manifest.candidates[0]
     ? await store.readCandidateTaskPacket(manifest.id, manifest.candidates[0].id)
     : undefined;
@@ -131,6 +150,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
         )
       : undefined);
   if (taskPacket && secondOpinionAdapter && projectConfig.judge.secondOpinion.enabled) {
+    await options.onProgress?.(secondOpinionRequestedEvent());
     await recommendSecondOpinionWithJudge({
       adapter: secondOpinionAdapter,
       candidateResults,
@@ -146,6 +166,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
       taskPacket,
       verdictsByCandidate,
     });
+    await options.onProgress?.(secondOpinionRecordedEvent());
   }
 
   const completedManifest = await writeRunManifest(store, {
@@ -182,6 +203,7 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
   if (completedManifest.recommendedWinner) {
     await writeLatestExportableRunState(projectRoot, completedManifest.id);
   }
+  await options.onProgress?.(verdictReadyEvent());
 
   return {
     candidateResults,

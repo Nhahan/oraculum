@@ -20,6 +20,7 @@ import {
   verdictToolRequestSchema,
   verdictToolResponseSchema,
 } from "../domain/chat-native.js";
+import type { ConsultProgressEvent } from "./consult-progress.js";
 import {
   runConsultTool,
   runCrownTool,
@@ -49,8 +50,29 @@ export function createOraculumMcpServer(): McpServer {
       inputSchema: consultToolRequestSchema,
       outputSchema: consultToolResponseSchema,
     },
-    async (request) => {
-      const response = await runConsultTool(request);
+    async (request, extra) => {
+      let progress = 0;
+      const progressToken = extra._meta?.progressToken;
+      const onProgress =
+        progressToken !== undefined
+          ? async (event: ConsultProgressEvent) => {
+              progress += 1;
+              await extra.sendNotification({
+                method: "notifications/progress",
+                params: {
+                  progressToken,
+                  progress,
+                  message: event.message,
+                  _meta: {
+                    kind: event.kind,
+                    phase: event.phase,
+                    event,
+                  },
+                },
+              });
+            }
+          : undefined;
+      const response = await runConsultTool(request, onProgress ? { onProgress } : undefined);
       return {
         content: [{ type: "text", text: response.summary }],
         structuredContent: response,

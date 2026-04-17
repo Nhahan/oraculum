@@ -9,6 +9,12 @@ import {
   type RunManifest,
 } from "../../domain/run.js";
 import { captureManagedProjectSnapshot } from "../base-snapshots.js";
+import {
+  type ConsultProgressReporter,
+  candidateFailedBeforeChecksEvent,
+  candidateReadyForChecksEvent,
+  candidateRunningEvent,
+} from "../consult-progress.js";
 import type { RunStore } from "../run-store.js";
 import { detectWorkspaceMode, prepareCandidateWorkspace } from "../workspaces.js";
 import { materializeExecutionFailure, readProjectRevision } from "./failure.js";
@@ -25,6 +31,7 @@ export async function executeInitialCandidates(options: {
   consultationPlan?: ConsultationPlanArtifact;
   executionGraphEnabled: boolean;
   manifest: RunManifest;
+  onProgress?: ConsultProgressReporter | undefined;
   projectConfig: ProjectConfig;
   projectRoot: string;
   store: RunStore;
@@ -38,8 +45,13 @@ export async function executeInitialCandidates(options: {
   const executionRecords: CandidateExecutionRecord[] = [];
   const selectionMetrics = new Map<string, CandidateSelectionMetrics>();
   const scorecardsByCandidate = new Map<string, CandidateScorecard>();
+  const candidateCount = options.manifest.candidates.length;
 
-  for (const candidate of options.manifest.candidates) {
+  for (const [candidateIndex, candidate] of options.manifest.candidates.entries()) {
+    const currentCandidateIndex = candidateIndex + 1;
+    await options.onProgress?.(
+      candidateRunningEvent(candidate.id, currentCandidateIndex, candidateCount),
+    );
     const runningCandidate = candidateManifestSchema.parse({
       ...candidate,
       status: "running",
@@ -110,6 +122,11 @@ export async function executeInitialCandidates(options: {
     }
 
     await options.store.writeCandidateAgentResult(options.manifest.id, candidate.id, parsedResult);
+    await options.onProgress?.(
+      parsedResult.status === "completed"
+        ? candidateReadyForChecksEvent(candidate.id, currentCandidateIndex, candidateCount)
+        : candidateFailedBeforeChecksEvent(candidate.id, currentCandidateIndex, candidateCount),
+    );
 
     const updatedCandidate = candidateManifestSchema.parse({
       ...candidate,

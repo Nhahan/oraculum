@@ -22,7 +22,12 @@ import {
   verdictToolResponseSchema,
 } from "../../domain/chat-native.js";
 import { isPreflightBlockedConsultation } from "../../domain/run.js";
-
+import {
+  type ConsultProgressReporter,
+  consultationStartedEvent,
+  planningStartedEvent,
+  preflightBlockedEvent,
+} from "../consult-progress.js";
 import {
   buildVerdictReview,
   listRecentConsultations,
@@ -38,12 +43,22 @@ import {
   normalizePlanningToolRequest,
 } from "./shared.js";
 
-export async function runConsultTool(input: ConsultToolRequest): Promise<ConsultToolResponse> {
+export async function runConsultTool(
+  input: ConsultToolRequest,
+  options?: {
+    onProgress?: ConsultProgressReporter | undefined;
+  },
+): Promise<ConsultToolResponse> {
   const request = normalizePlanningToolRequest(consultToolRequestSchema.parse(input));
+  await options?.onProgress?.(consultationStartedEvent());
   const initialized = await ensureProjectInitializedForTool(request.cwd);
+  await options?.onProgress?.(planningStartedEvent());
   const manifest = await planRun(buildPlanRunRequest(request));
   if (isPreflightBlockedConsultation(manifest)) {
     await writeLatestRunState(request.cwd, manifest.id);
+    await options?.onProgress?.(
+      preflightBlockedEvent(manifest.preflight?.decision ?? "consultation cannot proceed"),
+    );
     return consultToolResponseSchema.parse({
       mode: "consult",
       ...(await buildConsultationToolPayload(request.cwd, manifest, initialized)),
@@ -51,6 +66,7 @@ export async function runConsultTool(input: ConsultToolRequest): Promise<Consult
   }
   const execution = await executeRun({
     cwd: request.cwd,
+    ...(options?.onProgress ? { onProgress: options.onProgress } : {}),
     runId: manifest.id,
     ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
   });

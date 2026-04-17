@@ -10,6 +10,14 @@ import {
   type RunManifest,
   roundManifestSchema,
 } from "../../domain/run.js";
+import {
+  type ConsultProgressReporter,
+  candidateEliminatedEvent,
+  candidatePassedRoundEvent,
+  candidateRetryingEvent,
+  roundCompletedEvent,
+  roundStartedEvent,
+} from "../consult-progress.js";
 import { evaluateCandidateRound } from "../oracles.js";
 import type { RunStore } from "../run-store.js";
 import { materializeExecutionFailure } from "./failure.js";
@@ -26,6 +34,7 @@ export async function runExecutionRounds(options: {
   executionGraphEnabled: boolean;
   executionRecords: CandidateExecutionRecord[];
   manifest: RunManifest;
+  onProgress?: ConsultProgressReporter | undefined;
   projectConfig: ProjectConfig;
   projectRoot: string;
   scorecardsByCandidate: Map<string, CandidateScorecard>;
@@ -37,8 +46,14 @@ export async function runExecutionRounds(options: {
   const roundStates = manifest.rounds.map((round) => ({ ...round }));
   const survivors = new Set(options.executionRecords.map((record) => record.candidate.id));
   const completedRoundIds = new Set<string>();
+  const candidatePositions = new Map(
+    options.manifest.candidates.map((candidate, index) => [candidate.id, index + 1]),
+  );
+  const totalCandidateCount = options.manifest.candidates.length;
 
   for (const [index, round] of roundStates.entries()) {
+    const candidatesEnteringRound = survivors.size;
+    await options.onProgress?.(roundStartedEvent(round.id, round.label, candidatesEnteringRound));
     const startedAt = new Date().toISOString();
     roundStates[index] = {
       ...round,
@@ -84,6 +99,17 @@ export async function runExecutionRounds(options: {
       ) {
         repairHistoryVerdicts.push(...evaluation.verdicts);
         repairAttempt += 1;
+        const candidatePosition = candidatePositions.get(currentCandidate.id) ?? 0;
+        await options.onProgress?.(
+          candidateRetryingEvent({
+            candidateId: currentCandidate.id,
+            candidateIndex: candidatePosition,
+            candidateCount: totalCandidateCount,
+            repairAttempt,
+            roundId: round.id,
+            roundLabel: round.label,
+          }),
+        );
 
         const repairLogDir = options.store.getCandidateRepairAttemptLogsDir(
           manifest.id,
@@ -188,8 +214,28 @@ export async function runExecutionRounds(options: {
       if (!survives) {
         survivors.delete(currentCandidate.id);
         eliminatedCount += 1;
+        const candidatePosition = candidatePositions.get(currentCandidate.id) ?? 0;
+        await options.onProgress?.(
+          candidateEliminatedEvent({
+            candidateId: currentCandidate.id,
+            candidateIndex: candidatePosition,
+            candidateCount: totalCandidateCount,
+            roundId: round.id,
+            roundLabel: round.label,
+          }),
+        );
       } else {
         survivorCount += 1;
+        const candidatePosition = candidatePositions.get(currentCandidate.id) ?? 0;
+        await options.onProgress?.(
+          candidatePassedRoundEvent({
+            candidateId: currentCandidate.id,
+            candidateIndex: candidatePosition,
+            candidateCount: totalCandidateCount,
+            roundId: round.id,
+            roundLabel: round.label,
+          }),
+        );
       }
 
       options.candidateMap.set(nextCandidate.id, nextCandidate);
@@ -235,6 +281,9 @@ export async function runExecutionRounds(options: {
         });
       }
     }
+    await options.onProgress?.(
+      roundCompletedEvent(round.id, round.label, survivors.size, candidatesEnteringRound),
+    );
   }
 
   return { manifest, roundStates };
