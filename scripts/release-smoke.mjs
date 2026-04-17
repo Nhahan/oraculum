@@ -1,9 +1,15 @@
-import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+  joinPathEntries,
+  resolvePackedInstallSpec,
+  runOrThrow,
+  writeNodeBinary,
+} from "./smoke/shared-install.mjs";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const explicitSpec = process.env.ORACULUM_RELEASE_SPEC;
@@ -18,7 +24,7 @@ async function main() {
     const hostBinDir = join(tempRoot, "host-bin");
     const fakeClaudeStatePath = join(tempRoot, "fake-claude-state.json");
     const fakeCodexStatePath = join(tempRoot, "fake-codex-state.json");
-    const installSpec = resolveInstallSpec(tempRoot);
+    const installSpec = resolvePackedInstallSpec(repoRoot, tempRoot, explicitSpec);
 
     await mkdir(prefix, { recursive: true });
     await mkdir(homeDir, { recursive: true });
@@ -184,78 +190,6 @@ async function writeFakeCodexHost(hostBinDir) {
       "process.exit(result.status ?? 1);",
     ].join("\n"),
   );
-}
-
-async function writeNodeBinary(root, name, source) {
-  const scriptPath = join(root, `${name}.cjs`);
-  await writeFile(scriptPath, source, "utf8");
-
-  if (process.platform === "win32") {
-    const wrapperPath = join(root, `${name}.cmd`);
-    const nodePath = process.execPath.replace(/"/g, '""');
-    await writeFile(wrapperPath, `@echo off\r\n"${nodePath}" "%~dp0\\${name}.cjs" %*\r\n`, "utf8");
-    return wrapperPath;
-  }
-
-  const wrapperPath = join(root, name);
-  await writeFile(
-    wrapperPath,
-    `#!/bin/sh\nexec "${process.execPath}" "${scriptPath}" "$@"\n`,
-    "utf8",
-  );
-  await chmod(wrapperPath, 0o755);
-  return wrapperPath;
-}
-
-function resolveInstallSpec(tempRoot) {
-  if (explicitSpec) {
-    return explicitSpec;
-  }
-
-  if (!existsSync(join(repoRoot, "dist"))) {
-    runOrThrow("npm", ["run", "build"], { cwd: repoRoot });
-  }
-
-  const pack = runOrThrow("npm", ["pack", "--json", "--pack-destination", tempRoot], {
-    cwd: repoRoot,
-  });
-  const parsed = JSON.parse(pack.stdout);
-  const filename = Array.isArray(parsed) ? parsed[0]?.filename : parsed?.filename;
-  if (typeof filename !== "string" || filename.length === 0) {
-    throw new Error(`Unable to determine packed artifact from npm pack output:\n${pack.stdout}`);
-  }
-
-  return join(tempRoot, filename);
-}
-
-function runOrThrow(command, args, options) {
-  const result = spawnSync(command, args, {
-    cwd: options.cwd,
-    env: options.env,
-    encoding: "utf8",
-    stdio: "pipe",
-  });
-
-  if (result.status !== 0) {
-    throw new Error(
-      [
-        `Command failed: ${command} ${args.join(" ")}`,
-        result.stdout ? `stdout:\n${result.stdout}` : "",
-        result.stderr ? `stderr:\n${result.stderr}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
-    );
-  }
-
-  return {
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-  };
-}
-
-function joinPathEntries(entries) {
-  return entries.filter((entry) => entry.length > 0).join(process.platform === "win32" ? ";" : ":");
 }
 
 function assertHostStatus(diagnostics, hostId, expectedStatus) {

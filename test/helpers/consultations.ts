@@ -132,6 +132,18 @@ export function createExportedCandidate(
   });
 }
 
+export function createConsultationCandidate(
+  candidateId: string,
+  status: RunManifest["candidates"][number]["status"],
+  overrides: Partial<RunManifest["candidates"][number]> = {},
+): RunManifest["candidates"][number] {
+  return createRunCandidateFixture(candidateId, status, {
+    workspaceDir: "/tmp/workspace",
+    taskPacketPath: "/tmp/task-packet.json",
+    ...overrides,
+  });
+}
+
 export function createRecommendedManifest(
   runId: string,
   options: {

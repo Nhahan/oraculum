@@ -33,6 +33,14 @@ import {
   createTaskPacketFixture,
 } from "./run-manifest.js";
 
+export {
+  writeComparisonReportJson,
+  writeComparisonReportMarkdown,
+  writeDisagreeingSecondOpinionSelection,
+  writeExportPlanArtifact,
+  writeUnavailableSecondOpinionSelection,
+} from "./run-artifacts.js";
+
 export { writeJsonArtifact, writeTextArtifact };
 
 const tempRootHarness = createTempRootHarness("oraculum-mcp-");
@@ -173,6 +181,39 @@ export function createCompletedManifest() {
         taskPacketPath: "/tmp/task-packet.json",
       }),
     ],
+  };
+}
+
+export function createFinalistsWithoutRecommendationManifest() {
+  return {
+    ...createCompletedManifest(),
+    candidateCount: 2,
+    candidates: [
+      createCandidate("cand-01", {
+        status: "promoted",
+        workspaceDir: "/tmp/cand-01",
+        taskPacketPath: "/tmp/cand-01.json",
+      }),
+      createCandidate("cand-02", {
+        status: "promoted",
+        workspaceDir: "/tmp/cand-02",
+        taskPacketPath: "/tmp/cand-02.json",
+        strategyId: "safety-first",
+        strategyLabel: "Safety First",
+      }),
+    ],
+    outcome: {
+      type: "finalists-without-recommendation" as const,
+      terminal: true,
+      crownable: false,
+      finalistCount: 2,
+      validationPosture: "sufficient" as const,
+      verificationLevel: "standard" as const,
+      missingCapabilityCount: 0,
+      validationGapCount: 0,
+      judgingBasisKind: "repo-local-oracle" as const,
+    },
+    recommendedWinner: undefined,
   };
 }
 

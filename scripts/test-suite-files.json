@@ -1,0 +1,30 @@
+{
+  "slowTestFiles": [
+    "test/adapters-candidate.test.ts",
+    "test/adapters-clarify.test.ts",
+    "test/adapters-preflight.test.ts",
+    "test/adapters-profile.test.ts",
+    "test/adapters-winner.test.ts",
+    "test/claude-chat-native.test.ts",
+    "test/codex-chat-native.test.ts",
+    "test/consultation-plan-enforcement.test.ts",
+    "test/consultation-plan-scorecards.test.ts",
+    "test/execution-candidates.test.ts",
+    "test/execution-oracles-cwd.test.ts",
+    "test/execution-oracles-path-policy.test.ts",
+    "test/execution-oracles-verdicts.test.ts",
+    "test/execution-oracles-wrapper-resolution.test.ts",
+    "test/execution-repair-profile.test.ts",
+    "test/execution-selection.test.ts",
+    "test/exports-git.test.ts",
+    "test/exports-workspace-links.test.ts",
+    "test/exports-workspace-sync-core.test.ts",
+    "test/exports-workspace-sync-links.test.ts",
+    "test/exports-workspace-sync-rollback.test.ts",
+    "test/plan-lift-evidence-group-a.test.ts",
+    "test/plan-lift-evidence-group-b.test.ts",
+    "test/plan-lift-evidence-group-c.test.ts",
+    "test/project-flows-export-runtime.test.ts",
+    "test/workspaces.test.ts"
+  ]
+}

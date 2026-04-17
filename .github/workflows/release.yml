@@ -33,14 +33,8 @@ jobs:
         run: |
           node -e "const pkg = require('./package.json'); const expected = process.env.TAG_NAME.replace(/^v/, ''); if (pkg.version !== expected) { throw new Error(`package.json version ${pkg.version} does not match tag ${process.env.TAG_NAME}`); }"
 
-      - name: Run checks
-        run: npm run check
-
-      - name: Build CLI
-        run: npm run build
-
-      - name: Run packaged smoke checks
-        run: npm run evidence:smoke
+      - name: Run release preflight
+        run: npm run release:preflight -- --skip-npm-whoami
 
       - name: Pack npm artifact
         run: npm pack

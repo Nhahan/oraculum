@@ -1,9 +1,10 @@
-import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { resolvePackedInstallSpec, runOrThrow, writeNodeBinary } from "./smoke/shared-install.mjs";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const publishedSpec = process.env.ORACULUM_PUBLISHED_SPEC;
@@ -143,7 +144,7 @@ async function main() {
     const projectRoot = join(tempRoot, "project");
     await mkdir(prefix, { recursive: true });
     await mkdir(projectRoot, { recursive: true });
-    const installSpec = resolveInstallSpec(tempRoot);
+    const installSpec = resolvePackedInstallSpec(repoRoot, tempRoot, publishedSpec);
 
     runOrThrow("npm", ["install", "-g", "--prefix", prefix, installSpec], { cwd: tempRoot });
 
@@ -266,79 +267,6 @@ async function main() {
       process.stdout.write(`Published smoke workspace preserved at ${tempRoot}\n`);
     }
   }
-}
-
-async function writeNodeBinary(root, name, source) {
-  const scriptPath = join(root, `${name}.cjs`);
-  await writeFile(scriptPath, source, "utf8");
-
-  if (process.platform === "win32") {
-    const wrapperPath = join(root, `${name}.cmd`);
-    const nodePath = process.execPath.replace(/"/g, '""');
-    await writeFile(wrapperPath, `@echo off\r\n"${nodePath}" "%~dp0\\${name}.cjs" %*\r\n`, "utf8");
-    return wrapperPath;
-  }
-
-  const wrapperPath = join(root, name);
-  await writeFile(
-    wrapperPath,
-    `#!/bin/sh\nexec "${process.execPath}" "${scriptPath}" "$@"\n`,
-    "utf8",
-  );
-  await chmod(wrapperPath, 0o755);
-  return wrapperPath;
-}
-
-function runOrThrow(command, args, options) {
-  const shell =
-    process.platform === "win32" &&
-    (["bun", "npm", "npx", "pnpm", "yarn", "yarnpkg"].includes(command.toLowerCase()) ||
-      /\.(cmd|bat)$/iu.test(command));
-  const result = spawnSync(command, args, {
-    cwd: options.cwd,
-    env: options.env,
-    encoding: "utf8",
-    ...(shell ? { shell } : {}),
-    stdio: "pipe",
-  });
-
-  if (result.status !== 0) {
-    throw new Error(
-      [
-        `Command failed: ${command} ${args.join(" ")}`,
-        result.stdout ? `stdout:\n${result.stdout}` : "",
-        result.stderr ? `stderr:\n${result.stderr}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
-    );
-  }
-
-  return {
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-  };
-}
-
-function resolveInstallSpec(tempRoot) {
-  if (publishedSpec) {
-    return publishedSpec;
-  }
-
-  if (!existsSync(join(repoRoot, "dist"))) {
-    runOrThrow("npm", ["run", "build"], { cwd: repoRoot });
-  }
-
-  const pack = runOrThrow("npm", ["pack", "--json", "--pack-destination", tempRoot], {
-    cwd: repoRoot,
-  });
-  const parsed = JSON.parse(pack.stdout);
-  const filename = Array.isArray(parsed) ? parsed[0]?.filename : undefined;
-  if (typeof filename !== "string" || filename.length === 0) {
-    throw new Error(`Unable to determine packed artifact from npm pack output:\n${pack.stdout}`);
-  }
-
-  return join(tempRoot, filename);
 }
 
 async function invokeTool(envPatch, action) {

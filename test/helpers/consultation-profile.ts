@@ -61,6 +61,28 @@ export async function recommendFallbackProfile(options: {
   });
 }
 
+export async function recommendRuntimeProfile(options: {
+  cwd: string;
+  runId: string;
+  recommendation: AgentProfileRecommendation | Record<string, unknown>;
+  taskPath?: string;
+  onRecommendProfile?: () => void;
+}): Promise<Awaited<ReturnType<typeof recommendConsultationProfile>>> {
+  const taskPath = options.taskPath ?? join(options.cwd, "tasks", "fix.md");
+  const reportsDir = getReportsDir(options.cwd, options.runId);
+  await mkdir(reportsDir, { recursive: true });
+  return recommendConsultationProfile({
+    adapter: createNoopProfileAdapter(options.recommendation, options.onRecommendProfile),
+    allowRuntime: true,
+    baseConfig: await loadProjectConfig(options.cwd),
+    configLayers: await loadProjectConfigLayers(options.cwd),
+    projectRoot: options.cwd,
+    reportsDir,
+    runId: options.runId,
+    taskPacket: await loadTaskPacket(taskPath),
+  });
+}
+
 export async function readProfileSelectionArtifact<T>(cwd: string, runId: string): Promise<T> {
   return JSON.parse(await readFile(getProfileSelectionPath(cwd, runId), "utf8")) as T;
 }

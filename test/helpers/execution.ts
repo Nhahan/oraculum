@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { getAdvancedConfigPath } from "../../src/core/paths.js";
+import { initializeProject } from "../../src/services/project.js";
 import { writeNodeBinary } from "./fake-binary.js";
 import { createTempRootHarness } from "./fs.js";
 
@@ -13,6 +14,66 @@ export function registerExecutionTempRootCleanup(): void {
 
 export async function createTempRoot(): Promise<string> {
   return tempRootHarness.createTempRoot();
+}
+
+export async function createInitializedExecutionProject(): Promise<string> {
+  const cwd = await createTempRoot();
+  await initializeProject({ cwd, force: false });
+  return cwd;
+}
+
+export async function writeExecutionTask(
+  cwd: string,
+  name: string,
+  contents: string,
+): Promise<string> {
+  const taskPath = join(cwd, "tasks", name);
+  await mkdir(join(cwd, "tasks"), { recursive: true });
+  await writeFile(taskPath, contents, "utf8");
+  return taskPath;
+}
+
+export async function createPatchedCodexBinary(
+  cwd: string,
+  options: {
+    name?: string;
+    candidateSetupLines?: string[];
+    candidateOutput?: string;
+    winnerOutput?: string;
+  } = {},
+): Promise<string> {
+  const name = options.name ?? "fake-codex";
+  const candidateSetup = options.candidateSetupLines ?? [
+    'fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");',
+  ];
+  const candidateOutput = options.candidateOutput ?? "Codex finished candidate patch";
+  const winnerOutput =
+    options.winnerOutput ??
+    '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}';
+
+  return writeNodeBinary(
+    cwd,
+    name,
+    [
+      'const fs = require("node:fs");',
+      'const path = require("node:path");',
+      'const prompt = fs.readFileSync(0, "utf8");',
+      'let out = "";',
+      "for (let index = 0; index < process.argv.length; index += 1) {",
+      '  if (process.argv[index] === "-o") {',
+      '    out = process.argv[index + 1] ?? "";',
+      "  }",
+      "}",
+      'const isWinner = prompt.includes("You are selecting the best Oraculum finalist.");',
+      "if (!isWinner) {",
+      ...candidateSetup.map((line) => `  ${line}`),
+      "}",
+      "if (out) {",
+      `  const body = isWinner ? ${JSON.stringify(winnerOutput)} : ${JSON.stringify(candidateOutput)};`,
+      '  fs.writeFileSync(out, body, "utf8");',
+      "}",
+    ].join("\n"),
+  );
 }
 
 export async function writeLibraryProfileProject(cwd: string): Promise<void> {
@@ -29,7 +90,7 @@ export async function writeLibraryProfileProject(cwd: string): Promise<void> {
         scripts: {
           lint: 'node -e "process.exit(0)"',
           typecheck: 'node -e "process.exit(0)"',
-          test: "node --test",
+          test: 'node -e "process.exit(0)"',
         },
       },
       null,
@@ -77,7 +138,7 @@ export async function writeWorkspaceLibraryProfileProject(cwd: string): Promise<
         type: "module",
         scripts: {
           lint: 'node -e "process.exit(0)"',
-          test: "node --test",
+          test: 'node -e "process.exit(0)"',
         },
       },
       null,
@@ -153,7 +214,7 @@ export async function writeWorkspaceExportableNpmLibraryProfileProject(cwd: stri
         exports: "./src/index.js",
         scripts: {
           lint: 'node -e "process.exit(0)"',
-          test: "node --test",
+          test: 'node -e "process.exit(0)"',
         },
       },
       null,
