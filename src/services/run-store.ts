@@ -1,181 +1,58 @@
-import { existsSync, readFileSync } from "node:fs";
-import { mkdir, readFile } from "node:fs/promises";
-
 import type { ZodTypeAny, z } from "zod";
 
-import { agentRunResultSchema } from "../adapters/types.js";
-import { OraculumError } from "../core/errors.js";
-import {
-  getCandidateAgentResultPath,
-  getCandidateBaseSnapshotPath,
-  getCandidateDir,
-  getCandidateLogsDir,
-  getCandidateManifestPath,
-  getCandidateOracleStderrLogPath,
-  getCandidateOracleStdoutLogPath,
-  getCandidateRepairAttemptLogsDir,
-  getCandidateRepairAttemptResultPath,
-  getCandidateScorecardPath,
-  getCandidatesDir,
-  getCandidateTaskPacketPath,
-  getCandidateVerdictPath,
-  getCandidateVerdictsDir,
-  getCandidateWitnessesDir,
-  getCandidateWitnessPath,
-  getClarifyFollowUpPath,
-  getConsultationPlanMarkdownPath,
-  getConsultationPlanPath,
-  getExportPatchPath,
-  getExportPlanPath,
-  getExportSyncSummaryPath,
-  getFailureAnalysisPath,
-  getFinalistComparisonJsonPath,
-  getFinalistComparisonMarkdownPath,
-  getFinalistScorecardsPath,
-  getLatestExportableRunStatePath,
-  getLatestRunStatePath,
-  getOraculumDir,
-  getPreflightReadinessPath,
-  getPressureEvidencePath,
-  getProfileSelectionPath,
-  getReportsDir,
-  getResearchBriefPath,
-  getRunConfigPath,
-  getRunDir,
-  getRunManifestPath,
-  getRunsDir,
-  getSecondOpinionWinnerJudgeLogsDir,
-  getSecondOpinionWinnerSelectionPath,
-  getWinnerJudgeLogsDir,
-  getWinnerSelectionPath,
-  getWorkspaceDir,
-  resolveProjectRoot,
-} from "../core/paths.js";
+import type { agentRunResultSchema } from "../adapters/types.js";
+import { resolveProjectRoot } from "../core/paths.js";
 import type { OracleVerdict, Witness } from "../domain/oracle.js";
-import { toCanonicalConsultationProfileSelection } from "../domain/profile.js";
-import {
-  type CandidateManifest,
-  type CandidateScorecard,
-  candidateManifestSchema,
-  candidateScorecardSchema,
-  latestRunStateSchema,
-  type RunManifest,
-  runManifestSchema,
-} from "../domain/run.js";
+import type { CandidateManifest, CandidateScorecard, RunManifest } from "../domain/run.js";
 import type { MaterializedTaskPacket } from "../domain/task.js";
-import { materializedTaskPacketSchema } from "../domain/task.js";
 
-import { pathExists, writeJsonFile } from "./project.js";
-import { parseRunManifestArtifact } from "./run-manifest-artifact.js";
+import { RunArtifactStore } from "./run-store/artifacts.js";
+import { LatestRunStateStore } from "./run-store/latest-state.js";
+import { RunPathStore } from "./run-store/paths.js";
+import type { CandidateArtifactPaths, RunArtifactPaths } from "./run-store/types.js";
 
-export interface RunArtifactPaths {
-  runDir: string;
-  manifestPath: string;
-  candidatesDir: string;
-  reportsDir: string;
-  configPath: string;
-  consultationPlanPath: string;
-  consultationPlanMarkdownPath: string;
-  exportPlanPath: string;
-  exportPatchPath: string;
-  exportSyncSummaryPath: string;
-  comparisonJsonPath: string;
-  comparisonMarkdownPath: string;
-  winnerSelectionPath: string;
-  secondOpinionWinnerSelectionPath: string;
-  finalistScorecardsPath: string;
-  profileSelectionPath: string;
-  preflightReadinessPath: string;
-  clarifyFollowUpPath: string;
-  researchBriefPath: string;
-  failureAnalysisPath: string;
-  winnerJudgeLogsDir: string;
-  secondOpinionWinnerJudgeLogsDir: string;
-}
-
-export interface CandidateArtifactPaths {
-  candidateDir: string;
-  manifestPath: string;
-  agentResultPath: string;
-  taskPacketPath: string;
-  baseSnapshotPath: string;
-  verdictsDir: string;
-  witnessesDir: string;
-  logsDir: string;
-  scorecardPath: string;
-  workspaceDir: string;
-}
+export type { CandidateArtifactPaths, RunArtifactPaths } from "./run-store/types.js";
 
 export class RunStore {
   readonly projectRoot: string;
 
+  private readonly pathStore: RunPathStore;
+  private readonly artifactStore: RunArtifactStore;
+  private readonly latestStateStore: LatestRunStateStore;
+
   constructor(cwd: string) {
     this.projectRoot = resolveProjectRoot(cwd);
+    this.pathStore = new RunPathStore(this.projectRoot);
+    this.artifactStore = new RunArtifactStore(this.pathStore);
+    this.latestStateStore = new LatestRunStateStore(this.pathStore);
   }
 
   get oraculumDir(): string {
-    return getOraculumDir(this.projectRoot);
+    return this.pathStore.oraculumDir;
   }
 
   get runsDir(): string {
-    return getRunsDir(this.projectRoot);
+    return this.pathStore.runsDir;
   }
 
   get latestRunStatePath(): string {
-    return getLatestRunStatePath(this.projectRoot);
+    return this.pathStore.latestRunStatePath;
   }
 
   get latestExportableRunStatePath(): string {
-    return getLatestExportableRunStatePath(this.projectRoot);
+    return this.pathStore.latestExportableRunStatePath;
   }
 
   get pressureEvidencePath(): string {
-    return getPressureEvidencePath(this.projectRoot);
+    return this.pathStore.pressureEvidencePath;
   }
 
   getRunPaths(runId: string): RunArtifactPaths {
-    return {
-      runDir: getRunDir(this.projectRoot, runId),
-      manifestPath: getRunManifestPath(this.projectRoot, runId),
-      candidatesDir: getCandidatesDir(this.projectRoot, runId),
-      reportsDir: getReportsDir(this.projectRoot, runId),
-      configPath: getRunConfigPath(this.projectRoot, runId),
-      consultationPlanPath: getConsultationPlanPath(this.projectRoot, runId),
-      consultationPlanMarkdownPath: getConsultationPlanMarkdownPath(this.projectRoot, runId),
-      exportPlanPath: getExportPlanPath(this.projectRoot, runId),
-      exportPatchPath: getExportPatchPath(this.projectRoot, runId),
-      exportSyncSummaryPath: getExportSyncSummaryPath(this.projectRoot, runId),
-      comparisonJsonPath: getFinalistComparisonJsonPath(this.projectRoot, runId),
-      comparisonMarkdownPath: getFinalistComparisonMarkdownPath(this.projectRoot, runId),
-      winnerSelectionPath: getWinnerSelectionPath(this.projectRoot, runId),
-      secondOpinionWinnerSelectionPath: getSecondOpinionWinnerSelectionPath(
-        this.projectRoot,
-        runId,
-      ),
-      finalistScorecardsPath: getFinalistScorecardsPath(this.projectRoot, runId),
-      profileSelectionPath: getProfileSelectionPath(this.projectRoot, runId),
-      preflightReadinessPath: getPreflightReadinessPath(this.projectRoot, runId),
-      clarifyFollowUpPath: getClarifyFollowUpPath(this.projectRoot, runId),
-      researchBriefPath: getResearchBriefPath(this.projectRoot, runId),
-      failureAnalysisPath: getFailureAnalysisPath(this.projectRoot, runId),
-      winnerJudgeLogsDir: getWinnerJudgeLogsDir(this.projectRoot, runId),
-      secondOpinionWinnerJudgeLogsDir: getSecondOpinionWinnerJudgeLogsDir(this.projectRoot, runId),
-    };
+    return this.pathStore.getRunPaths(runId);
   }
 
   getCandidatePaths(runId: string, candidateId: string): CandidateArtifactPaths {
-    return {
-      candidateDir: getCandidateDir(this.projectRoot, runId, candidateId),
-      manifestPath: getCandidateManifestPath(this.projectRoot, runId, candidateId),
-      agentResultPath: getCandidateAgentResultPath(this.projectRoot, runId, candidateId),
-      taskPacketPath: getCandidateTaskPacketPath(this.projectRoot, runId, candidateId),
-      baseSnapshotPath: getCandidateBaseSnapshotPath(this.projectRoot, runId, candidateId),
-      verdictsDir: getCandidateVerdictsDir(this.projectRoot, runId, candidateId),
-      witnessesDir: getCandidateWitnessesDir(this.projectRoot, runId, candidateId),
-      logsDir: getCandidateLogsDir(this.projectRoot, runId, candidateId),
-      scorecardPath: getCandidateScorecardPath(this.projectRoot, runId, candidateId),
-      workspaceDir: getWorkspaceDir(this.projectRoot, runId, candidateId),
-    };
+    return this.pathStore.getCandidatePaths(runId, candidateId);
   }
 
   getCandidateRepairAttemptLogsDir(
@@ -184,7 +61,7 @@ export class RunStore {
     roundId: string,
     attempt: number,
   ): string {
-    return getCandidateRepairAttemptLogsDir(this.projectRoot, runId, candidateId, roundId, attempt);
+    return this.pathStore.getCandidateRepairAttemptLogsDir(runId, candidateId, roundId, attempt);
   }
 
   getCandidateRepairAttemptResultPath(
@@ -193,13 +70,7 @@ export class RunStore {
     roundId: string,
     attempt: number,
   ): string {
-    return getCandidateRepairAttemptResultPath(
-      this.projectRoot,
-      runId,
-      candidateId,
-      roundId,
-      attempt,
-    );
+    return this.pathStore.getCandidateRepairAttemptResultPath(runId, candidateId, roundId, attempt);
   }
 
   getCandidateOracleStdoutLogPath(
@@ -208,7 +79,7 @@ export class RunStore {
     roundId: string,
     oracleId: string,
   ): string {
-    return getCandidateOracleStdoutLogPath(this.projectRoot, runId, candidateId, roundId, oracleId);
+    return this.pathStore.getCandidateOracleStdoutLogPath(runId, candidateId, roundId, oracleId);
   }
 
   getCandidateOracleStderrLogPath(
@@ -217,7 +88,7 @@ export class RunStore {
     roundId: string,
     oracleId: string,
   ): string {
-    return getCandidateOracleStderrLogPath(this.projectRoot, runId, candidateId, roundId, oracleId);
+    return this.pathStore.getCandidateOracleStderrLogPath(runId, candidateId, roundId, oracleId);
   }
 
   getCandidateVerdictPath(
@@ -226,7 +97,7 @@ export class RunStore {
     roundId: string,
     oracleId: string,
   ): string {
-    return getCandidateVerdictPath(this.projectRoot, runId, candidateId, roundId, oracleId);
+    return this.pathStore.getCandidateVerdictPath(runId, candidateId, roundId, oracleId);
   }
 
   getCandidateWitnessPath(
@@ -235,72 +106,37 @@ export class RunStore {
     roundId: string,
     witnessId: string,
   ): string {
-    return getCandidateWitnessPath(this.projectRoot, runId, candidateId, roundId, witnessId);
+    return this.pathStore.getCandidateWitnessPath(runId, candidateId, roundId, witnessId);
   }
 
   async ensureRunDirectories(runId: string): Promise<RunArtifactPaths> {
-    const paths = this.getRunPaths(runId);
-    await Promise.all([
-      mkdir(paths.runDir, { recursive: true }),
-      mkdir(paths.reportsDir, { recursive: true }),
-    ]);
-    return paths;
+    return this.artifactStore.ensureRunDirectories(runId);
   }
 
   async ensureCandidateDirectories(
     runId: string,
     candidateId: string,
   ): Promise<CandidateArtifactPaths> {
-    const paths = this.getCandidatePaths(runId, candidateId);
-    await Promise.all([
-      mkdir(paths.candidateDir, { recursive: true }),
-      mkdir(paths.workspaceDir, { recursive: true }),
-      mkdir(paths.verdictsDir, { recursive: true }),
-      mkdir(paths.witnessesDir, { recursive: true }),
-      mkdir(paths.logsDir, { recursive: true }),
-    ]);
-    return paths;
+    return this.artifactStore.ensureCandidateDirectories(runId, candidateId);
   }
 
   async readRunManifest(runId: string): Promise<RunManifest> {
-    const manifestPath = this.getRunPaths(runId).manifestPath;
-    if (!(await pathExists(manifestPath))) {
-      throw new OraculumError(`Consultation record not found: ${manifestPath}`);
-    }
-
-    const raw = JSON.parse(await readFile(manifestPath, "utf8")) as unknown;
-    return parseRunManifestArtifact(raw);
+    return this.artifactStore.readRunManifest(runId);
   }
 
   async writeRunManifest(manifest: RunManifest): Promise<void> {
-    const parsedManifest = runManifestSchema.parse(manifest);
-    await this.writeJsonArtifact(this.getRunPaths(manifest.id).manifestPath, {
-      ...parsedManifest,
-      ...(parsedManifest.profileSelection
-        ? {
-            profileSelection: toCanonicalConsultationProfileSelection(
-              parsedManifest.profileSelection,
-            ),
-          }
-        : {}),
-    });
+    return this.artifactStore.writeRunManifest(manifest);
   }
 
   async writeCandidateManifest(runId: string, candidate: CandidateManifest): Promise<void> {
-    await this.writeJsonArtifact(
-      this.getCandidatePaths(runId, candidate.id).manifestPath,
-      candidateManifestSchema.parse(candidate),
-    );
+    return this.artifactStore.writeCandidateManifest(runId, candidate);
   }
 
   async readCandidateTaskPacket(
     runId: string,
     candidateId: string,
   ): Promise<MaterializedTaskPacket> {
-    const taskPacketPath = this.getCandidatePaths(runId, candidateId).taskPacketPath;
-    return materializedTaskPacketSchema.parse(
-      JSON.parse(await readFile(taskPacketPath, "utf8")) as unknown,
-    );
+    return this.artifactStore.readCandidateTaskPacket(runId, candidateId);
   }
 
   async writeCandidateTaskPacket(
@@ -308,24 +144,14 @@ export class RunStore {
     candidateId: string,
     taskPacket: MaterializedTaskPacket,
   ): Promise<void> {
-    await this.writeJsonArtifact(
-      this.getCandidatePaths(runId, candidateId).taskPacketPath,
-      materializedTaskPacketSchema.parse(taskPacket),
-    );
+    return this.artifactStore.writeCandidateTaskPacket(runId, candidateId, taskPacket);
   }
 
   async readCandidateScorecard(
     runId: string,
     candidateId: string,
   ): Promise<CandidateScorecard | undefined> {
-    const scorecardPath = this.getCandidatePaths(runId, candidateId).scorecardPath;
-    if (!(await pathExists(scorecardPath))) {
-      return undefined;
-    }
-
-    return candidateScorecardSchema.parse(
-      JSON.parse(await readFile(scorecardPath, "utf8")) as unknown,
-    );
+    return this.artifactStore.readCandidateScorecard(runId, candidateId);
   }
 
   async writeCandidateScorecard(
@@ -333,10 +159,7 @@ export class RunStore {
     candidateId: string,
     scorecard: CandidateScorecard,
   ): Promise<void> {
-    await this.writeJsonArtifact(
-      this.getCandidatePaths(runId, candidateId).scorecardPath,
-      candidateScorecardSchema.parse(scorecard),
-    );
+    return this.artifactStore.writeCandidateScorecard(runId, candidateId, scorecard);
   }
 
   async writeCandidateAgentResult(
@@ -344,10 +167,7 @@ export class RunStore {
     candidateId: string,
     result: z.infer<typeof agentRunResultSchema>,
   ): Promise<void> {
-    await this.writeJsonArtifact(
-      this.getCandidatePaths(runId, candidateId).agentResultPath,
-      agentRunResultSchema.parse(result),
-    );
+    return this.artifactStore.writeCandidateAgentResult(runId, candidateId, result);
   }
 
   async writeCandidateRepairAttemptResult(
@@ -357,9 +177,12 @@ export class RunStore {
     attempt: number,
     result: z.infer<typeof agentRunResultSchema>,
   ): Promise<void> {
-    await this.writeJsonArtifact(
-      this.getCandidateRepairAttemptResultPath(runId, candidateId, roundId, attempt),
-      agentRunResultSchema.parse(result),
+    return this.artifactStore.writeCandidateRepairAttemptResult(
+      runId,
+      candidateId,
+      roundId,
+      attempt,
+      result,
     );
   }
 
@@ -369,10 +192,7 @@ export class RunStore {
     roundId: string,
     verdict: OracleVerdict,
   ): Promise<void> {
-    await this.writeJsonArtifact(
-      this.getCandidateVerdictPath(runId, candidateId, roundId, verdict.oracleId),
-      verdict,
-    );
+    return this.artifactStore.writeCandidateVerdict(runId, candidateId, roundId, verdict);
   }
 
   async writeCandidateWitness(
@@ -381,89 +201,40 @@ export class RunStore {
     roundId: string,
     witness: Witness,
   ): Promise<void> {
-    await this.writeJsonArtifact(
-      this.getCandidateWitnessPath(runId, candidateId, roundId, witness.id),
-      witness,
-    );
+    return this.artifactStore.writeCandidateWitness(runId, candidateId, roundId, witness);
   }
 
   async writeLatestRunState(runId: string): Promise<void> {
-    await this.writeJsonArtifact(
-      this.latestRunStatePath,
-      latestRunStateSchema.parse({
-        runId,
-        updatedAt: new Date().toISOString(),
-      }),
-    );
+    return this.latestStateStore.writeLatestRunState(runId);
   }
 
   async writeLatestExportableRunState(runId: string): Promise<void> {
-    await this.writeJsonArtifact(
-      this.latestExportableRunStatePath,
-      latestRunStateSchema.parse({
-        runId,
-        updatedAt: new Date().toISOString(),
-      }),
-    );
+    return this.latestStateStore.writeLatestExportableRunState(runId);
   }
 
   async readLatestRunId(): Promise<string> {
-    if (!(await pathExists(this.latestRunStatePath))) {
-      throw new OraculumError(
-        "No previous consultation found. Start with `orc consult ...` after setup.",
-      );
-    }
-
-    const parsed = latestRunStateSchema.parse(
-      JSON.parse(await readFile(this.latestRunStatePath, "utf8")) as unknown,
-    );
-    return parsed.runId;
+    return this.latestStateStore.readLatestRunId();
   }
 
   async readLatestExportableRunId(): Promise<string> {
-    if (!(await pathExists(this.latestExportableRunStatePath))) {
-      throw new OraculumError(
-        "No crownable consultation found yet. Complete a consultation with a recommended result first.",
-      );
-    }
-
-    const parsed = latestRunStateSchema.parse(
-      JSON.parse(await readFile(this.latestExportableRunStatePath, "utf8")) as unknown,
-    );
-    return parsed.runId;
+    return this.latestStateStore.readLatestExportableRunId();
   }
 
   async readOptionalParsedArtifact<TSchema extends ZodTypeAny>(
     path: string | undefined,
     schema: TSchema,
   ): Promise<z.infer<TSchema> | undefined> {
-    if (!path || !(await pathExists(path))) {
-      return undefined;
-    }
-
-    try {
-      return schema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
-    } catch {
-      return undefined;
-    }
+    return this.artifactStore.readOptionalParsedArtifact(path, schema);
   }
 
   readOptionalParsedArtifactSync<TSchema extends ZodTypeAny>(
     path: string | undefined,
     schema: TSchema,
   ): z.infer<TSchema> | undefined {
-    if (!path || !existsSync(path)) {
-      return undefined;
-    }
-
-    try {
-      return schema.parse(JSON.parse(readFileSync(path, "utf8")) as unknown);
-    } catch {
-      return undefined;
-    }
+    return this.artifactStore.readOptionalParsedArtifactSync(path, schema);
   }
 
   async writeJsonArtifact(path: string, value: unknown): Promise<void> {
-    await writeJsonFile(path, value);
+    return this.artifactStore.writeJsonArtifact(path, value);
   }
 }
