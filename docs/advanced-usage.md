@@ -9,7 +9,7 @@ orc consult "fix session loss on refresh"
 orc crown fix/session-loss
 ```
 
-`consult` already prints the latest summary. Everything below is for reopening a consultation later, shaping the tournament more explicitly, or using shell-only setup, uninstall, and MCP commands.
+`consult` already prints the latest summary. Everything below is for reopening a consultation later, shaping the tournament more explicitly, or using shell-only setup, uninstall, diagnostics, and MCP commands.
 
 The primary product surface is a host-native chat surface with a shared `orc` command language across Claude Code and Codex. The shell binary remains for setup, uninstall, diagnostics, and MCP serving only. Run `oraculum setup ...` in your terminal, then use `orc ...` inside the host chat input. Current setup is host-level and global for your local Claude Code or Codex installation, not directory-scoped.
 

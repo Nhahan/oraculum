@@ -1,5 +1,5 @@
 <p align="right">
-  <a href="https://github.com/Nhahan/oraculum/blob/main/README.md">English</a> | <strong>한국어</strong>
+  <a href="./README.md">English</a> | <strong>한국어</strong>
 </p>
 
 # Oraculum
@@ -87,7 +87,11 @@ orc crown fix/session-loss
 
 Git 프로젝트에서는 `crown`이 지정한 브랜치를 만들고 추천된 결과를 그 브랜치에 반영합니다. Git이 아닌 프로젝트에서는 `orc crown`만 사용하면 되고, 가짜 브랜치 이름 없이 해당 결과를 프로젝트 폴더에 그대로 동기화합니다.
 
-가장 최근 실행 결과를 나중에 다시 열어보거나, 예전 실행을 조회하거나, 기록 보관함을 살펴보거나, setup/MCP/디버깅용 셸 명령이 필요하다면 [고급 사용법](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md)을 참고하세요.
+기본적으로 `consult`와 `plan`은 Oraculum 수준의 adapter timeout을 강제하지 않습니다. 특정 consultation에만 명시적인 상한을 두고 싶을 때만 `--timeout-ms <ms>`를 사용하세요. 레포지토리 로컬 oracle 명령은 별개이며, `.oraculum/advanced.json` 안에서 자체 `timeoutMs`를 계속 가질 수 있습니다.
+
+더 넓거나 위험한 작업을 먼저 shape하고 싶다면 `orc plan "<task>"`를 사용하세요. 이 경로는 재사용 가능한 `consultation-plan.json`과 사람이 읽기 쉬운 `consultation-plan.md`를 저장하고, 나중에 `orc consult <plan-artifact>`로 다시 실행할 수 있습니다. `orc draft`는 같은 planning lane에 대한 호환 alias로 남아 있습니다.
+
+가장 최근 실행 결과를 나중에 다시 열어보거나, 예전 실행을 조회하거나, 기록 보관함을 살펴보거나, 셸 전용 setup, uninstall, diagnostics, MCP 명령이 필요하다면 [고급 사용법](./docs/advanced-usage.md)을 참고하세요.
 
 ## 동작 방식
 
@@ -101,4 +105,4 @@ Git 프로젝트에서는 `crown`이 지정한 브랜치를 만들고 추천된 
 
 ## 고급 사용법
 
-validation posture 선택, 런타임 선택, 실행 기록 조회, 레포지토리에 정의한 오라클 설정, research artifact, setup 진단, MCP 연결, host uninstall 방법 같은 제어가 필요하면 [고급 사용법](https://github.com/Nhahan/oraculum/blob/main/docs/advanced-usage.md)을 참고하세요. 빠른 시작용 기본값은 `.oraculum/config.json`에, 운영자용 제어는 `.oraculum/advanced.json`에 둡니다.
+consultation 범위의 validation posture 선택, 런타임 선택, 실행 기록 조회, 레포지토리에 정의한 오라클 설정, research artifact, setup 진단, MCP 연결, host uninstall 방법, 명시적 consultation timeout 같은 제어가 필요하면 [고급 사용법](./docs/advanced-usage.md)을 참고하세요. 빠른 시작용 기본값은 `.oraculum/config.json`에, 운영자용 제어는 `.oraculum/advanced.json`에 둡니다.

@@ -4,11 +4,11 @@
 
 Build `Oraculum`: a `chat-native`, `TypeScript + Node-distributed` system for `Claude Code` and `Codex` that explores multiple patch candidates, judges them with repo-local oracles/invariants, and crowns only survivors. Do not generalize adapters beyond those two yet.
 
-Primary surface: shared host-native `orc` commands across hosts, with `orc consult`, `orc verdict`, and `orc crown` as the preferred shape. After setup, workflow commands belong to host-native `orc`; keep the `oraculum` shell binary for setup, uninstall, MCP serving, debugging, packaging, and local validation only.
+Primary surface: shared host-native `orc` commands across hosts, with `orc consult`, `orc verdict`, and `orc crown` as the preferred shape. After setup, workflow commands belong to host-native `orc`; keep the `oraculum` shell binary for setup, uninstall, diagnostics, MCP serving, packaging, and local validation only.
 
 ## Read Order
 
-`README.md` -> `/docs/` -> `internal/proposal.md` -> `internal/HARNESS_RESEARCH.md` -> `internal/RELEASING.md` when relevant. This file is a pointer, not a spec. Keep durable detail in repo docs. If docs and the working tree diverge, trust code, tests, and artifacts.
+`README.md` -> `/docs/` -> `internal/proposal.md` -> `internal/HARNESS_RESEARCH.md` -> `internal/VALIDATION.md` when touching maintainer test policy -> `internal/RELEASING.md` when release work is relevant. This file is a pointer, not a spec. Keep durable detail in repo docs. If docs and the working tree diverge, trust code, tests, and artifacts.
 
 ## Harness Engineering
 
@@ -38,7 +38,7 @@ Operational bias:
 - Cross-platform support is mandatory: avoid POSIX-only assumptions; prefer Node APIs or explicit `command + args`; canonicalize in-repo persisted/compared paths to portable forward-slash relative paths unless a boundary explicitly requires native absolute paths; keep diagnostics portable; in tests, normalize cwd-derived paths and parse structured logs semantically instead of assuming raw JSON-only stderr/stdout.
 - Prefer mechanized enforcement over prose, small legible abstractions over cleverness, lean context over repetition, and replayable machine-readable outputs over ad-hoc chat state.
 - Use an opinionated workflow; force clarification before coding when intent is vague; build harness surfaces before polish; prefer one product workflow, thin adapters, shared manifests plus host-specific generated skills/rules/plugins, and explicit target-vs-shipped docs over per-host drift or implied future state; do not let future command names masquerade as already-available host features.
-- Pass artifacts forward: `spec -> plan -> implementation -> review -> test -> release`. Before committing or pushing, run `npm run check`, `git diff --check`, and targeted validation for any touched flow.
+- Pass artifacts forward: `spec -> plan -> implementation -> review -> test -> release`. Before committing or pushing, run `npm run check`, `git diff --check`, and targeted validation for any touched flow. Only add `npm run test:slow` or `npm run check:full` when changes hit real runtime boundaries such as adapters, execution, workspaces, exports, consultation-plan execution, evidence harnesses, test infrastructure, or slow suites themselves. Pure domain/schema/rendering/doc work stays on the fast lane unless a touched flow specifically depends on a slow boundary.
 - Review is iterative: a review/audit/polish request implies `review -> fix -> re-review -> validate` unless blocked by a real ambiguity or conflict; do not wait for repeated user prompts. A full code review means reading the current working tree line-by-line; once code changes, do not rely on earlier review conclusions. End only when no material findings remain, the user redirects, or progress is genuinely blocked.
 - Use fresh-context review/QA when independent judgment matters. Parallel workers require isolated workspaces and explicit coordination.
 - Borrow the references' command/hook/state-machine discipline, but adapt it to `candidate -> oracle -> witness -> crowning`, not generic team orchestration. Preferred cadence: `clarify/specify -> plan -> build -> review -> test -> ship/crown -> reflect/learn`.

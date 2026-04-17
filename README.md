@@ -1,5 +1,5 @@
 <p align="right">
-  <strong>English</strong>
+  <strong>English</strong> | <a href="./README.ko.md">한국어</a>
 </p>
 
 # Oraculum
@@ -91,7 +91,7 @@ By default, `consult` and `plan` do not impose an Oraculum-level adapter timeout
 
 Use `orc plan "<task>"` when you want to shape a broad or high-risk consultation first. It persists a reusable `consultation-plan.json` plus a human-readable `consultation-plan.md`, and you can later run `orc consult <plan-artifact>`. `orc draft` remains as a compatibility alias for the same planning lane.
 
-If you want to reopen the latest consultation later, inspect an older one, browse consultation history, or use setup/MCP/debug commands from the shell binary, see [Advanced Usage](./docs/advanced-usage.md).
+If you want to reopen the latest consultation later, inspect an older one, browse consultation history, or use shell-only setup, uninstall, diagnostics, or MCP commands, see [Advanced Usage](./docs/advanced-usage.md).
 
 ## How It Works
 
