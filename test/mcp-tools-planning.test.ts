@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { ConsultProgressEvent } from "../src/services/consult-progress.js";
+
 vi.mock("../src/core/subprocess.js", () => ({
   runSubprocess: vi.fn(),
 }));
@@ -106,6 +108,61 @@ describe("chat-native MCP tools: planning", () => {
       recommendedCandidateId: "cand-01",
       nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-result"],
     });
+  });
+  it("emits consult progress updates in execution order", async () => {
+    const progress: ConsultProgressEvent[] = [];
+    mockedExecuteRun.mockImplementationOnce(async (options) => {
+      await options.onProgress?.({
+        kind: "candidate-running",
+        phase: "execution",
+        candidateId: "cand-01",
+        candidateIndex: 1,
+        candidateCount: 1,
+        message: "Candidate 1/1 (cand-01) running",
+      });
+      await options.onProgress?.({
+        kind: "comparing-finalists",
+        phase: "judging",
+        finalistCount: 1,
+        message: "Comparing 1 surviving candidate",
+      });
+      await options.onProgress?.({
+        kind: "verdict-ready",
+        phase: "completed",
+        message: "Verdict ready",
+      });
+      return {
+        candidateResults: [],
+        manifest: createCompletedManifest(),
+      };
+    });
+
+    await runConsultTool(
+      {
+        cwd: "/tmp/project",
+        taskInput: "tasks/task.md",
+      },
+      {
+        onProgress: (message) => {
+          progress.push(message);
+        },
+      },
+    );
+
+    expect(progress.map((event) => event.kind)).toEqual([
+      "consultation-started",
+      "planning-started",
+      "candidate-running",
+      "comparing-finalists",
+      "verdict-ready",
+    ]);
+    expect(progress.map((event) => event.message)).toEqual([
+      "Starting consultation",
+      "Planning consultation",
+      "Candidate 1/1 (cand-01) running",
+      "Comparing 1 surviving candidate",
+      "Verdict ready",
+    ]);
   });
   it("uses the host runtime as the auto-init quick-start default", async () => {
     process.env.ORACULUM_AGENT_RUNTIME = "codex";
@@ -286,14 +343,32 @@ describe("chat-native MCP tools: planning", () => {
   });
   it("returns blocked preflight consultations without executing candidates", async () => {
     mockedPlanRun.mockResolvedValue(createBlockedPreflightManifest());
+    const progress: ConsultProgressEvent[] = [];
 
-    const response = await runConsultTool({
-      cwd: "/tmp/project",
-      taskInput: "tasks/task.md",
-    });
+    const response = await runConsultTool(
+      {
+        cwd: "/tmp/project",
+        taskInput: "tasks/task.md",
+      },
+      {
+        onProgress: (message) => {
+          progress.push(message);
+        },
+      },
+    );
 
     expect(mockedExecuteRun).not.toHaveBeenCalled();
     expect(mockedWriteLatestRunState).toHaveBeenCalledWith("/tmp/project", "run_blocked");
+    expect(progress.map((event) => event.kind)).toEqual([
+      "consultation-started",
+      "planning-started",
+      "preflight-blocked",
+    ]);
+    expect(progress.map((event) => event.message)).toEqual([
+      "Starting consultation",
+      "Planning consultation",
+      "Preflight blocked: needs-clarification",
+    ]);
     expect(response.status).toMatchObject({
       consultationId: "run_blocked",
       outcomeType: "needs-clarification",

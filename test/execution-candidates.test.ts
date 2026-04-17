@@ -16,6 +16,7 @@ import {
   getSecondOpinionWinnerSelectionPath,
 } from "../src/core/paths.js";
 import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
+import type { ConsultProgressEvent } from "../src/services/consult-progress.js";
 import { executeRun } from "../src/services/execution.js";
 import { initializeProject } from "../src/services/project.js";
 import { planRun, readRunManifest } from "../src/services/runs.js";
@@ -72,11 +73,15 @@ if (out) {
         candidates: 1,
       });
 
+      const progress: ConsultProgressEvent[] = [];
       const executed = await executeRun({
         cwd,
         runId: planned.id,
         codexBinaryPath: fakeCodex,
         timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+        onProgress: (message) => {
+          progress.push(message);
+        },
       });
 
       expect(executed.candidateResults[0]?.status).toBe("completed");
@@ -143,6 +148,38 @@ if (out) {
       await expect(
         readFile(getFinalistComparisonMarkdownPath(cwd, planned.id), "utf8"),
       ).resolves.toContain("Finalist Comparison");
+      expect(progress.map((event) => event.message)).toEqual([
+        "Launching 1 candidate",
+        "Candidate 1/1 (cand-01) running",
+        "Candidate 1/1 (cand-01) ready for checks",
+        "Fast checks starting for 1 candidate",
+        "Fast checks: Candidate 1/1 (cand-01) passed",
+        "Fast checks complete: 1/1 candidate remains",
+        "Impact checks starting for 1 candidate",
+        "Impact checks: Candidate 1/1 (cand-01) passed",
+        "Impact checks complete: 1/1 candidate remains",
+        "Deep checks starting for 1 candidate",
+        "Deep checks: Candidate 1/1 (cand-01) passed",
+        "Deep checks complete: 1/1 candidate remains",
+        "Comparing 1 surviving candidate",
+        "Verdict ready",
+      ]);
+      expect(progress.map((event) => event.kind)).toEqual([
+        "candidates-launching",
+        "candidate-running",
+        "candidate-ready-for-checks",
+        "round-started",
+        "candidate-passed-round",
+        "round-completed",
+        "round-started",
+        "candidate-passed-round",
+        "round-completed",
+        "round-started",
+        "candidate-passed-round",
+        "round-completed",
+        "comparing-finalists",
+        "verdict-ready",
+      ]);
     },
     EXECUTION_TEST_TIMEOUT_MS,
   );
@@ -224,16 +261,22 @@ if (prompt.includes("You are selecting the best Oraculum finalist.")) {
         candidates: 1,
       });
 
+      const progress: ConsultProgressEvent[] = [];
       const executed = await executeRun({
         cwd,
         runId: planned.id,
         codexBinaryPath: fakeCodex,
         claudeBinaryPath: fakeClaude,
         timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+        onProgress: (event) => {
+          progress.push(event);
+        },
       });
 
       expect(executed.manifest.recommendedWinner?.candidateId).toBe("cand-01");
       expect(executed.manifest.recommendedWinner?.source).toBe("llm-judge");
+      expect(progress.map((event) => event.kind)).toContain("second-opinion-requested");
+      expect(progress.map((event) => event.kind)).toContain("second-opinion-recorded");
       await expect(
         readFile(getSecondOpinionWinnerSelectionPath(cwd, planned.id), "utf8"),
       ).resolves.toContain('"agreement": "disagrees-select-vs-abstain"');
