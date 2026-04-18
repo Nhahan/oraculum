@@ -36,6 +36,10 @@ export const packagedHostArtifactLayout: PackagedHostArtifactLayout =
             purpose: "Generated Claude command entry for verdict.",
           },
           {
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/commands/verdict-archive.md`,
+            purpose: "Generated Claude command entry for verdict archive.",
+          },
+          {
             path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/commands/crown.md`,
             purpose: "Generated Claude command entry for crown.",
           },
@@ -68,6 +72,10 @@ export const packagedHostArtifactLayout: PackagedHostArtifactLayout =
             purpose: "Generated Claude exact-prefix verdict skill.",
           },
           {
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/.claude-plugin/skills/verdict-archive/SKILL.md`,
+            purpose: "Generated Claude exact-prefix verdict archive skill.",
+          },
+          {
             path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/.claude-plugin/skills/crown/SKILL.md`,
             purpose: "Generated Claude exact-prefix crown skill.",
           },
@@ -94,31 +102,31 @@ export const packagedHostArtifactLayout: PackagedHostArtifactLayout =
             purpose: "Generated Codex exact-prefix routing rules.",
           },
           {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-consult/SKILL.md`,
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/route-consult/SKILL.md`,
             purpose: "Generated Codex exact-prefix consult skill.",
           },
           {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-plan/SKILL.md`,
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/route-plan/SKILL.md`,
             purpose: "Generated Codex exact-prefix plan skill.",
           },
           {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-verdict/SKILL.md`,
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/route-verdict/SKILL.md`,
             purpose: "Generated Codex exact-prefix verdict skill.",
           },
           {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-verdict-archive/SKILL.md`,
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/route-verdict-archive/SKILL.md`,
             purpose: "Generated Codex exact-prefix verdict archive skill.",
           },
           {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-crown/SKILL.md`,
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/route-crown/SKILL.md`,
             purpose: "Generated Codex exact-prefix crown skill.",
           },
           {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-draft/SKILL.md`,
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/route-draft/SKILL.md`,
             purpose: "Generated Codex exact-prefix draft skill.",
           },
           {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/oraculum-init/SKILL.md`,
+            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/route-init/SKILL.md`,
             purpose: "Generated Codex exact-prefix init skill.",
           },
         ],

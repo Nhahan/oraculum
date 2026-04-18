@@ -7,7 +7,7 @@ export const verdictToolRequestSchema = z.object({
 
 export const verdictArchiveToolRequestSchema = z.object({
   cwd: z.string().min(1),
-  count: z.number().int().min(1).optional(),
+  count: z.coerce.number().int().min(1).optional(),
 });
 
 export type VerdictToolRequest = z.infer<typeof verdictToolRequestSchema>;

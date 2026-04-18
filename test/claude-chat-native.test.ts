@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 import { APP_VERSION } from "../src/core/constants.js";
@@ -69,6 +69,14 @@ async function createFakeClaudeSetupFixture(initialState?: Partial<FakeClaudeSta
   await mkdir(join(packagedRoot, ".claude-plugin"), { recursive: true });
   await writeFile(join(packagedRoot, ".claude-plugin", "marketplace.json"), "{}\n", "utf8");
   await writeFile(join(packagedRoot, ".claude-plugin", "plugin.json"), "{}\n", "utf8");
+  for (const command of buildClaudeCommandFiles(oraculumCommandManifest)) {
+    await mkdir(dirname(join(packagedRoot, command.path)), { recursive: true });
+    await writeFile(join(packagedRoot, command.path), command.content, "utf8");
+  }
+  for (const skill of buildClaudeSkillFiles(oraculumCommandManifest)) {
+    await mkdir(dirname(join(packagedRoot, skill.path)), { recursive: true });
+    await writeFile(join(packagedRoot, skill.path), skill.content, "utf8");
+  }
 
   const state: FakeClaudeState = {
     marketplaces: initialState?.marketplaces ?? [],
@@ -117,26 +125,32 @@ describe("Claude Code chat-native packaging", () => {
 
     expect(marketplace.name).toBe("oraculum");
     expect(marketplace.plugins[0]?.source).toBe("./.claude-plugin");
-    expect(plugin.name).toBe("oraculum");
+    expect(plugin.name).toBe("orc");
     expect(plugin.skills).toBe("./skills/");
-    expect(mcp.mcpServers).toHaveProperty("oraculum");
+    expect(mcp.mcpServers).toHaveProperty("orc");
     expect(
-      (mcp.mcpServers as Record<string, { env?: Record<string, string> }>).oraculum?.env
+      (mcp.mcpServers as Record<string, { env?: Record<string, string> }>).orc?.env
         ?.ORACULUM_AGENT_RUNTIME,
     ).toBe("claude-code");
-    expect((mcp.mcpServers as Record<string, { timeout?: number }>).oraculum?.timeout).toBe(1800);
+    expect((mcp.mcpServers as Record<string, { timeout?: number }>).orc?.timeout).toBe(1800);
 
     expect(commands.map((file) => file.path)).toEqual([
       "commands/consult.md",
       "commands/verdict.md",
+      "commands/verdict-archive.md",
       "commands/crown.md",
       "commands/plan.md",
       "commands/draft.md",
       "commands/init.md",
     ]);
+    const consultCommand = commands.find((file) => file.path === "commands/consult.md");
+    expect(consultCommand?.content).toContain("MCP only.");
+    expect(consultCommand?.content).toContain("Tool: `oraculum_consult`");
+    expect(consultCommand?.content).not.toContain("Read the file at");
     expect(skills.map((file) => file.path)).toEqual([
       ".claude-plugin/skills/consult/SKILL.md",
       ".claude-plugin/skills/verdict/SKILL.md",
+      ".claude-plugin/skills/verdict-archive/SKILL.md",
       ".claude-plugin/skills/crown/SKILL.md",
       ".claude-plugin/skills/plan/SKILL.md",
       ".claude-plugin/skills/draft/SKILL.md",
@@ -151,43 +165,42 @@ describe("Claude Code chat-native packaging", () => {
 
     const crownSkill = skills.find((file) => file.path.includes("/crown/"));
     expect(crownSkill?.content).toContain("mcp_tool: oraculum_crown");
+    expect(crownSkill?.content).toContain("name: crown");
+    expect(crownSkill?.content).toContain('description: "orc crown"');
     expect(crownSkill?.content).toContain('materializationName: "$1"');
+    expect(crownSkill?.content).toContain("MCP only.");
+    expect(crownSkill?.content).toContain("Before MCP: no user text, no file reads, no shell.");
     expect(crownSkill?.content).toContain(
-      "- The first argument is required only when materializing onto a Git branch.",
+      "After MCP: return only the user-relevant result or failure.",
     );
+    expect(crownSkill?.content).toContain("Tool: `oraculum_crown`.");
     expect(crownSkill?.content).toContain(
-      "- The MCP request also accepts `materializationName` as the canonical alias for the first crowning argument.",
-    );
-    expect(crownSkill?.content).toContain(
-      "- It crowns the recommended result from the latest eligible consultation and materializes it.",
-    );
-    expect(crownSkill?.content).toContain(
-      "do not re-apply the materialized result or run extra Bash, Edit, or Write steps",
-    );
-    expect(crownSkill?.content).toContain("`orc crown` for non-Git projects");
-    expect(crownSkill?.content).toContain(
-      "After the MCP tool succeeds, report only the verified materialization result and stop",
+      "Args: cwd=current-directory; optional first positional=materializationName.",
     );
 
     const consultSkill = skills.find((file) => file.path.includes("/consult/"));
     const planSkill = skills.find((file) => file.path.includes("/plan/"));
+    const archiveSkill = skills.find((file) => file.path.includes("/verdict-archive/"));
     expect(consultSkill?.content).toContain('taskInput: "$ARGUMENTS"');
     expect(consultSkill?.content).toContain('agent: "claude-code"');
-    expect(consultSkill?.content).toContain("Call the MCP tool immediately with no preamble.");
-    expect(consultSkill?.content).toContain("relay only the user-relevant result and stop");
+    expect(consultSkill?.content).toContain("name: consult");
+    expect(consultSkill?.content).toContain('description: "orc consult"');
+    expect(consultSkill?.content).toContain("MCP only.");
+    expect(consultSkill?.content).toContain("Before MCP: no user text, no file reads, no shell.");
     expect(consultSkill?.content).toContain(
-      "Do not mention AGENTS.md, skills, MCP, routing, or internal tool calls.",
+      "After MCP: return only the user-relevant result or failure.",
     );
+    expect(consultSkill?.content).toContain("Tool: `oraculum_consult`.");
     expect(consultSkill?.content).toContain(
-      "Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command",
+      "Args: cwd=current-directory; taskInput=$ARGUMENTS; agent=claude-code.",
     );
-    expect(consultSkill?.content).toContain(
-      "Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`",
-    );
-    expect(planSkill?.content).toContain("`orc plan` is the optional planning lane.");
-    expect(planSkill?.content).toContain("Call the MCP tool immediately with no preamble.");
-    expect(planSkill?.content).toContain(
-      "Use `orc consult` later if the user wants to execute the planned consultation.",
+    expect(planSkill?.content).toContain('description: "orc plan"');
+    expect(planSkill?.content).toContain("Tool: `oraculum_plan`.");
+    expect(archiveSkill?.content).toContain('description: "orc verdict archive"');
+    expect(archiveSkill?.content).toContain('count: "$1"');
+    expect(archiveSkill?.content).toContain("Tool: `oraculum_verdict_archive`.");
+    expect(archiveSkill?.content).toContain(
+      "Args: cwd=current-directory; optional first positional=count.",
     );
   });
 
@@ -206,6 +219,41 @@ describe("Claude Code chat-native packaging", () => {
 });
 
 describe("Claude Code setup", () => {
+  it(
+    "fails before touching host wiring when packaged Claude artifacts are incomplete",
+    async () => {
+      const root = await tempRootHarness.createTempRoot();
+      const homeDir = join(root, "home");
+      const packagedRoot = join(root, "packaged-claude");
+      await mkdir(join(packagedRoot, ".claude-plugin"), { recursive: true });
+      await writeFile(join(packagedRoot, ".claude-plugin", "plugin.json"), "{}\n", "utf8");
+
+      await expect(
+        setupClaudeCodeHost({
+          homeDir,
+          packagedRoot,
+        }),
+      ).rejects.toThrow("Packaged Claude Code host artifacts");
+
+      await expect(readFile(join(homeDir, ".claude", "mcp.json"), "utf8")).rejects.toThrow();
+      await expect(
+        readFile(
+          join(
+            homeDir,
+            ".oraculum",
+            "chat-native",
+            "claude-code",
+            APP_VERSION,
+            "commands",
+            "consult.md",
+          ),
+          "utf8",
+        ),
+      ).rejects.toThrow();
+    },
+    HOST_SETUP_TEST_TIMEOUT_MS,
+  );
+
   it(
     "merges MCP config and installs the packaged plugin through the Claude CLI",
     async () => {
@@ -247,17 +295,17 @@ describe("Claude Code setup", () => {
         plugins: Array<{ id: string; name?: string; version?: string }>;
       };
 
-      expect(mcpConfig.mcpServers.oraculum?.command).toBe(process.execPath);
-      expect(mcpConfig.mcpServers.oraculum?.args.at(-2)).toBe("mcp");
-      expect(mcpConfig.mcpServers.oraculum?.args.at(-1)).toBe("serve");
-      expect(mcpConfig.mcpServers.oraculum?.env?.ORACULUM_AGENT_RUNTIME).toBe("claude-code");
-      expect(mcpConfig.mcpServers.oraculum?.timeout).toBe(1800);
-      expect(effectivePluginMcpConfig.mcpServers.oraculum?.args.at(-2)).toBe("mcp");
-      expect(effectivePluginMcpConfig.mcpServers.oraculum?.args.at(-1)).toBe("serve");
-      expect(effectivePluginMcpConfig.mcpServers.oraculum?.env?.ORACULUM_AGENT_RUNTIME).toBe(
+      expect(mcpConfig.mcpServers.orc?.command).toBe(process.execPath);
+      expect(mcpConfig.mcpServers.orc?.args.at(-2)).toBe("mcp");
+      expect(mcpConfig.mcpServers.orc?.args.at(-1)).toBe("serve");
+      expect(mcpConfig.mcpServers.orc?.env?.ORACULUM_AGENT_RUNTIME).toBe("claude-code");
+      expect(mcpConfig.mcpServers.orc?.timeout).toBe(1800);
+      expect(effectivePluginMcpConfig.mcpServers.orc?.args.at(-2)).toBe("mcp");
+      expect(effectivePluginMcpConfig.mcpServers.orc?.args.at(-1)).toBe("serve");
+      expect(effectivePluginMcpConfig.mcpServers.orc?.env?.ORACULUM_AGENT_RUNTIME).toBe(
         "claude-code",
       );
-      expect(effectivePluginMcpConfig.mcpServers.oraculum?.timeout).toBe(1800);
+      expect(effectivePluginMcpConfig.mcpServers.orc?.timeout).toBe(1800);
       expect(result.installRoot).toContain(".oraculum");
       expect(state.marketplaces).toEqual([
         {
@@ -269,17 +317,23 @@ describe("Claude Code setup", () => {
       ]);
       expect(normalizePluginInstallPaths(state.plugins)).toEqual([
         {
-          id: "oraculum@oraculum",
-          installPath: `/fake-cache/oraculum/oraculum/${APP_VERSION}`,
-          name: "oraculum",
+          id: "orc@oraculum",
+          installPath: `/fake-cache/oraculum/orc/${APP_VERSION}`,
+          name: "orc",
           version: APP_VERSION,
         },
       ]);
       expect(state.ops).toEqual([
         "plugin validate",
         `marketplace add ${result.installRoot}`,
-        "plugin install oraculum",
+        "plugin install orc",
       ]);
+      await expect(
+        readFile(join(result.pluginRoot, "skills", "consult", "SKILL.md"), "utf8"),
+      ).resolves.toContain("Tool: `oraculum_consult`.");
+      await expect(
+        readFile(join(result.pluginRoot, "skills", "consult", "SKILL.md"), "utf8"),
+      ).resolves.toContain("Before MCP: no user text, no file reads, no shell.");
       expect(result.pluginInstalled).toBe(true);
     },
     HOST_SETUP_TEST_TIMEOUT_MS,
@@ -308,7 +362,7 @@ describe("Claude Code setup", () => {
         plugins: [
           {
             id: "oraculum@oraculum",
-            installPath: "/fake-cache/oraculum/oraculum/0.1.0-beta.5",
+            installPath: "/fake-cache/oraculum/orc/0.1.0-beta.5",
             name: "oraculum",
             version: "0.1.0-beta.5",
           },
@@ -339,9 +393,9 @@ describe("Claude Code setup", () => {
       ]);
       expect(normalizePluginInstallPaths(state.plugins)).toEqual([
         {
-          id: "oraculum@oraculum",
-          installPath: `/fake-cache/oraculum/oraculum/${APP_VERSION}`,
-          name: "oraculum",
+          id: "orc@oraculum",
+          installPath: `/fake-cache/oraculum/orc/${APP_VERSION}`,
+          name: "orc",
           version: APP_VERSION,
         },
       ]);
@@ -350,7 +404,7 @@ describe("Claude Code setup", () => {
         "marketplace remove oraculum",
         `marketplace add ${result.installRoot}`,
         "plugin uninstall oraculum",
-        "plugin install oraculum",
+        "plugin install orc",
       ]);
     },
     HOST_SETUP_TEST_TIMEOUT_MS,
@@ -360,6 +414,34 @@ describe("Claude Code setup", () => {
     "keeps an already aligned Claude marketplace and plugin install untouched",
     async () => {
       const { cliPath, homeDir, packagedRoot, statePath } = await createFakeClaudeSetupFixture();
+      const installPath = join(
+        homeDir,
+        ".claude",
+        "plugins",
+        "cache",
+        "oraculum",
+        "orc",
+        APP_VERSION,
+      );
+      await mkdir(installPath, { recursive: true });
+      await writeFile(
+        join(installPath, "plugin.json"),
+        `${JSON.stringify({ name: "orc", version: APP_VERSION }, null, 2)}\n`,
+        "utf8",
+      );
+      await writeFile(join(installPath, ".mcp.json"), "{}\n", "utf8");
+      for (const dirName of [
+        "consult",
+        "plan",
+        "verdict",
+        "verdict-archive",
+        "crown",
+        "draft",
+        "init",
+      ]) {
+        await mkdir(join(installPath, "skills", dirName), { recursive: true });
+        await writeFile(join(installPath, "skills", dirName, "SKILL.md"), `${dirName}\n`, "utf8");
+      }
       const alignedState: FakeClaudeState = {
         marketplaces: [
           {
@@ -372,9 +454,9 @@ describe("Claude Code setup", () => {
         ops: [],
         plugins: [
           {
-            id: "oraculum@oraculum",
-            installPath: `/fake-cache/oraculum/oraculum/${APP_VERSION}`,
-            name: "oraculum",
+            id: "orc@oraculum",
+            installPath,
+            name: "orc",
             version: APP_VERSION,
           },
         ],
@@ -394,6 +476,122 @@ describe("Claude Code setup", () => {
 
       const state = JSON.parse(await readFile(statePath, "utf8")) as FakeClaudeState;
       expect(state.ops).toEqual(["plugin validate"]);
+    },
+    HOST_SETUP_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "reinstalls a same-version Claude plugin when the cached install is missing required artifacts",
+    async () => {
+      const { cliPath, homeDir, packagedRoot, statePath } = await createFakeClaudeSetupFixture();
+      const installPath = join(
+        homeDir,
+        ".claude",
+        "plugins",
+        "cache",
+        "oraculum",
+        "orc",
+        APP_VERSION,
+      );
+      await mkdir(installPath, { recursive: true });
+      await writeFile(
+        statePath,
+        JSON.stringify({
+          marketplaces: [
+            {
+              installLocation: join(
+                homeDir,
+                ".oraculum",
+                "chat-native",
+                "claude-code",
+                APP_VERSION,
+              ),
+              name: "oraculum",
+              path: join(homeDir, ".oraculum", "chat-native", "claude-code", APP_VERSION),
+              source: "directory",
+            },
+          ],
+          ops: [],
+          plugins: [
+            {
+              id: "orc@oraculum",
+              installPath,
+              name: "orc",
+              version: APP_VERSION,
+            },
+          ],
+        }),
+        "utf8",
+      );
+      await writeFile(join(installPath, "plugin.json"), "{}\n", "utf8");
+
+      await setupClaudeCodeHost({
+        claudeBinaryPath: process.execPath,
+        claudeArgs: [cliPath],
+        env: {
+          ORACULUM_FAKE_CLAUDE_STATE: statePath,
+          ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
+        },
+        homeDir,
+        packagedRoot,
+      });
+
+      const state = JSON.parse(await readFile(statePath, "utf8")) as FakeClaudeState;
+      expect(state.ops).toEqual(["plugin validate", "plugin uninstall orc", "plugin install orc"]);
+      await expect(readFile(join(installPath, "plugin.json"), "utf8")).rejects.toThrow();
+    },
+    HOST_SETUP_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "replaces stale same-version packaged Claude artifacts during setup",
+    async () => {
+      const { cliPath, homeDir, packagedRoot, statePath } = await createFakeClaudeSetupFixture();
+      const staleCommandPath = join(
+        homeDir,
+        ".oraculum",
+        "chat-native",
+        "claude-code",
+        APP_VERSION,
+        "commands",
+        "legacy.md",
+      );
+      const staleSkillPath = join(
+        homeDir,
+        ".oraculum",
+        "chat-native",
+        "claude-code",
+        APP_VERSION,
+        ".claude-plugin",
+        "skills",
+        "legacy",
+        "SKILL.md",
+      );
+
+      await mkdir(dirname(staleCommandPath), { recursive: true });
+      await writeFile(staleCommandPath, "stale\n", "utf8");
+      await mkdir(dirname(staleSkillPath), { recursive: true });
+      await writeFile(staleSkillPath, "stale\n", "utf8");
+
+      const result = await setupClaudeCodeHost({
+        claudeBinaryPath: process.execPath,
+        claudeArgs: [cliPath],
+        env: {
+          ORACULUM_FAKE_CLAUDE_STATE: statePath,
+          ORACULUM_FAKE_PLUGIN_VERSION: APP_VERSION,
+        },
+        homeDir,
+        packagedRoot,
+      });
+
+      await expect(readFile(staleCommandPath, "utf8")).rejects.toThrow();
+      await expect(readFile(staleSkillPath, "utf8")).rejects.toThrow();
+      await expect(
+        readFile(join(result.installRoot, "commands", "consult.md"), "utf8"),
+      ).resolves.toContain("Tool: `oraculum_consult`");
+      await expect(
+        readFile(join(result.pluginRoot, "skills", "consult", "SKILL.md"), "utf8"),
+      ).resolves.toContain("Tool: `oraculum_consult`.");
     },
     HOST_SETUP_TEST_TIMEOUT_MS,
   );
@@ -447,7 +645,7 @@ describe("Claude Code setup", () => {
       expect(state.marketplaces).toEqual([]);
       expect(state.plugins).toEqual([]);
       expect(state.ops.at(-2)).toBe("marketplace remove oraculum");
-      expect(state.ops.at(-1)).toBe("plugin uninstall oraculum");
+      expect(state.ops.at(-1)).toBe("plugin uninstall orc");
       expect(mcpConfig.mcpServers).toEqual({
         other: { command: "echo", args: ["ok"] },
       });

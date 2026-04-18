@@ -7,6 +7,7 @@ import {
   crownMaterializationSchema,
   crownToolRequestSchema,
   mcpToolIdSchema,
+  verdictArchiveToolRequestSchema,
 } from "../src/domain/chat-native.js";
 import {
   getMcpToolSchemas,
@@ -109,6 +110,15 @@ describe("chat-native surface", () => {
     expect(materialization.materializationMode).toBe("branch");
     expect(materialization.branchName).toBe("fix/session-loss");
     expect(materialization.materializationName).toBe("fix/session-loss");
+  });
+
+  it("coerces verdict archive count arguments from exact-prefix host surfaces", () => {
+    const request = verdictArchiveToolRequestSchema.parse({
+      cwd: "/tmp/project",
+      count: "20",
+    });
+
+    expect(request.count).toBe(20);
   });
 
   it("keeps one shared command vocabulary on the orc prefix", () => {

@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import type { CommandManifestEntry } from "../../domain/chat-native.js";
+import { getOrcRouteAlias } from "../chat-native/command-manifest.js";
 import { CODEX_RULE_FILENAME, CODEX_SETUP_GUIDANCE, toCodexSkillDir } from "./shared.js";
 
 export function getPackagedCodexRoot(): string {
@@ -39,28 +40,37 @@ export function getExpectedCodexRuleFileName(): string {
 
 function renderCodexRules(manifest: readonly CommandManifestEntry[]): string {
   const rows = manifest
-    .map(
-      (entry) =>
-        `| \`orc ${entry.path.join(" ")}\` | \`${toCodexSkillDir(entry.id)}\` | \`${entry.mcpTool}\` |`,
-    )
+    .map((entry) => `| \`orc ${entry.path.join(" ")}\` | \`${entry.mcpTool}\` |`)
     .join("\n");
 
   return [
     "# Oraculum for Codex",
     "",
-    "Use Oraculum when the user is asking to run Oraculum consultations, reopen verdicts, browse the consultation archive, or crown a recommended result.",
+    "Handle exact `orc ...` commands through Oraculum MCP tools.",
     "",
-    "## Critical: Exact-Prefix Routing",
+    "## Exact-Prefix Dispatch",
     "",
-    "When the user types an exact `orc <command>` command, you MUST NOT interpret it as natural language and you MUST NOT do the work directly.",
-    "Immediately use the matching installed Oraculum skill and route to the mapped MCP tool.",
-    "Parse command arguments shell-style before calling the MCP tool. Do not pass option flags through as raw task text.",
-    "Do not send a preamble before the MCP tool call.",
-    "Do not mention AGENTS.md, skills, MCP, routing, internal tool calls, or that you are about to call Oraculum.",
+    "For an exact `orc <command>` input:",
+    "- parse arguments shell-style",
+    "- call the mapped MCP tool immediately",
+    "- no preamble, acknowledgement, or routing narration",
+    "- no repo reads, `git status`, README, AGENTS, or skill reads first",
+    "- never run `orc ...` in the shell",
+    "- if the MCP tool has not been called yet, do not send a user message",
     "",
-    "| User Input | Skill | MCP Tool |",
-    "| --- | --- | --- |",
+    "| User Input | MCP Tool |",
+    "| --- | --- |",
     rows,
+    "",
+    "### Argument Mapping",
+    "",
+    "- `orc consult <taskInput> [--agent <claude-code|codex>] [--candidates <n>] [--timeout-ms <ms>]` -> call `oraculum_consult` with `cwd`, `taskInput`, optional `agent`, `candidates`, `timeoutMs`.",
+    "- `orc plan <taskInput> [--agent <claude-code|codex>] [--candidates <n>] [--timeout-ms <ms>]` -> call `oraculum_plan` with the same mapping.",
+    "- `orc draft <taskInput> [--agent <claude-code|codex>] [--candidates <n>] [--timeout-ms <ms>]` -> call `oraculum_draft` with the same mapping.",
+    "- `orc verdict [consultationId]` -> call `oraculum_verdict` with `cwd` and optional `consultationId`.",
+    "- `orc verdict archive [count]` -> call `oraculum_verdict_archive` with `cwd` and optional `count`.",
+    "- `orc crown [materializationName]` -> call `oraculum_crown` with `cwd` and optional `materializationName`.",
+    "- `orc init [--force]` -> call `oraculum_init` with `cwd` and optional `force=true`.",
     "",
     "If the Oraculum MCP tool is unavailable, respond with explicit setup guidance instead of improvising:",
     "",
@@ -72,96 +82,28 @@ function renderCodexRules(manifest: readonly CommandManifestEntry[]): string {
 }
 
 function renderCodexSkill(entry: CommandManifestEntry): string {
-  const postToolInstruction =
-    entry.id === "consult"
-      ? "Call the MCP tool immediately with no preamble. After the MCP tool succeeds, report only the user-relevant result concisely and stop. Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command even if the result suggests a next step; wait for explicit user instruction. Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`; the user must send a separate follow-up command after this tool call finishes. If the tool fails or times out, report only the user-relevant failure and next step; do not mention AGENTS.md, skills, MCP, routing, or internal tool calls."
-      : "Call the MCP tool immediately with no preamble. After the MCP tool succeeds, report only the user-relevant result concisely and stop. Do not run Bash, Edit, Write, or ad-hoc follow-up work unless the user explicitly asks. If the tool fails or times out, report only the user-relevant failure and next step; do not mention AGENTS.md, skills, MCP, routing, or internal tool calls.";
+  const argsLine =
+    entry.id === "consult" || entry.id === "plan" || entry.id === "draft"
+      ? "Args: cwd=current-directory; taskInput=first positional after known flags; optional --agent, --candidates, --timeout-ms."
+      : entry.id === "verdict"
+        ? "Args: cwd=current-directory; optional first positional=consultationId."
+        : entry.id === "verdict-archive"
+          ? "Args: cwd=current-directory; optional first positional=count."
+          : entry.id === "crown"
+            ? "Args: cwd=current-directory; optional first positional=materializationName."
+            : "Args: cwd=current-directory; optional --force => force=true.";
 
   return [
     "---",
-    `name: ${toCodexSkillDir(entry.id)}`,
-    `description: Exact-prefix Oraculum ${entry.id} routing for Codex.`,
+    `name: ${entry.id}`,
+    `description: Exact \`orc ${entry.path.join(" ")}\` handler.`,
     "---",
     "",
-    `# Oraculum ${entry.id}`,
-    "",
-    `When the user typed an exact \`orc ${entry.path.join(" ")}\` command, do not treat it as natural language and do not perform the task yourself.`,
-    "",
-    "## Required Action",
-    "",
-    `Call the MCP tool \`${entry.mcpTool}\`.`,
-    "",
-    postToolInstruction,
-    "",
-    "## Argument Mapping",
-    "",
-    ...buildCodexSkillArgumentLines(entry),
-    "",
-    "## Setup Failure",
-    "",
-    `If the MCP tool is unavailable, tell the user exactly: ${CODEX_SETUP_GUIDANCE}`,
-    "",
-    "## Usage",
-    "",
-    "```",
-    ...entry.examples,
-    "```",
+    "MCP only.",
+    `Tool: ${entry.mcpTool}`,
+    argsLine,
+    "Before MCP: no user text, no repo reads, no shell.",
+    "After MCP: return only the user-relevant result or failure.",
     "",
   ].join("\n");
-}
-
-function buildCodexSkillArgumentLines(entry: CommandManifestEntry): string[] {
-  const shared = ["- `cwd`: the current working directory where the user invoked the command"];
-
-  switch (entry.id) {
-    case "consult":
-      return [
-        ...shared,
-        "- `taskInput`: the first positional argument after removing recognized flags from the command",
-        "- optional `--agent <claude-code|codex>`; default to `codex` when omitted",
-        "- optional `--candidates <n>`",
-        "- optional `--timeout-ms <ms>`",
-        '- Example: `orc consult tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
-        '- Example: `orc consult tasks/fix.md --agent claude-code --candidates 1` -> `{ taskInput: "tasks/fix.md", agent: "claude-code", candidates: 1 }`',
-      ];
-    case "plan":
-      return [
-        ...shared,
-        "- `taskInput`: the first positional argument after removing recognized flags from the command",
-        "- optional `--agent <claude-code|codex>`; default to `codex` when omitted",
-        "- optional `--candidates <n>`",
-        "- optional `--timeout-ms <ms>`",
-        '- Example: `orc plan tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
-        '- Example: `orc plan tasks/fix.md --agent claude-code --candidates 2` -> `{ taskInput: "tasks/fix.md", agent: "claude-code", candidates: 2 }`',
-      ];
-    case "draft":
-      return [
-        ...shared,
-        "- `taskInput`: the first positional argument after removing recognized flags from the command",
-        "- optional `--agent <claude-code|codex>`; default to `codex` when omitted",
-        "- optional `--candidates <n>`",
-        "- optional `--timeout-ms <ms>`",
-        '- Example: `orc draft tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
-        '- Example: `orc draft tasks/fix.md --agent codex --candidates 2` -> `{ taskInput: "tasks/fix.md", agent: "codex", candidates: 2 }`',
-      ];
-    case "verdict":
-      return [...shared, "- optional `consultationId`: the first positional argument if present"];
-    case "verdict-archive":
-      return [...shared, "- optional `count`: the first positional argument if present"];
-    case "crown":
-      return [
-        ...shared,
-        "- optional `materializationName`: the first positional argument after `orc crown` when present; required only for branch materialization",
-        "- omit `materializationName` when the user typed bare `orc crown`",
-        "- compatibility note: the MCP request still accepts legacy `branchName`",
-        "- in non-Git workspace-sync mode, Oraculum treats a provided `materializationName` value as a materialization label rather than a Git branch",
-        "- the chat-native crowning path uses the recommended result automatically",
-        '- Example: `orc crown fix/greet` -> `{ materializationName: "fix/greet" }`',
-        "- Example: `orc crown` -> no materializationName field",
-      ];
-    case "init":
-      return [...shared, "- optional `force`: parse the presence of `--force` as `true`"];
-    default:
-      return shared;
-  }
 }

@@ -6,7 +6,15 @@ import { APP_VERSION } from "../../core/constants.js";
 import { getAdvancedConfigPath, getConfigPath, resolveProjectRoot } from "../../core/paths.js";
 import type { SetupStatusToolResponse } from "../../domain/chat-native.js";
 import { setupStatusToolResponseSchema } from "../../domain/chat-native.js";
+import {
+  getExpectedClaudeCommandFiles,
+  getExpectedClaudeSkillDirs,
+} from "../claude-chat-native.js";
 import { getExpectedCodexRuleFileName, getExpectedCodexSkillDirs } from "../codex-chat-native.js";
+
+const MANAGED_CLAUDE_PLUGIN_KEYS = ["orc@oraculum", "oraculum@oraculum"] as const;
+const MANAGED_CLAUDE_PLUGIN_DIRS = ["orc", "@orc", "oraculum", "@oraculum"] as const;
+const MANAGED_MCP_SERVER_IDS = ["orc", "oraculum"] as const;
 
 export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusToolResponse {
   const projectRoot = resolveProjectRoot(cwd);
@@ -14,11 +22,14 @@ export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusToolRespo
   const advancedConfigPath = getAdvancedConfigPath(projectRoot);
   const claudeMcpPath = join(homedir(), ".claude", "mcp.json");
   const claudePluginsDir = join(homedir(), ".claude", "plugins");
+  const claudeInstallRoot = join(homedir(), ".oraculum", "chat-native", "claude-code", APP_VERSION);
   const codexConfigPath = join(homedir(), ".codex", "config.toml");
   const codexSkillsDir = join(homedir(), ".codex", "skills");
   const codexRulesDir = join(homedir(), ".codex", "rules");
-  const claudeRegistered = hasMcpServer(claudeMcpPath, "oraculum");
-  const claudeArtifactsInstalled = hasClaudePluginInstalled();
+  const claudeRegistered = MANAGED_MCP_SERVER_IDS.some((serverId) =>
+    hasMcpServer(claudeMcpPath, serverId),
+  );
+  const claudeArtifactsInstalled = hasClaudePluginInstalled(claudeInstallRoot);
   const codexRegistered = hasCodexMcpServer(codexConfigPath);
   const codexArtifactsInstalled = hasCodexArtifactsInstalled(codexSkillsDir, codexRulesDir);
   const projectInitialized = existsSync(configPath);
@@ -32,6 +43,7 @@ export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusToolRespo
       notes: [
         `Expected MCP config path: ${toPortableDisplayPath(claudeMcpPath)}`,
         `Expected Claude plugin cache root: ${toPortableDisplayPath(claudePluginsDir)}`,
+        `Expected Claude install root: ${toPortableDisplayPath(claudeInstallRoot)}`,
         "Run `oraculum setup --runtime claude-code` to register the MCP server and install the Oraculum plugin.",
       ],
     }),
@@ -106,7 +118,11 @@ export function hasClaudePluginArtifactsInstalled(pluginsDir: string): boolean {
     return false;
   }
 
-  if (existsSync(join(pluginsDir, "oraculum")) || existsSync(join(pluginsDir, "@oraculum"))) {
+  if (
+    MANAGED_CLAUDE_PLUGIN_DIRS.some((dirName) =>
+      hasCurrentClaudePluginDir(join(pluginsDir, dirName)),
+    )
+  ) {
     return true;
   }
 
@@ -119,16 +135,45 @@ export function hasClaudePluginArtifactsInstalled(pluginsDir: string): boolean {
     const parsed = JSON.parse(readFileSync(installedPluginsPath, "utf8")) as {
       plugins?: Record<string, Array<{ installPath?: unknown; version?: unknown }>>;
     };
-    const installed = parsed.plugins?.["oraculum@oraculum"];
-    if (!Array.isArray(installed)) {
+    return MANAGED_CLAUDE_PLUGIN_KEYS.some((pluginKey) => {
+      const installed = parsed.plugins?.[pluginKey];
+      if (!Array.isArray(installed)) {
+        return false;
+      }
+
+      return installed.some(
+        (entry) =>
+          entry.version === APP_VERSION &&
+          typeof entry.installPath === "string" &&
+          hasCurrentClaudePluginArtifacts(join(entry.installPath)),
+      );
+    });
+  } catch {
+    return false;
+  }
+}
+
+function hasCurrentClaudePluginDir(path: string): boolean {
+  return hasCurrentClaudePluginArtifacts(path);
+}
+
+function hasCurrentClaudePluginArtifacts(path: string): boolean {
+  const pluginJsonPath = join(path, "plugin.json");
+  const mcpConfigPath = join(path, ".mcp.json");
+  if (!existsSync(pluginJsonPath) || !existsSync(mcpConfigPath)) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(pluginJsonPath, "utf8")) as {
+      version?: unknown;
+    };
+    if (parsed.version !== APP_VERSION) {
       return false;
     }
 
-    return installed.some(
-      (entry) =>
-        entry.version === APP_VERSION &&
-        typeof entry.installPath === "string" &&
-        existsSync(join(entry.installPath, "plugin.json")),
+    return getExpectedClaudeSkillDirs().every((dirName) =>
+      existsSync(join(path, "skills", dirName, "SKILL.md")),
     );
   } catch {
     return false;
@@ -174,8 +219,15 @@ function hasMcpServer(path: string, serverId: string): boolean {
   }
 }
 
-function hasClaudePluginInstalled(): boolean {
-  return hasClaudePluginArtifactsInstalled(join(homedir(), ".claude", "plugins"));
+function hasClaudePluginInstalled(installRoot: string): boolean {
+  return (
+    hasClaudePluginArtifactsInstalled(join(homedir(), ".claude", "plugins")) &&
+    hasClaudeCommandArtifactsInstalled(installRoot)
+  );
+}
+
+export function hasClaudeCommandArtifactsInstalled(installRoot: string): boolean {
+  return getExpectedClaudeCommandFiles().every((path) => existsSync(join(installRoot, path)));
 }
 
 function hasCodexMcpServer(path: string): boolean {
@@ -185,13 +237,15 @@ function hasCodexMcpServer(path: string): boolean {
 
   try {
     const raw = readFileSync(path, "utf8");
-    return /\[mcp_servers\.oraculum\]/u.test(raw);
+    return MANAGED_MCP_SERVER_IDS.some((serverId) =>
+      new RegExp(`\\[mcp_servers\\.${serverId}\\]`, "u").test(raw),
+    );
   } catch {
     return false;
   }
 }
 
-function hasCodexArtifactsInstalled(skillsDir: string, rulesDir: string): boolean {
+export function hasCodexArtifactsInstalled(skillsDir: string, rulesDir: string): boolean {
   if (!existsSync(skillsDir) || !existsSync(rulesDir)) {
     return false;
   }
@@ -201,7 +255,9 @@ function hasCodexArtifactsInstalled(skillsDir: string, rulesDir: string): boolea
     return false;
   }
 
-  return getExpectedCodexSkillDirs().every((dirName) => existsSync(join(skillsDir, dirName)));
+  return getExpectedCodexSkillDirs().every((dirName) =>
+    existsSync(join(skillsDir, dirName, "SKILL.md")),
+  );
 }
 
 function computeHostSetupStatus(

@@ -39,6 +39,7 @@ Operational bias:
 - Prefer mechanized enforcement over prose, small legible abstractions over cleverness, lean context over repetition, and replayable machine-readable outputs over ad-hoc chat state.
 - Use an opinionated workflow; force clarification before coding when intent is vague; build harness surfaces before polish; prefer one product workflow, thin adapters, shared manifests plus host-specific generated skills/rules/plugins, and explicit target-vs-shipped docs over per-host drift or implied future state; do not let future command names masquerade as already-available host features.
 - Pass artifacts forward: `spec -> plan -> implementation -> review -> test -> release`. Before committing or pushing, run `npm run check`, `git diff --check`, and targeted validation for any touched flow. Only add `npm run test:slow` or `npm run check:full` when changes hit real runtime boundaries such as adapters, execution, workspaces, exports, consultation-plan execution, evidence harnesses, test infrastructure, or slow suites themselves. Pure domain/schema/rendering/doc work stays on the fast lane unless a touched flow specifically depends on a slow boundary.
+- Distinguish surfaces strictly: interactive host chat input (`orc ...` in Claude Code/Codex) is the product UX surface; direct MCP calls, shell binaries, generated skills/rules/plugins, and tests are internal verification surfaces. Validate `orc` UX only in real interactive host sessions, preferably via tmux/PTY capture (`codex --no-alt-screen` when relevant), and judge only what the user would actually see.
 - Review is iterative: a review/audit/polish request implies `review -> fix -> re-review -> validate` unless blocked by a real ambiguity or conflict; do not wait for repeated user prompts. A full code review means reading the current working tree line-by-line; once code changes, do not rely on earlier review conclusions. End only when no material findings remain, the user redirects, or progress is genuinely blocked.
 - Use fresh-context review/QA when independent judgment matters. Parallel workers require isolated workspaces and explicit coordination.
 - Borrow the references' command/hook/state-machine discipline, but adapt it to `candidate -> oracle -> witness -> crowning`, not generic team orchestration. Preferred cadence: `clarify/specify -> plan -> build -> review -> test -> ship/crown -> reflect/learn`.
@@ -47,16 +48,4 @@ Operational bias:
 
 Root docs should be user-facing; public docs that are not root-required belong under `/docs/`. Internal governance/process/meta docs belong under `/internal/`; proposal / strategy / operating-design docs are internal by default. If mixed, publish the sanitized user-facing doc and keep the operating appendix private.
 
-## System Shape
-
-Target modules:
-
-- task intake / packet
-- MCP tool surface
-- shared command manifest
-- host artifact generator
-- candidate workspace manager
-- adapters
-- oracle runner
-- tournament / finalist judge / crowning
-- reports / replay / crowning
+System shape lives in code and repo docs; AGENTS.md is for operating rules, not architecture inventory.

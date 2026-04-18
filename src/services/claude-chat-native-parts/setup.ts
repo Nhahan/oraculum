@@ -12,11 +12,18 @@ import {
   listClaudeMarketplaces,
   listClaudePlugins,
 } from "./discovery.js";
-import { getPackagedClaudeCodeRoot } from "./packaged.js";
 import {
+  getExpectedClaudeCommandFiles,
+  getExpectedClaudeSkillDirs,
+  getPackagedClaudeCodeRoot,
+} from "./packaged.js";
+import {
+  CLAUDE_LEGACY_PLUGIN_NAMES,
   CLAUDE_MARKETPLACE_NAME,
+  CLAUDE_MCP_SERVER_NAME,
   CLAUDE_MCP_TIMEOUT_SECONDS,
   CLAUDE_PLUGIN_NAME,
+  CLAUDE_PLUGIN_VERSION,
   type ClaudeSetupOptions,
   type ClaudeSetupResult,
   type ClaudeUninstallOptions,
@@ -37,6 +44,7 @@ export async function setupClaudeCodeHost(
   };
 
   const packagedRoot = options.packagedRoot ?? getPackagedClaudeCodeRoot();
+  assertPackagedClaudeArtifacts(packagedRoot);
   const installRoot = await prepareClaudeSetupRoot({
     homeDir,
     mcpInvocation: options.mcpInvocation ?? resolveNodeCliInvocation(),
@@ -79,11 +87,19 @@ export async function setupClaudeCodeHost(
   }
 
   const installedPlugins = await listClaudePlugins(claudeBinaryPath, claudeArgs, env);
-  const targetPlugin = installedPlugins.find((entry) => entry.name === CLAUDE_PLUGIN_NAME);
-  if (!isClaudePluginAligned(targetPlugin)) {
-    if (targetPlugin) {
-      await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env);
+  for (const legacyName of CLAUDE_LEGACY_PLUGIN_NAMES) {
+    const legacyPlugin = installedPlugins.find((entry) => entry.name === legacyName);
+    if (legacyPlugin) {
+      await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env, legacyName);
     }
+  }
+  await pruneSelectedClaudePluginArtifacts(homeDir, CLAUDE_LEGACY_PLUGIN_NAMES);
+  const targetPlugin = installedPlugins.find((entry) => entry.name === CLAUDE_PLUGIN_NAME);
+  if (!isClaudePluginAligned(targetPlugin) || !hasClaudePluginInstallArtifacts(targetPlugin)) {
+    if (targetPlugin) {
+      await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env, CLAUDE_PLUGIN_NAME);
+    }
+    await pruneSelectedClaudePluginArtifacts(homeDir, [CLAUDE_PLUGIN_NAME]);
     await installClaudePlugin(claudeBinaryPath, claudeArgs, env);
   }
 
@@ -130,10 +146,11 @@ export async function uninstallClaudeCodeHost(
   const installedPlugins = await listClaudePlugins(claudeBinaryPath, claudeArgs, env).catch(
     () => [],
   );
-  const targetPlugin = installedPlugins.find((entry) => entry.name === CLAUDE_PLUGIN_NAME);
-  if (targetPlugin) {
+  const targetPluginNames = [CLAUDE_PLUGIN_NAME, ...CLAUDE_LEGACY_PLUGIN_NAMES];
+  const targetPlugin = installedPlugins.find((entry) => targetPluginNames.includes(entry.name));
+  if (targetPlugin?.name) {
     try {
-      await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env);
+      await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env, targetPlugin.name);
       pluginRemoved = true;
     } catch {
       pluginRemoved = false;
@@ -165,11 +182,13 @@ async function mergeClaudeMcpConfig(
     ...existing,
     mcpServers: {
       ...(existing.mcpServers ?? {}),
-      [CLAUDE_PLUGIN_NAME]: (effectiveConfig as { mcpServers: Record<string, unknown> }).mcpServers[
-        CLAUDE_PLUGIN_NAME
-      ],
+      [CLAUDE_MCP_SERVER_NAME]: (effectiveConfig as { mcpServers: Record<string, unknown> })
+        .mcpServers[CLAUDE_MCP_SERVER_NAME],
     },
   };
+  for (const legacyServerName of CLAUDE_LEGACY_PLUGIN_NAMES) {
+    delete (next.mcpServers as Record<string, unknown>)[legacyServerName];
+  }
   await mkdir(dirname(mcpConfigPath), { recursive: true });
   await writeFile(mcpConfigPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
 }
@@ -183,7 +202,9 @@ async function removeClaudeMcpConfigEntry(mcpConfigPath: string): Promise<void> 
     mcpServers?: Record<string, unknown>;
   };
   const nextServers = { ...(existing.mcpServers ?? {}) };
-  delete nextServers[CLAUDE_PLUGIN_NAME];
+  for (const serverName of [CLAUDE_MCP_SERVER_NAME, ...CLAUDE_LEGACY_PLUGIN_NAMES]) {
+    delete nextServers[serverName];
+  }
   const next =
     Object.keys(nextServers).length > 0
       ? {
@@ -196,11 +217,27 @@ async function removeClaudeMcpConfigEntry(mcpConfigPath: string): Promise<void> 
 }
 
 async function pruneClaudePluginArtifacts(homeDir: string): Promise<void> {
-  const pluginsDir = join(homeDir, ".claude", "plugins");
-  await Promise.all([
-    rm(join(pluginsDir, CLAUDE_PLUGIN_NAME), { force: true, recursive: true }),
-    rm(join(pluginsDir, `@${CLAUDE_PLUGIN_NAME}`), { force: true, recursive: true }),
+  await pruneSelectedClaudePluginArtifacts(homeDir, [
+    CLAUDE_PLUGIN_NAME,
+    ...CLAUDE_LEGACY_PLUGIN_NAMES,
   ]);
+}
+
+async function pruneSelectedClaudePluginArtifacts(
+  homeDir: string,
+  pluginNames: readonly string[],
+): Promise<void> {
+  const pluginsDir = join(homeDir, ".claude", "plugins");
+  await Promise.all(
+    pluginNames.flatMap((pluginName) => [
+      rm(join(pluginsDir, pluginName), { force: true, recursive: true }),
+      rm(join(pluginsDir, `@${pluginName}`), { force: true, recursive: true }),
+      rm(join(pluginsDir, "cache", CLAUDE_MARKETPLACE_NAME, pluginName), {
+        force: true,
+        recursive: true,
+      }),
+    ]),
+  );
 }
 
 async function prepareClaudeSetupRoot(options: {
@@ -209,6 +246,7 @@ async function prepareClaudeSetupRoot(options: {
   packagedRoot: string;
 }): Promise<string> {
   const installRoot = join(options.homeDir, ".oraculum", "chat-native", "claude-code", APP_VERSION);
+  await rm(installRoot, { force: true, recursive: true });
   await cp(options.packagedRoot, installRoot, {
     force: true,
     recursive: true,
@@ -221,13 +259,35 @@ async function prepareClaudeSetupRoot(options: {
   return installRoot;
 }
 
+function assertPackagedClaudeArtifacts(packagedRoot: string): void {
+  const expectedPaths = [
+    ...getExpectedClaudeCommandFiles().map((path) => join(packagedRoot, path)),
+    join(packagedRoot, ".claude-plugin", "plugin.json"),
+    join(packagedRoot, ".claude-plugin", "marketplace.json"),
+    ...getExpectedClaudeSkillDirs().map((dirName) =>
+      join(packagedRoot, ".claude-plugin", "skills", dirName, "SKILL.md"),
+    ),
+  ];
+
+  const missing = expectedPaths.filter((path) => !existsSync(path));
+  if (missing.length > 0) {
+    throw new OraculumError(
+      [
+        `Packaged Claude Code host artifacts for ${CLAUDE_PLUGIN_VERSION} are incomplete.`,
+        "Build Oraculum first so setup can install the generated host artifacts.",
+        ...missing.map((path) => `Missing: ${path}`),
+      ].join("\n"),
+    );
+  }
+}
+
 function buildClaudePluginMcpConfigFromInvocation(invocation: {
   args: string[];
   command: string;
 }): Record<string, unknown> {
   return {
     mcpServers: {
-      [CLAUDE_PLUGIN_NAME]: {
+      [CLAUDE_MCP_SERVER_NAME]: {
         command: invocation.command,
         args: [...invocation.args, "mcp", "serve"],
         env: {
@@ -238,6 +298,24 @@ function buildClaudePluginMcpConfigFromInvocation(invocation: {
       },
     },
   };
+}
+
+function hasClaudePluginInstallArtifacts(entry: { installPath?: string } | undefined): boolean {
+  const installPath = entry?.installPath;
+  if (!installPath) {
+    return true;
+  }
+
+  if (
+    !existsSync(join(installPath, "plugin.json")) ||
+    !existsSync(join(installPath, ".mcp.json"))
+  ) {
+    return false;
+  }
+
+  return getExpectedClaudeSkillDirs().every((dirName) =>
+    existsSync(join(installPath, "skills", dirName, "SKILL.md")),
+  );
 }
 
 function resolveNodeCliInvocation(): { args: string[]; command: string } {
@@ -314,10 +392,11 @@ async function uninstallClaudePlugin(
   claudeBinaryPath: string,
   claudeArgs: string[],
   env: NodeJS.ProcessEnv,
+  pluginName: string,
 ): Promise<void> {
   const uninstall = await runSubprocess({
     command: claudeBinaryPath,
-    args: [...claudeArgs, "plugin", "uninstall", CLAUDE_PLUGIN_NAME],
+    args: [...claudeArgs, "plugin", "uninstall", pluginName],
     cwd: process.cwd(),
     env,
     timeoutMs: 30_000,

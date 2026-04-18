@@ -48,7 +48,7 @@ Available runtimes today:
 
 Both runtimes support structured validation-posture selection:
 
-- `codex` via `exec --output-schema`
+- `codex` via its structured non-interactive output path
 - `claude-code` via `-p --output-format json --json-schema`
 
 That structured step is what lets Oraculum treat validation posture choice as a bounded selection problem instead of an unstructured free-form guess.

@@ -9,7 +9,7 @@ export function runCommand(command, args, options) {
     let timedOut = false;
     const child = spawn(command, args, {
       cwd: options.cwd,
-      env: process.env,
+      env: options.env ?? process.env,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });

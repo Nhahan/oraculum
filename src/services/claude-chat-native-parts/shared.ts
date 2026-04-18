@@ -53,7 +53,9 @@ export interface ClaudePluginEntry {
 }
 
 export const CLAUDE_MARKETPLACE_NAME = "oraculum";
-export const CLAUDE_PLUGIN_NAME = "oraculum";
+export const CLAUDE_PLUGIN_NAME = "orc";
+export const CLAUDE_LEGACY_PLUGIN_NAMES = ["oraculum"] as const;
+export const CLAUDE_MCP_SERVER_NAME = CLAUDE_PLUGIN_NAME;
 export const CLAUDE_PLUGIN_VERSION = APP_VERSION;
 export const CLAUDE_MCP_TIMEOUT_SECONDS = 1800;
 

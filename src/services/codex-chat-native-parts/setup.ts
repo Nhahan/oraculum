@@ -1,12 +1,14 @@
+import { existsSync } from "node:fs";
 import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { OraculumError } from "../../core/errors.js";
 import { runSubprocess } from "../../core/subprocess.js";
-import { getPackagedCodexRoot } from "./packaged.js";
+import { getExpectedCodexSkillDirs, getPackagedCodexRoot } from "./packaged.js";
 import {
   CODEX_INSTALL_VERSION,
+  CODEX_LEGACY_MCP_SERVER_NAMES,
   CODEX_MCP_SERVER_NAME,
   CODEX_MCP_STARTUP_TIMEOUT_SEC,
   CODEX_MCP_TOOL_TIMEOUT_SEC,
@@ -31,6 +33,7 @@ export async function setupCodexHost(options: CodexSetupOptions = {}): Promise<C
   };
 
   const packagedRoot = options.packagedRoot ?? getPackagedCodexRoot();
+  assertPackagedCodexArtifacts(packagedRoot);
   const installRoot = await prepareCodexSetupRoot({
     homeDir,
     packagedRoot,
@@ -109,11 +112,32 @@ async function prepareCodexSetupRoot(options: {
     "codex",
     CODEX_INSTALL_VERSION,
   );
+  await rm(installRoot, { force: true, recursive: true });
   await cp(options.packagedRoot, installRoot, {
     force: true,
     recursive: true,
   });
   return installRoot;
+}
+
+function assertPackagedCodexArtifacts(packagedRoot: string): void {
+  const expectedPaths = [
+    join(packagedRoot, "rules", CODEX_RULE_FILENAME),
+    ...getExpectedCodexSkillDirs().map((dirName) =>
+      join(packagedRoot, "skills", dirName, "SKILL.md"),
+    ),
+  ];
+
+  const missing = expectedPaths.filter((path) => !existsSync(path));
+  if (missing.length > 0) {
+    throw new OraculumError(
+      [
+        "Packaged Codex host artifacts are incomplete.",
+        "Build Oraculum first so setup can install the generated host artifacts.",
+        ...missing.map((path) => `Missing: ${path}`),
+      ].join("\n"),
+    );
+  }
 }
 
 async function installCodexArtifacts(options: {
@@ -127,7 +151,9 @@ async function installCodexArtifacts(options: {
   const packagedSkillsRoot = join(options.installRoot, "skills");
   const packagedRulesRoot = join(options.installRoot, "rules");
 
-  const packagedSkillDirs = await readdir(packagedSkillsRoot, { withFileTypes: true });
+  const packagedSkillDirs = await readdir(packagedSkillsRoot, { withFileTypes: true }).catch(
+    () => [],
+  );
   const desiredSkillNames = packagedSkillDirs
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
@@ -169,8 +195,12 @@ async function pruneManagedCodexSkills(skillsRoot: string, desired: Set<string>)
     return;
   }
 
+  const managedPrefixes = new Set([CODEX_SKILL_PREFIX, "oraculum-"]);
   for (const entry of await readdir(skillsRoot, { withFileTypes: true })) {
-    if (!entry.name.startsWith(CODEX_SKILL_PREFIX) || desired.has(entry.name)) {
+    if (
+      ![...managedPrefixes].some((prefix) => entry.name.startsWith(prefix)) ||
+      desired.has(entry.name)
+    ) {
       continue;
     }
 
@@ -213,13 +243,15 @@ async function registerCodexMcpServer(options: {
     command: string;
   };
 }): Promise<void> {
-  await runSubprocess({
-    command: options.codexBinaryPath,
-    args: [...options.codexArgs, "mcp", "remove", CODEX_MCP_SERVER_NAME],
-    cwd: process.cwd(),
-    env: options.env,
-    timeoutMs: 30_000,
-  }).catch(() => undefined);
+  for (const serverName of [CODEX_MCP_SERVER_NAME, ...CODEX_LEGACY_MCP_SERVER_NAMES]) {
+    await runSubprocess({
+      command: options.codexBinaryPath,
+      args: [...options.codexArgs, "mcp", "remove", serverName],
+      cwd: process.cwd(),
+      env: options.env,
+      timeoutMs: 30_000,
+    }).catch(() => undefined);
+  }
 
   const addResult = await runSubprocess({
     command: options.codexBinaryPath,
@@ -269,19 +301,24 @@ async function unregisterCodexMcpServer(options: {
   codexBinaryPath: string;
   env: NodeJS.ProcessEnv;
 }): Promise<void> {
-  await runSubprocess({
-    command: options.codexBinaryPath,
-    args: [...options.codexArgs, "mcp", "remove", CODEX_MCP_SERVER_NAME],
-    cwd: process.cwd(),
-    env: options.env,
-    timeoutMs: 30_000,
-  }).catch(() => undefined);
+  for (const serverName of [CODEX_MCP_SERVER_NAME, ...CODEX_LEGACY_MCP_SERVER_NAMES]) {
+    await runSubprocess({
+      command: options.codexBinaryPath,
+      args: [...options.codexArgs, "mcp", "remove", serverName],
+      cwd: process.cwd(),
+      env: options.env,
+      timeoutMs: 30_000,
+    }).catch(() => undefined);
+  }
 }
 
 async function removeCodexMcpConfigEntry(configPath: string): Promise<void> {
   try {
     const raw = await readFile(configPath, "utf8");
-    const next = stripCodexMcpServerSection(raw, `mcp_servers.${CODEX_MCP_SERVER_NAME}`);
+    const next = [CODEX_MCP_SERVER_NAME, ...CODEX_LEGACY_MCP_SERVER_NAMES].reduce(
+      (content, serverName) => stripCodexMcpServerSection(content, `mcp_servers.${serverName}`),
+      raw,
+    );
     if (next !== raw) {
       await writeFile(configPath, next, "utf8");
     }

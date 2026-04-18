@@ -4,6 +4,8 @@ export {
   buildClaudePluginManifest,
   buildClaudePluginMcpConfig,
   buildClaudeSkillFiles,
+  getExpectedClaudeCommandFiles,
+  getExpectedClaudeSkillDirs,
   getPackagedClaudeCodeRoot,
   getPackagedClaudeMarketplacePath,
   getPackagedClaudePluginRoot,

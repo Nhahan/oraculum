@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -25,63 +25,41 @@ describe("Codex chat-native packaging", () => {
 
     expect(rules).toHaveLength(1);
     expect(rules[0]?.path).toBe("rules/oraculum.md");
-    expect(rules[0]?.content).toContain("## Critical: Exact-Prefix Routing");
+    expect(rules[0]?.content).toContain("## Exact-Prefix Dispatch");
     expect(rules[0]?.content).toContain("`oraculum_consult`");
-    expect(rules[0]?.content).toContain("crown a recommended result");
+    expect(rules[0]?.content).toContain(
+      "Handle exact `orc ...` commands through Oraculum MCP tools.",
+    );
+    expect(rules[0]?.content).toContain("- call the mapped MCP tool immediately");
+    expect(rules[0]?.content).toContain("- never run `orc ...` in the shell");
+    expect(rules[0]?.content).toContain(
+      "- no repo reads, `git status`, README, AGENTS, or skill reads first",
+    );
+    expect(rules[0]?.content).toContain("- no preamble, acknowledgement, or routing narration");
+    expect(rules[0]?.content).toContain(
+      "- if the MCP tool has not been called yet, do not send a user message",
+    );
 
     expect(skills.map((file) => file.path)).toEqual([
-      "skills/oraculum-consult/SKILL.md",
-      "skills/oraculum-verdict/SKILL.md",
-      "skills/oraculum-verdict-archive/SKILL.md",
-      "skills/oraculum-crown/SKILL.md",
-      "skills/oraculum-plan/SKILL.md",
-      "skills/oraculum-draft/SKILL.md",
-      "skills/oraculum-init/SKILL.md",
+      "skills/route-consult/SKILL.md",
+      "skills/route-verdict/SKILL.md",
+      "skills/route-verdict-archive/SKILL.md",
+      "skills/route-crown/SKILL.md",
+      "skills/route-plan/SKILL.md",
+      "skills/route-draft/SKILL.md",
+      "skills/route-init/SKILL.md",
     ]);
-
-    const crownSkill = skills.find((file) => file.path.includes("/oraculum-crown/"));
-    const consultSkill = skills.find((file) => file.path.includes("/oraculum-consult/"));
-    const planSkill = skills.find((file) => file.path.includes("/oraculum-plan/"));
-    expect(consultSkill?.content).toContain("default to `codex` when omitted");
+    const consultSkill = skills.find((file) => file.path.includes("/route-consult/"));
+    expect(consultSkill?.content).toContain("name: consult");
+    expect(consultSkill?.content).toContain("description: Exact `orc consult` handler.");
+    expect(consultSkill?.content).toContain("MCP only.");
+    expect(consultSkill?.content).toContain("Tool: oraculum_consult");
+    expect(consultSkill?.content).toContain("Before MCP: no user text, no repo reads, no shell.");
     expect(consultSkill?.content).toContain(
-      '`orc consult tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
+      "After MCP: return only the user-relevant result or failure.",
     );
-    expect(consultSkill?.content).toContain("Call the MCP tool immediately with no preamble");
-    expect(consultSkill?.content).toContain(
-      "report only the user-relevant result concisely and stop",
-    );
-    expect(consultSkill?.content).toContain(
-      "do not mention AGENTS.md, skills, MCP, routing, or internal tool calls",
-    );
-    expect(consultSkill?.content).toContain(
-      "Do not automatically invoke `orc crown`, `orc verdict`, or any other follow-up Oraculum command",
-    );
-    expect(consultSkill?.content).toContain(
-      "Never invoke `orc crown` or `orc verdict` in the same response as `orc consult`",
-    );
-    expect(planSkill?.content).toContain("Call the MCP tool `oraculum_plan`.");
-    expect(planSkill?.content).toContain("Call the MCP tool immediately with no preamble");
-    expect(planSkill?.content).toContain(
-      '`orc plan tasks/fix.md` -> `{ taskInput: "tasks/fix.md", agent: "codex" }`',
-    );
-    expect(crownSkill?.content).toContain("Call the MCP tool `oraculum_crown`.");
-    expect(crownSkill?.content).toContain("Call the MCP tool immediately with no preamble");
-    expect(crownSkill?.content).toContain(
-      "report only the user-relevant result concisely and stop",
-    );
-    expect(crownSkill?.content).toContain("required only for branch materialization");
-    expect(crownSkill?.content).toContain(
-      "compatibility note: the MCP request still accepts legacy `branchName`",
-    );
-    expect(crownSkill?.content).toContain(
-      "the chat-native crowning path uses the recommended result automatically",
-    );
-    expect(crownSkill?.content).toContain(
-      'Example: `orc crown fix/greet` -> `{ materializationName: "fix/greet" }`',
-    );
-    expect(crownSkill?.content).toContain("Example: `orc crown` -> no materializationName field");
     expect(getExpectedCodexRuleFileName()).toBe("oraculum.md");
-    expect(getExpectedCodexSkillDirs()).toContain("oraculum-consult");
+    expect(getExpectedCodexSkillDirs()).toContain("route-consult");
   });
 
   it("writes packaged Codex artifacts into dist during the build", async () => {
@@ -91,6 +69,26 @@ describe("Codex chat-native packaging", () => {
 });
 
 describe("Codex setup", () => {
+  it("fails before touching host wiring when packaged Codex artifacts are incomplete", async () => {
+    const root = await tempRootHarness.createTempRoot("oraculum-codex-missing-packaged-");
+    const homeDir = join(root, "home");
+    const packagedRoot = join(root, "packaged-codex");
+    await mkdir(join(packagedRoot, "rules"), { recursive: true });
+    await writeFile(join(packagedRoot, "rules", "oraculum.md"), "# Oraculum\n", "utf8");
+
+    await expect(
+      setupCodexHost({
+        homeDir,
+        packagedRoot,
+      }),
+    ).rejects.toThrow("Packaged Codex host artifacts are incomplete.");
+
+    await expect(readFile(join(homeDir, ".codex", "config.toml"), "utf8")).rejects.toThrow();
+    await expect(
+      readFile(join(homeDir, ".codex", "skills", "route-consult", "SKILL.md"), "utf8"),
+    ).rejects.toThrow();
+  });
+
   it("installs packaged skills and rules and registers the MCP server through Codex CLI", async () => {
     const root = await tempRootHarness.createTempRoot("oraculum-codex-setup-");
     const homeDir = join(root, "home");
@@ -128,16 +126,16 @@ describe("Codex setup", () => {
         "  for (let index = 3; index < (sep >= 0 ? sep : args.length); index += 1) {",
         "    if (args[index] === '--env') env.push(args[index + 1]);",
         "  }",
-        "  const state = { name: 'oraculum', transport: { type: 'stdio', command, args: commandArgs, env } };",
+        "  const state = { name: 'orc', transport: { type: 'stdio', command, args: commandArgs, env } };",
         "  writeState(state);",
         "  mkdirSync(dirname(configPath), { recursive: true });",
         "  const envLines = env.map((entry) => { const [key, value] = entry.split('='); return key + ' = \"' + value + '\"'; });",
         "  const argsLine = 'args = [' + commandArgs.map((value) => '\"' + value + '\"').join(', ') + ']';",
-        "  const lines = ['[mcp_servers.oraculum]', 'command = \"' + command + '\"', argsLine, 'startup_timeout_sec = 60', 'tool_timeout_sec = 1800', '', '[mcp_servers.oraculum.env]', ...envLines];",
+        "  const lines = ['[mcp_servers.orc]', 'command = \"' + command + '\"', argsLine, 'startup_timeout_sec = 60', 'tool_timeout_sec = 1800', '', '[mcp_servers.orc.env]', ...envLines];",
         "  writeFileSync(configPath, lines.join('\\n') + '\\n');",
         "  process.exit(0);",
         "}",
-        "if (args[0] === 'mcp' && args[1] === 'get' && args[2] === 'oraculum' && args[3] === '--json') {",
+        "if (args[0] === 'mcp' && args[1] === 'get' && args[2] === 'orc' && args[3] === '--json') {",
         "  const state = readState();",
         "  if (!state) process.exit(1);",
         "  process.stdout.write(JSON.stringify({ ...state, enabled: true, disabled_reason: null, enabled_tools: null, disabled_tools: null, startup_timeout_sec: 60, tool_timeout_sec: 1800 }));",
@@ -169,7 +167,7 @@ describe("Codex setup", () => {
       };
     };
 
-    expect(configToml).toContain("[mcp_servers.oraculum]");
+    expect(configToml).toContain("[mcp_servers.orc]");
     expect(configToml).toContain('ORACULUM_AGENT_RUNTIME = "codex"');
     expect(configToml).toContain("startup_timeout_sec = 60");
     expect(configToml).toContain("tool_timeout_sec = 1800");
@@ -178,13 +176,112 @@ describe("Codex setup", () => {
     expect(state.transport.args.at(-1)).toBe("serve");
     expect(state.transport.env).toContain("ORACULUM_AGENT_RUNTIME=codex");
     await expect(
-      readFile(join(result.skillsRoot, "oraculum-consult", "SKILL.md"), "utf8"),
-    ).resolves.toContain("# Oraculum consult");
+      readFile(join(result.skillsRoot, "route-consult", "SKILL.md"), "utf8"),
+    ).resolves.toContain("Tool: oraculum_consult");
     await expect(readFile(join(result.rulesRoot, "oraculum.md"), "utf8")).resolves.toContain(
-      "Critical: Exact-Prefix Routing",
+      "Handle exact `orc ...` commands through Oraculum MCP tools.",
     );
     expect(result.installRoot).toContain(".oraculum");
     expect(result.registered).toBe(true);
+  });
+
+  it("replaces stale same-version packaged skills during setup", async () => {
+    const root = await tempRootHarness.createTempRoot("oraculum-codex-stale-install-");
+    const homeDir = join(root, "home");
+    const statePath = join(root, "fake-codex-state.json");
+    const cliPath = join(root, "fake-codex.mjs");
+    const packagedRoot = join(root, "packaged-codex");
+    const staleInstallSkill = join(
+      homeDir,
+      ".oraculum",
+      "chat-native",
+      "codex",
+      "0.1.0-beta.8",
+      "skills",
+      "route-legacy",
+      "SKILL.md",
+    );
+    const staleLegacyTargetSkill = join(
+      homeDir,
+      ".codex",
+      "skills",
+      "oraculum-consult",
+      "SKILL.md",
+    );
+    const staleTargetSkill = join(homeDir, ".codex", "skills", "route-legacy", "SKILL.md");
+
+    for (const skill of buildCodexSkillFiles(oraculumCommandManifest)) {
+      await mkdir(dirname(join(packagedRoot, skill.path)), { recursive: true });
+      await writeFile(join(packagedRoot, skill.path), skill.content, "utf8");
+    }
+    for (const rule of buildCodexRuleFiles(oraculumCommandManifest)) {
+      await mkdir(dirname(join(packagedRoot, rule.path)), { recursive: true });
+      await writeFile(join(packagedRoot, rule.path), rule.content, "utf8");
+    }
+    await mkdir(dirname(staleInstallSkill), { recursive: true });
+    await writeFile(staleInstallSkill, "stale\n", "utf8");
+    await mkdir(dirname(staleTargetSkill), { recursive: true });
+    await writeFile(staleTargetSkill, "stale\n", "utf8");
+    await mkdir(dirname(staleLegacyTargetSkill), { recursive: true });
+    await writeFile(staleLegacyTargetSkill, "stale\n", "utf8");
+
+    await writeFile(
+      cliPath,
+      [
+        "import { mkdirSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';",
+        "import { dirname, join } from 'node:path';",
+        "const statePath = process.env.ORACULUM_FAKE_CODEX_STATE;",
+        "const homeDir = process.env.HOME;",
+        "if (!statePath || !homeDir) process.exit(11);",
+        "const args = process.argv.slice(2);",
+        "const configPath = join(homeDir, '.codex', 'config.toml');",
+        "const readState = () => existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) : null;",
+        "const writeState = (value) => { mkdirSync(dirname(statePath), { recursive: true }); writeFileSync(statePath, JSON.stringify(value)); };",
+        "if (args[0] === 'mcp' && args[1] === 'remove') { rmSync(statePath, { force: true }); process.exit(0); }",
+        "if (args[0] === 'mcp' && args[1] === 'add') {",
+        "  const sep = args.indexOf('--');",
+        "  const command = sep >= 0 ? args[sep + 1] : null;",
+        "  const commandArgs = sep >= 0 ? args.slice(sep + 2) : [];",
+        "  const env = [];",
+        "  for (let index = 3; index < (sep >= 0 ? sep : args.length); index += 1) {",
+        "    if (args[index] === '--env') env.push(args[index + 1]);",
+        "  }",
+        "  const state = { name: 'orc', transport: { type: 'stdio', command, args: commandArgs, env } };",
+        "  writeState(state);",
+        "  mkdirSync(dirname(configPath), { recursive: true });",
+        "  const envLines = env.map((entry) => { const [key, value] = entry.split('='); return key + ' = \"' + value + '\"'; });",
+        "  const argsLine = 'args = [' + commandArgs.map((value) => '\"' + value + '\"').join(', ') + ']';",
+        "  const lines = ['[mcp_servers.orc]', 'command = \"' + command + '\"', argsLine, 'startup_timeout_sec = 60', 'tool_timeout_sec = 1800', '', '[mcp_servers.orc.env]', ...envLines];",
+        "  writeFileSync(configPath, lines.join('\\n') + '\\n');",
+        "  process.exit(0);",
+        "}",
+        "if (args[0] === 'mcp' && args[1] === 'get' && args[2] === 'orc' && args[3] === '--json') {",
+        "  const state = readState();",
+        "  if (!state) process.exit(1);",
+        "  process.stdout.write(JSON.stringify({ ...state, enabled: true, disabled_reason: null, enabled_tools: null, disabled_tools: null, startup_timeout_sec: 60, tool_timeout_sec: 1800 }));",
+        "  process.exit(0);",
+        "}",
+        "process.stderr.write('unexpected args: ' + args.join(' ')); process.exit(9);",
+      ].join("\n"),
+      "utf8",
+    );
+
+    await setupCodexHost({
+      codexBinaryPath: process.execPath,
+      codexArgs: [cliPath],
+      env: {
+        ORACULUM_FAKE_CODEX_STATE: statePath,
+      },
+      homeDir,
+      packagedRoot,
+    });
+
+    await expect(readFile(staleInstallSkill, "utf8")).rejects.toThrow();
+    await expect(readFile(staleTargetSkill, "utf8")).rejects.toThrow();
+    await expect(readFile(staleLegacyTargetSkill, "utf8")).rejects.toThrow();
+    await expect(
+      readFile(join(homeDir, ".codex", "skills", "route-consult", "SKILL.md"), "utf8"),
+    ).resolves.toContain("Tool: oraculum_consult");
   });
 
   it("uninstalls Codex MCP wiring and removes managed skills and rules", async () => {
@@ -224,16 +321,16 @@ describe("Codex setup", () => {
         "  for (let index = 3; index < (sep >= 0 ? sep : args.length); index += 1) {",
         "    if (args[index] === '--env') env.push(args[index + 1]);",
         "  }",
-        "  const state = { name: 'oraculum', transport: { type: 'stdio', command, args: commandArgs, env } };",
+        "  const state = { name: 'orc', transport: { type: 'stdio', command, args: commandArgs, env } };",
         "  writeState(state);",
         "  mkdirSync(dirname(configPath), { recursive: true });",
         "  const envLines = env.map((entry) => { const [key, value] = entry.split('='); return key + ' = \"' + value + '\"'; });",
         "  const argsLine = 'args = [' + commandArgs.map((value) => '\"' + value + '\"').join(', ') + ']';",
-        "  const lines = ['[mcp_servers.oraculum]', 'command = \"' + command + '\"', argsLine, 'startup_timeout_sec = 60', 'tool_timeout_sec = 1800', '', '[mcp_servers.oraculum.env]', ...envLines];",
+        "  const lines = ['[mcp_servers.orc]', 'command = \"' + command + '\"', argsLine, 'startup_timeout_sec = 60', 'tool_timeout_sec = 1800', '', '[mcp_servers.orc.env]', ...envLines];",
         "  writeFileSync(configPath, lines.join('\\n') + '\\n');",
         "  process.exit(0);",
         "}",
-        "if (args[0] === 'mcp' && args[1] === 'get' && args[2] === 'oraculum' && args[3] === '--json') {",
+        "if (args[0] === 'mcp' && args[1] === 'get' && args[2] === 'orc' && args[3] === '--json') {",
         "  const state = readState();",
         "  if (!state) process.exit(1);",
         "  process.stdout.write(JSON.stringify({ ...state, enabled: true, disabled_reason: null, enabled_tools: null, disabled_tools: null, startup_timeout_sec: 60, tool_timeout_sec: 1800 }));",
@@ -254,8 +351,8 @@ describe("Codex setup", () => {
       packagedRoot,
     });
     await expect(
-      readFile(join(setupResult.skillsRoot, "oraculum-consult", "SKILL.md"), "utf8"),
-    ).resolves.toContain("# Oraculum consult");
+      readFile(join(setupResult.skillsRoot, "route-consult", "SKILL.md"), "utf8"),
+    ).resolves.toContain("Tool: oraculum_consult");
 
     const uninstallResult = await uninstallCodexHost({
       codexBinaryPath: process.execPath,
@@ -267,14 +364,12 @@ describe("Codex setup", () => {
     });
 
     await expect(readFile(statePath, "utf8")).rejects.toThrow();
-    await expect(
-      readFile(join(uninstallResult.skillsRoot, "oraculum-consult", "SKILL.md"), "utf8"),
-    ).rejects.toThrow();
+    await expect(readdir(uninstallResult.skillsRoot)).resolves.not.toContain("route-consult");
     await expect(
       readFile(join(uninstallResult.rulesRoot, "oraculum.md"), "utf8"),
     ).rejects.toThrow();
     await expect(readFile(uninstallResult.configPath, "utf8")).resolves.not.toContain(
-      "[mcp_servers.oraculum]",
+      "[mcp_servers.orc]",
     );
   });
 
@@ -315,16 +410,16 @@ describe("Codex setup", () => {
         "  for (let index = 3; index < (sep >= 0 ? sep : args.length); index += 1) {",
         "    if (args[index] === '--env') env.push(args[index + 1]);",
         "  }",
-        "  const state = { name: 'oraculum', transport: { type: 'stdio', command, args: commandArgs, env } };",
+        "  const state = { name: 'orc', transport: { type: 'stdio', command, args: commandArgs, env } };",
         "  writeState(state);",
         "  mkdirSync(dirname(configPath), { recursive: true });",
         "  const envLines = env.map((entry) => { const [key, value] = entry.split('='); return key + ' = \"' + value + '\"'; });",
         "  const argsLine = 'args = [' + commandArgs.map((value) => '\"' + value + '\"').join(', ') + ']';",
-        "  const lines = ['[mcp_servers.oraculum]', 'command = \"' + command + '\"', argsLine, 'startup_timeout_sec = 60', 'tool_timeout_sec = 1800', '', '[mcp_servers.oraculum.env]', ...envLines];",
+        "  const lines = ['[mcp_servers.orc]', 'command = \"' + command + '\"', argsLine, 'startup_timeout_sec = 60', 'tool_timeout_sec = 1800', '', '[mcp_servers.orc.env]', ...envLines];",
         "  writeFileSync(configPath, lines.join('\\n') + '\\n');",
         "  process.exit(0);",
         "}",
-        "if (args[0] === 'mcp' && args[1] === 'get' && args[2] === 'oraculum' && args[3] === '--json') {",
+        "if (args[0] === 'mcp' && args[1] === 'get' && args[2] === 'orc' && args[3] === '--json') {",
         "  const state = readState();",
         "  if (!state) process.exit(1);",
         "  process.stdout.write(JSON.stringify({ ...state, enabled: true, disabled_reason: null, enabled_tools: null, disabled_tools: null, startup_timeout_sec: 60, tool_timeout_sec: 1800 }));",
@@ -345,19 +440,21 @@ describe("Codex setup", () => {
       packagedRoot,
     });
 
+    await expect(
+      readFile(join(setupResult.skillsRoot, "route-consult", "SKILL.md"), "utf8"),
+    ).resolves.toContain("Tool: oraculum_consult");
+
     const uninstallResult = await uninstallCodexHost({
       codexBinaryPath: join(homeDir, "missing-codex"),
       homeDir,
     });
 
-    await expect(
-      readFile(join(uninstallResult.skillsRoot, "oraculum-consult", "SKILL.md"), "utf8"),
-    ).rejects.toThrow();
+    await expect(readdir(uninstallResult.skillsRoot)).resolves.not.toContain("route-consult");
     await expect(
       readFile(join(uninstallResult.rulesRoot, "oraculum.md"), "utf8"),
     ).rejects.toThrow();
     await expect(readFile(uninstallResult.configPath, "utf8")).resolves.not.toContain(
-      "[mcp_servers.oraculum]",
+      "[mcp_servers.orc]",
     );
     await expect(
       readFile(join(setupResult.installRoot, "rules", "oraculum.md"), "utf8"),

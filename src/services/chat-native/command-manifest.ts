@@ -1,5 +1,19 @@
 import { type CommandManifestEntry, commandManifestEntrySchema } from "../../domain/chat-native.js";
 
+const routeAliasByCommandId = {
+  consult: "c",
+  verdict: "v",
+  "verdict-archive": "va",
+  crown: "cr",
+  plan: "p",
+  draft: "d",
+  init: "i",
+} as const;
+
+export function getOrcRouteAlias(commandId: string): string {
+  return routeAliasByCommandId[commandId as keyof typeof routeAliasByCommandId] ?? commandId;
+}
+
 const planningArguments = [
   {
     name: "taskInput",

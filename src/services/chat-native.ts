@@ -9,7 +9,9 @@ export {
 export {
   buildSetupDiagnosticsResponse,
   filterSetupDiagnosticsResponse,
+  hasClaudeCommandArtifactsInstalled,
   hasClaudePluginArtifactsInstalled,
+  hasCodexArtifactsInstalled,
   summarizeSetupDiagnosticsHosts,
 } from "./chat-native/setup-diagnostics.js";
 export { assertToolId, getMcpToolSchemas, oraculumMcpSchemas } from "./chat-native/tool-schemas.js";
