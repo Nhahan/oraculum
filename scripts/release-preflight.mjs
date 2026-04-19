@@ -40,12 +40,12 @@ export function buildReleasePreflightSteps(rawArgs) {
     },
   ];
 
-  if (args.has("--with-host-native")) {
+  if (args.has("--with-launch-smoke")) {
     steps.push({
-      label: "npm run evidence:host-native",
+      label: "npm run evidence:launch-smoke",
       command: "npm",
-      args: ["run", "evidence:host-native"],
-      skipFlag: "--skip-host-native",
+      args: ["run", "evidence:launch-smoke"],
+      skipFlag: "--skip-launch-smoke",
     });
   }
 

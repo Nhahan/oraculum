@@ -34,7 +34,7 @@ export function assertRuntimes(values) {
   const allowed = new Set(["claude-code", "codex"]);
   for (const value of values) {
     if (!allowed.has(value)) {
-      throw new Error(`Unsupported host-native runtime "${value}". Use claude-code and/or codex.`);
+      throw new Error(`Unsupported launch-smoke runtime "${value}". Use claude-code and/or codex.`);
     }
   }
 }

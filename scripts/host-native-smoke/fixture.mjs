@@ -17,7 +17,7 @@ export async function createFixtureProject(
       join(projectRoot, "package.json"),
       `${JSON.stringify(
         {
-          name: `oraculum-host-native-smoke-${scenario.id}`,
+          name: `oraculum-launch-smoke-${scenario.id}`,
           private: true,
           type: "module",
           scripts: {
@@ -99,12 +99,12 @@ export async function createFixtureProject(
       label: "git init",
       timeoutMs: 30_000,
     });
-    await runCommand("git", ["config", "user.name", "Host Native Smoke"], {
+    await runCommand("git", ["config", "user.name", "Launch Smoke"], {
       cwd: projectRoot,
       label: "git config user.name",
       timeoutMs: 30_000,
     });
-    await runCommand("git", ["config", "user.email", "host-native-smoke@example.com"], {
+    await runCommand("git", ["config", "user.email", "launch-smoke@example.com"], {
       cwd: projectRoot,
       label: "git config user.email",
       timeoutMs: 30_000,

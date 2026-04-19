@@ -17,7 +17,7 @@ describe("release preflight", () => {
 
   it("adds optional evidence lanes only when explicitly requested", () => {
     const { steps } = buildReleasePreflightSteps([
-      "--with-host-native",
+      "--with-launch-smoke",
       "--with-workflow-comparison",
     ]);
 
@@ -27,8 +27,20 @@ describe("release preflight", () => {
       "npm run build",
       "npm pack --dry-run",
       "npm run evidence:smoke",
-      "npm run evidence:host-native",
+      "npm run evidence:launch-smoke",
       "npm run evidence:workflow-comparison",
+    ]);
+  });
+
+  it("does not accept the removed host-native alias", () => {
+    const { steps } = buildReleasePreflightSteps(["--with-host-native"]);
+
+    expect(steps.map((step) => step.label)).toEqual([
+      "npm whoami",
+      "npm run check:full",
+      "npm run build",
+      "npm pack --dry-run",
+      "npm run evidence:smoke",
     ]);
   });
 

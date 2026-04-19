@@ -58,7 +58,7 @@ async function main() {
   assertCandidateAgent(candidateAgentInput);
 
   if (!existsSync(join(repoRoot, "dist", "cli.js"))) {
-    throw new Error("dist/cli.js is missing. Run `npm run build` before host-native smoke.");
+    throw new Error("dist/cli.js is missing. Run `npm run build` before launch smoke.");
   }
 
   if (!skipSetup) {
@@ -67,7 +67,7 @@ async function main() {
     }
   }
 
-  const tempRoot = await mkdtemp(join(tmpdir(), "oraculum-host-native-smoke-"));
+  const tempRoot = await mkdtemp(join(tmpdir(), "oraculum-launch-smoke-"));
   const results = [];
 
   try {
@@ -80,7 +80,7 @@ async function main() {
     for (const result of results) {
       process.stdout.write(
         `${[
-          `Host-native smoke passed for ${result.runtime}.`,
+          `Launch smoke passed for ${result.runtime}.`,
           `scenario=${result.scenario}`,
           `run=${result.runId}`,
           `branch=${result.branchName}`,
@@ -95,7 +95,7 @@ async function main() {
     if (!keepEvidence) {
       await rm(tempRoot, { recursive: true, force: true });
     } else {
-      process.stdout.write(`Host-native smoke workspace preserved at ${tempRoot}\n`);
+      process.stdout.write(`Launch smoke workspace preserved at ${tempRoot}\n`);
     }
   }
 }
@@ -115,8 +115,8 @@ async function setupRuntime(runtime) {
 async function runRuntimeSmoke(tempRoot, runtime, scenario) {
   const projectRoot = join(tempRoot, `${runtime}-${scenario.id}-project`);
   const evidenceRoot = join(tempRoot, `${runtime}-${scenario.id}-evidence`);
-  const expectedValue = `hello from ${runtime} ${scenario.id} host-native smoke`;
-  const branchName = `fix/${runtime}-${scenario.id}-host-native-smoke`;
+  const expectedValue = `hello from ${runtime} ${scenario.id} launch smoke`;
+  const branchName = `fix/${runtime}-${scenario.id}-launch-smoke`;
   const candidateAgent = resolveCandidateAgent(candidateAgentInput, runtime);
   await createFixtureProject(
     projectRoot,

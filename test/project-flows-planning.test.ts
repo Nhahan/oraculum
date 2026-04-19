@@ -154,7 +154,7 @@ describe("project flows planning", () => {
     );
   });
 
-  it("guides missing project config toward host-native init first", async () => {
+  it("guides missing project config toward init after setup", async () => {
     const cwd = await createTempProject();
 
     await expect(loadProjectConfig(cwd)).rejects.toThrow('Run "orc init" after setup');

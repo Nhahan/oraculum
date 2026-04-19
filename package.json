@@ -31,7 +31,7 @@
     "evidence:beta:corpus": "npm run build && node scripts/beta-evidence.mjs --mode=corpus",
     "evidence:beta:matrix": "npm run build && node scripts/beta-evidence.mjs --mode=matrix",
     "evidence:polyglot": "npm run build && node scripts/beta-evidence.mjs --mode=polyglot",
-    "evidence:host-native": "npm run build && node scripts/host-native-smoke.mjs",
+    "evidence:launch-smoke": "npm run build && node scripts/launch-smoke.mjs",
     "evidence:plan-lift": "npm run build && node scripts/plan-lift-evidence.mjs",
     "evidence:pressure": "npm run build && node scripts/pressure-evidence.mjs",
     "evidence:workflow-comparison": "npm run build && node scripts/workflow-comparison.mjs",

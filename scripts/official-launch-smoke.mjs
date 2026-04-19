@@ -19,11 +19,12 @@ async function main() {
     ? await readLatestRunIdIfPresent(cwd)
     : undefined;
 
-  const result = await runOfficialLaunchCommand(
-    process.execPath,
-    [cliPath, "host-wrapper", runtime, "--", prompt],
-    cwd,
-  );
+  const hostWrapperArgs = [cliPath, "host-wrapper", runtime, "--", prompt];
+
+  const result = await runOfficialLaunchCommand(process.execPath, hostWrapperArgs, cwd, {
+    ...process.env,
+    ORACULUM_HOST_WRAPPER_REAL_BINARY: "",
+  });
 
   const completion =
     previousRunId == null
@@ -59,10 +60,11 @@ async function main() {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
-async function runOfficialLaunchCommand(command, args, cwd) {
+async function runOfficialLaunchCommand(command, args, cwd, env) {
   return await new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
+      env,
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
