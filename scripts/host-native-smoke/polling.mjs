@@ -12,6 +12,14 @@ async function readLatestRunId(projectRoot) {
   return latest.runId;
 }
 
+export async function readLatestRunIdIfPresent(projectRoot) {
+  try {
+    return await readLatestRunId(projectRoot);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function waitForCompletedRun(projectRoot, options) {
   const pollIntervalMs = options.pollIntervalMs ?? 1000;
   const deadline = Date.now() + options.timeoutMs;
@@ -34,6 +42,41 @@ export async function waitForCompletedRun(projectRoot, options) {
   }
 
   throw new Error(`${options.label} did not settle within ${options.timeoutMs}ms. ${lastError}`);
+}
+
+export async function waitForNextCompletedRun(projectRoot, options) {
+  const pollIntervalMs = options.pollIntervalMs ?? 1000;
+  const deadline = Date.now() + options.timeoutMs;
+  const previousRunId = options.previousRunId;
+  let lastError = previousRunId
+    ? `latest-run.json has not advanced past ${previousRunId} yet.`
+    : "latest-run.json was not written yet.";
+
+  while (Date.now() < deadline) {
+    try {
+      const runId = await readLatestRunId(projectRoot);
+      if (previousRunId && runId === previousRunId) {
+        lastError = `latest-run.json is still ${runId}.`;
+        await delay(pollIntervalMs);
+        continue;
+      }
+
+      const runPath = join(projectRoot, ".oraculum", "runs", runId, "run.json");
+      const manifest = JSON.parse(await readFile(runPath, "utf8"));
+      if (manifest.status === "completed") {
+        return { runId, manifest };
+      }
+      lastError = `run ${runId} is still ${manifest.status}.`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await delay(pollIntervalMs);
+  }
+
+  throw new Error(
+    `${options.label} did not settle into a new completed run within ${options.timeoutMs}ms. ${lastError}`,
+  );
 }
 
 export async function waitForExportPlan(projectRoot, runId, options) {
@@ -75,6 +118,6 @@ export async function waitForExportPlan(projectRoot, runId, options) {
 
 function delay(ms) {
   return new Promise((resolve) => {
-    setTimeout(resolve, ms).unref();
+    setTimeout(resolve, ms);
   });
 }

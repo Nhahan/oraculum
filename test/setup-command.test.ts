@@ -6,18 +6,73 @@ vi.mock("../src/services/chat-native.js", async (importOriginal) => {
   return {
     ...actual,
     buildSetupDiagnosticsResponse: vi.fn(),
+    installHostWrapperShellBindings: vi.fn(),
+  };
+});
+
+vi.mock("../src/services/codex-chat-native.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/services/codex-chat-native.js")>(
+    "../src/services/codex-chat-native.js",
+  );
+  return {
+    ...actual,
+    setupCodexHost: vi.fn(),
+  };
+});
+
+vi.mock("../src/services/claude-chat-native.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/services/claude-chat-native.js")>(
+    "../src/services/claude-chat-native.js",
+  );
+  return {
+    ...actual,
+    setupClaudeCodeHost: vi.fn(),
   };
 });
 
 import { buildProgram } from "../src/program.js";
-import { buildSetupDiagnosticsResponse } from "../src/services/chat-native.js";
+import {
+  buildSetupDiagnosticsResponse,
+  installHostWrapperShellBindings,
+} from "../src/services/chat-native.js";
+import { setupClaudeCodeHost } from "../src/services/claude-chat-native.js";
+import { setupCodexHost } from "../src/services/codex-chat-native.js";
 import { captureStdout } from "./helpers/stdout.js";
 
 const mockedBuildSetupDiagnosticsResponse = vi.mocked(buildSetupDiagnosticsResponse);
+const mockedInstallHostWrapperShellBindings = vi.mocked(installHostWrapperShellBindings);
+const mockedSetupCodexHost = vi.mocked(setupCodexHost);
+const mockedSetupClaudeCodeHost = vi.mocked(setupClaudeCodeHost);
 
 describe("setup command", () => {
   beforeEach(() => {
     mockedBuildSetupDiagnosticsResponse.mockReset();
+    mockedInstallHostWrapperShellBindings.mockReset();
+    mockedSetupCodexHost.mockReset();
+    mockedSetupClaudeCodeHost.mockReset();
+    mockedInstallHostWrapperShellBindings.mockResolvedValue({
+      rcPath: "/tmp/home/.zshrc",
+      snippetPath: "/tmp/home/.oraculum/chat-native/shell/oraculum-host-wrapper.zsh",
+    });
+    mockedSetupCodexHost.mockResolvedValue({
+      configPath: "/tmp/home/.codex/config.toml",
+      installRoot: "/tmp/home/.oraculum/chat-native/codex",
+      packagedRoot: "/tmp/repo/dist/chat-native/codex",
+      registered: true,
+      rulesRoot: "/tmp/home/.codex/rules",
+      skillsRoot: "/tmp/home/.codex/skills",
+    });
+    mockedSetupClaudeCodeHost.mockResolvedValue({
+      effectiveMcpConfigPath:
+        "/tmp/home/.oraculum/chat-native/claude-code/.claude-plugin/.mcp.json",
+      installRoot: "/tmp/home/.oraculum/chat-native/claude-code",
+      marketplacePath:
+        "/tmp/home/.oraculum/chat-native/claude-code/.claude-plugin/marketplace.json",
+      mcpConfigPath: "/tmp/home/.claude/mcp.json",
+      packagedRoot: "/tmp/repo/dist/chat-native/claude-code",
+      pluginInstalled: true,
+      pluginRoot: "/tmp/home/.oraculum/chat-native/claude-code/.claude-plugin",
+    });
     mockedBuildSetupDiagnosticsResponse.mockResolvedValue({
       mode: "setup-status",
       cwd: process.cwd(),
@@ -31,6 +86,7 @@ describe("setup command", () => {
           status: "needs-setup",
           registered: false,
           artifactsInstalled: false,
+          launchTransport: "unavailable",
           nextAction: "Run `oraculum setup --runtime claude-code`.",
           notes: ["Expected MCP config path: /tmp/home/.claude/mcp.json"],
         },
@@ -39,11 +95,12 @@ describe("setup command", () => {
           status: "ready",
           registered: true,
           artifactsInstalled: true,
-          nextAction: "Use `orc ...` directly in Codex.",
+          launchTransport: "official",
+          nextAction: "Use launch-time exact `orc ...` with Codex.",
           notes: ["Expected MCP config path: /tmp/home/.codex/config.toml"],
         },
       ],
-      summary: "Claude Code and Codex are ready for host-native `orc ...` commands.",
+      summary: "Claude Code and Codex are ready for launch-time exact `orc ...` commands.",
     });
   });
 
@@ -68,10 +125,10 @@ describe("setup command", () => {
       host: "codex",
       status: "ready",
     });
-    expect(parsed.summary).toBe("codex is ready for host-native `orc ...` commands.");
+    expect(parsed.summary).toBe("codex is ready for launch-time exact `orc ...` commands.");
   });
 
-  it("prints a runtime-scoped plain-text summary when a host filter is provided", async () => {
+  it("prints launch-only plain-text status summaries", async () => {
     const program = createProgram();
 
     const output = await captureStdout(async () => {
@@ -81,9 +138,24 @@ describe("setup command", () => {
     });
 
     expect(output).toContain(
-      "Run `oraculum setup --runtime claude-code` to finish host-native `orc ...` routing, then use `oraculum setup status --runtime claude-code` to verify the wiring.",
+      "Run `oraculum setup --runtime claude-code` to finish launch-time `orc ...` routing, then use `oraculum setup status --runtime claude-code` to verify the wiring.",
     );
-    expect(output).not.toContain("Claude Code and Codex are ready");
+    expect(output).toContain(
+      "claude-code: status=needs-setup registered=no artifacts=no launch=unavailable",
+    );
+  });
+
+  it("prints Codex stable launch-time guidance during setup", async () => {
+    const program = createProgram();
+
+    const output = await captureStdout(async () => {
+      await program.parseAsync(["setup", "--runtime", "codex"], {
+        from: "user",
+      });
+    });
+
+    expect(output).toContain("Codex stable/default path: launch-time official transport");
+    expect(output).not.toContain("experimental");
   });
 });
 

@@ -11,6 +11,7 @@ export interface CodexSetupOptions {
     command: string;
   };
   packagedRoot?: string;
+  platform?: NodeJS.Platform;
 }
 
 export interface CodexSetupResult {
@@ -27,6 +28,7 @@ export interface CodexUninstallOptions {
   codexBinaryPath?: string;
   env?: NodeJS.ProcessEnv;
   homeDir?: string;
+  platform?: NodeJS.Platform;
 }
 
 export interface CodexUninstallResult {

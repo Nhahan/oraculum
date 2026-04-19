@@ -21,17 +21,65 @@ vi.mock("../src/services/codex-chat-native.js", async () => {
   };
 });
 
+vi.mock("../src/services/chat-native.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/services/chat-native.js")>(
+    "../src/services/chat-native.js",
+  );
+  return {
+    ...actual,
+    buildSetupDiagnosticsResponse: vi.fn(),
+    uninstallHostWrapperShellBindings: vi.fn(),
+  };
+});
+
 import { buildProgram } from "../src/program.js";
+import {
+  buildSetupDiagnosticsResponse,
+  uninstallHostWrapperShellBindings,
+} from "../src/services/chat-native.js";
 import { uninstallClaudeCodeHost } from "../src/services/claude-chat-native.js";
 import { uninstallCodexHost } from "../src/services/codex-chat-native.js";
 
+const mockedBuildSetupDiagnosticsResponse = vi.mocked(buildSetupDiagnosticsResponse);
+const mockedUninstallHostWrapperShellBindings = vi.mocked(uninstallHostWrapperShellBindings);
 const mockedUninstallClaudeCodeHost = vi.mocked(uninstallClaudeCodeHost);
 const mockedUninstallCodexHost = vi.mocked(uninstallCodexHost);
 
 describe("uninstall command", () => {
   beforeEach(() => {
+    mockedBuildSetupDiagnosticsResponse.mockReset();
+    mockedUninstallHostWrapperShellBindings.mockReset();
+    mockedUninstallHostWrapperShellBindings.mockResolvedValue(undefined);
     mockedUninstallClaudeCodeHost.mockReset();
     mockedUninstallCodexHost.mockReset();
+    mockedBuildSetupDiagnosticsResponse.mockResolvedValue({
+      mode: "setup-status",
+      cwd: process.cwd(),
+      projectInitialized: true,
+      configPath: "/tmp/project/.oraculum/config.json",
+      targetPrefix: "orc",
+      hosts: [
+        {
+          host: "claude-code",
+          status: "ready",
+          registered: true,
+          artifactsInstalled: true,
+          launchTransport: "official",
+          nextAction: "Use `orc ...` directly in Claude Code.",
+          notes: [],
+        },
+        {
+          host: "codex",
+          status: "needs-setup",
+          registered: false,
+          artifactsInstalled: false,
+          launchTransport: "unavailable",
+          nextAction: "Run `oraculum setup --runtime codex`.",
+          notes: [],
+        },
+      ],
+      summary: "Claude Code and Codex are ready for `orc ...` commands.",
+    });
     mockedUninstallClaudeCodeHost.mockResolvedValue({
       installRoot: "/tmp/home/.oraculum/chat-native/claude-code",
       marketplaceRemoved: true,
@@ -54,6 +102,7 @@ describe("uninstall command", () => {
 
     expect(mockedUninstallClaudeCodeHost).toHaveBeenCalledTimes(1);
     expect(mockedUninstallCodexHost).toHaveBeenCalledTimes(1);
+    expect(mockedUninstallHostWrapperShellBindings).toHaveBeenCalledTimes(1);
   });
 
   it("removes only the requested runtime when --runtime is provided", async () => {
@@ -65,6 +114,47 @@ describe("uninstall command", () => {
 
     expect(mockedUninstallClaudeCodeHost).not.toHaveBeenCalled();
     expect(mockedUninstallCodexHost).toHaveBeenCalledTimes(1);
+    expect(mockedUninstallHostWrapperShellBindings).not.toHaveBeenCalled();
+  });
+
+  it("removes the shell wrapper after scoped uninstall when no host integrations remain", async () => {
+    mockedBuildSetupDiagnosticsResponse.mockResolvedValueOnce({
+      mode: "setup-status",
+      cwd: process.cwd(),
+      projectInitialized: true,
+      configPath: "/tmp/project/.oraculum/config.json",
+      targetPrefix: "orc",
+      hosts: [
+        {
+          host: "claude-code",
+          status: "needs-setup",
+          registered: false,
+          artifactsInstalled: false,
+          launchTransport: "unavailable",
+          nextAction: "Run `oraculum setup --runtime claude-code`.",
+          notes: [],
+        },
+        {
+          host: "codex",
+          status: "needs-setup",
+          registered: false,
+          artifactsInstalled: false,
+          launchTransport: "unavailable",
+          nextAction: "Run `oraculum setup --runtime codex`.",
+          notes: [],
+        },
+      ],
+      summary:
+        "Run `oraculum setup --runtime <host>` to finish `orc ...` routing, then use `oraculum setup status` to verify the wiring.",
+    });
+
+    const program = createProgram();
+
+    await expect(
+      program.parseAsync(["uninstall", "--runtime", "codex"], { from: "user" }),
+    ).resolves.toBeTruthy();
+
+    expect(mockedUninstallHostWrapperShellBindings).toHaveBeenCalledTimes(1);
   });
 });
 

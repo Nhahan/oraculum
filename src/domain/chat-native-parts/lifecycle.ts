@@ -3,6 +3,8 @@ import { z } from "zod";
 import { adapterSchema } from "../config.js";
 import { commandPrefixSchema } from "./command.js";
 
+export const hostTransportModeSchema = z.enum(["official", "unavailable"]);
+
 export const initToolRequestSchema = z.object({
   cwd: z.string().min(1),
   force: z.boolean().default(false),
@@ -27,6 +29,7 @@ export const hostSetupStatusSchema = z.object({
   status: z.enum(["ready", "partial", "needs-setup"]),
   registered: z.boolean(),
   artifactsInstalled: z.boolean(),
+  launchTransport: hostTransportModeSchema,
   nextAction: z.string().min(1),
   notes: z.array(z.string().min(1)).default([]),
 });
@@ -44,5 +47,6 @@ export const setupStatusToolResponseSchema = z.object({
 
 export type InitToolRequest = z.infer<typeof initToolRequestSchema>;
 export type InitToolResponse = z.infer<typeof initToolResponseSchema>;
+export type HostTransportMode = z.infer<typeof hostTransportModeSchema>;
 export type SetupStatusToolRequest = z.infer<typeof setupStatusToolRequestSchema>;
 export type SetupStatusToolResponse = z.infer<typeof setupStatusToolResponseSchema>;

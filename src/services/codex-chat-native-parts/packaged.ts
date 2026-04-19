@@ -1,7 +1,6 @@
 import { fileURLToPath } from "node:url";
 
 import type { CommandManifestEntry } from "../../domain/chat-native.js";
-import { getOrcRouteAlias } from "../chat-native/command-manifest.js";
 import { CODEX_RULE_FILENAME, CODEX_SETUP_GUIDANCE, toCodexSkillDir } from "./shared.js";
 
 export function getPackagedCodexRoot(): string {
@@ -82,6 +81,11 @@ function renderCodexRules(manifest: readonly CommandManifestEntry[]): string {
 }
 
 function renderCodexSkill(entry: CommandManifestEntry): string {
+  const skillName = entry.id === "consult" ? "task" : entry.id;
+  const description =
+    entry.id === "consult"
+      ? "Primary task route."
+      : `Exact \`orc ${entry.path.join(" ")}\` handler.`;
   const argsLine =
     entry.id === "consult" || entry.id === "plan" || entry.id === "draft"
       ? "Args: cwd=current-directory; taskInput=first positional after known flags; optional --agent, --candidates, --timeout-ms."
@@ -95,15 +99,14 @@ function renderCodexSkill(entry: CommandManifestEntry): string {
 
   return [
     "---",
-    `name: ${entry.id}`,
-    `description: Exact \`orc ${entry.path.join(" ")}\` handler.`,
+    `name: ${skillName}`,
+    `description: ${description}`,
     "---",
     "",
-    "MCP only.",
+    "MCP route only.",
     `Tool: ${entry.mcpTool}`,
     argsLine,
-    "Before MCP: no user text, no repo reads, no shell.",
-    "After MCP: return only the user-relevant result or failure.",
+    "Immediate tool call only.",
     "",
   ].join("\n");
 }

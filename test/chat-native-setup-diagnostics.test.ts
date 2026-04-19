@@ -21,41 +21,23 @@ import {
 registerChatNativeTempRootCleanup();
 
 describe("chat-native setup diagnostics", () => {
-  it("describes setup diagnostics with actionable host readiness states", () => {
+  it("describes launch-time setup diagnostics with actionable host readiness states", () => {
     const diagnostics = setupStatusToolResponseSchema.parse(
       buildSetupDiagnosticsResponse(process.cwd()),
     );
 
     expect(diagnostics.targetPrefix).toBe("orc");
     expect(diagnostics.hosts).toHaveLength(2);
-    expect(diagnostics.summary).toContain("host-native");
+    expect(diagnostics.summary).toContain("launch-time exact `orc ...`");
     for (const host of diagnostics.hosts) {
       expect(["ready", "partial", "needs-setup"]).toContain(host.status);
       if (host.status === "ready") {
-        expect(host.nextAction.startsWith("Use `orc ...` directly in ")).toBe(true);
+        expect(host.launchTransport).toBe("official");
+        expect(host.nextAction).toContain("launch-time exact `orc ...`");
       } else {
         expect(host.nextAction).toContain("oraculum setup --runtime");
       }
     }
-    expect(
-      diagnostics.hosts
-        .find((host) => host.host === "claude-code")
-        ?.notes.some(
-          (note) =>
-            note.includes("oraculum setup --runtime claude-code") ||
-            note.includes(".claude/plugins"),
-        ),
-    ).toBe(true);
-    expect(
-      diagnostics.hosts
-        .find((host) => host.host === "claude-code")
-        ?.notes.some((note) => note.includes(".claude/plugins")),
-    ).toBe(true);
-    expect(
-      diagnostics.hosts
-        .find((host) => host.host === "codex")
-        ?.notes.some((note) => note.includes("oraculum setup --runtime codex")),
-    ).toBe(true);
   });
 
   it("omits project config paths from setup diagnostics when the project is not initialized", async () => {
@@ -86,6 +68,7 @@ describe("chat-native setup diagnostics", () => {
           status: host.status,
           registered: host.registered,
           artifactsInstalled: host.artifactsInstalled,
+          launchTransport: host.launchTransport,
         })),
       ),
     );
@@ -132,42 +115,6 @@ describe("chat-native setup diagnostics", () => {
         null,
         2,
       )}\n`,
-      "utf8",
-    );
-
-    expect(hasClaudePluginArtifactsInstalled(pluginsDir)).toBe(true);
-  });
-
-  it("does not treat a stale direct Claude plugin directory as current", async () => {
-    const root = await createChatNativeTempRoot("oraculum-claude-plugin-direct-");
-    const pluginsDir = join(root, "plugins");
-    const directPluginDir = join(pluginsDir, "orc");
-    await mkdir(directPluginDir, { recursive: true });
-    await writeFile(
-      join(directPluginDir, "plugin.json"),
-      `${JSON.stringify({ name: "orc", version: "0.1.0-beta.1" }, null, 2)}\n`,
-      "utf8",
-    );
-
-    expect(hasClaudePluginArtifactsInstalled(pluginsDir)).toBe(false);
-
-    await writeFile(join(directPluginDir, ".mcp.json"), "{}\n", "utf8");
-    await mkdir(join(directPluginDir, "skills", "consult"), { recursive: true });
-    await writeFile(
-      join(directPluginDir, "skills", "consult", "SKILL.md"),
-      "consult\n",
-      "utf8",
-    );
-
-    expect(hasClaudePluginArtifactsInstalled(pluginsDir)).toBe(false);
-
-    for (const dirName of ["plan", "verdict", "verdict-archive", "crown", "draft", "init"]) {
-      await mkdir(join(directPluginDir, "skills", dirName), { recursive: true });
-      await writeFile(join(directPluginDir, "skills", dirName, "SKILL.md"), `${dirName}\n`, "utf8");
-    }
-    await writeFile(
-      join(directPluginDir, "plugin.json"),
-      `${JSON.stringify({ name: "orc", version: APP_VERSION }, null, 2)}\n`,
       "utf8",
     );
 

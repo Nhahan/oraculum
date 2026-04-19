@@ -62,6 +62,7 @@ describe("chat-native MCP tools: lifecycle", () => {
           status: host.status,
           registered: host.registered,
           artifactsInstalled: host.artifactsInstalled,
+          launchTransport: host.launchTransport,
         })),
       ),
     );

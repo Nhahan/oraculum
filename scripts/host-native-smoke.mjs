@@ -12,7 +12,12 @@ import {
   assertVerifiedCrownMaterialization,
   countToolCalls,
 } from "./host-native-smoke/parsing.mjs";
-import { waitForCompletedRun, waitForExportPlan } from "./host-native-smoke/polling.mjs";
+import {
+  readLatestRunIdIfPresent,
+  waitForCompletedRun,
+  waitForExportPlan,
+  waitForNextCompletedRun,
+} from "./host-native-smoke/polling.mjs";
 import { isClaudeStreamJsonComplete, runCommand } from "./host-native-smoke/process.mjs";
 import {
   assertCandidateAgent,
@@ -293,8 +298,6 @@ async function runHost(runtime, projectRoot, prompt) {
   );
 }
 
-export { waitForCompletedRun, waitForExportPlan };
-
 if (isEntrypoint) {
   main().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
@@ -302,3 +305,10 @@ if (isEntrypoint) {
     process.exitCode = 1;
   });
 }
+
+export {
+  readLatestRunIdIfPresent,
+  waitForCompletedRun,
+  waitForExportPlan,
+  waitForNextCompletedRun,
+};

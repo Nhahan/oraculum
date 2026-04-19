@@ -54,6 +54,8 @@ export async function setupClaudeCodeHost(
   const marketplacePath = join(pluginRoot, "marketplace.json");
   const mcpConfigPath = join(homeDir, ".claude", "mcp.json");
 
+  await assertClaudeHomeConfigFilesReadable(mcpConfigPath);
+
   if (!existsSync(pluginRoot) || !existsSync(marketplacePath)) {
     throw new OraculumError(
       "Packaged Claude Code artifacts are missing. Build Oraculum first so setup can install the generated host artifacts.",
@@ -64,7 +66,6 @@ export async function setupClaudeCodeHost(
   const effectiveMcpConfig = buildClaudePluginMcpConfigFromInvocation(
     options.mcpInvocation ?? resolveNodeCliInvocation(),
   );
-  await mergeClaudeMcpConfig(mcpConfigPath, effectiveMcpConfig);
 
   const validate = await runSubprocess({
     command: claudeBinaryPath,
@@ -102,6 +103,8 @@ export async function setupClaudeCodeHost(
     await pruneSelectedClaudePluginArtifacts(homeDir, [CLAUDE_PLUGIN_NAME]);
     await installClaudePlugin(claudeBinaryPath, claudeArgs, env);
   }
+
+  await mergeClaudeMcpConfig(mcpConfigPath, effectiveMcpConfig);
 
   return {
     effectiveMcpConfigPath: join(pluginRoot, ".mcp.json"),
@@ -147,14 +150,21 @@ export async function uninstallClaudeCodeHost(
     () => [],
   );
   const targetPluginNames = [CLAUDE_PLUGIN_NAME, ...CLAUDE_LEGACY_PLUGIN_NAMES];
-  const targetPlugin = installedPlugins.find((entry) => targetPluginNames.includes(entry.name));
-  if (targetPlugin?.name) {
-    try {
-      await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env, targetPlugin.name);
-      pluginRemoved = true;
-    } catch {
-      pluginRemoved = false;
+  const targetPlugins = installedPlugins.filter((entry) => targetPluginNames.includes(entry.name));
+  if (targetPlugins.length > 0) {
+    let removedCount = 0;
+    for (const targetPlugin of targetPlugins) {
+      if (!targetPlugin.name) {
+        continue;
+      }
+      try {
+        await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env, targetPlugin.name);
+        removedCount += 1;
+      } catch {
+        // Best-effort uninstall should continue pruning the remaining Oraculum plugin variants.
+      }
     }
+    pluginRemoved = removedCount > 0;
   }
 
   await removeClaudeMcpConfigEntry(mcpConfigPath);
@@ -173,11 +183,10 @@ async function mergeClaudeMcpConfig(
   mcpConfigPath: string,
   effectiveConfig: Record<string, unknown>,
 ): Promise<void> {
-  const existing = existsSync(mcpConfigPath)
-    ? (JSON.parse(await readFile(mcpConfigPath, "utf8")) as {
-        mcpServers?: Record<string, unknown>;
-      })
-    : {};
+  const existing =
+    (await readClaudeJsonObjectFile<{
+      mcpServers?: Record<string, unknown>;
+    }>(mcpConfigPath, `Claude MCP config is not valid JSON: ${mcpConfigPath}`)) ?? {};
   const next = {
     ...existing,
     mcpServers: {
@@ -198,9 +207,12 @@ async function removeClaudeMcpConfigEntry(mcpConfigPath: string): Promise<void> 
     return;
   }
 
-  const existing = JSON.parse(await readFile(mcpConfigPath, "utf8")) as {
+  const existing = await readClaudeJsonObjectFile<{
     mcpServers?: Record<string, unknown>;
-  };
+  }>(mcpConfigPath);
+  if (!existing) {
+    return;
+  }
   const nextServers = { ...(existing.mcpServers ?? {}) };
   for (const serverName of [CLAUDE_MCP_SERVER_NAME, ...CLAUDE_LEGACY_PLUGIN_NAMES]) {
     delete nextServers[serverName];
@@ -278,6 +290,35 @@ function assertPackagedClaudeArtifacts(packagedRoot: string): void {
         ...missing.map((path) => `Missing: ${path}`),
       ].join("\n"),
     );
+  }
+}
+
+async function assertClaudeHomeConfigFilesReadable(mcpConfigPath: string): Promise<void> {
+  await readClaudeJsonObjectFile(
+    mcpConfigPath,
+    `Claude MCP config is not valid JSON: ${mcpConfigPath}`,
+  );
+}
+
+async function readClaudeJsonObjectFile<T extends Record<string, unknown>>(
+  path: string,
+  errorMessage?: string,
+): Promise<T | undefined> {
+  if (!existsSync(path)) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Expected a JSON object.");
+    }
+    return parsed as T;
+  } catch {
+    if (errorMessage) {
+      throw new OraculumError(errorMessage);
+    }
+    return undefined;
   }
 }
 

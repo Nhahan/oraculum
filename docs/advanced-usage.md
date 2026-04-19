@@ -297,6 +297,13 @@ oraculum setup --runtime codex
 
 Run setup in your terminal, not inside the Claude Code or Codex chat input. This registers Oraculum globally for your local host installation.
 
+Stable/default usage is the launch-time exact prompt path, for example:
+
+```bash
+codex 'orc consult "안녕"'
+claude -p 'orc consult "안녕"'
+```
+
 ### Check Setup Status
 
 ```bash
@@ -305,6 +312,21 @@ oraculum setup status --json
 ```
 
 Use the plain command for a readable summary, or `--json` when you want machine-readable diagnostics.
+
+### Host Policies
+
+Oraculum keeps the `orc ...` language shared across Claude Code and Codex. The stable/default workflow for both hosts is the launch-time exact prompt path.
+
+| Host | Launch-time exact `orc ...` | Product status |
+| --- | --- | --- |
+| Claude Code | `official` | stable default |
+| Codex | `official` | stable default |
+
+Interpretation:
+
+- `official`: Oraculum routes through the host's official lower-level transport.
+
+Use `oraculum setup status --json` when you want the current host policy as machine-readable diagnostics.
 
 ### Uninstall Host Integration
 

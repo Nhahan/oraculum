@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 
 import { APP_VERSION } from "../../core/constants.js";
 import { getAdvancedConfigPath, getConfigPath, resolveProjectRoot } from "../../core/paths.js";
@@ -11,6 +11,7 @@ import {
   getExpectedClaudeSkillDirs,
 } from "../claude-chat-native.js";
 import { getExpectedCodexRuleFileName, getExpectedCodexSkillDirs } from "../codex-chat-native.js";
+import { getHostWrapperSnippetPath, resolveHostWrapperRcPath } from "../host-wrapper.js";
 
 const MANAGED_CLAUDE_PLUGIN_KEYS = ["orc@oraculum", "oraculum@oraculum"] as const;
 const MANAGED_CLAUDE_PLUGIN_DIRS = ["orc", "@orc", "oraculum", "@oraculum"] as const;
@@ -26,41 +27,65 @@ export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusToolRespo
   const codexConfigPath = join(homedir(), ".codex", "config.toml");
   const codexSkillsDir = join(homedir(), ".codex", "skills");
   const codexRulesDir = join(homedir(), ".codex", "rules");
+  const shellWrapperSnippetPath = getHostWrapperSnippetPath();
+  const shellWrapperRcPath = resolveHostWrapperRcPath();
+  const shellWrapperInstalled = hasShellWrapperBindings(
+    shellWrapperSnippetPath,
+    shellWrapperRcPath,
+  );
+  const projectInitialized = existsSync(configPath);
+  const advancedConfigPresent = existsSync(advancedConfigPath);
+
   const claudeRegistered = MANAGED_MCP_SERVER_IDS.some((serverId) =>
     hasMcpServer(claudeMcpPath, serverId),
   );
   const claudeArtifactsInstalled = hasClaudePluginInstalled(claudeInstallRoot);
+  const claudeLaunchTransport = computeLaunchTransportMode(
+    "claude-code",
+    claudeRegistered,
+    claudeArtifactsInstalled,
+    shellWrapperInstalled,
+  );
+
   const codexRegistered = hasCodexMcpServer(codexConfigPath);
   const codexArtifactsInstalled = hasCodexArtifactsInstalled(codexSkillsDir, codexRulesDir);
-  const projectInitialized = existsSync(configPath);
-  const advancedConfigPresent = existsSync(advancedConfigPath);
+  const codexLaunchTransport = computeLaunchTransportMode(
+    "codex",
+    codexRegistered,
+    codexArtifactsInstalled,
+    shellWrapperInstalled,
+  );
 
   const hosts = [
     buildHostDiagnostics({
       artifactsInstalled: claudeArtifactsInstalled,
       host: "claude-code",
-      registered: claudeRegistered,
+      launchTransport: claudeLaunchTransport,
       notes: [
         `Expected MCP config path: ${toPortableDisplayPath(claudeMcpPath)}`,
         `Expected Claude plugin cache root: ${toPortableDisplayPath(claudePluginsDir)}`,
         `Expected Claude install root: ${toPortableDisplayPath(claudeInstallRoot)}`,
+        "Stable/default path: launch-time exact `orc ...` via the official Claude stream-json route.",
         "Run `oraculum setup --runtime claude-code` to register the MCP server and install the Oraculum plugin.",
       ],
+      registered: claudeRegistered,
     }),
     buildHostDiagnostics({
       artifactsInstalled: codexArtifactsInstalled,
       host: "codex",
-      registered: codexRegistered,
+      launchTransport: codexLaunchTransport,
       notes: [
         `Expected MCP config path: ${toPortableDisplayPath(codexConfigPath)}`,
         `Expected skill install root: ${toPortableDisplayPath(codexSkillsDir)}`,
         `Expected rule install root: ${toPortableDisplayPath(codexRulesDir)}`,
+        "Stable/default path: launch-time exact `orc ...` via the official Codex app-server route.",
         "Run `oraculum setup --runtime codex` to register the MCP server and install the Oraculum skills and rules.",
       ],
+      registered: codexRegistered,
     }),
   ];
 
-  return {
+  return setupStatusToolResponseSchema.parse({
     mode: "setup-status",
     cwd: projectRoot,
     projectInitialized,
@@ -69,7 +94,7 @@ export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusToolRespo
     targetPrefix: "orc",
     hosts,
     summary: summarizeSetupDiagnosticsHosts(hosts),
-  };
+  });
 }
 
 export function filterSetupDiagnosticsResponse(
@@ -89,6 +114,7 @@ export function summarizeSetupDiagnosticsHosts(
   hosts: Array<{
     artifactsInstalled: boolean;
     host: SetupStatusToolResponse["hosts"][number]["host"];
+    launchTransport: SetupStatusToolResponse["hosts"][number]["launchTransport"];
     registered: boolean;
     status: SetupStatusToolResponse["hosts"][number]["status"];
   }>,
@@ -104,13 +130,13 @@ export function summarizeSetupDiagnosticsHosts(
     }
 
     return host.status === "ready"
-      ? `${host.host} is ready for host-native \`orc ...\` commands.`
-      : `Run \`oraculum setup --runtime ${host.host}\` to finish host-native \`orc ...\` routing, then use \`oraculum setup status --runtime ${host.host}\` to verify the wiring.`;
+      ? `${host.host} is ready for launch-time exact \`orc ...\` commands.`
+      : `Run \`oraculum setup --runtime ${host.host}\` to finish launch-time \`orc ...\` routing, then use \`oraculum setup status --runtime ${host.host}\` to verify the wiring.`;
   }
 
   return hosts.every((host) => host.status === "ready")
-    ? "Claude Code and Codex are ready for host-native `orc ...` commands."
-    : "Run `oraculum setup --runtime <host>` to finish host-native `orc ...` routing, then use `oraculum setup status` to verify the wiring.";
+    ? "Claude Code and Codex are ready for launch-time exact `orc ...` commands."
+    : "Run `oraculum setup --runtime <host>` to finish launch-time `orc ...` routing, then use `oraculum setup status` to verify the wiring.";
 }
 
 export function hasClaudePluginArtifactsInstalled(pluginsDir: string): boolean {
@@ -153,6 +179,83 @@ export function hasClaudePluginArtifactsInstalled(pluginsDir: string): boolean {
   }
 }
 
+export function hasClaudeCommandArtifactsInstalled(installRoot: string): boolean {
+  return getExpectedClaudeCommandFiles().every((path) => existsSync(join(installRoot, path)));
+}
+
+export function hasCodexArtifactsInstalled(skillsDir: string, rulesDir: string): boolean {
+  if (!existsSync(skillsDir) || !existsSync(rulesDir)) {
+    return false;
+  }
+
+  const expectedRule = join(rulesDir, getExpectedCodexRuleFileName());
+  if (!existsSync(expectedRule)) {
+    return false;
+  }
+
+  return getExpectedCodexSkillDirs().every((dirName) =>
+    existsSync(join(skillsDir, dirName, "SKILL.md")),
+  );
+}
+
+function buildHostDiagnostics(options: {
+  artifactsInstalled: boolean;
+  host: SetupStatusToolResponse["hosts"][number]["host"];
+  launchTransport: SetupStatusToolResponse["hosts"][number]["launchTransport"];
+  notes: string[];
+  registered: boolean;
+}): SetupStatusToolResponse["hosts"][number] {
+  const status = computeHostSetupStatus(
+    options.registered,
+    options.artifactsInstalled,
+    options.launchTransport,
+  );
+
+  return {
+    host: options.host,
+    status,
+    registered: options.registered,
+    artifactsInstalled: options.artifactsInstalled,
+    launchTransport: options.launchTransport,
+    nextAction:
+      status === "ready"
+        ? `Use launch-time exact \`orc ...\` with ${options.host === "claude-code" ? "Claude Code" : "Codex"}.`
+        : `Run \`oraculum setup --runtime ${options.host}\`.`,
+    notes: options.notes,
+  };
+}
+
+function computeHostSetupStatus(
+  registered: boolean,
+  artifactsInstalled: boolean,
+  launchTransport: SetupStatusToolResponse["hosts"][number]["launchTransport"],
+): "ready" | "partial" | "needs-setup" {
+  if (registered && artifactsInstalled && launchTransport === "official") {
+    return "ready";
+  }
+
+  if (!registered && !artifactsInstalled) {
+    return "needs-setup";
+  }
+
+  return "partial";
+}
+
+function computeLaunchTransportMode(
+  host: SetupStatusToolResponse["hosts"][number]["host"],
+  registered: boolean,
+  artifactsInstalled: boolean,
+  shellWrapperInstalled: boolean,
+): SetupStatusToolResponse["hosts"][number]["launchTransport"] {
+  if (!registered || !artifactsInstalled) {
+    return "unavailable";
+  }
+
+  return shellWrapperInstalled && hasCommandOnPath(host === "codex" ? "codex" : "claude")
+    ? "official"
+    : "unavailable";
+}
+
 function hasCurrentClaudePluginDir(path: string): boolean {
   return hasCurrentClaudePluginArtifacts(path);
 }
@@ -180,30 +283,6 @@ function hasCurrentClaudePluginArtifacts(path: string): boolean {
   }
 }
 
-function buildHostDiagnostics(options: {
-  artifactsInstalled: boolean;
-  host: SetupStatusToolResponse["hosts"][number]["host"];
-  notes: string[];
-  registered: boolean;
-}): SetupStatusToolResponse["hosts"][number] {
-  const status = computeHostSetupStatus(options.registered, options.artifactsInstalled);
-  return {
-    host: options.host,
-    status,
-    registered: options.registered,
-    artifactsInstalled: options.artifactsInstalled,
-    nextAction:
-      status === "ready"
-        ? `Use \`orc ...\` directly in ${options.host === "claude-code" ? "Claude Code" : "Codex"}.`
-        : `Run \`oraculum setup --runtime ${options.host}\`.`,
-    notes: options.notes,
-  };
-}
-
-function toPortableDisplayPath(path: string): string {
-  return path.replaceAll("\\", "/");
-}
-
 function hasMcpServer(path: string, serverId: string): boolean {
   if (!existsSync(path)) {
     return false;
@@ -226,10 +305,6 @@ function hasClaudePluginInstalled(installRoot: string): boolean {
   );
 }
 
-export function hasClaudeCommandArtifactsInstalled(installRoot: string): boolean {
-  return getExpectedClaudeCommandFiles().every((path) => existsSync(join(installRoot, path)));
-}
-
 function hasCodexMcpServer(path: string): boolean {
   if (!existsSync(path)) {
     return false;
@@ -245,32 +320,42 @@ function hasCodexMcpServer(path: string): boolean {
   }
 }
 
-export function hasCodexArtifactsInstalled(skillsDir: string, rulesDir: string): boolean {
-  if (!existsSync(skillsDir) || !existsSync(rulesDir)) {
+function hasShellWrapperBindings(snippetPath: string, rcPath?: string): boolean {
+  if (!existsSync(snippetPath)) {
     return false;
   }
 
-  const expectedRule = join(rulesDir, getExpectedCodexRuleFileName());
-  if (!existsSync(expectedRule)) {
+  if (!rcPath || !existsSync(rcPath)) {
     return false;
   }
 
-  return getExpectedCodexSkillDirs().every((dirName) =>
-    existsSync(join(skillsDir, dirName, "SKILL.md")),
-  );
+  try {
+    return readFileSync(rcPath, "utf8").includes(snippetPath);
+  } catch {
+    return false;
+  }
 }
 
-function computeHostSetupStatus(
-  registered: boolean,
-  artifactsInstalled: boolean,
-): "ready" | "partial" | "needs-setup" {
-  if (registered && artifactsInstalled) {
-    return "ready";
+function hasCommandOnPath(command: string): boolean {
+  const pathValue = process.env.PATH;
+  if (!pathValue) {
+    return false;
   }
 
-  if (!registered && !artifactsInstalled) {
-    return "needs-setup";
-  }
+  const extensions =
+    process.platform === "win32"
+      ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+          .split(";")
+          .filter((entry) => entry.length > 0)
+      : [""];
 
-  return "partial";
+  return pathValue
+    .split(delimiter)
+    .some((segment) =>
+      extensions.some((extension) => existsSync(join(segment, `${command}${extension}`))),
+    );
+}
+
+function toPortableDisplayPath(path: string): string {
+  return path.replaceAll("\\", "/");
 }
