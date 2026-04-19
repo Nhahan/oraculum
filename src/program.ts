@@ -1,5 +1,6 @@
 import { Command } from "commander";
 
+import { registerHostWrapperCommand } from "./commands/host-wrapper.js";
 import { registerMcpCommand } from "./commands/mcp.js";
 import { registerSetupCommand } from "./commands/setup.js";
 import { APP_NAME, APP_VERSION } from "./core/constants.js";
@@ -13,6 +14,7 @@ export function buildProgram(): Command {
     .version(APP_VERSION);
 
   registerSetupCommand(program);
+  registerHostWrapperCommand(program);
   registerMcpCommand(program);
 
   return program;
