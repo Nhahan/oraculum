@@ -2,18 +2,18 @@
 
 This page is for users who want more control than the default one-command flow.
 
-After running setup in your terminal, the host-native path in Claude Code or Codex is:
+After running setup in your terminal, the stable/default launch-time exact prompt path is:
 
-```text
-orc consult "fix session loss on refresh"
-orc crown fix/session-loss
+```bash
+codex 'orc consult "fix session loss on refresh"'
+claude 'orc consult "fix session loss on refresh"'
 ```
 
 `consult` already prints the latest summary. Everything below is for reopening a consultation later, shaping the tournament more explicitly, or using shell-only setup, uninstall, diagnostics, and MCP commands.
 
-The primary product surface is a host-native chat surface with a shared `orc` command language across Claude Code and Codex. The shell binary remains for setup, uninstall, diagnostics, and MCP serving only. Run `oraculum setup ...` in your terminal, then use `orc ...` inside the host chat input. Current setup is host-level and global for your local Claude Code or Codex installation, not directory-scoped.
+The primary product surface is a launch-time exact prompt workflow with a shared `orc` command language across Claude Code and Codex. The shell binary remains for setup, uninstall, diagnostics, and MCP serving only. Run `oraculum setup ...` in your terminal, then launch the host with an exact `orc ...` prompt. Current setup is host-level and global for your local Claude Code or Codex installation, not directory-scoped.
 
-If you want to inspect whether host-native wiring is complete, run:
+If you want to inspect whether launch-time wiring is complete, run:
 
 ```bash
 oraculum setup status
@@ -46,10 +46,7 @@ Available runtimes today:
 - `codex`
 - `claude-code`
 
-Both runtimes support structured validation-posture selection:
-
-- `codex` via its structured non-interactive output path
-- `claude-code` via `-p --output-format json --json-schema`
+Both runtimes support structured validation-posture selection through their structured non-interactive output paths.
 
 That structured step is what lets Oraculum treat validation posture choice as a bounded selection problem instead of an unstructured free-form guess.
 
@@ -59,11 +56,11 @@ That structured step is what lets Oraculum treat validation posture choice as a 
 orc consult tasks/fix-session-loss.md --timeout-ms 300000
 ```
 
-Use `--timeout-ms` only when you want to put an explicit operator-owned bound on consultation adapter calls.
+Use `--timeout-ms` only when you want to put an explicit bound on consultation adapter calls.
 
 - The default `consult` and `plan` product path does not impose an Oraculum-level adapter timeout.
 - `--timeout-ms` bounds runtime adapter calls only; it does not rewrite repo-local oracle policy.
-- Release and evidence harnesses may still apply their own defaults. For example, `scripts/host-native-smoke.mjs` defaults to `300000ms` per host call because it is a test harness, not the product default.
+- Release and evidence harnesses may still apply their own defaults. For example, `npm run evidence:launch-smoke` defaults to `300000ms` per host call because it is a test harness, not the product default.
 - Repo-local oracle commands remain separate and can carry their own optional `timeoutMs` values in `.oraculum/advanced.json`.
 
 ## Automatic Validation Posture Selection
@@ -83,7 +80,7 @@ Today the built-in compatibility posture ids are:
 - `frontend`
 - `migration`
 
-The selected validation posture is consultation-scoped. It does not rewrite your saved quick-start config, and it does not overwrite explicit advanced operator settings.
+The selected validation posture is consultation-scoped. It does not rewrite your saved quick-start config, and it does not overwrite explicit advanced project settings.
 
 ## Validation Posture Boundaries
 
@@ -91,9 +88,7 @@ The runtime does not invent executable commands. It selects from the command ids
 
 Unknown strategy ids and command ids are filtered out or replaced by safe fallbacks before the recommendation is applied. Unsupported validation posture ids from runtime output are normalized through deterministic fallback before they become current state. If a plausible command is not safe to generate, Oraculum records it under `skippedCommandCandidates` instead of running it. If runtime validation-posture selection fails or is disabled, fallback behavior stays conservative: zero-signal repositories use `generic`, ambiguous package managers do not silently become npm, and missing validation is recorded as `missingCapabilities`.
 
-Repo-local scripts and explicit `.oraculum/advanced.json` oracles are strongest. Oraculum should not grow a built-in encyclopedia of framework, ORM, migration-tool, test-runner, or language-specific command recipes. Named tools, including Prisma or Drizzle, are recorded as evidence unless a repo-local script or explicit oracle defines the command.
-
-For the stable product-policy version of this boundary, see [Frontier Boundary Policy](./frontier-boundary-policy.md).
+Repo-local scripts and explicit `.oraculum/advanced.json` oracles are strongest. Oraculum prefers repository-owned commands and configuration over built-in ecosystem-specific guesses.
 
 ## Project Roots And Task Paths
 
@@ -124,7 +119,7 @@ Use this when you want to reopen an older consultation without remembering the e
 orc crown fix/session-loss
 ```
 
-The shared host-native `crown` path crowns the latest recommended result automatically.
+The shared `crown` path crowns the latest recommended result automatically.
 
 In a Git-backed project, `crown` expects the target branch name as the first argument, creates that branch, and materializes the recommended result there. In a non-Git project, use bare `orc crown`; it syncs the crowned workspace back into the project folder. If you pass a first argument in workspace-sync mode, Oraculum records it only as a materialization label.
 
@@ -173,88 +168,18 @@ That artifact does not replace the blocked preflight decision. It records:
 
 `orc verdict` and saved consultation summaries replay that artifact into rerun guidance so the operator can answer the bounded question before reopening the consultation.
 
-## Pressure Evidence Review
+## Saved Verdict Artifacts
 
-Pressure evidence stays decision-gated even after the first shipped baselines. Before widening the clarify path further or making second-opinion judging more aggressive, collect pressure from saved consultations first:
+`orc verdict` stays read-only, but the saved consultation directory can include richer artifacts than the default summary prints.
 
-```bash
-npm run evidence:pressure -- --no-write
-```
+Common examples include:
 
-The collector scans saved consultations and summarizes:
+- comparison reports
+- winner-selection records
+- research briefs
+- failure-analysis summaries
 
-- clarify pressure
-- finalist-selection pressure
-- repeated task, source-path, target-artifact, finalist strategy-mix, and host-crossing pressure trajectories
-- recurring blocker reasons
-- validation-posture, research-basis, research-conflict, research-rerun, and judging-criteria metadata coverage
-- artifact coverage and blind spots, including pressure-local gaps such as missing comparison reports or research briefs
-- missing-artifact breakdowns per pressure lane
-- an inspection queue showing which saved artifacts should be opened next, with run-manifest fallback entries when the expected artifact was never written
-- a bounded `hold` vs `promote` promotion signal
-
-If you want a replayable snapshot, omit `--no-write` and Oraculum will persist:
-
-```text
-.oraculum/pressure-evidence.json
-```
-
-Operational cadence:
-
-- rerun `npm run evidence:pressure -- --no-write` after workflow-shape changes
-- rerun it again after saved consultations have accumulated meaningfully
-- keep the deeper workflow closed while both promotion signals remain `hold`
-- only deepen clarify behavior further when clarify pressure repeats on the same scope
-- only widen second-opinion judging when judge abstain, manual crowning, or low-confidence winner selection repeats on the same scope
-
-## Verdict Evidence And Judging Criteria
-
-`orc verdict` stays read-only, but the saved artifacts now carry more machine-readable evidence than the default summary prints.
-
-- `winner-selection.json` can include artifact-aware `judgingCriteria` when the task has an explicit target result.
-- `winner-selection.second-opinion.json` records an optional advisory second-opinion judge when advanced operator policy enables it.
-- `verdict review` replays strongest evidence, weakest evidence, recommendation absence reasons, and manual review or manual crowning handoff fields.
-- comparison reports and verdict review also surface research basis status, research conflict handling, and failure-analysis availability when those artifacts exist.
-
-This keeps the default path short while leaving richer review material in the advanced path.
-
-## Optional Second-Opinion Judge
-
-Keep this off by default. Turn it on only after `npm run evidence:pressure -- --no-write` shows recurring finalist-selection pressure on the same scope.
-
-```json
-{
-  "version": 1,
-  "judge": {
-    "secondOpinion": {
-      "enabled": true,
-      "adapter": "claude-code",
-      "triggers": ["judge-abstain", "low-confidence", "many-changed-paths"],
-      "minChangedPaths": 8,
-      "minChangedLines": 200
-    }
-  }
-}
-```
-
-Advanced policy lives in:
-
-```text
-.oraculum/advanced.json
-```
-
-Contract notes:
-
-- the default consultation path stays single-judge and cheap
-- the second opinion is advisory-only and does not replace the primary recommendation automatically
-- Oraculum persists the advisory artifact at:
-
-```text
-.oraculum/runs/<consultation-id>/reports/winner-selection.second-opinion.json
-```
-
-- `orc verdict` and saved summaries surface agreement, disagreement, and unavailable second-opinion outcomes
-- if a recommended result has a disagreeing or unavailable second opinion, verdict review flips to manual-review guidance before crowning
+Use these when you want to inspect why a consultation stopped, why a winner was recommended, or what to rerun next.
 
 ## Explicit Init
 
@@ -301,7 +226,7 @@ Stable/default usage is the launch-time exact prompt path, for example:
 
 ```bash
 codex 'orc consult "안녕"'
-claude -p 'orc consult "안녕"'
+claude 'orc consult "안녕"'
 ```
 
 ### Check Setup Status
@@ -326,7 +251,7 @@ Interpretation:
 
 - `official`: Oraculum routes through the host's official lower-level transport.
 
-Use `oraculum setup status --json` when you want the current host policy as machine-readable diagnostics.
+Use `oraculum setup status --json` when you want the current host setup state as machine-readable diagnostics.
 
 ### Uninstall Host Integration
 
@@ -346,7 +271,7 @@ This removes host registration and installed host artifacts. If you also want to
 oraculum mcp serve
 ```
 
-This is mainly for internal debugging or direct MCP integration checks. Normal Claude Code and Codex usage should go through `orc ...` after setup.
+Use this only if you are integrating Oraculum with another MCP-capable client. Normal Claude Code and Codex usage should go through `orc ...` after setup.
 
 ## Repo-Local Oracles
 
@@ -432,13 +357,13 @@ Use `.oraculum/config.json` for quick-start defaults such as:
 - `defaultAgent`
 - `defaultCandidates`
 
-Use `.oraculum/advanced.json` for operator controls such as:
+Use `.oraculum/advanced.json` for advanced project settings such as:
 
 - repo-local oracles
 - repair policy
 - managed tree include/exclude rules for ambiguous generated paths
 - custom rounds and strategy portfolios
-- future profile- or policy-level overrides
+- future profile-level overrides
 
 Use advanced settings only for things like:
 

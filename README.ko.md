@@ -39,9 +39,9 @@ Oraculum은 AI 구현 작업을 한 번에 적용하는 흐름이 아니라, 후
 
 각 후보는 격리된 작업 공간에서 실행되고, 레포지토리의 검사들이 오라클처럼 판정하며, 근거가 기록되고, 추천된 결과만 최종 반영됩니다.
 
-Claude Code나 Codex는 추론 런타임으로 남고, Oraculum은 그 주변에 격리, 검사, 근거 기록, 최종 반영 게이트 같은 결정적 하네스를 제공합니다.
+Claude Code나 Codex가 여러 패치 후보를 먼저 시도해 보게 하고, 어떤 결과를 채택할지 로컬 검사와 저장된 근거로 결정하고 싶을 때 사용하는 도구입니다.
 
-npm은 Oraculum의 배포 채널일 뿐입니다. 대상 레포지토리가 Node 프로젝트일 필요는 없습니다.
+일반 Git 프로젝트나 비-Git 프로젝트 폴더에서도 사용할 수 있고, Oraculum을 npm으로 설치했다고 해서 대상 레포지토리가 Node 프로젝트일 필요는 없습니다.
 
 ## 설치
 
@@ -65,7 +65,7 @@ Codex:
 oraculum setup --runtime codex
 ```
 
-이 `oraculum setup ...` 명령은 Claude Code나 Codex 채팅창이 아니라 일반 터미널에서 실행해야 합니다.
+이 `oraculum setup ...` 명령은 일반 터미널에서 실행해야 합니다.
 그리고 현재 디렉토리 전용 설정이 아니라, 로컬 Claude Code나 Codex 설치 전체에 대해 전역(host-level) 등록을 수행합니다.
 
 나중에 연결 상태를 다시 확인하고 싶다면:
@@ -76,14 +76,27 @@ oraculum setup status
 
 ## 빠른 시작
 
-터미널에서 설정을 마친 뒤에는 Claude Code나 Codex 채팅창으로 돌아가 아래 host-native 흐름을 사용합니다.
+사용하는 호스트에 맞게 Oraculum을 등록합니다.
 
-```text
-orc consult "fix session loss on refresh"
-orc crown fix/session-loss
+```bash
+oraculum setup --runtime codex
+oraculum setup --runtime claude-code
 ```
 
-이 흐름은 처음 사용할 때 Oraculum을 자동 초기화하고, 실행이 끝나면 결과 요약을 바로 출력합니다. `crown`은 추천된 결과가 있는 가장 최근 실행 결과를 기본값으로 사용합니다.
+그 다음 정확한 `orc ...` 프롬프트로 호스트를 실행합니다.
+
+```bash
+codex 'orc consult "fix session loss on refresh"'
+claude 'orc consult "fix session loss on refresh"'
+```
+
+이 흐름은 처음 사용할 때 Oraculum을 자동 초기화하고, consultation이 끝나면 결과 요약을 바로 출력합니다.
+
+나중에 최근 추천 결과를 실제로 반영하려면:
+
+```text
+orc crown fix/session-loss
+```
 
 Git 프로젝트에서는 `crown`이 지정한 브랜치를 만들고 추천된 결과를 그 브랜치에 반영합니다. Git이 아닌 프로젝트에서는 `orc crown`만 사용하면 되고, 가짜 브랜치 이름 없이 해당 결과를 프로젝트 폴더에 그대로 동기화합니다.
 
@@ -105,4 +118,4 @@ Git 프로젝트에서는 `crown`이 지정한 브랜치를 만들고 추천된 
 
 ## 고급 사용법
 
-consultation 범위의 validation posture 선택, 런타임 선택, 실행 기록 조회, 레포지토리에 정의한 오라클 설정, research artifact, setup 진단, MCP 연결, host uninstall 방법, 명시적 consultation timeout 같은 제어가 필요하면 [고급 사용법](./docs/advanced-usage.md)을 참고하세요. 빠른 시작용 기본값은 `.oraculum/config.json`에, 운영자용 제어는 `.oraculum/advanced.json`에 둡니다.
+런타임 선택, 후보 수 조정, consultation 기록 조회, 레포지토리 로컬 검사, research artifact, setup 진단, 명시적 consultation timeout 같은 제어가 필요하면 [고급 사용법](./docs/advanced-usage.md)을 참고하세요. 빠른 시작용 기본값은 `.oraculum/config.json`에, 고급 프로젝트 설정은 `.oraculum/advanced.json`에 둡니다.

@@ -39,9 +39,9 @@ Oraculum turns AI implementation work into a tournament instead of a one-shot ed
 
 Candidates run in isolation, repo-local checks act as oracles, evidence is recorded, and only the recommended result is crowned.
 
-Claude Code or Codex remains the reasoning runtime; Oraculum supplies the deterministic harness around it: isolation, checks, witnesses, and the crowning gate.
+Use it when you want Claude Code or Codex to explore multiple patch candidates before you accept a change.
 
-npm is only the distribution channel for Oraculum. Target repositories do not have to be Node projects.
+It works in ordinary Git or non-Git project folders. Installing Oraculum with npm does not mean the target repository has to be a Node project.
 
 ## Installation
 
@@ -65,7 +65,7 @@ Codex:
 oraculum setup --runtime codex
 ```
 
-Run those `oraculum setup ...` commands in your terminal, not inside the Claude Code or Codex chat input.
+Run those `oraculum setup ...` commands in your terminal.
 They register Oraculum globally for your local Claude Code or Codex installation, not just for the current directory.
 
 If you want to verify the wiring later:
@@ -76,14 +76,27 @@ oraculum setup status
 
 ## Quick Start
 
-After running setup in your terminal, switch to the Claude Code or Codex chat input and use:
+Register Oraculum with the host you use:
 
-```text
-orc consult "fix session loss on refresh"
-orc crown fix/session-loss
+```bash
+oraculum setup --runtime codex
+oraculum setup --runtime claude-code
 ```
 
-That flow initializes Oraculum on first use, runs the tournament, and prints the verdict summary immediately. `crown` uses the latest consultation with a recommended result by default.
+Then start the host with an exact `orc ...` prompt:
+
+```bash
+codex 'orc consult "fix session loss on refresh"'
+claude 'orc consult "fix session loss on refresh"'
+```
+
+That flow initializes Oraculum on first use, runs the tournament, and prints the verdict summary immediately.
+
+When you want to apply the latest recommended result later:
+
+```text
+orc crown fix/session-loss
+```
 
 In a Git-backed project, `crown` creates the named branch and materializes the recommended result there. In a non-Git project, use bare `orc crown`; it syncs the recommended result back into the project folder without requiring a fake branch name.
 
@@ -105,4 +118,4 @@ Results are saved under `.oraculum/`. The source of truth is the saved run state
 
 ## Advanced Usage
 
-If you want more control over consultation-scoped validation posture selection, runtimes, consultation history, repo-local oracle configuration, research artifacts, setup diagnostics, MCP wiring details, host uninstall instructions, or explicit consultation timeouts, see [Advanced Usage](./docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; operator controls belong in `.oraculum/advanced.json`.
+If you want more control over runtimes, candidate counts, consultation history, repo-local checks, saved research artifacts, setup diagnostics, or explicit consultation timeouts, see [Advanced Usage](./docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; advanced project settings belong in `.oraculum/advanced.json`.
