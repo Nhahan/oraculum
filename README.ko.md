@@ -83,11 +83,10 @@ oraculum setup --runtime codex
 oraculum setup --runtime claude-code
 ```
 
-그 다음 정확한 `orc ...` 프롬프트로 호스트를 실행합니다.
+그 다음 Claude Code나 Codex에 들어가서 아래처럼 사용합니다.
 
-```bash
-codex 'orc consult "fix session loss on refresh"'
-claude 'orc consult "fix session loss on refresh"'
+```text
+orc consult "fix session loss on refresh"
 ```
 
 이 흐름은 처음 사용할 때 Oraculum을 자동 초기화하고, consultation이 끝나면 결과 요약을 바로 출력합니다.

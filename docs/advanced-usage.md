@@ -2,18 +2,17 @@
 
 This page is for users who want more control than the default one-command flow.
 
-After running setup in your terminal, the stable/default launch-time exact prompt path is:
+After running setup in your terminal, open Claude Code or Codex and use:
 
-```bash
-codex 'orc consult "fix session loss on refresh"'
-claude 'orc consult "fix session loss on refresh"'
+```text
+orc consult "fix session loss on refresh"
 ```
 
 `consult` already prints the latest summary. Everything below is for reopening a consultation later, shaping the tournament more explicitly, or using shell-only setup, uninstall, diagnostics, and MCP commands.
 
-The primary product surface is a launch-time exact prompt workflow with a shared `orc` command language across Claude Code and Codex. The shell binary remains for setup, uninstall, diagnostics, and MCP serving only. Run `oraculum setup ...` in your terminal, then launch the host with an exact `orc ...` prompt. Current setup is host-level and global for your local Claude Code or Codex installation, not directory-scoped.
+The primary product surface is interactive `orc ...` commands inside Claude Code and Codex after setup. The shell binary remains for setup, uninstall, diagnostics, and MCP serving only. Run `oraculum setup ...` in your terminal first. Current setup is host-level and global for your local Claude Code or Codex installation, not directory-scoped.
 
-If you want to inspect whether launch-time wiring is complete, run:
+If you want to inspect whether the interactive `orc ...` surface is ready, run:
 
 ```bash
 oraculum setup status
@@ -60,7 +59,7 @@ Use `--timeout-ms` only when you want to put an explicit bound on consultation a
 
 - The default `consult` and `plan` product path does not impose an Oraculum-level adapter timeout.
 - `--timeout-ms` bounds runtime adapter calls only; it does not rewrite repo-local oracle policy.
-- Release and evidence harnesses may still apply their own defaults. For example, `npm run evidence:launch-smoke` defaults to `300000ms` per host call because it is a test harness, not the product default.
+- Internal validation harnesses may still apply their own defaults. They are not the product default.
 - Repo-local oracle commands remain separate and can carry their own optional `timeoutMs` values in `.oraculum/advanced.json`.
 
 ## Automatic Validation Posture Selection
@@ -222,11 +221,10 @@ oraculum setup --runtime codex
 
 Run setup in your terminal, not inside the Claude Code or Codex chat input. This registers Oraculum globally for your local host installation.
 
-Stable/default usage is the launch-time exact prompt path, for example:
+Stable/default usage is the interactive `orc ...` path inside the host, for example:
 
-```bash
-codex 'orc consult "안녕"'
-claude 'orc consult "안녕"'
+```text
+orc consult "안녕"
 ```
 
 ### Check Setup Status
@@ -240,16 +238,17 @@ Use the plain command for a readable summary, or `--json` when you want machine-
 
 ### Host Policies
 
-Oraculum keeps the `orc ...` language shared across Claude Code and Codex. The stable/default workflow for both hosts is the launch-time exact prompt path.
+Oraculum keeps the `orc ...` language shared across Claude Code and Codex. The stable/default workflow for both hosts is the interactive `orc ...` path inside the host session.
 
-| Host | Launch-time exact `orc ...` | Product status |
+| Host | Interactive `orc ...` | Product status |
 | --- | --- | --- |
-| Claude Code | `official` | stable default |
-| Codex | `official` | stable default |
+| Claude Code | supported | stable default |
+| Codex | supported | stable default |
 
 Interpretation:
 
-- `official`: Oraculum routes through the host's official lower-level transport.
+- Oraculum installs the host-specific plugin, skills, rules, and MCP wiring needed for `orc ...`.
+- Under the hood, Oraculum still uses the host's official lower-level transport where available.
 
 Use `oraculum setup status --json` when you want the current host setup state as machine-readable diagnostics.
 

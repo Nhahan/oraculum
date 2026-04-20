@@ -83,11 +83,10 @@ oraculum setup --runtime codex
 oraculum setup --runtime claude-code
 ```
 
-Then start the host with an exact `orc ...` prompt:
+Then open Claude Code or Codex and use:
 
-```bash
-codex 'orc consult "fix session loss on refresh"'
-claude 'orc consult "fix session loss on refresh"'
+```text
+orc consult "fix session loss on refresh"
 ```
 
 That flow initializes Oraculum on first use, runs the tournament, and prints the verdict summary immediately.
