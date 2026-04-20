@@ -5,7 +5,6 @@ import type { Adapter } from "../domain/config.js";
 import {
   buildSetupDiagnosticsResponse,
   filterSetupDiagnosticsResponse,
-  installHostWrapperShellBindings,
   uninstallHostWrapperShellBindings,
 } from "../services/chat-native.js";
 import { setupClaudeCodeHost, uninstallClaudeCodeHost } from "../services/claude-chat-native.js";
@@ -40,27 +39,18 @@ export function registerSetupCommand(program: Command): void {
 
       if (runtime === "claude-code") {
         const result = await setupClaudeCodeHost();
-        const wrapper = await installHostWrapperShellBindings({
-          invocation: resolveCurrentCliInvocation(),
-        });
 
         process.stdout.write("Configured Claude Code chat-native integration.\n");
         process.stdout.write(`Packaged root: ${result.packagedRoot}\n`);
         process.stdout.write(`Plugin root: ${result.pluginRoot}\n`);
         process.stdout.write(`Marketplace: ${result.marketplacePath}\n`);
         process.stdout.write(`MCP config: ${result.mcpConfigPath}\n`);
-        process.stdout.write(`Shell wrapper: ${wrapper.snippetPath}\n`);
-        if (wrapper.rcPath) {
-          process.stdout.write(`Shell rc: ${wrapper.rcPath}\n`);
-        }
+        process.stdout.write("Interactive path: use `orc ...` directly inside Claude Code.\n");
         return;
       }
 
       if (runtime === "codex") {
         const result = await setupCodexHost();
-        const wrapper = await installHostWrapperShellBindings({
-          invocation: resolveCurrentCliInvocation(),
-        });
 
         process.stdout.write("Configured Codex chat-native integration.\n");
         process.stdout.write(`Packaged root: ${result.packagedRoot}\n`);
@@ -68,11 +58,7 @@ export function registerSetupCommand(program: Command): void {
         process.stdout.write(`Skills root: ${result.skillsRoot}\n`);
         process.stdout.write(`Rules root: ${result.rulesRoot}\n`);
         process.stdout.write(`Codex config: ${result.configPath}\n`);
-        process.stdout.write("Codex stable/default path: launch-time official transport\n");
-        process.stdout.write(`Shell wrapper: ${wrapper.snippetPath}\n`);
-        if (wrapper.rcPath) {
-          process.stdout.write(`Shell rc: ${wrapper.rcPath}\n`);
-        }
+        process.stdout.write("Interactive path: use `orc ...` directly inside Codex.\n");
         return;
       }
 
@@ -161,16 +147,4 @@ function parseRuntime(value: string): Adapter {
   }
 
   return value;
-}
-
-function resolveCurrentCliInvocation(): { args: string[]; command: string } {
-  const cliEntry = process.argv[1];
-  if (!cliEntry) {
-    throw new OraculumError("Cannot determine the current Oraculum CLI entry for shell wrappers.");
-  }
-
-  return {
-    command: process.execPath,
-    args: [cliEntry],
-  };
 }

@@ -11,7 +11,6 @@ import {
   getExpectedClaudeSkillDirs,
 } from "../claude-chat-native.js";
 import { getExpectedCodexRuleFileName, getExpectedCodexSkillDirs } from "../codex-chat-native.js";
-import { getHostWrapperSnippetPath, resolveHostWrapperRcPath } from "../host-wrapper.js";
 
 const MANAGED_CLAUDE_PLUGIN_KEYS = ["orc@oraculum", "oraculum@oraculum"] as const;
 const MANAGED_CLAUDE_PLUGIN_DIRS = ["orc", "@orc", "oraculum", "@oraculum"] as const;
@@ -27,12 +26,6 @@ export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusToolRespo
   const codexConfigPath = join(homedir(), ".codex", "config.toml");
   const codexSkillsDir = join(homedir(), ".codex", "skills");
   const codexRulesDir = join(homedir(), ".codex", "rules");
-  const shellWrapperSnippetPath = getHostWrapperSnippetPath();
-  const shellWrapperRcPath = resolveHostWrapperRcPath();
-  const shellWrapperInstalled = hasShellWrapperBindings(
-    shellWrapperSnippetPath,
-    shellWrapperRcPath,
-  );
   const projectInitialized = existsSync(configPath);
   const advancedConfigPresent = existsSync(advancedConfigPath);
 
@@ -44,7 +37,6 @@ export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusToolRespo
     "claude-code",
     claudeRegistered,
     claudeArtifactsInstalled,
-    shellWrapperInstalled,
   );
 
   const codexRegistered = hasCodexMcpServer(codexConfigPath);
@@ -53,7 +45,6 @@ export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusToolRespo
     "codex",
     codexRegistered,
     codexArtifactsInstalled,
-    shellWrapperInstalled,
   );
 
   const hosts = [
@@ -65,7 +56,8 @@ export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusToolRespo
         `Expected MCP config path: ${toPortableDisplayPath(claudeMcpPath)}`,
         `Expected Claude plugin cache root: ${toPortableDisplayPath(claudePluginsDir)}`,
         `Expected Claude install root: ${toPortableDisplayPath(claudeInstallRoot)}`,
-        "Stable/default path: launch-time exact `orc ...` via the official Claude stream-json route.",
+        "Primary surface: use `orc ...` directly inside Claude Code after setup.",
+        "Under the hood, Oraculum uses Claude Code's official stream-json transport.",
         "Run `oraculum setup --runtime claude-code` to register the MCP server and install the Oraculum plugin.",
       ],
       registered: claudeRegistered,
@@ -78,7 +70,8 @@ export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusToolRespo
         `Expected MCP config path: ${toPortableDisplayPath(codexConfigPath)}`,
         `Expected skill install root: ${toPortableDisplayPath(codexSkillsDir)}`,
         `Expected rule install root: ${toPortableDisplayPath(codexRulesDir)}`,
-        "Stable/default path: launch-time exact `orc ...` via the official Codex app-server route.",
+        "Primary surface: use `orc ...` directly inside Codex after setup.",
+        "Under the hood, Oraculum uses Codex skills/rules plus the official app-server transport.",
         "Run `oraculum setup --runtime codex` to register the MCP server and install the Oraculum skills and rules.",
       ],
       registered: codexRegistered,
@@ -130,13 +123,13 @@ export function summarizeSetupDiagnosticsHosts(
     }
 
     return host.status === "ready"
-      ? `${host.host} is ready for launch-time exact \`orc ...\` commands.`
-      : `Run \`oraculum setup --runtime ${host.host}\` to finish launch-time \`orc ...\` routing, then use \`oraculum setup status --runtime ${host.host}\` to verify the wiring.`;
+      ? `${host.host} is ready for interactive \`orc ...\` commands.`
+      : `Run \`oraculum setup --runtime ${host.host}\` to enable interactive \`orc ...\`, then use \`oraculum setup status --runtime ${host.host}\` to verify the wiring.`;
   }
 
   return hosts.every((host) => host.status === "ready")
-    ? "Claude Code and Codex are ready for launch-time exact `orc ...` commands."
-    : "Run `oraculum setup --runtime <host>` to finish launch-time `orc ...` routing, then use `oraculum setup status` to verify the wiring.";
+    ? "Claude Code and Codex are ready for interactive `orc ...` commands."
+    : "Run `oraculum setup --runtime <host>` to enable interactive `orc ...`, then use `oraculum setup status` to verify the wiring.";
 }
 
 export function hasClaudePluginArtifactsInstalled(pluginsDir: string): boolean {
@@ -219,7 +212,7 @@ function buildHostDiagnostics(options: {
     launchTransport: options.launchTransport,
     nextAction:
       status === "ready"
-        ? `Use launch-time exact \`orc ...\` with ${options.host === "claude-code" ? "Claude Code" : "Codex"}.`
+        ? `Use \`orc ...\` directly in ${options.host === "claude-code" ? "Claude Code" : "Codex"}.`
         : `Run \`oraculum setup --runtime ${options.host}\`.`,
     notes: options.notes,
   };
@@ -245,15 +238,12 @@ function computeLaunchTransportMode(
   host: SetupStatusToolResponse["hosts"][number]["host"],
   registered: boolean,
   artifactsInstalled: boolean,
-  shellWrapperInstalled: boolean,
 ): SetupStatusToolResponse["hosts"][number]["launchTransport"] {
   if (!registered || !artifactsInstalled) {
     return "unavailable";
   }
 
-  return shellWrapperInstalled && hasCommandOnPath(host === "codex" ? "codex" : "claude")
-    ? "official"
-    : "unavailable";
+  return hasCommandOnPath(host === "codex" ? "codex" : "claude") ? "official" : "unavailable";
 }
 
 function hasCurrentClaudePluginDir(path: string): boolean {
@@ -315,22 +305,6 @@ function hasCodexMcpServer(path: string): boolean {
     return MANAGED_MCP_SERVER_IDS.some((serverId) =>
       new RegExp(`\\[mcp_servers\\.${serverId}\\]`, "u").test(raw),
     );
-  } catch {
-    return false;
-  }
-}
-
-function hasShellWrapperBindings(snippetPath: string, rcPath?: string): boolean {
-  if (!existsSync(snippetPath)) {
-    return false;
-  }
-
-  if (!rcPath || !existsSync(rcPath)) {
-    return false;
-  }
-
-  try {
-    return readFileSync(rcPath, "utf8").includes(snippetPath);
   } catch {
     return false;
   }

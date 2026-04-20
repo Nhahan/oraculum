@@ -21,19 +21,19 @@ import {
 registerChatNativeTempRootCleanup();
 
 describe("chat-native setup diagnostics", () => {
-  it("describes launch-time setup diagnostics with actionable host readiness states", () => {
+  it("describes interactive orc readiness with actionable host setup states", () => {
     const diagnostics = setupStatusToolResponseSchema.parse(
       buildSetupDiagnosticsResponse(process.cwd()),
     );
 
     expect(diagnostics.targetPrefix).toBe("orc");
     expect(diagnostics.hosts).toHaveLength(2);
-    expect(diagnostics.summary).toContain("launch-time exact `orc ...`");
+    expect(diagnostics.summary).toContain("interactive `orc ...`");
     for (const host of diagnostics.hosts) {
       expect(["ready", "partial", "needs-setup"]).toContain(host.status);
       if (host.status === "ready") {
         expect(host.launchTransport).toBe("official");
-        expect(host.nextAction).toContain("launch-time exact `orc ...`");
+        expect(host.nextAction).toContain("Use `orc ...` directly");
       } else {
         expect(host.nextAction).toContain("oraculum setup --runtime");
       }

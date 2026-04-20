@@ -78,7 +78,7 @@ describe("uninstall command", () => {
           notes: [],
         },
       ],
-      summary: "Claude Code and Codex are ready for `orc ...` commands.",
+      summary: "Claude Code and Codex are ready for interactive `orc ...` commands.",
     });
     mockedUninstallClaudeCodeHost.mockResolvedValue({
       installRoot: "/tmp/home/.oraculum/chat-native/claude-code",
@@ -117,7 +117,7 @@ describe("uninstall command", () => {
     expect(mockedUninstallHostWrapperShellBindings).not.toHaveBeenCalled();
   });
 
-  it("removes the shell wrapper after scoped uninstall when no host integrations remain", async () => {
+  it("removes legacy shell-wrapper bindings after scoped uninstall when no host integrations remain", async () => {
     mockedBuildSetupDiagnosticsResponse.mockResolvedValueOnce({
       mode: "setup-status",
       cwd: process.cwd(),
@@ -145,7 +145,7 @@ describe("uninstall command", () => {
         },
       ],
       summary:
-        "Run `oraculum setup --runtime <host>` to finish `orc ...` routing, then use `oraculum setup status` to verify the wiring.",
+        "Run `oraculum setup --runtime <host>` to enable interactive `orc ...`, then use `oraculum setup status` to verify the wiring.",
     });
 
     const program = createProgram();
