@@ -17,6 +17,7 @@ export interface InlinePlanningToolRequest {
   taskInput: string;
   agent?: Adapter | undefined;
   candidates?: number | undefined;
+  clarificationAnswer?: string | undefined;
   timeoutMs?: number | undefined;
 }
 
@@ -38,7 +39,9 @@ export function buildPlanRunRequest(
     taskInput: request.taskInput,
     ...(request.agent ? { agent: request.agent } : {}),
     ...(request.candidates !== undefined ? { candidates: request.candidates } : {}),
+    ...(request.clarificationAnswer ? { clarificationAnswer: request.clarificationAnswer } : {}),
     ...(options?.writeConsultationPlanArtifacts ? { writeConsultationPlanArtifacts: true } : {}),
+    ...(options?.writeConsultationPlanArtifacts ? { requirePlanningClarification: true } : {}),
     preflight: {
       allowRuntime: true,
       ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
@@ -101,6 +104,7 @@ export function normalizePlanningToolRequest<TRequest extends InlinePlanningTool
     taskInput: parsed.taskInput,
     ...(parsed.agent ? { agent: parsed.agent } : {}),
     ...(parsed.candidates !== undefined ? { candidates: parsed.candidates } : {}),
+    ...(parsed.clarificationAnswer ? { clarificationAnswer: parsed.clarificationAnswer } : {}),
     ...(parsed.timeoutMs !== undefined ? { timeoutMs: parsed.timeoutMs } : {}),
   };
 }
@@ -124,6 +128,7 @@ function parseInlineCommandOptions(
 ): {
   agent?: Adapter;
   candidates?: number;
+  clarificationAnswer?: string;
   taskInput: string;
   timeoutMs?: number;
 } {
@@ -135,6 +140,7 @@ function parseInlineCommandOptions(
   const remaining: string[] = [];
   let agent: Adapter | undefined;
   let candidates: number | undefined;
+  let clarificationAnswer: string | undefined;
   let timeoutMs: number | undefined;
   let parsedAnyOption = false;
 
@@ -177,6 +183,19 @@ function parseInlineCommandOptions(
       continue;
     }
 
+    const answerValue = readOptionValue("--answer");
+    const clarificationAnswerValue = answerValue.matched
+      ? answerValue
+      : readOptionValue("--clarification-answer");
+    if (clarificationAnswerValue.matched) {
+      parsedAnyOption = true;
+      clarificationAnswer = clarificationAnswerValue.value.trim();
+      if (clarificationAnswer.length === 0) {
+        throw new OraculumError(`${token} requires a non-empty value.`);
+      }
+      continue;
+    }
+
     const timeoutValue = options.allowTimeoutMs ? readOptionValue("--timeout-ms") : undefined;
     if (timeoutValue?.matched) {
       parsedAnyOption = true;
@@ -194,6 +213,7 @@ function parseInlineCommandOptions(
   return {
     ...(agent ? { agent } : {}),
     ...(candidates !== undefined ? { candidates } : {}),
+    ...(clarificationAnswer ? { clarificationAnswer } : {}),
     taskInput: remaining.join(" "),
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
   };

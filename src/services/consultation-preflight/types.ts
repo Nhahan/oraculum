@@ -13,6 +13,7 @@ export interface RecommendConsultationPreflightOptions {
   configLayers: ProjectConfigLayers;
   projectRoot: string;
   reportsDir: string;
+  requirePlanningClarification?: boolean;
   runId: string;
   taskPacket: MaterializedTaskPacket;
 }

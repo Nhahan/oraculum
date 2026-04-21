@@ -57,6 +57,9 @@ export function buildConsultationSummaryNextStepLines(
       );
     }
   } else if (status.outcomeType === "needs-clarification") {
+    const rerunCommand = pathState.consultationPlanSummaryPath
+      ? 'orc plan <task> --answer "<answer>"'
+      : 'orc consult <task> --answer "<answer>"';
     if (resolvedArtifacts.clarifyFollowUp && pathState.clarifyFollowUpSummaryPath) {
       lines.push(
         `- inspect the persisted clarify follow-up: ${toDisplayPath(projectRoot, pathState.clarifyFollowUpSummaryPath)}.`,
@@ -65,10 +68,10 @@ export function buildConsultationSummaryNextStepLines(
         `- answer the key clarify question: ${resolvedArtifacts.clarifyFollowUp.keyQuestion}`,
       );
     } else {
-      lines.push("- answer the preflight clarification question, then rerun `orc consult`.");
+      lines.push("- answer the preflight clarification question.");
     }
     lines.push(
-      "- rerun `orc consult` once the missing result contract and judging basis are explicit.",
+      `- rerun \`${rerunCommand}\` once the missing result contract and judging basis are explicit.`,
     );
   } else if (status.outcomeType === "external-research-required") {
     const researchBriefInput = researchBriefInputPath

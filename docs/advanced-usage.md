@@ -200,6 +200,12 @@ Use this when the task is broad, risky, or still needs a stronger execution cont
 - `.oraculum/runs/<consultation-id>/reports/consultation-plan.json`
 - `.oraculum/runs/<consultation-id>/reports/consultation-plan.md`
 
+If the requested plan lacks a concrete result contract or judging basis, `orc plan` stops before candidate planning and asks one clarification question. Answer it by revising the task input or rerunning:
+
+```text
+orc plan "add authentication" --answer "Email/password login only, protect /dashboard, no OAuth."
+```
+
 The JSON artifact is rerunnable:
 
 ```text

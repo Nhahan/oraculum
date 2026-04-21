@@ -101,7 +101,7 @@ In a Git-backed project, `crown` creates the named branch and materializes the r
 
 By default, `consult` and `plan` do not impose an Oraculum-level adapter timeout. Use `--timeout-ms <ms>` only when you want to bound a specific consultation explicitly. Repo-local oracle commands remain independent and can still carry their own bounded `timeoutMs` values in `.oraculum/advanced.json`.
 
-Use `orc plan "<task>"` when you want to shape a broad or high-risk consultation first. It persists a reusable `consultation-plan.json` plus a human-readable `consultation-plan.md`, and you can later run `orc consult <plan-artifact>`. `orc draft` remains as a compatibility alias for the same planning lane.
+Use `orc plan "<task>"` when you want to shape a broad or high-risk consultation first. If the plan request is still unclear, Oraculum asks for one concrete clarification before creating a runnable plan; rerun with `--answer "<answer>"` or revise the task. When ready, it persists a reusable `consultation-plan.json` plus a human-readable `consultation-plan.md`, and you can later run `orc consult <plan-artifact>`. `orc draft` remains as a compatibility alias for the same planning lane.
 
 If you want to reopen the latest consultation later, inspect an older one, browse consultation history, or use shell-only setup, uninstall, diagnostics, or MCP commands, see [Advanced Usage](./docs/advanced-usage.md).
 

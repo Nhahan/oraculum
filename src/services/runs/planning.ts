@@ -16,7 +16,10 @@ import {
   runManifestSchema,
 } from "../../domain/run.js";
 import type { MaterializedTaskPacket } from "../../domain/task.js";
-import { recommendConsultationPreflight } from "../consultation-preflight.js";
+import {
+  applyPlanningClarificationAnswer,
+  recommendConsultationPreflight,
+} from "../consultation-preflight.js";
 import { recommendConsultationProfile } from "../consultation-profile.js";
 import { loadProjectConfigLayers, pathExists, writeJsonFile } from "../project.js";
 import { RunStore } from "../run-store.js";
@@ -31,6 +34,8 @@ interface PlanRunOptions {
   taskInput: string;
   agent?: Adapter;
   candidates?: number;
+  clarificationAnswer?: string;
+  requirePlanningClarification?: boolean;
   writeConsultationPlanArtifacts?: boolean;
   preflight?: {
     allowRuntime?: boolean;
@@ -63,7 +68,10 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
     throw new OraculumError(`Task file not found: ${resolvedTaskPath}`);
   }
 
-  const taskPacket = await loadTaskPacket(resolvedTaskPath);
+  const taskPacket = applyPlanningClarificationAnswer(
+    await loadTaskPacket(resolvedTaskPath),
+    options.clarificationAnswer,
+  );
   const consultationPlan = await readConsultationPlanArtifact(resolvedTaskPath);
   let config = configLayers.config;
   const agent = options.agent ?? config.defaultAgent;
@@ -109,6 +117,7 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
           reportsDir,
           runId,
           taskPacket,
+          ...(options.requirePlanningClarification ? { requirePlanningClarification: true } : {}),
         })
       : undefined;
   const preflight = consultationPlan?.preflight ?? recommendedPreflight?.preflight;

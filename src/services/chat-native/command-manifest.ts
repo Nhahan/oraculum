@@ -30,6 +30,13 @@ const planningArguments = [
     description: "Adapter timeout in milliseconds.",
     option: "--timeout-ms",
   },
+  {
+    name: "clarificationAnswer",
+    kind: "string",
+    description:
+      "Answer to a prior plan clarification question; folded into the task contract before planning.",
+    option: "--answer",
+  },
 ] as const;
 
 export const oraculumCommandManifest = [

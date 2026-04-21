@@ -63,9 +63,9 @@ function renderCodexRules(manifest: readonly CommandManifestEntry[]): string {
     "",
     "### Argument Mapping",
     "",
-    "- `orc consult <taskInput> [--agent <claude-code|codex>] [--candidates <n>] [--timeout-ms <ms>]` -> call `oraculum_consult` with `cwd`, `taskInput`, optional `agent`, `candidates`, `timeoutMs`.",
-    "- `orc plan <taskInput> [--agent <claude-code|codex>] [--candidates <n>] [--timeout-ms <ms>]` -> call `oraculum_plan` with the same mapping.",
-    "- `orc draft <taskInput> [--agent <claude-code|codex>] [--candidates <n>] [--timeout-ms <ms>]` -> call `oraculum_draft` with the same mapping.",
+    "- `orc consult <taskInput> [--agent <claude-code|codex>] [--candidates <n>] [--timeout-ms <ms>] [--answer <text>]` -> call `oraculum_consult` with `cwd`, `taskInput`, optional `agent`, `candidates`, `timeoutMs`, `clarificationAnswer`.",
+    "- `orc plan <taskInput> [--agent <claude-code|codex>] [--candidates <n>] [--timeout-ms <ms>] [--answer <text>]` -> call `oraculum_plan` with the same mapping.",
+    "- `orc draft <taskInput> [--agent <claude-code|codex>] [--candidates <n>] [--timeout-ms <ms>] [--answer <text>]` -> call `oraculum_draft` with the same mapping.",
     "- `orc verdict [consultationId]` -> call `oraculum_verdict` with `cwd` and optional `consultationId`.",
     "- `orc verdict archive [count]` -> call `oraculum_verdict_archive` with `cwd` and optional `count`.",
     "- `orc crown [materializationName]` -> call `oraculum_crown` with `cwd` and optional `materializationName`.",
@@ -88,7 +88,7 @@ function renderCodexSkill(entry: CommandManifestEntry): string {
       : `Exact \`orc ${entry.path.join(" ")}\` handler.`;
   const argsLine =
     entry.id === "consult" || entry.id === "plan" || entry.id === "draft"
-      ? "Args: cwd=current-directory; taskInput=first positional after known flags; optional --agent, --candidates, --timeout-ms."
+      ? "Args: cwd=current-directory; taskInput=first positional after known flags; optional --agent, --candidates, --timeout-ms, --answer."
       : entry.id === "verdict"
         ? "Args: cwd=current-directory; optional first positional=consultationId."
         : entry.id === "verdict-archive"

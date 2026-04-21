@@ -195,8 +195,9 @@ describe("consultation summary artifact rendering", () => {
     expect(summary).toContain(
       "- preflight readiness: .oraculum/runs/run_1/reports/preflight-readiness.json",
     );
+    expect(summary).toContain("- answer the preflight clarification question.");
     expect(summary).toContain(
-      "- answer the preflight clarification question, then rerun `orc consult`.",
+      '- rerun `orc consult <task> --answer "<answer>"` once the missing result contract and judging basis are explicit.',
     );
   });
 

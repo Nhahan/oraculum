@@ -287,7 +287,7 @@ function buildConsultationPlanNextAction(options: {
 
   switch (options.preflight?.decision) {
     case "needs-clarification":
-      return "Answer the clarification question, revise the task contract, and rerun `orc plan` or `orc consult`.";
+      return 'Answer the clarification question, then rerun `orc plan <task> --answer "<answer>"` or revise the task contract before `orc consult`.';
     case "external-research-required":
       return "Gather bounded external research, refresh the task contract, and rerun `orc consult` or `orc plan`.";
     case "abstain":

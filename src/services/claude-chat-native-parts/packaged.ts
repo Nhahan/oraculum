@@ -194,7 +194,7 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
     return [
       ...shared,
       "Tool: `oraculum_consult`.",
-      "Args: cwd=current-directory; taskInput=$ARGUMENTS; agent=claude-code.",
+      "Args: cwd=current-directory; taskInput=$ARGUMENTS; agent=claude-code; optional clarificationAnswer from `--answer`.",
     ];
   }
 
@@ -202,7 +202,7 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
     return [
       ...shared,
       "Tool: `oraculum_plan`.",
-      "Args: cwd=current-directory; taskInput=$ARGUMENTS; agent=claude-code.",
+      "Args: cwd=current-directory; taskInput=$ARGUMENTS; agent=claude-code; optional clarificationAnswer from `--answer`.",
     ];
   }
 

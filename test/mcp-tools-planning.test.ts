@@ -262,6 +262,7 @@ describe("chat-native MCP tools: planning", () => {
       agent: "claude-code",
       candidates: 1,
       writeConsultationPlanArtifacts: true,
+      requirePlanningClarification: true,
       preflight: {
         allowRuntime: true,
       },
@@ -287,6 +288,7 @@ describe("chat-native MCP tools: planning", () => {
       agent: "codex",
       candidates: 2,
       writeConsultationPlanArtifacts: true,
+      requirePlanningClarification: true,
       preflight: {
         allowRuntime: true,
         timeoutMs: 2400,
@@ -311,6 +313,7 @@ describe("chat-native MCP tools: planning", () => {
       agent: "codex",
       candidates: 3,
       writeConsultationPlanArtifacts: true,
+      requirePlanningClarification: true,
       preflight: {
         allowRuntime: true,
       },
@@ -332,6 +335,7 @@ describe("chat-native MCP tools: planning", () => {
       agent: "claude-code",
       candidates: 1,
       writeConsultationPlanArtifacts: true,
+      requirePlanningClarification: true,
       preflight: {
         allowRuntime: true,
       },
@@ -340,6 +344,28 @@ describe("chat-native MCP tools: planning", () => {
       },
     });
     expect(response.mode).toBe("draft");
+  });
+  it("parses plan clarification answers from inline host command options", async () => {
+    await runPlanTool({
+      cwd: "/tmp/project",
+      taskInput:
+        '"add authentication" --answer "Email/password login only; no OAuth; protect dashboard." --agent codex',
+    });
+
+    expect(mockedPlanRun).toHaveBeenCalledWith({
+      cwd: "/tmp/project",
+      taskInput: "add authentication",
+      agent: "codex",
+      clarificationAnswer: "Email/password login only; no OAuth; protect dashboard.",
+      writeConsultationPlanArtifacts: true,
+      requirePlanningClarification: true,
+      preflight: {
+        allowRuntime: true,
+      },
+      autoProfile: {
+        allowRuntime: true,
+      },
+    });
   });
   it("returns blocked preflight consultations without executing candidates", async () => {
     mockedPlanRun.mockResolvedValue(createBlockedPreflightManifest());

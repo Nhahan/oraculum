@@ -3,8 +3,18 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { getRunManifestPath, resolveProjectRoot } from "../src/core/paths.js";
-import { buildSavedConsultationStatus, runManifestSchema } from "../src/domain/run.js";
+import {
+  getConsultationPlanPath,
+  getPreflightReadinessPath,
+  getRunManifestPath,
+  resolveProjectRoot,
+} from "../src/core/paths.js";
+import {
+  buildSavedConsultationStatus,
+  consultationPlanArtifactSchema,
+  runManifestSchema,
+} from "../src/domain/run.js";
+import { materializedTaskPacketSchema } from "../src/domain/task.js";
 import { loadProjectConfig } from "../src/services/project.js";
 import { planRun, readLatestExportableRunId, readLatestRunId } from "../src/services/runs.js";
 import { normalizePathForAssertion } from "./helpers/platform.js";
@@ -151,6 +161,83 @@ describe("project flows planning", () => {
     await expect(readLatestRunId(cwd)).rejects.toThrow("Start with `orc consult ...` after setup.");
     await expect(readLatestExportableRunId(cwd)).rejects.toThrow(
       "No crownable consultation found yet",
+    );
+  });
+
+  it("asks for a clarification before writing a runnable plan for underspecified work", async () => {
+    const cwd = await createInitializedProject();
+
+    const manifest = await planRun({
+      cwd,
+      taskInput: "add authentication",
+      candidates: 1,
+      requirePlanningClarification: true,
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: false,
+      },
+    });
+
+    expect(manifest.status).toBe("completed");
+    expect(manifest.candidateCount).toBe(0);
+    expect(manifest.candidates).toEqual([]);
+    expect(manifest.preflight).toMatchObject({
+      decision: "needs-clarification",
+      clarificationQuestion:
+        "Which auth or session flow should the plan target, what concrete behavior should change, and what is out of scope?",
+    });
+
+    const planArtifact = consultationPlanArtifactSchema.parse(
+      JSON.parse(await readFile(getConsultationPlanPath(cwd, manifest.id), "utf8")) as unknown,
+    );
+    expect(planArtifact.readyForConsult).toBe(false);
+    expect(planArtifact.openQuestions).toContain(
+      "Which auth or session flow should the plan target, what concrete behavior should change, and what is out of scope?",
+    );
+    expect(planArtifact.recommendedNextAction).toContain("orc plan <task> --answer");
+
+    const readiness = JSON.parse(
+      await readFile(getPreflightReadinessPath(cwd, manifest.id), "utf8"),
+    ) as {
+      recommendation?: { decision?: string; clarificationQuestion?: string };
+    };
+    expect(readiness.recommendation).toMatchObject({
+      decision: "needs-clarification",
+      clarificationQuestion:
+        "Which auth or session flow should the plan target, what concrete behavior should change, and what is out of scope?",
+    });
+  });
+
+  it("folds clarification answers into the planned candidate task contract", async () => {
+    const cwd = await createInitializedProject();
+
+    const manifest = await planRun({
+      cwd,
+      taskInput: "add authentication",
+      clarificationAnswer:
+        "Email/password login only; protect /dashboard; keep OAuth out of scope.",
+      candidates: 1,
+      requirePlanningClarification: true,
+      preflight: {
+        allowRuntime: false,
+      },
+    });
+
+    expect(manifest.status).toBe("planned");
+    expect(manifest.candidateCount).toBe(1);
+    expect(manifest.preflight?.decision).toBe("proceed");
+
+    const taskPacketPath = manifest.candidates[0]?.taskPacketPath;
+    if (!taskPacketPath) {
+      throw new Error("Expected a planned candidate task packet path.");
+    }
+    const taskPacket = materializedTaskPacketSchema.parse(
+      JSON.parse(await readFile(taskPacketPath, "utf8")) as unknown,
+    );
+    expect(taskPacket.intent).toContain("Planning clarification answer:");
+    expect(taskPacket.intent).toContain("Email/password login only");
+    expect(taskPacket.acceptanceCriteria).toContain(
+      "Plan must honor the operator clarification: Email/password login only; protect /dashboard; keep OAuth out of scope.",
     );
   });
 

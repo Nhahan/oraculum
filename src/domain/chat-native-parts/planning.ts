@@ -9,6 +9,7 @@ const planningToolRequestBaseSchema = z.object({
   taskInput: z.string().min(1),
   agent: adapterSchema.optional(),
   candidates: z.number().int().min(1).max(16).optional(),
+  clarificationAnswer: z.string().min(1).optional(),
   timeoutMs: z.number().int().min(1).optional(),
 });
 

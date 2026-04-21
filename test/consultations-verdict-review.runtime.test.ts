@@ -204,7 +204,7 @@ describe("consultation verdict review runtime", () => {
       "- answer the key clarify question: What exact sections and acceptance bullets must docs/PRD.md contain before execution starts?",
     );
     expect(summary).toContain(
-      "- rerun `orc consult` once the missing result contract and judging basis are explicit.",
+      '- rerun `orc consult <task> --answer "<answer>"` once the missing result contract and judging basis are explicit.',
     );
     expect(review.clarifyScopeKeyType).toBe("target-artifact");
     expect(review.clarifyScopeKey).toBe("docs/PRD.md");
