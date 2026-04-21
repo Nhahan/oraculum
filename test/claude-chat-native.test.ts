@@ -28,8 +28,16 @@ async function createFakeClaudeSetupFixture() {
   const packagedRoot = join(root, "packaged-claude");
 
   await mkdir(join(packagedRoot, ".claude-plugin"), { recursive: true });
-  await writeFile(join(packagedRoot, ".claude-plugin", "marketplace.json"), "{}\n", "utf8");
-  await writeFile(join(packagedRoot, ".claude-plugin", "plugin.json"), "{}\n", "utf8");
+  await writeFile(
+    join(packagedRoot, ".claude-plugin", "marketplace.json"),
+    `${JSON.stringify(buildClaudeMarketplaceManifest(), null, 2)}\n`,
+    "utf8",
+  );
+  await writeFile(
+    join(packagedRoot, ".claude-plugin", "plugin.json"),
+    `${JSON.stringify(buildClaudePluginManifest(), null, 2)}\n`,
+    "utf8",
+  );
   for (const command of buildClaudeCommandFiles(oraculumCommandManifest)) {
     await mkdir(dirname(join(packagedRoot, command.path)), { recursive: true });
     await writeFile(join(packagedRoot, command.path), command.content, "utf8");
