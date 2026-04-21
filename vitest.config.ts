@@ -5,7 +5,7 @@ const testMode = process.env.ORACULUM_TEST_MODE ?? "default";
 const runSlowOnly = testMode === "slow";
 const includeSlow = testMode === "full";
 const { slowTestFiles } = suiteFiles;
-const isWindowsNode18 = process.platform === "win32" && process.versions.node.startsWith("18.");
+const isWindows = process.platform === "win32";
 
 export default defineConfig({
   test: {
@@ -13,9 +13,10 @@ export default defineConfig({
     globals: true,
     include: runSlowOnly ? [...slowTestFiles] : ["test/**/*.test.ts"],
     exclude: includeSlow || runSlowOnly ? [] : [...slowTestFiles],
-    fileParallelism: !isWindowsNode18,
     hookTimeout: 900_000,
-    maxWorkers: isWindowsNode18 ? 1 : 4,
+    maxWorkers: 4,
+    ...(isWindows ? { reporters: ["dot"] as const } : {}),
+    silent: isWindows,
     testTimeout: 120_000,
   },
 });
