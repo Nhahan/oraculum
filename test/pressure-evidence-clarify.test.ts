@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { getClarifyFollowUpPath, getRunManifestPath } from "../src/core/paths.js";
 import {
   collectPressureEvidence,
   renderPressureEvidenceSummary,
@@ -182,7 +181,7 @@ describe("pressure evidence collection: clarify pressure", () => {
       expect.objectContaining({
         runId: "run_clarify_2",
         missingArtifactKinds: ["research-brief"],
-        manifestPath: getRunManifestPath(cwd, "run_clarify_2"),
+        manifestPath: ".oraculum/runs/run_clarify_2/run.json",
       }),
     ]);
     expect(report.clarifyPressure.missingArtifactBreakdown).toEqual([
@@ -196,12 +195,12 @@ describe("pressure evidence collection: clarify pressure", () => {
         expect.objectContaining({
           artifactKind: "clarify-follow-up",
           runId: "run_clarify_3",
-          path: getClarifyFollowUpPath(cwd, "run_clarify_3"),
+          path: ".oraculum/runs/run_clarify_3/reports/clarify-follow-up.json",
         }),
         expect.objectContaining({
           artifactKind: "run-manifest",
           runId: "run_clarify_2",
-          path: getRunManifestPath(cwd, "run_clarify_2"),
+          path: ".oraculum/runs/run_clarify_2/run.json",
         }),
         expect.objectContaining({
           artifactKind: "preflight-readiness",

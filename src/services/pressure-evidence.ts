@@ -77,10 +77,41 @@ export async function collectPressureEvidence(cwd: string): Promise<PressureEvid
     if (review.manualReviewRecommended) {
       artifactCoverage.consultationsWithManualReviewRecommendation += 1;
     }
+    const preflightReadinessPath = preflightReadiness
+      ? normalizeOptionalConsultationScopePath(projectRoot, artifacts.preflightReadinessPath)
+      : undefined;
+    const clarifyFollowUpPath = clarifyFollowUp
+      ? normalizeOptionalConsultationScopePath(projectRoot, artifacts.clarifyFollowUpPath)
+      : undefined;
+    const researchBriefPath = researchBrief
+      ? normalizeOptionalConsultationScopePath(projectRoot, artifacts.researchBriefPath)
+      : undefined;
+    const failureAnalysisPath = failureAnalysis
+      ? normalizeOptionalConsultationScopePath(projectRoot, artifacts.failureAnalysisPath)
+      : undefined;
+    const winnerSelectionPath = winnerSelection
+      ? normalizeOptionalConsultationScopePath(projectRoot, artifacts.winnerSelectionPath)
+      : undefined;
+    const secondOpinionWinnerSelectionPath = artifacts.secondOpinionWinnerSelection
+      ? normalizeOptionalConsultationScopePath(
+          projectRoot,
+          artifacts.secondOpinionWinnerSelectionPath,
+        )
+      : undefined;
+    const comparisonJsonPath = comparisonReport
+      ? normalizeOptionalConsultationScopePath(projectRoot, artifacts.comparisonJsonPath)
+      : undefined;
+    const comparisonMarkdownPath = normalizeOptionalConsultationScopePath(
+      projectRoot,
+      artifacts.comparisonMarkdownPath,
+    );
 
     const common = {
       runId: manifest.id,
-      consultationPath: store.getRunPaths(manifest.id).runDir,
+      consultationPath: normalizeConsultationScopePath(
+        projectRoot,
+        store.getRunPaths(manifest.id).runDir,
+      ),
       openedAt: manifest.createdAt,
       agent: manifest.agent,
       taskTitle: manifest.taskPacket.title,
@@ -101,20 +132,14 @@ export async function collectPressureEvidence(cwd: string): Promise<PressureEvid
       supportingEvidence: limitEvidence(review.strongestEvidence),
       blockingEvidence: limitEvidence(review.weakestEvidence),
       artifactPaths: {
-        ...(preflightReadiness ? { preflightReadinessPath: artifacts.preflightReadinessPath } : {}),
-        ...(clarifyFollowUp ? { clarifyFollowUpPath: artifacts.clarifyFollowUpPath } : {}),
-        ...(researchBrief ? { researchBriefPath: artifacts.researchBriefPath } : {}),
-        ...(failureAnalysis ? { failureAnalysisPath: artifacts.failureAnalysisPath } : {}),
-        ...(winnerSelection ? { winnerSelectionPath: artifacts.winnerSelectionPath } : {}),
-        ...(artifacts.secondOpinionWinnerSelection
-          ? {
-              secondOpinionWinnerSelectionPath: artifacts.secondOpinionWinnerSelectionPath,
-            }
-          : {}),
-        ...(comparisonReport ? { comparisonJsonPath: artifacts.comparisonJsonPath } : {}),
-        ...(artifacts.comparisonMarkdownPath
-          ? { comparisonMarkdownPath: artifacts.comparisonMarkdownPath }
-          : {}),
+        ...(preflightReadinessPath ? { preflightReadinessPath } : {}),
+        ...(clarifyFollowUpPath ? { clarifyFollowUpPath } : {}),
+        ...(researchBriefPath ? { researchBriefPath } : {}),
+        ...(failureAnalysisPath ? { failureAnalysisPath } : {}),
+        ...(winnerSelectionPath ? { winnerSelectionPath } : {}),
+        ...(secondOpinionWinnerSelectionPath ? { secondOpinionWinnerSelectionPath } : {}),
+        ...(comparisonJsonPath ? { comparisonJsonPath } : {}),
+        ...(comparisonMarkdownPath ? { comparisonMarkdownPath } : {}),
       },
       ...(normalizedTargetArtifactPath ? { targetArtifactPath: normalizedTargetArtifactPath } : {}),
     } as const;
@@ -288,6 +313,13 @@ function createArtifactCoverageAccumulator(): PressureArtifactCoverage {
 
 function limitEvidence(evidence: string[]): string[] {
   return evidence.slice(0, 3);
+}
+
+function normalizeOptionalConsultationScopePath(
+  projectRoot: string,
+  path: string | undefined,
+): string | undefined {
+  return path ? normalizeConsultationScopePath(projectRoot, path) : undefined;
 }
 
 function resolveCandidateStrategyLabels(

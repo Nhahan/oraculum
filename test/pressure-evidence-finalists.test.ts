@@ -2,11 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  getPressureEvidencePath,
-  getRunManifestPath,
-  getSecondOpinionWinnerSelectionPath,
-} from "../src/core/paths.js";
+import { getPressureEvidencePath } from "../src/core/paths.js";
 import {
   collectPressureEvidence,
   pressureEvidenceReportSchema,
@@ -173,7 +169,7 @@ describe("pressure evidence collection: finalist pressure", () => {
         expect.objectContaining({
           artifactKind: "winner-selection-second-opinion",
           runId: "run_low_confidence",
-          path: getSecondOpinionWinnerSelectionPath(cwd, "run_low_confidence"),
+          path: ".oraculum/runs/run_low_confidence/reports/winner-selection.second-opinion.json",
         }),
         expect.objectContaining({
           artifactKind: "winner-selection",
@@ -220,10 +216,8 @@ describe("pressure evidence collection: finalist pressure", () => {
           confidence: "low",
           manualReviewRecommended: true,
           artifactPaths: expect.objectContaining({
-            secondOpinionWinnerSelectionPath: getSecondOpinionWinnerSelectionPath(
-              cwd,
-              "run_low_confidence",
-            ),
+            secondOpinionWinnerSelectionPath:
+              ".oraculum/runs/run_low_confidence/reports/winner-selection.second-opinion.json",
           }),
         }),
         expect.objectContaining({
@@ -233,10 +227,8 @@ describe("pressure evidence collection: finalist pressure", () => {
           confidence: "low",
           manualReviewRecommended: true,
           artifactPaths: expect.objectContaining({
-            secondOpinionWinnerSelectionPath: getSecondOpinionWinnerSelectionPath(
-              cwd,
-              "run_low_confidence",
-            ),
+            secondOpinionWinnerSelectionPath:
+              ".oraculum/runs/run_low_confidence/reports/winner-selection.second-opinion.json",
           }),
         }),
       ]),
@@ -360,10 +352,8 @@ describe("pressure evidence collection: finalist pressure", () => {
         confidence: "high",
         manualReviewRecommended: true,
         artifactPaths: expect.objectContaining({
-          secondOpinionWinnerSelectionPath: getSecondOpinionWinnerSelectionPath(
-            cwd,
-            "run_high_confidence_disagreement",
-          ),
+          secondOpinionWinnerSelectionPath:
+            ".oraculum/runs/run_high_confidence_disagreement/reports/winner-selection.second-opinion.json",
         }),
       }),
     ]);
@@ -414,10 +404,8 @@ describe("pressure evidence collection: finalist pressure", () => {
         runId: "run_unavailable_second_opinion",
         manualReviewRecommended: true,
         artifactPaths: expect.objectContaining({
-          secondOpinionWinnerSelectionPath: getSecondOpinionWinnerSelectionPath(
-            cwd,
-            "run_unavailable_second_opinion",
-          ),
+          secondOpinionWinnerSelectionPath:
+            ".oraculum/runs/run_unavailable_second_opinion/reports/winner-selection.second-opinion.json",
         }),
       }),
     ]);
@@ -426,7 +414,7 @@ describe("pressure evidence collection: finalist pressure", () => {
         expect.objectContaining({
           artifactKind: "winner-selection-second-opinion",
           runId: "run_unavailable_second_opinion",
-          path: getSecondOpinionWinnerSelectionPath(cwd, "run_unavailable_second_opinion"),
+          path: ".oraculum/runs/run_unavailable_second_opinion/reports/winner-selection.second-opinion.json",
         }),
       ]),
     );
@@ -481,7 +469,7 @@ describe("pressure evidence collection: finalist pressure", () => {
       expect.objectContaining({
         runId: "run_missing_winner_selection",
         missingArtifactKinds: ["comparison-report", "winner-selection"],
-        manifestPath: getRunManifestPath(cwd, "run_missing_winner_selection"),
+        manifestPath: ".oraculum/runs/run_missing_winner_selection/run.json",
       }),
     ]);
     expect(report.finalistSelectionPressure.missingArtifactBreakdown).toEqual([
@@ -505,7 +493,7 @@ describe("pressure evidence collection: finalist pressure", () => {
         expect.objectContaining({
           artifactKind: "run-manifest",
           runId: "run_missing_winner_selection",
-          path: getRunManifestPath(cwd, "run_missing_winner_selection"),
+          path: ".oraculum/runs/run_missing_winner_selection/run.json",
         }),
       ]),
     );

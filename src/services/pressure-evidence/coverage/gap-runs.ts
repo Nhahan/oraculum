@@ -1,3 +1,4 @@
+import { normalizeConsultationScopePath } from "../../consultation-artifacts.js";
 import { RunStore } from "../../run-store.js";
 import type {
   PressureCoverageGapRun,
@@ -73,7 +74,10 @@ export function buildCoverageGapRuns(
         taskSourcePath: item.taskSourcePath,
         ...(item.targetArtifactPath ? { targetArtifactPath: item.targetArtifactPath } : {}),
         consultationPath: item.consultationPath,
-        manifestPath: store.getRunPaths(item.runId).manifestPath,
+        manifestPath: normalizeConsultationScopePath(
+          projectRoot,
+          store.getRunPaths(item.runId).manifestPath,
+        ),
         kinds: [...item.kinds].sort((left, right) => left.localeCompare(right)),
         missingArtifactKinds: [...item.missingArtifactKinds].sort((left, right) =>
           left.localeCompare(right),

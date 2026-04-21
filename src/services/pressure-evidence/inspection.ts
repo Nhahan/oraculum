@@ -1,3 +1,4 @@
+import { normalizeConsultationScopePath } from "../consultation-artifacts.js";
 import { RunStore } from "../run-store.js";
 import {
   type PressureCoverageGapRun,
@@ -101,7 +102,10 @@ function buildGapInspectionQueue(
         runId: item.runId,
         openedAt: item.openedAt,
         reason: `Inspect the run manifest because ${item.missingArtifactKinds.join(", ")} are missing for this pressure case.`,
-        path: store.getRunPaths(item.runId).manifestPath,
+        path: normalizeConsultationScopePath(
+          projectRoot,
+          store.getRunPaths(item.runId).manifestPath,
+        ),
       }),
     );
 }
