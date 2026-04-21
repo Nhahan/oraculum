@@ -83,7 +83,7 @@ async function main() {
     await assertPathExists(join(homeDir, ".claude", "mcp.json"));
     await assertPathExists(join(homeDir, ".claude", "plugins", "oraculum"));
     await assertPathExists(join(homeDir, ".codex", "config.toml"));
-    await assertPathExists(join(homeDir, ".codex", "skills", "oraculum-consult", "SKILL.md"));
+    await assertPathExists(join(homeDir, ".codex", "skills", "route-consult", "SKILL.md"));
     await assertPathExists(join(homeDir, ".codex", "rules", "oraculum.md"));
 
     process.stdout.write(`Release smoke passed for ${installSpec}.\n`);
@@ -101,7 +101,7 @@ async function writeFakeClaudeHost(hostBinDir) {
   await writeFile(
     cliPath,
     [
-      "import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';",
+      "import { cpSync, mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';",
       "import { dirname, join } from 'node:path';",
       "const statePath = process.env.ORACULUM_FAKE_CLAUDE_STATE;",
       "const homeDir = process.env.HOME;",
@@ -113,13 +113,15 @@ async function writeFakeClaudeHost(hostBinDir) {
       "const state = readState();",
       "if (args[0] === 'plugin' && args[1] === 'validate') { process.stdout.write('ok\\n'); process.exit(0); }",
       "if (args[0] === 'plugin' && args[1] === 'marketplace' && args[2] === 'list' && args[3] === '--json') { process.stdout.write(JSON.stringify(state.marketplaces)); process.exit(0); }",
-      "if (args[0] === 'plugin' && args[1] === 'marketplace' && args[2] === 'add') { state.marketplaces = [{ name: 'oraculum' }]; writeState(state); process.exit(0); }",
+      "if (args[0] === 'plugin' && args[1] === 'marketplace' && args[2] === 'add') { state.marketplaces = [{ name: 'oraculum', path: args[3], installLocation: args[3] }]; writeState(state); process.exit(0); }",
       "if (args[0] === 'plugin' && args[1] === 'list' && args[2] === '--json') { process.stdout.write(JSON.stringify(state.plugins)); process.exit(0); }",
       "if (args[0] === 'plugin' && args[1] === 'install') {",
+      "  const source = state.marketplaces[0]?.path ?? state.marketplaces[0]?.installLocation;",
+      "  if (!source) process.exit(12);",
       "  state.plugins = [{ name: 'orc' }];",
       "  writeState(state);",
-      "  mkdirSync(join(pluginsDir, 'orc'), { recursive: true });",
-      "  writeFileSync(join(pluginsDir, 'orc', 'plugin.json'), '{}\\n');",
+      "  mkdirSync(pluginsDir, { recursive: true });",
+      "  cpSync(join(source, '.claude-plugin'), join(pluginsDir, 'oraculum'), { recursive: true, force: true });",
       "  process.exit(0);",
       "}",
       "process.stderr.write('unexpected args: ' + args.join(' ')); process.exit(9);",
