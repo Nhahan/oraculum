@@ -432,7 +432,9 @@ const args = process.argv.slice(2);
 const candidateMatch = prompt.match(/^Candidate ID: (.+)$/m);
 const candidateId = candidateMatch ? candidateMatch[1].trim() : "cand-01";
 const isPreflight = prompt.includes("You are deciding whether an Oraculum consultation is ready to proceed before any candidate is generated.");
-const isProfile = prompt.includes("You are selecting the best Oraculum consultation profile");
+const isProfile =
+  prompt.includes("You are selecting the best Oraculum consultation profile") ||
+  prompt.includes("You are selecting the best Oraculum consultation validation posture");
 const isWinner = prompt.includes("You are selecting the best Oraculum finalist.");
 
 function outputPath() {
