@@ -34,6 +34,8 @@ vi.mock("../src/services/project.js", async () => {
 
 vi.mock("../src/services/consultations.js", () => ({
   buildVerdictReview: vi.fn(),
+  isInvalidConsultationRecord: vi.fn(),
+  listRecentConsultationRecords: vi.fn(),
   listRecentConsultations: vi.fn(),
   renderConsultationArchive: vi.fn(),
   renderConsultationSummary: vi.fn(),
@@ -57,6 +59,37 @@ import {
 registerMcpToolsTestHarness();
 
 describe("chat-native MCP tools: crown", () => {
+  it("rejects unknown public crown request fields before materialization", async () => {
+    await expect(
+      runCrownTool({
+        cwd: "/tmp/project",
+        withReport: false,
+        unsafe: true,
+      } as Parameters<typeof runCrownTool>[0]),
+    ).rejects.toThrow(/Unrecognized key/);
+    expect(mockedMaterializeExport).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsafe consultation and candidate ids before materialization", async () => {
+    await expect(
+      runCrownTool({
+        cwd: "/tmp/project",
+        consultationId: "../run",
+        candidateId: "cand-01",
+        withReport: false,
+      }),
+    ).rejects.toThrow("Artifact ids must be safe single path segments.");
+    await expect(
+      runCrownTool({
+        cwd: "/tmp/project",
+        consultationId: "run_1",
+        candidateId: "nested/cand",
+        withReport: false,
+      }),
+    ).rejects.toThrow("Artifact ids must be safe single path segments.");
+    expect(mockedMaterializeExport).not.toHaveBeenCalled();
+  });
+
   it("crowns through the MCP tool path", async () => {
     const root = await createMcpTempRoot("oraculum-mcp-crown-");
     const patchPath = await writeExportPatch(root, [
@@ -116,6 +149,44 @@ describe("chat-native MCP tools: crown", () => {
       changedPathCount: 1,
     });
   });
+  it("forwards explicit unsafe overrides to materialization", async () => {
+    const root = await createMcpTempRoot("oraculum-mcp-crown-allow-unsafe-");
+    const summaryPath = join(root, ".oraculum", "runs", "run_1", "reports", "export-sync.json");
+    await mkdir(join(root, ".oraculum", "runs", "run_1", "reports"), { recursive: true });
+    await writeFile(
+      summaryPath,
+      `${JSON.stringify({ appliedFiles: ["app.txt"], removedFiles: [] }, null, 2)}\n`,
+      "utf8",
+    );
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        mode: "workspace-sync",
+        materializationMode: "workspace-sync",
+        workspaceDir: "/tmp/workspace",
+        safetyOverride: "operator-allow-unsafe",
+        appliedPathCount: 1,
+        removedPathCount: 0,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: join(root, ".oraculum", "runs", "run_1", "reports", "export-plan.json"),
+    });
+
+    const response = await runCrownTool({
+      cwd: root,
+      withReport: false,
+      allowUnsafe: true,
+    });
+
+    expect(mockedMaterializeExport).toHaveBeenCalledWith({
+      cwd: root,
+      withReport: false,
+      allowUnsafe: true,
+    });
+    expect(response.plan.safetyOverride).toBe("operator-allow-unsafe");
+  });
   it("normalizes empty crown string inputs before materialization", async () => {
     const root = await createMcpTempRoot("oraculum-mcp-crown-empty-");
     const summaryPath = join(root, ".oraculum", "runs", "run_1", "reports", "export-sync.json");
@@ -152,6 +223,50 @@ describe("chat-native MCP tools: crown", () => {
       withReport: false,
     });
   });
+
+  it("trims crown string inputs before materialization", async () => {
+    const root = await createMcpTempRoot("oraculum-mcp-crown-trimmed-");
+    const patchPath = await writeExportPatch(root, [
+      "diff --git a/src/message.js b/src/message.js",
+      "--- a/src/message.js",
+      "+++ b/src/message.js",
+      "@@ -1 +1 @@",
+      '-export const message = "before";',
+      '+export const message = "after";',
+      "",
+    ]);
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        branchName: "fix/session-loss",
+        mode: "git-branch",
+        materializationMode: "branch",
+        workspaceDir: "/tmp/workspace",
+        patchPath,
+        materializationPatchPath: patchPath,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: join(root, ".oraculum", "runs", "run_1", "reports", "export-plan.json"),
+    });
+    mockedRunSubprocess.mockResolvedValueOnce(
+      createSubprocessResult({ stdout: "fix/session-loss\n" }),
+    );
+
+    await runCrownTool({
+      cwd: root,
+      branchName: "  fix/session-loss  ",
+      withReport: false,
+    });
+
+    expect(mockedMaterializeExport).toHaveBeenCalledWith({
+      cwd: root,
+      branchName: "fix/session-loss",
+      withReport: false,
+    });
+  });
+
   it("normalizes an empty canonical materialization name before materialization", async () => {
     const root = await createMcpTempRoot("oraculum-mcp-crown-empty-materialization-name-");
     const summaryPath = join(root, ".oraculum", "runs", "run_1", "reports", "export-sync.json");
@@ -184,6 +299,43 @@ describe("chat-native MCP tools: crown", () => {
 
     expect(mockedMaterializeExport).toHaveBeenCalledWith({
       cwd: root,
+      withReport: false,
+    });
+  });
+  it("forwards canonical materialization names through the compatibility branch-name field", async () => {
+    const root = await createMcpTempRoot("oraculum-mcp-crown-materialization-name-label-");
+    const summaryPath = join(root, ".oraculum", "runs", "run_1", "reports", "export-sync.json");
+    await mkdir(join(root, ".oraculum", "runs", "run_1", "reports"), { recursive: true });
+    await writeFile(
+      summaryPath,
+      `${JSON.stringify({ appliedFiles: ["app.txt"], removedFiles: [] }, null, 2)}\n`,
+      "utf8",
+    );
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        mode: "workspace-sync",
+        materializationMode: "workspace-sync",
+        workspaceDir: "/tmp/workspace",
+        materializationLabel: "release-label",
+        appliedPathCount: 1,
+        removedPathCount: 0,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: join(root, ".oraculum", "runs", "run_1", "reports", "export-plan.json"),
+    });
+
+    await runCrownTool({
+      cwd: root,
+      materializationName: "  release-label  ",
+      withReport: false,
+    });
+
+    expect(mockedMaterializeExport).toHaveBeenCalledWith({
+      cwd: root,
+      branchName: "release-label",
       withReport: false,
     });
   });

@@ -9,6 +9,7 @@ import {
   getExportMaterializationMode,
 } from "../../domain/run.js";
 import { RunStore } from "../run-store.js";
+import { assertCrownSafetyGate } from "../runs/export-plan.js";
 import { prepareExportPlan, readRunManifest } from "../runs.js";
 
 import {
@@ -29,6 +30,11 @@ export async function materializeExport(
   const { path, plan: planned } = await prepareExportPlan(options);
   const syncSummaryPath = store.getRunPaths(planned.runId).exportSyncSummaryPath;
   const manifest = await readRunManifest(projectRoot, planned.runId);
+  await assertCrownSafetyGate({
+    allowUnsafe: planned.safetyOverride === "operator-allow-unsafe",
+    manifest,
+    projectRoot,
+  });
   const managedTreeRules = await readRunManagedTreeRules(projectRoot, manifest);
   const winner = findExportCandidate(manifest, planned.winnerId);
   const [previousPlanContents, previousSyncSummaryContents] = await Promise.all([

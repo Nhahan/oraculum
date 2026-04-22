@@ -430,14 +430,24 @@ describe("git export rollback", () => {
     );
 
     const originalWriteJsonFile = projectService.writeJsonFile;
+    const originalWriteTextFileAtomically = projectService.writeTextFileAtomically;
+    let manifestUpdateAttempts = 0;
     const writeJsonFileSpy = vi
       .spyOn(projectService, "writeJsonFile")
       .mockImplementation(async (path, value) => {
-        if (path === candidateManifestPath) {
+        if (path === manifestPath) {
+          manifestUpdateAttempts += 1;
+        }
+        if (path === manifestPath && manifestUpdateAttempts === 1) {
           throw new Error("disk full");
         }
         return originalWriteJsonFile(path, value);
       });
+    const writeTextFileAtomicallySpy = vi
+      .spyOn(projectService, "writeTextFileAtomically")
+      .mockImplementation(async (path, contents) =>
+        originalWriteTextFileAtomically(path, contents),
+      );
 
     let projectUntrackedCalls = 0;
     mockedRunSubprocess.mockImplementation(async (options) => {
@@ -543,8 +553,16 @@ describe("git export rollback", () => {
       await expect(readFile(join(reportsDir, "export-sync.json"), "utf8")).resolves.toContain(
         '"old.txt"',
       );
+      expect(writeTextFileAtomicallySpy.mock.calls.map(([path]) => path)).toEqual(
+        expect.arrayContaining([
+          candidateManifestPath,
+          join(reportsDir, "export-plan.json"),
+          join(reportsDir, "export-sync.json"),
+        ]),
+      );
     } finally {
       writeJsonFileSpy.mockRestore();
+      writeTextFileAtomicallySpy.mockRestore();
     }
   });
 

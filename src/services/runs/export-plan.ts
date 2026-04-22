@@ -1,13 +1,14 @@
-import { writeFile } from "node:fs/promises";
-
 import { OraculumError } from "../../core/errors.js";
 import {
+  deriveConsultationOutcomeForManifest,
   type ExportPlan,
   exportPlanSchema,
   getExportMaterializationMode,
+  type RunManifest,
 } from "../../domain/run.js";
 import { describeRecommendedTaskResultLabel } from "../../domain/task.js";
-import { pathExists } from "../project.js";
+import { resolveConsultationArtifacts } from "../consultation-artifacts.js";
+import { pathExists, writeJsonFile } from "../project.js";
 import { RunStore } from "../run-store.js";
 import { toDisplayPath } from "./display-path.js";
 
@@ -18,6 +19,7 @@ interface BuildExportPlanOptions {
   branchName?: string;
   materializationLabel?: string;
   withReport: boolean;
+  allowUnsafe?: boolean;
 }
 
 export async function buildExportPlan(
@@ -26,7 +28,7 @@ export async function buildExportPlan(
   const store = new RunStore(options.cwd);
   const prepared = await prepareExportPlan(options);
   await store.ensureRunDirectories(prepared.plan.runId);
-  await writeFile(prepared.path, `${JSON.stringify(prepared.plan, null, 2)}\n`, "utf8");
+  await writeJsonFile(prepared.path, prepared.plan);
 
   return prepared;
 }
@@ -70,6 +72,12 @@ export async function prepareExportPlan(
       `Candidate "${winner.id}" is not ready to materialize because its status is "${winner.status}".`,
     );
   }
+
+  await assertCrownSafetyGate({
+    allowUnsafe: options.allowUnsafe === true,
+    manifest,
+    projectRoot,
+  });
 
   if (!winner.workspaceMode) {
     throw new OraculumError(
@@ -119,6 +127,7 @@ export async function prepareExportPlan(
           reportBundle: { rootDir: store.getRunPaths(manifest.id).reportsDir, files: reportFiles },
         }
       : {}),
+    ...(options.allowUnsafe ? { safetyOverride: "operator-allow-unsafe" } : {}),
     createdAt: new Date().toISOString(),
   };
 
@@ -126,6 +135,60 @@ export async function prepareExportPlan(
 
   const planPath = store.getRunPaths(manifest.id).exportPlanPath;
   return { plan, path: planPath };
+}
+
+export async function assertCrownSafetyGate(options: {
+  allowUnsafe: boolean;
+  manifest: RunManifest;
+  projectRoot: string;
+}): Promise<void> {
+  const blockers = await collectCrownSafetyBlockers(options.projectRoot, options.manifest);
+  if (blockers.length === 0 || options.allowUnsafe) {
+    return;
+  }
+
+  throw new OraculumError(
+    [
+      `Crowning is blocked because consultation "${options.manifest.id}" is not safe to materialize:`,
+      ...blockers.map((blocker) => `- ${blocker}`),
+      "Use `orc crown --allow-unsafe` only after operator review confirms these blockers are acceptable.",
+    ].join("\n"),
+  );
+}
+
+async function collectCrownSafetyBlockers(
+  projectRoot: string,
+  manifest: RunManifest,
+): Promise<string[]> {
+  const blockers: string[] = [];
+  const outcome = manifest.outcome ?? deriveConsultationOutcomeForManifest(manifest);
+
+  if (outcome.validationGapCount > 0) {
+    blockers.push(
+      `${outcome.validationGapCount} validation gap${outcome.validationGapCount === 1 ? "" : "s"} remain in the selected validation posture`,
+    );
+  }
+
+  if (manifest.recommendedWinner?.source === "fallback-policy") {
+    blockers.push("recommended winner was selected by fallback-policy");
+  }
+
+  const artifacts = await resolveConsultationArtifacts(projectRoot, manifest.id);
+  if (
+    artifacts.secondOpinionWinnerSelection &&
+    artifacts.secondOpinionWinnerSelection.agreement !== "agrees-select"
+  ) {
+    blockers.push(
+      `second-opinion judge requires manual review (${artifacts.secondOpinionWinnerSelection.agreement})`,
+    );
+  }
+  for (const diagnostic of artifacts.artifactDiagnostics) {
+    if (diagnostic.kind === "winner-selection-second-opinion") {
+      blockers.push(`second-opinion artifact is invalid: ${diagnostic.message}`);
+    }
+  }
+
+  return blockers;
 }
 
 async function collectReportFiles(projectRoot: string, runId: string): Promise<string[]> {

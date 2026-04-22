@@ -1,11 +1,9 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-
 import { OraculumError } from "../../core/errors.js";
 import { runSubprocess } from "../../core/subprocess.js";
 import type { ManagedTreeRules } from "../../domain/config.js";
 import type { CandidateManifest, ExportPlan } from "../../domain/run.js";
 import { getExportMaterializationPatchPath } from "../../domain/run.js";
+import { writeTextFileAtomically } from "../project.js";
 import { RunStore } from "../run-store.js";
 import { generateWorkspacePatch } from "./git/patch.js";
 import { rollbackFailedGitBranchExport } from "./git/rollback.js";
@@ -56,8 +54,7 @@ export async function materializeGitBranchExport(
     );
   }
 
-  await mkdir(dirname(patchPath), { recursive: true });
-  await writeFile(patchPath, patch, "utf8");
+  await writeTextFileAtomically(patchPath, patch);
 
   const checkout = await runSubprocess({
     command: "git",

@@ -1,4 +1,4 @@
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 
 import { OraculumError } from "../../core/errors.js";
 import {
@@ -14,7 +14,12 @@ import {
   type RunManifest,
   runManifestSchema,
 } from "../../domain/run.js";
-import { loadProjectConfig, pathExists, writeJsonFile } from "../project.js";
+import {
+  loadProjectConfig,
+  pathExists,
+  writeJsonFile,
+  writeTextFileAtomically,
+} from "../project.js";
 import type { RunStore } from "../run-store.js";
 
 import { currentFileContentsMatch, formatUnknownError } from "./shared.js";
@@ -115,7 +120,7 @@ export async function markCandidateExported(
           (await currentFileContentsMatch(candidateManifestPath, originalCandidateJson));
         if (!currentManifestMatchesOriginal) {
           await rm(candidateManifestPath, { recursive: true, force: true });
-          await writeFile(candidateManifestPath, originalCandidateJson, "utf8");
+          await writeTextFileAtomically(candidateManifestPath, originalCandidateJson);
         }
       } else if (!candidateManifestExisted) {
         await rm(candidateManifestPath, { force: true });

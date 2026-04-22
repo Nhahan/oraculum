@@ -1,7 +1,8 @@
-import { lstat, readFile, rm, rmdir, writeFile } from "node:fs/promises";
+import { lstat, readFile, rm, rmdir } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { ManagedPathEntry } from "../managed-tree.js";
+import { writeTextFileAtomically } from "../project.js";
 
 export function formatUnknownError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -30,7 +31,7 @@ export async function restoreOptionalTextFile(
   }
 
   await mkdirParent(path);
-  await writeFile(path, contents, "utf8");
+  await writeTextFileAtomically(path, contents);
 }
 
 export async function currentFileContentsMatch(path: string, expected: string): Promise<boolean> {

@@ -1,4 +1,6 @@
 import { z } from "zod";
+
+import { artifactPathSegmentSchema } from "../../artifact-id.js";
 import {
   deriveExportMaterializationMode,
   deriveExportModeFromMaterializationMode,
@@ -58,8 +60,8 @@ export const exportPlanSchema = z.preprocess(
   },
   z
     .object({
-      runId: z.string().min(1),
-      winnerId: z.string().min(1),
+      runId: artifactPathSegmentSchema,
+      winnerId: artifactPathSegmentSchema,
       branchName: optionalNonEmptyStringSchema,
       materializationLabel: optionalNonEmptyStringSchema,
       mode: exportModeSchema,
@@ -71,6 +73,7 @@ export const exportPlanSchema = z.preprocess(
       removedPathCount: z.number().int().min(0).optional(),
       withReport: z.boolean(),
       reportBundle: reportBundleSchema.optional(),
+      safetyOverride: z.literal("operator-allow-unsafe").optional(),
       createdAt: z.string().min(1),
     })
     .superRefine((plan, context) => {
@@ -107,6 +110,6 @@ export const exportPlanSchema = z.preprocess(
 );
 
 export const latestRunStateSchema = z.object({
-  runId: z.string().min(1),
+  runId: artifactPathSegmentSchema,
   updatedAt: z.string().min(1),
 });

@@ -8,6 +8,7 @@ export interface MaterializeExportOptions {
   branchName?: string;
   materializationLabel?: string;
   withReport: boolean;
+  allowUnsafe?: boolean;
 }
 
 export interface WorkspaceSyncSummary {

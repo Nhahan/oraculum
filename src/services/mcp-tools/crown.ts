@@ -28,11 +28,14 @@ import {
 
 export async function runCrownTool(input: CrownToolRequest): Promise<CrownToolResponse> {
   const request = normalizeCrownToolRequest(input);
+  const branchName = request.branchName;
+  const materializationLabel = request.materializationLabel;
   const result = await materializeExport({
     cwd: request.cwd,
-    ...(request.branchName ? { branchName: request.branchName } : {}),
-    ...(request.materializationLabel ? { materializationLabel: request.materializationLabel } : {}),
+    ...(branchName ? { branchName } : {}),
+    ...(materializationLabel ? { materializationLabel } : {}),
     withReport: request.withReport,
+    ...(request.allowUnsafe ? { allowUnsafe: true } : {}),
     ...(request.consultationId ? { runId: request.consultationId } : {}),
     ...(request.candidateId ? { winnerId: request.candidateId } : {}),
   });
