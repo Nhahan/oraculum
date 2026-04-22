@@ -11,31 +11,7 @@ const planningArguments = [
     description: "Inline task text, a task note path, or a task packet path.",
     required: true,
     positional: true,
-  },
-  {
-    name: "agent",
-    kind: "string",
-    description: "Agent runtime override.",
-    option: "--agent",
-  },
-  {
-    name: "candidates",
-    kind: "integer",
-    description: "Number of candidate variants to plan.",
-    option: "--candidates",
-  },
-  {
-    name: "timeoutMs",
-    kind: "integer",
-    description: "Adapter timeout in milliseconds.",
-    option: "--timeout-ms",
-  },
-  {
-    name: "clarificationAnswer",
-    kind: "string",
-    description:
-      "Answer to a prior plan clarification question; folded into the task contract before planning.",
-    option: "--answer",
+    variadic: true,
   },
 ] as const;
 
@@ -107,8 +83,15 @@ export const oraculumCommandManifest = [
         required: false,
         positional: true,
       },
+      {
+        name: "allowUnsafe",
+        kind: "boolean",
+        description:
+          "Explicitly bypass crown safety blockers such as validation gaps, fallback-policy selection, or manual-review second-opinion status.",
+        option: "--allow-unsafe",
+      },
     ],
-    examples: ["orc crown fix/session-loss", "orc crown"],
+    examples: ["orc crown fix/session-loss", "orc crown", "orc crown --allow-unsafe"],
     hostAdditions: {},
   },
   {

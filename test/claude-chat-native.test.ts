@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -127,6 +127,12 @@ describe("Claude Code setup", () => {
       '"name": "orc"',
     );
     await expect(readFile(result.mcpConfigPath, "utf8")).resolves.toContain('"orc"');
+    expect(
+      (await readdir(dirname(result.mcpConfigPath))).filter((entry) => entry.endsWith(".tmp")),
+    ).toEqual([]);
+    expect((await readdir(result.pluginRoot)).filter((entry) => entry.endsWith(".tmp"))).toEqual(
+      [],
+    );
   });
 
   it("uninstalls Claude plugin marketplace and MCP wiring", async () => {
@@ -157,5 +163,8 @@ describe("Claude Code setup", () => {
     });
 
     await expect(readFile(result.mcpConfigPath, "utf8")).resolves.not.toContain('"orc"');
+    expect(
+      (await readdir(dirname(result.mcpConfigPath))).filter((entry) => entry.endsWith(".tmp")),
+    ).toEqual([]);
   });
 });

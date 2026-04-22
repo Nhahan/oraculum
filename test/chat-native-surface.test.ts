@@ -79,6 +79,9 @@ describe("chat-native surface", () => {
       required: ["cwd"],
       type: "object",
     });
+    expect(crown?.inputSchema).toMatchObject({
+      additionalProperties: false,
+    });
   });
 
   it("accepts crown materialization aliases in both request and response schemas", () => {
@@ -138,25 +141,31 @@ describe("chat-native surface", () => {
     }
   });
 
-  it("describes consultation candidate counts in artifact-neutral terms", () => {
+  it("keeps planning commands task-only while retaining explicit safety flags", () => {
     const consultCommand = oraculumCommandManifest.find((entry) => entry.id === "consult");
     const planCommand = oraculumCommandManifest.find((entry) => entry.id === "plan");
     const draftCommand = oraculumCommandManifest.find((entry) => entry.id === "draft");
     const crownCommand = oraculumCommandManifest.find((entry) => entry.id === "crown");
 
-    expect(
-      consultCommand?.arguments.find((argument) => argument.name === "candidates")?.description,
-    ).toBe("Number of candidate variants to plan.");
-    expect(
-      planCommand?.arguments.find((argument) => argument.name === "candidates")?.description,
-    ).toBe("Number of candidate variants to plan.");
-    expect(
-      draftCommand?.arguments.find((argument) => argument.name === "candidates")?.description,
-    ).toBe("Number of candidate variants to plan.");
+    for (const command of [consultCommand, planCommand, draftCommand]) {
+      expect(command?.arguments).toEqual([
+        expect.objectContaining({
+          name: "taskInput",
+          positional: true,
+          variadic: true,
+        }),
+      ]);
+      expect(command?.arguments.some((argument) => argument.option)).toBe(false);
+    }
     expect(crownCommand?.arguments[0]).toMatchObject({
       name: "materializationName",
       description:
         "Branch name to create, or an optional workspace-sync materialization label in non-Git projects.",
+    });
+    expect(
+      crownCommand?.arguments.find((argument) => argument.name === "allowUnsafe"),
+    ).toMatchObject({
+      option: "--allow-unsafe",
     });
   });
 

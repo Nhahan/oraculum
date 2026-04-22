@@ -73,12 +73,29 @@ describe("host wrapper official route", () => {
     expect(writeSpy).toHaveBeenCalledWith("claude summary\n");
   });
 
-  it("falls back to the direct host path when official transport fails", async () => {
+  it("fails closed with setup guidance when official transport fails", async () => {
     vi.mocked(runCodexOfficialTransport).mockRejectedValueOnce(new Error("boom"));
+    const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
     const code = await runHostWrapper({
       host: "codex",
       args: ['orc consult "안녕"'],
+      cwd: "/tmp/project",
+    });
+
+    expect(code).toBe(1);
+    expect(getDirectTransport).not.toHaveBeenCalled();
+    expect(mockDirectTransport.run).not.toHaveBeenCalled();
+    expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining("Host: codex"));
+    expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining('Command: orc consult "안녕"'));
+    expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining("Reason: boom"));
+    expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining("oraculum setup status"));
+  });
+
+  it("keeps non-orc prompts on the direct host path", async () => {
+    const code = await runHostWrapper({
+      host: "codex",
+      args: ["review", "hello"],
       cwd: "/tmp/project",
     });
 

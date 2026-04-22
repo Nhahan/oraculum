@@ -1,23 +1,25 @@
 import { z } from "zod";
 
-import { adapterSchema } from "../config.js";
 import { runManifestSchema, savedConsultationStatusSchema } from "../run.js";
-import { consultationArtifactPathsSchema, projectInitializationResultSchema } from "./common.js";
+import {
+  artifactDiagnosticSchema,
+  consultationArtifactPathsSchema,
+  projectInitializationResultSchema,
+} from "./common.js";
 
-const planningToolRequestBaseSchema = z.object({
-  cwd: z.string().min(1),
-  taskInput: z.string().min(1),
-  agent: adapterSchema.optional(),
-  candidates: z.number().int().min(1).max(16).optional(),
-  clarificationAnswer: z.string().min(1).optional(),
-  timeoutMs: z.number().int().min(1).optional(),
-});
+const planningToolRequestBaseSchema = z
+  .object({
+    cwd: z.string().min(1),
+    taskInput: z.string().min(1),
+  })
+  .strict();
 
 const planningToolResponseBaseSchema = z.object({
   consultation: runManifestSchema,
   status: savedConsultationStatusSchema,
   summary: z.string().min(1),
   artifacts: consultationArtifactPathsSchema,
+  artifactDiagnostics: z.array(artifactDiagnosticSchema).optional(),
   initializedProject: projectInitializationResultSchema.optional(),
 });
 

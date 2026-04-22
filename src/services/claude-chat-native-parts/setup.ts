@@ -1,11 +1,12 @@
 import { existsSync } from "node:fs";
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { APP_VERSION } from "../../core/constants.js";
 import { OraculumError } from "../../core/errors.js";
 import { runSubprocess } from "../../core/subprocess.js";
+import { writeTextFileAtomically } from "../project.js";
 import {
   isClaudeMarketplaceAligned,
   isClaudePluginAligned,
@@ -199,7 +200,7 @@ async function mergeClaudeMcpConfig(
     delete (next.mcpServers as Record<string, unknown>)[legacyServerName];
   }
   await mkdir(dirname(mcpConfigPath), { recursive: true });
-  await writeFile(mcpConfigPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  await writeTextFileAtomically(mcpConfigPath, `${JSON.stringify(next, null, 2)}\n`);
 }
 
 async function removeClaudeMcpConfigEntry(mcpConfigPath: string): Promise<void> {
@@ -225,7 +226,7 @@ async function removeClaudeMcpConfigEntry(mcpConfigPath: string): Promise<void> 
         }
       : Object.fromEntries(Object.entries(existing).filter(([key]) => key !== "mcpServers"));
   await mkdir(dirname(mcpConfigPath), { recursive: true });
-  await writeFile(mcpConfigPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  await writeTextFileAtomically(mcpConfigPath, `${JSON.stringify(next, null, 2)}\n`);
 }
 
 async function pruneClaudePluginArtifacts(homeDir: string): Promise<void> {
@@ -263,10 +264,9 @@ async function prepareClaudeSetupRoot(options: {
     force: true,
     recursive: true,
   });
-  await writeFile(
+  await writeTextFileAtomically(
     join(installRoot, ".claude-plugin", ".mcp.json"),
     `${JSON.stringify(buildClaudePluginMcpConfigFromInvocation(options.mcpInvocation), null, 2)}\n`,
-    "utf8",
   );
   return installRoot;
 }

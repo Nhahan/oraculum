@@ -135,19 +135,31 @@ function buildRequestPayload(
       const [flag, inlineValue] = splitOptionToken(token);
       const argument = optionArguments.get(flag);
       if (!argument) {
+        if (isTaskOnlyPlanningCommand(entry) && removedPlanningOptions.has(flag)) {
+          throw new OraculumError(renderUnsupportedPlanningOption(entry, flag));
+        }
         throw new OraculumError(`Unknown option for \`orc ${entry.path.join(" ")}\`: ${flag}`);
       }
 
       if (argument.kind === "boolean") {
-        payload[argument.name] = inlineValue ? coerceArgumentValue(argument, inlineValue) : true;
+        const nextValue = tokens[index + 1];
+        if (inlineValue !== undefined) {
+          payload[argument.name] = coerceArgumentValue(argument, inlineValue);
+        } else if (isBooleanLiteral(nextValue)) {
+          payload[argument.name] = coerceArgumentValue(argument, nextValue);
+          index += 1;
+        } else {
+          payload[argument.name] = true;
+        }
         continue;
       }
 
-      const rawValue = inlineValue ?? tokens[index + 1];
-      if (!rawValue || inlineValue == null) {
+      const hasInlineValue = inlineValue !== undefined;
+      const rawValue = hasInlineValue ? inlineValue : tokens[index + 1];
+      if (!hasInlineValue) {
         index += 1;
       }
-      if (!rawValue) {
+      if (rawValue === undefined || rawValue.length === 0) {
         throw new OraculumError(
           `Missing value for option ${flag} in \`orc ${entry.path.join(" ")}\`.`,
         );
@@ -164,6 +176,14 @@ function buildRequestPayload(
       );
     }
 
+    if (argument.variadic) {
+      const existing = payload[argument.name];
+      const nextValue = coerceArgumentValue(argument, token);
+      payload[argument.name] =
+        typeof existing === "string" ? `${existing} ${nextValue}` : nextValue;
+      continue;
+    }
+
     payload[argument.name] = coerceArgumentValue(argument, token);
     positionalIndex += 1;
   }
@@ -177,6 +197,36 @@ function buildRequestPayload(
   }
 
   return payload;
+}
+
+function isTaskOnlyPlanningCommand(entry: CommandManifestEntry): boolean {
+  return entry.id === "consult" || entry.id === "plan" || entry.id === "draft";
+}
+
+const removedPlanningOptions = new Set([
+  "--agent",
+  "--answer",
+  "--candidates",
+  "--clarification-answer",
+  "--deliberate",
+  "--timeout-ms",
+]);
+
+function renderUnsupportedPlanningOption(entry: CommandManifestEntry, flag: string): string {
+  const command = `orc ${entry.path.join(" ")}`;
+  if (flag === "--answer" || flag === "--clarification-answer") {
+    return [
+      `Unsupported option for \`${command}\`: ${flag}.`,
+      "Include the clarification answer directly in the task text and rerun, for example:",
+      '`orc plan "add auth. Email/password only; protect /dashboard; no OAuth."`',
+    ].join(" ");
+  }
+
+  return [
+    `Unsupported option for \`${command}\`: ${flag}.`,
+    "`orc consult`, `orc plan`, and `orc draft` accept task text only.",
+    "Put requirements in the task text or configure advanced controls in `.oraculum/config.json` / `.oraculum/advanced.json`.",
+  ].join(" ");
 }
 
 function splitOptionToken(token: string): [string, string | undefined] {
@@ -215,4 +265,8 @@ function coerceArgumentValue(
   }
 
   return rawValue;
+}
+
+function isBooleanLiteral(value: string | undefined): value is "true" | "false" {
+  return value === "true" || value === "false";
 }

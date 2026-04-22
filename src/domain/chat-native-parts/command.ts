@@ -39,6 +39,7 @@ export const commandArgumentSchema = z.object({
   description: z.string().min(1),
   required: z.boolean().default(false),
   positional: z.boolean().default(false),
+  variadic: z.boolean().default(false),
   option: z.string().min(1).optional(),
 });
 

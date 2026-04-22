@@ -21,7 +21,7 @@ import {
   verdictToolRequestSchema,
   verdictToolResponseSchema,
 } from "../../domain/chat-native.js";
-import { isPreflightBlockedConsultation } from "../../domain/run.js";
+import { isPreflightBlockedConsultation, type RunManifest } from "../../domain/run.js";
 import {
   type ConsultProgressReporter,
   consultationStartedEvent,
@@ -30,7 +30,8 @@ import {
 } from "../consult-progress.js";
 import {
   buildVerdictReview,
-  listRecentConsultations,
+  isInvalidConsultationRecord,
+  listRecentConsultationRecords,
   renderConsultationArchive,
 } from "../consultations.js";
 import { executeRun } from "../execution.js";
@@ -40,7 +41,6 @@ import {
   buildConsultationToolPayload,
   buildPlanRunRequest,
   ensureProjectInitializedForTool,
-  normalizePlanningToolRequest,
 } from "./shared.js";
 
 export async function runConsultTool(
@@ -49,7 +49,7 @@ export async function runConsultTool(
     onProgress?: ConsultProgressReporter | undefined;
   },
 ): Promise<ConsultToolResponse> {
-  const request = normalizePlanningToolRequest(consultToolRequestSchema.parse(input));
+  const request = consultToolRequestSchema.parse(input);
   await options?.onProgress?.(consultationStartedEvent());
   const initialized = await ensureProjectInitializedForTool(request.cwd);
   await options?.onProgress?.(planningStartedEvent());
@@ -68,7 +68,6 @@ export async function runConsultTool(
     cwd: request.cwd,
     ...(options?.onProgress ? { onProgress: options.onProgress } : {}),
     runId: manifest.id,
-    ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
   });
 
   return consultToolResponseSchema.parse({
@@ -78,12 +77,12 @@ export async function runConsultTool(
 }
 
 export async function runPlanTool(input: PlanToolRequest): Promise<PlanToolResponse> {
-  const request = normalizePlanningToolRequest(planToolRequestSchema.parse(input));
+  const request = planToolRequestSchema.parse(input);
   return planToolResponseSchema.parse(await runPlanningTool("plan", request));
 }
 
 export async function runDraftTool(input: DraftToolRequest): Promise<DraftToolResponse> {
-  const request = normalizePlanningToolRequest(draftToolRequestSchema.parse(input));
+  const request = draftToolRequestSchema.parse(input);
   return draftToolResponseSchema.parse(await runPlanningTool("draft", request));
 }
 
@@ -105,12 +104,15 @@ export async function runVerdictArchiveTool(
   input: VerdictArchiveToolRequest,
 ): Promise<VerdictArchiveToolResponse> {
   const request = verdictArchiveToolRequestSchema.parse(input);
-  const consultations = await listRecentConsultations(request.cwd, request.count);
+  const records = await listRecentConsultationRecords(request.cwd, request.count);
+  const consultations = records.filter(
+    (record): record is RunManifest => !isInvalidConsultationRecord(record),
+  );
 
   return verdictArchiveToolResponseSchema.parse({
     mode: "verdict-archive",
     consultations,
-    archive: renderConsultationArchive(consultations, {
+    archive: renderConsultationArchive(records, {
       projectRoot: resolveProjectRoot(request.cwd),
       surface: "chat-native",
     }),

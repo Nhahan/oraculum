@@ -33,6 +33,8 @@ vi.mock("../src/services/project.js", async () => {
 
 vi.mock("../src/services/consultations.js", () => ({
   buildVerdictReview: vi.fn(),
+  isInvalidConsultationRecord: vi.fn(),
+  listRecentConsultationRecords: vi.fn(),
   listRecentConsultations: vi.fn(),
   renderConsultationArchive: vi.fn(),
   renderConsultationSummary: vi.fn(),
@@ -61,35 +63,27 @@ describe("chat-native MCP tools: planning", () => {
     const response = await runConsultTool({
       cwd: "/tmp/project",
       taskInput: "tasks/task.md",
-      agent: "codex",
-      candidates: 2,
-      timeoutMs: 1200,
     });
 
     expect(mockedEnsureProjectInitialized).toHaveBeenCalledWith("/tmp/project", {});
     expect(mockedPlanRun).toHaveBeenCalledWith({
       cwd: "/tmp/project",
       taskInput: "tasks/task.md",
-      agent: "codex",
-      candidates: 2,
       preflight: {
         allowRuntime: true,
-        timeoutMs: 1200,
       },
       autoProfile: {
         allowRuntime: true,
-        timeoutMs: 1200,
       },
     });
     expect(mockedExecuteRun).toHaveBeenCalledWith({
       cwd: "/tmp/project",
       runId: "run_1",
-      timeoutMs: 1200,
     });
     expect(mockedRenderConsultationSummary).toHaveBeenCalledWith(
       createCompletedManifest(),
       "/tmp/project",
-      { surface: "chat-native" },
+      expect.objectContaining({ surface: "chat-native" }),
     );
     expect(response.mode).toBe("consult");
     expect(response.status).toMatchObject({
@@ -186,43 +180,17 @@ describe("chat-native MCP tools: planning", () => {
       },
     });
   });
-  it("parses inline host command options before planning a consultation", async () => {
-    await runConsultTool({
+  it("preserves removed flag names when they are part of task text", async () => {
+    await runPlanTool({
       cwd: "/tmp/project",
-      taskInput: '"tasks/fix session.md" --agent codex --candidates 3 --timeout-ms 2400',
+      taskInput: "remove the old --agent and --answer docs",
     });
 
     expect(mockedPlanRun).toHaveBeenCalledWith({
       cwd: "/tmp/project",
-      taskInput: "tasks/fix session.md",
-      agent: "codex",
-      candidates: 3,
-      preflight: {
-        allowRuntime: true,
-        timeoutMs: 2400,
-      },
-      autoProfile: {
-        allowRuntime: true,
-        timeoutMs: 2400,
-      },
-    });
-    expect(mockedExecuteRun).toHaveBeenCalledWith({
-      cwd: "/tmp/project",
-      runId: "run_1",
-      timeoutMs: 2400,
-    });
-  });
-  it("preserves Windows-style task paths while parsing inline consult options", async () => {
-    await runConsultTool({
-      cwd: "C:\\repo",
-      taskInput: '"C:\\Users\\me\\task notes\\fix session.md" --agent codex --candidates 2',
-    });
-
-    expect(mockedPlanRun).toHaveBeenCalledWith({
-      cwd: "C:\\repo",
-      taskInput: "C:\\Users\\me\\task notes\\fix session.md",
-      agent: "codex",
-      candidates: 2,
+      taskInput: "remove the old --agent and --answer docs",
+      writeConsultationPlanArtifacts: true,
+      requirePlanningClarification: true,
       preflight: {
         allowRuntime: true,
       },
@@ -231,36 +199,36 @@ describe("chat-native MCP tools: planning", () => {
       },
     });
   });
-  it("rejects incomplete inline host command options before planning", async () => {
+  it("rejects removed public planning request fields at the schema boundary", async () => {
     await expect(
       runConsultTool({
         cwd: "/tmp/project",
-        taskInput: "tasks/fix.md --agent",
-      }),
-    ).rejects.toThrow("--agent requires a value");
+        taskInput: "tasks/task.md",
+        agent: "codex",
+      } as Parameters<typeof runConsultTool>[0]),
+    ).rejects.toThrow(/Unrecognized key/);
     expect(mockedPlanRun).not.toHaveBeenCalled();
 
     await expect(
-      runConsultTool({
+      runPlanTool({
         cwd: "/tmp/project",
-        taskInput: "tasks/fix.md --candidates not-a-number",
-      }),
-    ).rejects.toThrow("--candidates must be an integer");
+        taskInput: "fix login",
+        candidates: 2,
+        deliberate: true,
+        timeoutMs: 1200,
+      } as Parameters<typeof runPlanTool>[0]),
+    ).rejects.toThrow(/Unrecognized key/);
     expect(mockedPlanRun).not.toHaveBeenCalled();
   });
   it("runs draft without executing candidates", async () => {
     const response = await runDraftTool({
       cwd: "/tmp/project",
       taskInput: "fix session loss on refresh",
-      agent: "claude-code",
-      candidates: 1,
     });
 
     expect(mockedPlanRun).toHaveBeenCalledWith({
       cwd: "/tmp/project",
       taskInput: "fix session loss on refresh",
-      agent: "claude-code",
-      candidates: 1,
       writeConsultationPlanArtifacts: true,
       requirePlanningClarification: true,
       preflight: {
@@ -277,95 +245,22 @@ describe("chat-native MCP tools: planning", () => {
     const response = await runPlanTool({
       cwd: "/tmp/project",
       taskInput: "fix session loss on refresh",
-      agent: "codex",
-      candidates: 2,
-      timeoutMs: 2400,
     });
 
     expect(mockedPlanRun).toHaveBeenCalledWith({
       cwd: "/tmp/project",
       taskInput: "fix session loss on refresh",
-      agent: "codex",
-      candidates: 2,
       writeConsultationPlanArtifacts: true,
       requirePlanningClarification: true,
       preflight: {
         allowRuntime: true,
-        timeoutMs: 2400,
       },
       autoProfile: {
         allowRuntime: true,
-        timeoutMs: 2400,
       },
     });
     expect(mockedExecuteRun).not.toHaveBeenCalled();
     expect(response.mode).toBe("plan");
-  });
-  it("parses inline host command options before planning a draft", async () => {
-    const response = await runDraftTool({
-      cwd: "/tmp/project",
-      taskInput: '"fix session loss on refresh" --agent codex --candidates 3',
-    });
-
-    expect(mockedPlanRun).toHaveBeenCalledWith({
-      cwd: "/tmp/project",
-      taskInput: "fix session loss on refresh",
-      agent: "codex",
-      candidates: 3,
-      writeConsultationPlanArtifacts: true,
-      requirePlanningClarification: true,
-      preflight: {
-        allowRuntime: true,
-      },
-      autoProfile: {
-        allowRuntime: true,
-      },
-    });
-    expect(response.mode).toBe("draft");
-  });
-  it("preserves Windows-style task paths while parsing inline draft options", async () => {
-    const response = await runDraftTool({
-      cwd: "C:\\repo",
-      taskInput: "C:\\Users\\me\\tasks\\fix.md --agent claude-code --candidates 1",
-    });
-
-    expect(mockedPlanRun).toHaveBeenCalledWith({
-      cwd: "C:\\repo",
-      taskInput: "C:\\Users\\me\\tasks\\fix.md",
-      agent: "claude-code",
-      candidates: 1,
-      writeConsultationPlanArtifacts: true,
-      requirePlanningClarification: true,
-      preflight: {
-        allowRuntime: true,
-      },
-      autoProfile: {
-        allowRuntime: true,
-      },
-    });
-    expect(response.mode).toBe("draft");
-  });
-  it("parses plan clarification answers from inline host command options", async () => {
-    await runPlanTool({
-      cwd: "/tmp/project",
-      taskInput:
-        '"add authentication" --answer "Email/password login only; no OAuth; protect dashboard." --agent codex',
-    });
-
-    expect(mockedPlanRun).toHaveBeenCalledWith({
-      cwd: "/tmp/project",
-      taskInput: "add authentication",
-      agent: "codex",
-      clarificationAnswer: "Email/password login only; no OAuth; protect dashboard.",
-      writeConsultationPlanArtifacts: true,
-      requirePlanningClarification: true,
-      preflight: {
-        allowRuntime: true,
-      },
-      autoProfile: {
-        allowRuntime: true,
-      },
-    });
   });
   it("returns blocked preflight consultations without executing candidates", async () => {
     mockedPlanRun.mockResolvedValue(createBlockedPreflightManifest());

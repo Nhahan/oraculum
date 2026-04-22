@@ -5,10 +5,12 @@ import { commandPrefixSchema } from "./command.js";
 
 export const hostTransportModeSchema = z.enum(["official", "unavailable"]);
 
-export const initToolRequestSchema = z.object({
-  cwd: z.string().min(1),
-  force: z.boolean().default(false),
-});
+export const initToolRequestSchema = z
+  .object({
+    cwd: z.string().min(1),
+    force: z.boolean().default(false),
+  })
+  .strict();
 
 export const initToolResponseSchema = z.object({
   mode: z.literal("init"),
@@ -19,10 +21,12 @@ export const initToolResponseSchema = z.object({
   }),
 });
 
-export const setupStatusToolRequestSchema = z.object({
-  cwd: z.string().min(1),
-  host: adapterSchema.optional(),
-});
+export const setupStatusToolRequestSchema = z
+  .object({
+    cwd: z.string().min(1),
+    host: adapterSchema.optional(),
+  })
+  .strict();
 
 export const hostSetupStatusSchema = z.object({
   host: adapterSchema,

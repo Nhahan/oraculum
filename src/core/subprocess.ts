@@ -61,11 +61,11 @@ export async function runSubprocess(options: RunSubprocessOptions): Promise<Subp
       options.timeoutMs && options.timeoutMs > 0
         ? setTimeout(() => {
             timedOut = true;
-            terminateChild(child, false);
+            terminateChildProcess(child, false);
 
             killTimeoutId = setTimeout(() => {
               if (!closed) {
-                terminateChild(child, true);
+                terminateChildProcess(child, true);
               }
             }, 500).unref();
           }, options.timeoutMs)
@@ -176,7 +176,7 @@ function appendBoundedOutput(options: {
   };
 }
 
-function terminateChild(child: ReturnType<typeof spawn>, force: boolean): void {
+export function terminateChildProcess(child: ReturnType<typeof spawn>, force: boolean): void {
   if (process.platform === "win32") {
     const pid = child.pid;
     if (!pid) {

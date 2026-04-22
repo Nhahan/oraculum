@@ -1,10 +1,11 @@
 import { existsSync } from "node:fs";
-import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { OraculumError } from "../../core/errors.js";
 import { runSubprocess } from "../../core/subprocess.js";
+import { writeTextFileAtomically } from "../project.js";
 import { getExpectedCodexSkillDirs, getPackagedCodexRoot } from "./packaged.js";
 import {
   CODEX_INSTALL_VERSION,
@@ -320,7 +321,7 @@ async function removeCodexMcpConfigEntry(configPath: string): Promise<void> {
       raw,
     );
     if (next !== raw) {
-      await writeFile(configPath, next, "utf8");
+      await writeTextFileAtomically(configPath, next);
     }
   } catch {
     // Leave best-effort uninstall cleanup to the managed artifacts when the config is absent
@@ -416,6 +417,6 @@ async function upsertCodexMcpTimeouts(configPath: string): Promise<void> {
 
   const normalized = `${output.join("\n").replace(/\n+$/u, "")}\n`;
   if (normalized !== raw) {
-    await writeFile(configPath, normalized, "utf8");
+    await writeTextFileAtomically(configPath, normalized);
   }
 }

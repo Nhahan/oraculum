@@ -1,6 +1,8 @@
 import type { CommandManifestEntry, McpToolId } from "../../domain/chat-native.js";
 import type { Adapter } from "../../domain/config.js";
 
+export const DEFAULT_OFFICIAL_TRANSPORT_TIMEOUT_MS = 30 * 60 * 1000;
+
 export interface OrcCommandPacket {
   argv: string[];
   commandLine: string;
@@ -16,6 +18,7 @@ export interface OfficialHostTransportRunOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   startupTimeoutMs?: number;
+  transportTimeoutMs?: number;
 }
 
 export interface CodexAppServerTransportResult {

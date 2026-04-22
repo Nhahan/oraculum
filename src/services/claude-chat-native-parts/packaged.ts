@@ -151,13 +151,13 @@ function buildClaudeSkillMcpArgs(entry: CommandManifestEntry): Record<string, un
     case "consult":
     case "plan":
     case "draft":
-      return { cwd: "$CWD", taskInput: "$ARGUMENTS", agent: "claude-code" };
+      return { cwd: "$CWD", taskInput: "$ARGUMENTS" };
     case "verdict":
       return { cwd: "$CWD", consultationId: "$1" };
     case "verdict-archive":
       return { cwd: "$CWD", count: "$1" };
     case "crown":
-      return { cwd: "$CWD", materializationName: "$1", withReport: false };
+      return { cwd: "$CWD", materializationName: "$1", withReport: false, allowUnsafe: false };
     case "init":
       return { cwd: "$CWD", force: false };
     default:
@@ -194,7 +194,7 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
     return [
       ...shared,
       "Tool: `oraculum_consult`.",
-      "Args: cwd=current-directory; taskInput=$ARGUMENTS; agent=claude-code; optional clarificationAnswer from `--answer`.",
+      "Args: cwd=current-directory; taskInput=$ARGUMENTS only; do not parse planning flags. Advanced planning controls live in config or the task contract.",
     ];
   }
 
@@ -202,7 +202,15 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
     return [
       ...shared,
       "Tool: `oraculum_plan`.",
-      "Args: cwd=current-directory; taskInput=$ARGUMENTS; agent=claude-code; optional clarificationAnswer from `--answer`.",
+      "Args: cwd=current-directory; taskInput=$ARGUMENTS only; do not parse planning flags. Clarification answers belong in the revised task text.",
+    ];
+  }
+
+  if (entry.id === "draft") {
+    return [
+      ...shared,
+      "Tool: `oraculum_draft`.",
+      "Args: cwd=current-directory; taskInput=$ARGUMENTS only; do not parse planning flags. Clarification answers belong in the revised task text.",
     ];
   }
 
@@ -218,7 +226,7 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
     return [
       ...shared,
       "Tool: `oraculum_crown`.",
-      "Args: cwd=current-directory; optional first positional=materializationName.",
+      "Args: cwd=current-directory; optional first positional=materializationName; `orc crown --allow-unsafe` maps to allowUnsafe=true on official host routes.",
     ];
   }
 

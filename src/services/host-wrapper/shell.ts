@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
+import { writeTextFileAtomically } from "../project.js";
 import type { HostWrapperShellInstallResult, HostWrapperShellInvocation } from "./types.js";
 
 const SHELL_WRAPPER_START_MARKER = "# >>> oraculum host wrapper >>>";
@@ -83,10 +84,9 @@ export async function installHostWrapperShellBindings(options?: {
   const rcPath = resolveHostWrapperRcPath(homeDir, shellPath);
 
   await mkdir(dirname(snippetPath), { recursive: true });
-  await writeFile(
+  await writeTextFileAtomically(
     snippetPath,
     `${buildHostWrapperShellSnippet(snippetPath, options?.invocation)}\n`,
-    "utf8",
   );
 
   if (!rcPath) {
@@ -102,7 +102,7 @@ export async function installHostWrapperShellBindings(options?: {
   const existing = existsSync(rcPath) ? await readFile(rcPath, "utf8") : "";
   const next = stripHostWrapperSourceBlock(existing);
   const separator = next.length > 0 && !next.endsWith("\n") ? "\n\n" : next.length > 0 ? "\n" : "";
-  await writeFile(rcPath, `${next}${separator}${sourceBlock}\n`, "utf8");
+  await writeTextFileAtomically(rcPath, `${next}${separator}${sourceBlock}\n`);
 
   return { snippetPath, rcPath };
 }
@@ -118,10 +118,9 @@ export async function uninstallHostWrapperShellBindings(options?: {
 
   if (rcPath && existsSync(rcPath)) {
     const existing = await readFile(rcPath, "utf8");
-    await writeFile(
+    await writeTextFileAtomically(
       rcPath,
       `${stripHostWrapperSourceBlock(existing).replace(/\s+$/u, "")}\n`,
-      "utf8",
     );
   }
 

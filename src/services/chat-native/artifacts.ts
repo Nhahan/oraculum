@@ -15,6 +15,8 @@ export function buildConsultationArtifacts(
   configPath?: string;
   consultationPlanPath?: string;
   consultationPlanMarkdownPath?: string;
+  consultationPlanReadinessPath?: string;
+  consultationPlanReviewPath?: string;
   preflightReadinessPath?: string;
   clarifyFollowUpPath?: string;
   researchBriefPath?: string;

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { artifactPathSegmentSchema } from "../artifact-id.js";
 import {
   exportMaterializationModeSchema,
   exportModeSchema,
@@ -10,15 +11,18 @@ import {
   savedConsultationStatusSchema,
 } from "../run.js";
 
-export const crownToolRequestInputSchema = z.object({
-  cwd: z.string().min(1),
-  branchName: z.string().min(1).optional(),
-  materializationName: z.string().min(1).optional(),
-  materializationLabel: z.string().min(1).optional(),
-  consultationId: z.string().min(1).optional(),
-  candidateId: z.string().min(1).optional(),
-  withReport: z.boolean().default(false),
-});
+export const crownToolRequestInputSchema = z
+  .object({
+    cwd: z.string().min(1),
+    branchName: z.string().min(1).optional(),
+    materializationName: z.string().min(1).optional(),
+    materializationLabel: z.string().min(1).optional(),
+    consultationId: artifactPathSegmentSchema.optional(),
+    candidateId: artifactPathSegmentSchema.optional(),
+    withReport: z.boolean().default(false),
+    allowUnsafe: z.boolean().optional(),
+  })
+  .strict();
 
 const crownToolRequestValidatedSchema = crownToolRequestInputSchema.superRefine(
   (request, context) => {

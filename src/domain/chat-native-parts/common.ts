@@ -5,6 +5,8 @@ export const consultationArtifactPathsSchema = z.object({
   configPath: z.string().min(1).optional(),
   consultationPlanPath: z.string().min(1).optional(),
   consultationPlanMarkdownPath: z.string().min(1).optional(),
+  consultationPlanReadinessPath: z.string().min(1).optional(),
+  consultationPlanReviewPath: z.string().min(1).optional(),
   preflightReadinessPath: z.string().min(1).optional(),
   clarifyFollowUpPath: z.string().min(1).optional(),
   researchBriefPath: z.string().min(1).optional(),
@@ -15,6 +17,13 @@ export const consultationArtifactPathsSchema = z.object({
   winnerSelectionPath: z.string().min(1).optional(),
   secondOpinionWinnerSelectionPath: z.string().min(1).optional(),
   crowningRecordPath: z.string().min(1).optional(),
+});
+
+export const artifactDiagnosticSchema = z.object({
+  path: z.string().min(1),
+  kind: z.string().min(1),
+  status: z.literal("invalid"),
+  message: z.string().min(1),
 });
 
 export const projectInitializationResultSchema = z.object({

@@ -135,6 +135,9 @@ describe("Codex setup", () => {
       "Handle exact `orc ...` commands through Oraculum MCP tools.",
     );
     await expect(readFile(result.configPath, "utf8")).resolves.toContain("[mcp_servers.orc]");
+    expect(
+      (await readdir(dirname(result.configPath))).filter((entry) => entry.endsWith(".tmp")),
+    ).toEqual([]);
   });
 
   it("uninstalls Codex MCP wiring and removes managed skills and rules", async () => {
@@ -222,6 +225,11 @@ describe("Codex setup", () => {
     await expect(readFile(uninstallResult.configPath, "utf8")).resolves.not.toContain(
       "[mcp_servers.orc]",
     );
+    expect(
+      (await readdir(dirname(uninstallResult.configPath))).filter((entry) =>
+        entry.endsWith(".tmp"),
+      ),
+    ).toEqual([]);
     await expect(
       readFile(join(setupResult.installRoot, "rules", "oraculum.md"), "utf8"),
     ).rejects.toThrow();

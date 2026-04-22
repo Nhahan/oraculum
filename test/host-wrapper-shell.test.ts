@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -48,6 +48,10 @@ describe("host wrapper shell bindings", () => {
     const rcContent = await readFile(rcPath, "utf8");
     expect(rcContent).toContain("# >>> oraculum host wrapper >>>");
     expect(rcContent).toContain(installed.snippetPath);
+    expect(
+      (await readdir(dirname(installed.snippetPath))).filter((entry) => entry.endsWith(".tmp")),
+    ).toEqual([]);
+    expect((await readdir(dirname(rcPath))).filter((entry) => entry.endsWith(".tmp"))).toEqual([]);
 
     await uninstallHostWrapperShellBindings({
       homeDir,
@@ -57,6 +61,7 @@ describe("host wrapper shell bindings", () => {
     const cleaned = await readFile(rcPath, "utf8");
     expect(cleaned).not.toContain("# >>> oraculum host wrapper >>>");
     expect(cleaned).toContain('export PATH="$HOME/bin:$PATH"');
+    expect((await readdir(dirname(rcPath))).filter((entry) => entry.endsWith(".tmp"))).toEqual([]);
   });
 
   it("strips existing wrapper blocks before rewriting rc files", () => {

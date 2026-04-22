@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { runManifestSchema, savedConsultationStatusSchema } from "../../run.js";
-import { consultationArtifactPathsSchema } from "../common.js";
+import { artifactDiagnosticSchema, consultationArtifactPathsSchema } from "../common.js";
 import { verdictReviewSchema } from "./review.js";
 
 export const verdictToolResponseSchema = z.object({
@@ -11,6 +11,7 @@ export const verdictToolResponseSchema = z.object({
   review: verdictReviewSchema,
   summary: z.string().min(1),
   artifacts: consultationArtifactPathsSchema,
+  artifactDiagnostics: z.array(artifactDiagnosticSchema).optional(),
 });
 
 export const verdictArchiveToolResponseSchema = z.object({

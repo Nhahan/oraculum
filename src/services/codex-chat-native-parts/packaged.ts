@@ -63,12 +63,12 @@ function renderCodexRules(manifest: readonly CommandManifestEntry[]): string {
     "",
     "### Argument Mapping",
     "",
-    "- `orc consult <taskInput> [--agent <claude-code|codex>] [--candidates <n>] [--timeout-ms <ms>] [--answer <text>]` -> call `oraculum_consult` with `cwd`, `taskInput`, optional `agent`, `candidates`, `timeoutMs`, `clarificationAnswer`.",
-    "- `orc plan <taskInput> [--agent <claude-code|codex>] [--candidates <n>] [--timeout-ms <ms>] [--answer <text>]` -> call `oraculum_plan` with the same mapping.",
-    "- `orc draft <taskInput> [--agent <claude-code|codex>] [--candidates <n>] [--timeout-ms <ms>] [--answer <text>]` -> call `oraculum_draft` with the same mapping.",
+    "- `orc consult <taskInput>` -> call `oraculum_consult` with `cwd` and `taskInput` only; advanced planning controls live in `.oraculum/config.json`, `.oraculum/advanced.json`, or the task contract.",
+    "- `orc plan <taskInput>` -> call `oraculum_plan` with `cwd` and `taskInput` only; clarification answers belong in the revised task text.",
+    "- `orc draft <taskInput>` -> call `oraculum_draft` with the same task-only mapping as plan.",
     "- `orc verdict [consultationId]` -> call `oraculum_verdict` with `cwd` and optional `consultationId`.",
     "- `orc verdict archive [count]` -> call `oraculum_verdict_archive` with `cwd` and optional `count`.",
-    "- `orc crown [materializationName]` -> call `oraculum_crown` with `cwd` and optional `materializationName`.",
+    "- `orc crown [materializationName] [--allow-unsafe]` -> call `oraculum_crown` with `cwd`, optional `materializationName`, and optional `allowUnsafe=true`.",
     "- `orc init [--force]` -> call `oraculum_init` with `cwd` and optional `force=true`.",
     "",
     "If the Oraculum MCP tool is unavailable, respond with explicit setup guidance instead of improvising:",
@@ -88,13 +88,13 @@ function renderCodexSkill(entry: CommandManifestEntry): string {
       : `Exact \`orc ${entry.path.join(" ")}\` handler.`;
   const argsLine =
     entry.id === "consult" || entry.id === "plan" || entry.id === "draft"
-      ? "Args: cwd=current-directory; taskInput=first positional after known flags; optional --agent, --candidates, --timeout-ms, --answer."
+      ? "Args: cwd=current-directory; taskInput=user text after command only; do not parse planning flags."
       : entry.id === "verdict"
         ? "Args: cwd=current-directory; optional first positional=consultationId."
         : entry.id === "verdict-archive"
           ? "Args: cwd=current-directory; optional first positional=count."
           : entry.id === "crown"
-            ? "Args: cwd=current-directory; optional first positional=materializationName."
+            ? "Args: cwd=current-directory; optional first positional=materializationName; optional --allow-unsafe => allowUnsafe=true."
             : "Args: cwd=current-directory; optional --force => force=true.";
 
   return [

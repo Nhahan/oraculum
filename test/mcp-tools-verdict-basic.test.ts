@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createCompletedManifest,
   createMcpTempRoot,
+  mockedListRecentConsultationRecords,
   mockedListRecentConsultations,
   mockedReadRunManifest,
   mockedRenderConsultationArchive,
@@ -14,6 +15,37 @@ import {
 registerMcpToolsTestHarness();
 
 describe("chat-native MCP tools: verdict basics", () => {
+  it("rejects unknown verdict request fields", async () => {
+    await expect(
+      runVerdictTool({
+        cwd: "/tmp/project",
+        consultationId: "run_1",
+        includeDebug: true,
+      } as Parameters<typeof runVerdictTool>[0]),
+    ).rejects.toThrow(/Unrecognized key/);
+    await expect(
+      runVerdictArchiveTool({
+        cwd: "/tmp/project",
+        count: 3,
+        format: "json",
+      } as Parameters<typeof runVerdictArchiveTool>[0]),
+    ).rejects.toThrow(/Unrecognized key/);
+
+    expect(mockedReadRunManifest).not.toHaveBeenCalled();
+    expect(mockedListRecentConsultationRecords).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsafe consultation ids before reading artifacts", async () => {
+    await expect(
+      runVerdictTool({
+        cwd: "/tmp/project",
+        consultationId: "../run",
+      }),
+    ).rejects.toThrow("Artifact ids must be safe single path segments.");
+
+    expect(mockedReadRunManifest).not.toHaveBeenCalled();
+  });
+
   it("reopens verdicts and archives through MCP tools", async () => {
     const verdict = await runVerdictTool({
       cwd: "/tmp/project",
@@ -25,7 +57,8 @@ describe("chat-native MCP tools: verdict basics", () => {
     });
 
     expect(mockedReadRunManifest).toHaveBeenCalledWith("/tmp/project", "run_9");
-    expect(mockedListRecentConsultations).toHaveBeenCalledWith("/tmp/project", 5);
+    expect(mockedListRecentConsultationRecords).toHaveBeenCalledWith("/tmp/project", 5);
+    expect(mockedListRecentConsultations).not.toHaveBeenCalled();
     expect(verdict.mode).toBe("verdict");
     expect(verdict.status).toMatchObject({
       consultationId: "run_1",
@@ -63,7 +96,7 @@ describe("chat-native MCP tools: verdict basics", () => {
       count: 3,
     });
 
-    expect(mockedListRecentConsultations).toHaveBeenCalledWith(nestedCwd, 3);
+    expect(mockedListRecentConsultationRecords).toHaveBeenCalledWith(nestedCwd, 3);
     expect(mockedRenderConsultationArchive).toHaveBeenCalledWith([createCompletedManifest()], {
       projectRoot: root,
       surface: "chat-native",

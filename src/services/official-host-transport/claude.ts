@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process";
 
 import { OraculumError } from "../../core/errors.js";
+import { terminateChildProcess } from "../../core/subprocess.js";
 import type {
   ClaudeOfficialTransportResult,
   HostTransportCapability,
   OfficialHostTransportRunOptions,
   OrcCommandPacket,
 } from "./types.js";
+import { DEFAULT_OFFICIAL_TRANSPORT_TIMEOUT_MS } from "./types.js";
 
 export function buildClaudeOfficialTransportPrompt(packet: OrcCommandPacket): string {
   return [
@@ -52,6 +54,7 @@ export async function runClaudeOfficialTransport(
   options: OfficialHostTransportRunOptions = {},
 ): Promise<ClaudeOfficialTransportResult> {
   const command = options.command ?? "claude";
+  const transportTimeoutMs = options.transportTimeoutMs ?? DEFAULT_OFFICIAL_TRANSPORT_TIMEOUT_MS;
   const commandArgs = options.commandArgs ?? [
     "--print",
     "--verbose",
@@ -65,8 +68,10 @@ export async function runClaudeOfficialTransport(
 
   const child = spawn(command, commandArgs, {
     cwd: options.cwd ?? packet.cwd,
+    detached: process.platform !== "win32",
     env: options.env ?? process.env,
     stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
   });
 
   const streamEvents: Array<{ type: string; subtype?: string }> = [];
@@ -82,12 +87,57 @@ export async function runClaudeOfficialTransport(
     // verbose mode emits stream output on stdout; ignore stderr noise here.
   });
 
-  child.stdin.write(`${JSON.stringify(buildClaudeStreamJsonUserMessage(packet))}\n`);
-  child.stdin.end();
+  child.stdin.on("error", () => {
+    // The process exit path below reports the transport failure.
+  });
 
-  const exitCode = await new Promise<number>((resolve, reject) => {
-    child.once("error", reject);
-    child.once("exit", (code, signal) => {
+  const exitCodePromise = new Promise<number>((resolve, reject) => {
+    let settled = false;
+    let timedOut = false;
+    let killTimeoutId: NodeJS.Timeout | undefined;
+    const timeoutId =
+      transportTimeoutMs > 0
+        ? setTimeout(() => {
+            timedOut = true;
+            if (!child.killed) {
+              terminateChildProcess(child, false);
+            }
+            killTimeoutId = setTimeout(() => {
+              if (!child.killed) {
+                terminateChildProcess(child, true);
+              }
+            }, 500).unref();
+          }, transportTimeoutMs)
+        : undefined;
+    timeoutId?.unref();
+
+    const cleanupTimers = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (killTimeoutId) {
+        clearTimeout(killTimeoutId);
+      }
+    };
+
+    child.once("error", (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanupTimers();
+      reject(error);
+    });
+    child.once("close", (code, signal) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanupTimers();
+      if (timedOut) {
+        reject(new OraculumError("Claude official transport timed out."));
+        return;
+      }
       if (signal) {
         reject(new OraculumError(`Claude official transport terminated via ${signal}.`));
         return;
@@ -95,6 +145,10 @@ export async function runClaudeOfficialTransport(
       resolve(code ?? 0);
     });
   });
+
+  child.stdin.write(`${JSON.stringify(buildClaudeStreamJsonUserMessage(packet))}\n`);
+  child.stdin.end();
+  const exitCode = await exitCodePromise;
 
   for (const line of buffer.split("\n")) {
     const trimmed = line.trim();

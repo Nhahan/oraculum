@@ -1,4 +1,3 @@
-import { OraculumError } from "../../core/errors.js";
 import { type Adapter, adapterSchema } from "../../domain/config.js";
 import { buildSavedConsultationStatus } from "../../domain/run.js";
 
@@ -18,6 +17,7 @@ export interface InlinePlanningToolRequest {
   agent?: Adapter | undefined;
   candidates?: number | undefined;
   clarificationAnswer?: string | undefined;
+  deliberate?: boolean | undefined;
   timeoutMs?: number | undefined;
 }
 
@@ -40,6 +40,7 @@ export function buildPlanRunRequest(
     ...(request.agent ? { agent: request.agent } : {}),
     ...(request.candidates !== undefined ? { candidates: request.candidates } : {}),
     ...(request.clarificationAnswer ? { clarificationAnswer: request.clarificationAnswer } : {}),
+    ...(request.deliberate ? { deliberate: true } : {}),
     ...(options?.writeConsultationPlanArtifacts ? { writeConsultationPlanArtifacts: true } : {}),
     ...(options?.writeConsultationPlanArtifacts ? { requirePlanningClarification: true } : {}),
     preflight: {
@@ -64,9 +65,13 @@ export async function buildConsultationToolPayload(
     consultation,
     status: await buildArtifactAwareConsultationStatus(consultation, artifacts),
     summary: await renderConsultationSummary(consultation, cwd, {
+      resolvedArtifacts: artifacts,
       surface: "chat-native",
     }),
     artifacts: toAvailableConsultationArtifactPaths(artifacts),
+    ...(artifacts.artifactDiagnostics.length > 0
+      ? { artifactDiagnostics: artifacts.artifactDiagnostics }
+      : {}),
     ...(initialized ? { initializedProject: buildProjectInitializationResult(initialized) } : {}),
   };
 }
@@ -93,210 +98,16 @@ export async function resolveToolConsultationArtifacts(
   });
 }
 
-export function normalizePlanningToolRequest<TRequest extends InlinePlanningToolRequest>(
-  request: TRequest,
-): TRequest {
-  const parsed = parseInlineCommandOptions(request.taskInput, {
-    allowTimeoutMs: true,
-  });
-  return {
-    ...request,
-    taskInput: parsed.taskInput,
-    ...(parsed.agent ? { agent: parsed.agent } : {}),
-    ...(parsed.candidates !== undefined ? { candidates: parsed.candidates } : {}),
-    ...(parsed.clarificationAnswer ? { clarificationAnswer: parsed.clarificationAnswer } : {}),
-    ...(parsed.timeoutMs !== undefined ? { timeoutMs: parsed.timeoutMs } : {}),
-  };
-}
-
 export function normalizeOptionalStringInput(value: string | undefined): string | undefined {
   if (value === undefined) {
     return undefined;
   }
 
-  return value.trim().length > 0 ? value : undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 export function resolveHostAgentRuntime(): Adapter | undefined {
   const parsed = adapterSchema.safeParse(process.env.ORACULUM_AGENT_RUNTIME);
   return parsed.success ? parsed.data : undefined;
-}
-
-function parseInlineCommandOptions(
-  taskInput: string,
-  options: { allowTimeoutMs: boolean },
-): {
-  agent?: Adapter;
-  candidates?: number;
-  clarificationAnswer?: string;
-  taskInput: string;
-  timeoutMs?: number;
-} {
-  const tokens = splitShellLike(taskInput);
-  if (!tokens) {
-    return { taskInput };
-  }
-
-  const remaining: string[] = [];
-  let agent: Adapter | undefined;
-  let candidates: number | undefined;
-  let clarificationAnswer: string | undefined;
-  let timeoutMs: number | undefined;
-  let parsedAnyOption = false;
-
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    if (!token) {
-      continue;
-    }
-
-    const readOptionValue = (
-      optionName: string,
-    ): { matched: true; value: string } | { matched: false } => {
-      const inlinePrefix = `${optionName}=`;
-      if (token.startsWith(inlinePrefix)) {
-        return { matched: true, value: token.slice(inlinePrefix.length) };
-      }
-      if (token === optionName) {
-        const value = tokens[index + 1];
-        if (value === undefined) {
-          throw new OraculumError(`${optionName} requires a value.`);
-        }
-        index += 1;
-        return { matched: true, value };
-      }
-      return { matched: false };
-    };
-
-    const agentValue = readOptionValue("--agent");
-    if (agentValue.matched) {
-      parsedAnyOption = true;
-      const parsedAgent = adapterSchema.parse(agentValue.value);
-      agent = parsedAgent;
-      continue;
-    }
-
-    const candidatesValue = readOptionValue("--candidates");
-    if (candidatesValue.matched) {
-      parsedAnyOption = true;
-      candidates = parseIntegerOption(candidatesValue.value, "--candidates");
-      continue;
-    }
-
-    const answerValue = readOptionValue("--answer");
-    const clarificationAnswerValue = answerValue.matched
-      ? answerValue
-      : readOptionValue("--clarification-answer");
-    if (clarificationAnswerValue.matched) {
-      parsedAnyOption = true;
-      clarificationAnswer = clarificationAnswerValue.value.trim();
-      if (clarificationAnswer.length === 0) {
-        throw new OraculumError(`${token} requires a non-empty value.`);
-      }
-      continue;
-    }
-
-    const timeoutValue = options.allowTimeoutMs ? readOptionValue("--timeout-ms") : undefined;
-    if (timeoutValue?.matched) {
-      parsedAnyOption = true;
-      timeoutMs = parseIntegerOption(timeoutValue.value, "--timeout-ms");
-      continue;
-    }
-
-    remaining.push(token);
-  }
-
-  if (!parsedAnyOption) {
-    return { taskInput };
-  }
-
-  return {
-    ...(agent ? { agent } : {}),
-    ...(candidates !== undefined ? { candidates } : {}),
-    ...(clarificationAnswer ? { clarificationAnswer } : {}),
-    taskInput: remaining.join(" "),
-    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-  };
-}
-
-function splitShellLike(value: string): string[] | undefined {
-  const tokens: string[] = [];
-  let current = "";
-  let quote: "'" | '"' | undefined;
-
-  for (let index = 0; index < value.length; index += 1) {
-    const character = value[index];
-    if (!character) {
-      continue;
-    }
-    const next = value[index + 1];
-
-    if (character === "\\") {
-      if (quote) {
-        if (next === quote || next === "\\") {
-          current += next;
-          index += 1;
-          continue;
-        }
-
-        current += character;
-        continue;
-      }
-
-      if (next === '"' || next === "'" || next === "\\" || (next && /\s/u.test(next))) {
-        current += next;
-        index += 1;
-        continue;
-      }
-
-      current += character;
-      continue;
-    }
-
-    if (quote) {
-      if (character === quote) {
-        quote = undefined;
-      } else {
-        current += character;
-      }
-      continue;
-    }
-
-    if (character === "'" || character === '"') {
-      quote = character;
-      continue;
-    }
-
-    if (/\s/u.test(character)) {
-      if (current.length > 0) {
-        tokens.push(current);
-        current = "";
-      }
-      continue;
-    }
-
-    current += character;
-  }
-
-  if (quote) {
-    return undefined;
-  }
-  if (current.length > 0) {
-    tokens.push(current);
-  }
-
-  return tokens;
-}
-
-function parseIntegerOption(value: string | undefined, optionName: string): number {
-  if (value === undefined || value.trim().length === 0) {
-    throw new OraculumError(`${optionName} requires a value.`);
-  }
-
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed)) {
-    throw new OraculumError(`${optionName} must be an integer.`);
-  }
-
-  return parsed;
 }

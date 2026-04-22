@@ -31,6 +31,8 @@ vi.mock("../src/services/project.js", async () => {
 
 vi.mock("../src/services/consultations.js", () => ({
   buildVerdictReview: vi.fn(),
+  isInvalidConsultationRecord: vi.fn(),
+  listRecentConsultationRecords: vi.fn(),
   listRecentConsultations: vi.fn(),
   renderConsultationArchive: vi.fn(),
   renderConsultationSummary: vi.fn(),
@@ -47,6 +49,24 @@ import { mockedInitializeProject, registerMcpToolsTestHarness } from "./helpers/
 registerMcpToolsTestHarness();
 
 describe("chat-native MCP tools: lifecycle", () => {
+  it("rejects unknown lifecycle request fields", async () => {
+    await expect(
+      runInitTool({
+        cwd: "/tmp/project",
+        force: true,
+        reset: true,
+      } as Parameters<typeof runInitTool>[0]),
+    ).rejects.toThrow(/Unrecognized key/);
+    await expect(
+      runSetupStatusTool({
+        cwd: "/tmp/project",
+        host: "codex",
+        json: true,
+      } as Parameters<typeof runSetupStatusTool>[0]),
+    ).rejects.toThrow(/Unrecognized key/);
+    expect(mockedInitializeProject).not.toHaveBeenCalled();
+  });
+
   it("filters setup-status responses to the requested host", async () => {
     const response = await runSetupStatusTool({
       cwd: process.cwd(),

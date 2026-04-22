@@ -16,24 +16,27 @@ export async function runHostWrapper(options: HostWrapperRunOptions): Promise<nu
   const orcCommandLine = extractOrcCommandLine(adapter.host, args);
 
   if (orcCommandLine) {
-    const packet = parseOrcCommandLine(orcCommandLine, options.cwd ?? process.cwd());
     const officialOptions = {
       command: hostBinary,
       ...(options.cwd ? { cwd: options.cwd } : {}),
       ...(options.env ? { env: options.env } : {}),
     };
     try {
+      const packet = parseOrcCommandLine(orcCommandLine, options.cwd ?? process.cwd());
       const summary = await runOfficialTransport(adapter.host, packet, {
         ...officialOptions,
       });
       process.stdout.write(`${summary}\n`);
       return 0;
-    } catch {
-      return await getDirectTransport().run({
-        ...options,
-        args,
-        command: hostBinary,
-      });
+    } catch (error) {
+      process.stderr.write(
+        renderOfficialRouteFailure({
+          commandLine: orcCommandLine,
+          error,
+          host: adapter.host,
+        }),
+      );
+      return 1;
     }
   }
 
@@ -71,6 +74,21 @@ async function runOfficialTransport(
   throw new OraculumError(`Unsupported official host transport runtime: ${host satisfies never}`);
 }
 
+function renderOfficialRouteFailure(options: {
+  commandLine: string;
+  error: unknown;
+  host: HostWrapperRunOptions["host"];
+}): string {
+  return [
+    "Oraculum host-native route failed.",
+    `Host: ${options.host}`,
+    `Command: ${options.commandLine}`,
+    `Reason: ${formatUnknownError(options.error)}`,
+    "Run `oraculum setup status` in your terminal to inspect host registration.",
+    "",
+  ].join("\n");
+}
+
 function renderOfficialTransportResult(toolResult: unknown): string {
   if (toolResult && typeof toolResult === "object" && !Array.isArray(toolResult)) {
     const payload = toolResult as {
@@ -101,4 +119,8 @@ function renderOfficialTransportResult(toolResult: unknown): string {
   }
 
   return JSON.stringify(toolResult, null, 2);
+}
+
+function formatUnknownError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

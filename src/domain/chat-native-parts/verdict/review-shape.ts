@@ -6,6 +6,8 @@ import {
   clarifyScopeKeyTypeSchema,
   consultationJudgingBasisKindSchema,
   consultationOutcomeTypeSchema,
+  consultationPlanReadinessStatusSchema,
+  consultationPlanReviewStatusSchema,
   consultationPreflightDecisionSchema,
   consultationResearchPostureSchema,
   consultationValidationPostureSchema,
@@ -26,6 +28,8 @@ export const verdictSecondOpinionAgreementSchema = z.enum([
 ]);
 
 export const verdictArtifactAvailabilitySchema = z.object({
+  planReadiness: z.boolean().optional(),
+  planReview: z.boolean().optional(),
   preflightReadiness: z.boolean(),
   clarifyFollowUp: z.boolean().default(false),
   researchBrief: z.boolean(),
@@ -88,6 +92,14 @@ export const verdictReviewObjectSchema = z.object({
   validationGaps: z.array(z.string().min(1)).default([]),
   profileId: z.string().min(1).optional(),
   profileMissingCapabilities: z.array(z.string().min(1)).optional(),
+  planReadinessStatus: consultationPlanReadinessStatusSchema.optional(),
+  planReadyForConsult: z.boolean().optional(),
+  planReviewStatus: consultationPlanReviewStatusSchema.optional(),
+  planStaleBasis: z.boolean().optional(),
+  planMissingOracleIds: z.array(z.string().min(1)).optional(),
+  planOpenQuestions: z.array(z.string().min(1)).optional(),
+  planNextAction: z.string().min(1).optional(),
+  planReviewSummary: z.string().min(1).optional(),
   preflightDecision: consultationPreflightDecisionSchema.optional(),
   researchPosture: consultationResearchPostureSchema,
   clarificationQuestion: z.string().min(1).optional(),
