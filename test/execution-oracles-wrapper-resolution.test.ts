@@ -1,15 +1,17 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { getCandidateWitnessPath } from "../src/core/paths.js";
 import { executeRun } from "../src/services/execution.js";
+import { initializeProject } from "../src/services/project.js";
 import { planRun } from "../src/services/runs.js";
 import {
   configureProjectOracles,
   createInitializedExecutionProject,
   createPatchedCodexBinary,
+  createTempRoot,
   registerExecutionTempRootCleanup,
   writeExecutionTask,
 } from "./helpers/execution.js";
@@ -19,6 +21,69 @@ import { EXECUTION_TEST_TIMEOUT_MS, FAKE_AGENT_TIMEOUT_MS } from "./helpers/inte
 registerExecutionTempRootCleanup();
 
 describe("run execution oracles: wrapper resolution", () => {
+  it(
+    "runs resolved repo-local entrypoints without shell interpolation",
+    async () => {
+      const root = await createTempRoot();
+      const cwd = join(root, "repo with spaces");
+      await mkdir(join(cwd, "bin"), { recursive: true });
+      await initializeProject({ cwd, force: false });
+      await writeNodeBinary(
+        join(cwd, "bin"),
+        "oracle",
+        `const fs = require("node:fs");
+const path = require("node:path");
+fs.writeFileSync(path.join(process.env.ORACULUM_PROJECT_ROOT, "oracle-marker.txt"), "ok", "utf8");
+`,
+      );
+      await configureProjectOracles(cwd, [
+        {
+          id: "local-entrypoint-no-shell",
+          roundId: "impact",
+          command: "bin/oracle",
+          args: [],
+          cwd: "project",
+          invariant:
+            "Resolved repo-local entrypoints must execute directly so shell parsing cannot corrupt safe project paths.",
+          enforcement: "hard",
+        },
+      ]);
+      await writeExecutionTask(cwd, "local-entrypoint.md", "# Local entrypoint\nRun safely.\n");
+
+      const fakeCodex = await createPatchedCodexBinary(cwd);
+
+      const planned = await planRun({
+        cwd,
+        taskInput: "tasks/local-entrypoint.md",
+        agent: "codex",
+        candidates: 1,
+      });
+
+      const executed = await executeRun({
+        cwd,
+        runId: planned.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
+
+      expect(executed.manifest.candidates[0]?.status).toBe("promoted");
+      await expect(readFile(join(cwd, "oracle-marker.txt"), "utf8")).resolves.toBe("ok");
+      await expect(
+        readFile(
+          getCandidateWitnessPath(
+            cwd,
+            planned.id,
+            "cand-01",
+            "impact",
+            "cand-01-local-entrypoint-no-shell",
+          ),
+          "utf8",
+        ),
+      ).resolves.toContain("local-entrypoint");
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
+
   it(
     "runs repo-local command plus args oracles through the platform-safe default shell",
     async () => {

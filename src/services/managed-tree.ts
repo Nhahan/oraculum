@@ -1,5 +1,5 @@
 import { chmod, cp, lstat, mkdir, readdir, readlink, stat, symlink } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, win32 } from "node:path";
 
 import type { ManagedTreeRules } from "../domain/config.js";
 
@@ -153,6 +153,16 @@ export async function copyManagedProjectTree(
     }
 
     const target = await readlink(sourcePath);
+    if (
+      !shouldManageSymlinkTarget({
+        ...(rules ? { rules } : {}),
+        sourcePath,
+        sourceRoot,
+        target,
+      })
+    ) {
+      continue;
+    }
     const targetType = await readSymlinkTargetType(sourcePath);
     const replicatedTarget = normalizeManagedSymlinkTarget({
       destinationPath,
@@ -199,7 +209,7 @@ interface ManagedSymlinkTargetOptions {
 }
 
 export function normalizeManagedSymlinkTarget(options: ManagedSymlinkTargetOptions): string {
-  if (!isAbsolute(options.target)) {
+  if (!isPortableAbsolutePath(options.target)) {
     return options.target;
   }
 
@@ -212,6 +222,31 @@ export function normalizeManagedSymlinkTarget(options: ManagedSymlinkTargetOptio
   }
 
   return options.target;
+}
+
+export function shouldManageSymlinkTarget(options: {
+  rules?: ManagedTreeRules;
+  sourcePath: string;
+  sourceRoot: string;
+  target: string;
+}): boolean {
+  const targetPath = resolveSymlinkTargetPath(dirname(options.sourcePath), options.target);
+  const relativeTargetPath = relativePathInsideRoot(options.sourceRoot, targetPath);
+  return (
+    relativeTargetPath !== undefined && shouldManageProjectPath(relativeTargetPath, options.rules)
+  );
+}
+
+function resolveSymlinkTargetPath(anchorDir: string, target: string): string {
+  return isPortableAbsolutePath(target) ? target : resolve(anchorDir, target);
+}
+
+function relativePathInsideRoot(root: string, path: string): string | undefined {
+  const relativePath = relative(root, path);
+  if (isPathWithinRoot(relativePath)) {
+    return relativePath.replaceAll("\\", "/");
+  }
+  return undefined;
 }
 
 function compareManagedEntriesForApply(left: ManagedPathEntry, right: ManagedPathEntry): number {
@@ -232,7 +267,9 @@ function getManagedMode(mode: number): number {
 }
 
 function isPathWithinRoot(relativePath: string): boolean {
-  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+  return (
+    relativePath === "" || (!relativePath.startsWith("..") && !isPortableAbsolutePath(relativePath))
+  );
 }
 
 export function shouldManageProjectEntry(name: string, rules?: ManagedTreeRules): boolean {
@@ -243,6 +280,10 @@ export function shouldLinkProjectDependencyTree(
   relativePath: string,
   rules?: ManagedTreeRules,
 ): boolean {
+  if (isUnsafeManagedTreePath(relativePath)) {
+    return false;
+  }
+
   const normalizedPath = normalizeManagedTreePath(relativePath);
   if (!normalizedPath || shouldManageProjectPath(normalizedPath, rules)) {
     return false;
@@ -258,6 +299,10 @@ export function shouldLinkProjectDependencyTree(
 }
 
 export function shouldManageProjectPath(relativePath: string, rules?: ManagedTreeRules): boolean {
+  if (isUnsafeManagedTreePath(relativePath)) {
+    return false;
+  }
+
   const normalizedPath = normalizeManagedTreePath(relativePath);
   if (!normalizedPath) {
     return true;
@@ -339,6 +384,18 @@ function matchesManagedTreeIncludeRule(
         normalizedRulePath.startsWith(`${relativePath}/`))
     );
   });
+}
+
+function isUnsafeManagedTreePath(relativePath: string): boolean {
+  return (
+    relativePath.includes("\0") ||
+    isPortableAbsolutePath(relativePath) ||
+    relativePath.split(/[\\/]+/u).includes("..")
+  );
+}
+
+function isPortableAbsolutePath(path: string): boolean {
+  return isAbsolute(path) || win32.isAbsolute(path);
 }
 
 function normalizeManagedTreePath(relativePath: string): string {

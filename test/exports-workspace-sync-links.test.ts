@@ -1,4 +1,4 @@
-import { lstat, mkdir, readlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -12,6 +12,43 @@ import { EXPORT_WORKSPACE_SYNC_TEST_TIMEOUT_MS } from "./helpers/integration.js"
 import { createDirectoryLink, normalizeLinkedPath } from "./helpers/platform.js";
 
 describe("materialized exports", () => {
+  it(
+    "rejects new workspace symlinks that escape the winner workspace",
+    async () => {
+      const cwd = await createTempRoot();
+      const externalRoot = await createTempRoot();
+      const runId = "run_external_symlink";
+
+      await initializeProject({ cwd, force: false });
+      await writeFile(join(cwd, "app.txt"), "original\n", "utf8");
+      await mkdir(join(externalRoot, "secrets"), { recursive: true });
+
+      await writeManualWorkspaceSyncWinner({
+        cwd,
+        runId,
+        workspaceSetup: async (workspaceDir) => {
+          await writeFile(join(workspaceDir, "app.txt"), "patched\n", "utf8");
+          await createDirectoryLink(
+            join(externalRoot, "secrets"),
+            join(workspaceDir, "external-link"),
+          );
+        },
+      });
+
+      await expect(
+        materializeExport({
+          cwd,
+          runId,
+          winnerId: "cand-01",
+          withReport: false,
+        }),
+      ).rejects.toThrow("target escapes the winner workspace");
+      await expect(readFile(join(cwd, "app.txt"), "utf8")).resolves.toBe("original\n");
+      await expect(lstat(join(cwd, "external-link"))).rejects.toThrow();
+    },
+    EXPORT_WORKSPACE_SYNC_TEST_TIMEOUT_MS,
+  );
+
   it(
     "retargets absolute directory links during workspace-sync export under win32 semantics",
     async () => {

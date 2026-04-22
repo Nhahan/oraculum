@@ -12,10 +12,13 @@ import {
 import {
   getCandidateLogsDir,
   getCandidateTaskPacketPath,
+  getCandidateVerdictPath,
   getCandidateVerdictsDir,
   getCandidateWitnessesDir,
+  getRunManifestPath,
 } from "../src/core/paths.js";
 import {
+  defaultProjectConfig,
   projectAdvancedConfigSchema,
   projectConfigSchema,
   projectQuickConfigSchema,
@@ -563,6 +566,50 @@ describe("oracle and adapter contracts", () => {
     });
 
     expect(verdict.witnesses[0]?.id).toBe("w-1");
+  });
+
+  it("rejects artifact ids that would escape persisted artifact directories", () => {
+    expect(() =>
+      projectConfigSchema.parse({
+        ...defaultProjectConfig,
+        oracles: [
+          {
+            id: "../../../evil",
+            roundId: "impact",
+            command: "true",
+            invariant: "Oracle ids must be safe artifact path segments.",
+          },
+        ],
+      }),
+    ).toThrow("Artifact ids must be safe single path segments.");
+    expect(() =>
+      witnessSchema.parse({
+        id: "../witness",
+        kind: "test",
+        title: "Unsafe witness",
+        detail: "Witness ids are persisted as artifact filenames.",
+      }),
+    ).toThrow("Artifact ids must be safe single path segments.");
+    expect(() =>
+      oracleVerdictSchema.parse({
+        oracleId: "../oracle",
+        roundId: "impact",
+        status: "fail",
+        severity: "error",
+        summary: "Unsafe oracle.",
+        invariant: "Oracle ids are persisted as artifact filenames.",
+        confidence: "high",
+      }),
+    ).toThrow("Artifact ids must be safe single path segments.");
+  });
+
+  it("rejects unsafe artifact path helper identifiers", () => {
+    expect(() => getRunManifestPath("/tmp/project", "../run")).toThrow(
+      "runId must be a safe single path segment.",
+    );
+    expect(() =>
+      getCandidateVerdictPath("/tmp/project", "run-1", "cand-01", "impact", "../../../evil"),
+    ).toThrow("oracleId must be a safe single path segment.");
   });
 
   it("supports a typed adapter result contract", async () => {

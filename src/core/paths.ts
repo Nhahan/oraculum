@@ -56,7 +56,7 @@ export function getRunsDir(projectRoot: string): string {
 }
 
 export function getRunDir(projectRoot: string, runId: string): string {
-  return join(getRunsDir(projectRoot), runId);
+  return join(getRunsDir(projectRoot), assertArtifactPathSegment(runId, "runId"));
 }
 
 export function getRunManifestPath(projectRoot: string, runId: string): string {
@@ -68,7 +68,10 @@ export function getCandidatesDir(projectRoot: string, runId: string): string {
 }
 
 export function getCandidateDir(projectRoot: string, runId: string, candidateId: string): string {
-  return join(getCandidatesDir(projectRoot, runId), candidateId);
+  return join(
+    getCandidatesDir(projectRoot, runId),
+    assertArtifactPathSegment(candidateId, "candidateId"),
+  );
 }
 
 export function getCandidateManifestPath(
@@ -120,7 +123,7 @@ export function getCandidateVerdictPath(
 ): string {
   return join(
     getCandidateVerdictsDir(projectRoot, runId, candidateId),
-    `${roundId}--${oracleId}.json`,
+    `${assertArtifactPathSegment(roundId, "roundId")}--${assertArtifactPathSegment(oracleId, "oracleId")}.json`,
   );
 }
 
@@ -141,7 +144,7 @@ export function getCandidateWitnessPath(
 ): string {
   return join(
     getCandidateWitnessesDir(projectRoot, runId, candidateId),
-    `${roundId}--${witnessId}.json`,
+    `${assertArtifactPathSegment(roundId, "roundId")}--${assertArtifactPathSegment(witnessId, "witnessId")}.json`,
   );
 }
 
@@ -163,7 +166,7 @@ export function getCandidateRepairAttemptLogsDir(
   return join(
     getCandidateLogsDir(projectRoot, runId, candidateId),
     "repairs",
-    `${roundId}-attempt-${attempt}`,
+    `${assertArtifactPathSegment(roundId, "roundId")}-attempt-${attempt}`,
   );
 }
 
@@ -176,7 +179,7 @@ export function getCandidateRepairAttemptResultPath(
 ): string {
   return join(
     getCandidateDir(projectRoot, runId, candidateId),
-    `agent-run.${roundId}.repair-${attempt}.json`,
+    `agent-run.${assertArtifactPathSegment(roundId, "roundId")}.repair-${attempt}.json`,
   );
 }
 
@@ -197,7 +200,7 @@ export function getCandidateOracleStdoutLogPath(
 ): string {
   return join(
     getCandidateLogsDir(projectRoot, runId, candidateId),
-    `${roundId}--${oracleId}.stdout.log`,
+    `${assertArtifactPathSegment(roundId, "roundId")}--${assertArtifactPathSegment(oracleId, "oracleId")}.stdout.log`,
   );
 }
 
@@ -210,7 +213,7 @@ export function getCandidateOracleStderrLogPath(
 ): string {
   return join(
     getCandidateLogsDir(projectRoot, runId, candidateId),
-    `${roundId}--${oracleId}.stderr.log`,
+    `${assertArtifactPathSegment(roundId, "roundId")}--${assertArtifactPathSegment(oracleId, "oracleId")}.stderr.log`,
   );
 }
 
@@ -224,6 +227,14 @@ export function getConsultationPlanPath(projectRoot: string, runId: string): str
 
 export function getConsultationPlanMarkdownPath(projectRoot: string, runId: string): string {
   return join(getReportsDir(projectRoot, runId), "consultation-plan.md");
+}
+
+export function getConsultationPlanReadinessPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "plan-readiness.json");
+}
+
+export function getConsultationPlanReviewPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "plan-review.json");
 }
 
 export function getExportPlanPath(projectRoot: string, runId: string): string {
@@ -295,5 +306,24 @@ export function getSecondOpinionWinnerJudgeLogsDir(projectRoot: string, runId: s
 }
 
 export function getWorkspaceDir(projectRoot: string, runId: string, candidateId: string): string {
-  return join(getOraculumDir(projectRoot), "workspaces", runId, candidateId);
+  return join(
+    getOraculumDir(projectRoot),
+    "workspaces",
+    assertArtifactPathSegment(runId, "runId"),
+    assertArtifactPathSegment(candidateId, "candidateId"),
+  );
+}
+
+function assertArtifactPathSegment(value: string, label: string): string {
+  if (
+    value.length === 0 ||
+    value === "." ||
+    value === ".." ||
+    value.includes("\0") ||
+    value.split(/[\\/]+/u).length !== 1
+  ) {
+    throw new Error(`${label} must be a safe single path segment.`);
+  }
+
+  return value;
 }

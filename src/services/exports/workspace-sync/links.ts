@@ -1,6 +1,7 @@
 import { lstat, mkdir, readlink, rm, symlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, win32 } from "node:path";
 
+import { OraculumError } from "../../../core/errors.js";
 import type { ManagedTreeRules } from "../../../domain/config.js";
 
 import {
@@ -35,6 +36,15 @@ export async function syncManagedSymlink(
   if (await symlinkMatches(destinationPath, replicatedTarget, sourceTargetType)) {
     return false;
   }
+  assertMaterializableSymlinkTarget({
+    destinationPath,
+    destinationRoot,
+    entryPath: entry.path,
+    replicatedTarget,
+    sourcePath,
+    sourceRoot,
+    target: sourceTarget,
+  });
 
   if (await pathExists(destinationPath)) {
     const destinationStats = await lstat(destinationPath);
@@ -80,4 +90,46 @@ async function readSymlinkTargetType(
   path: string,
 ): Promise<"file" | "dir" | "junction" | undefined> {
   return readManagedSymlinkTargetType(path);
+}
+
+function assertMaterializableSymlinkTarget(options: {
+  destinationPath: string;
+  destinationRoot: string;
+  entryPath: string;
+  replicatedTarget: string;
+  sourcePath: string;
+  sourceRoot: string;
+  target: string;
+}): void {
+  const sourceTargetPath = resolveSymlinkTargetPath(dirname(options.sourcePath), options.target);
+  if (!isPathInsideRoot(options.sourceRoot, sourceTargetPath)) {
+    throw new OraculumError(
+      `Refusing to materialize symlink "${options.entryPath}" because its target escapes the winner workspace.`,
+    );
+  }
+
+  const destinationTargetPath = resolveSymlinkTargetPath(
+    dirname(options.destinationPath),
+    options.replicatedTarget,
+  );
+  if (!isPathInsideRoot(options.destinationRoot, destinationTargetPath)) {
+    throw new OraculumError(
+      `Refusing to materialize symlink "${options.entryPath}" because its target would escape the project root.`,
+    );
+  }
+}
+
+function resolveSymlinkTargetPath(anchorDir: string, target: string): string {
+  return isPortableAbsolutePath(target) ? target : resolve(anchorDir, target);
+}
+
+function isPathInsideRoot(root: string, path: string): boolean {
+  const relativePath = relative(root, path);
+  return (
+    relativePath === "" || (!relativePath.startsWith("..") && !isPortableAbsolutePath(relativePath))
+  );
+}
+
+function isPortableAbsolutePath(path: string): boolean {
+  return isAbsolute(path) || win32.isAbsolute(path);
 }

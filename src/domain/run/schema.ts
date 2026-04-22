@@ -23,8 +23,13 @@ export {
   candidateScorecardWorkstreamCoverageStatusSchema,
   consultationPlanArtifactSchema,
   consultationPlanModeSchema,
+  consultationPlanReadinessSchema,
+  consultationPlanReadinessStatusSchema,
   consultationPlanRepairPolicySchema,
   consultationPlanRepoBasisSchema,
+  consultationPlanReviewArtifactStatusSchema,
+  consultationPlanReviewSchema,
+  consultationPlanReviewStatusSchema,
   consultationPlanRoundSchema,
   consultationPlanScorecardDefinitionSchema,
   consultationPlanStageSchema,
@@ -79,6 +84,12 @@ export type ConsultationResearchBrief = z.infer<
 >;
 export type ConsultationPlanArtifact = z.infer<
   typeof import("./schema-parts/plan.js").consultationPlanArtifactSchema
+>;
+export type ConsultationPlanReadiness = z.infer<
+  typeof import("./schema-parts/plan.js").consultationPlanReadinessSchema
+>;
+export type ConsultationPlanReview = z.infer<
+  typeof import("./schema-parts/plan.js").consultationPlanReviewSchema
 >;
 export type ConsultationPlanWorkstream = z.infer<
   typeof import("./schema-parts/plan.js").consultationPlanWorkstreamSchema

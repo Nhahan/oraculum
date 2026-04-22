@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -13,6 +13,7 @@ import {
   ensureProjectInitialized,
   initializeProject,
   loadProjectConfig,
+  writeJsonFile,
 } from "../src/services/project.js";
 import {
   createInitializedProject,
@@ -133,6 +134,24 @@ describe("project scaffold", () => {
     );
 
     await expect(loadProjectConfig(cwd)).rejects.toThrow();
+  });
+
+  it("writes JSON artifacts atomically and cleans up failed temporary writes", async () => {
+    const cwd = await createTempProject();
+    const artifactPath = join(cwd, "nested", "artifact.json");
+
+    await writeJsonFile(artifactPath, { status: "ok" });
+
+    await expect(readFile(artifactPath, "utf8")).resolves.toBe('{\n  "status": "ok"\n}\n');
+
+    const directoryPath = join(cwd, "blocked.json");
+    await mkdir(directoryPath, { recursive: true });
+    await expect(writeJsonFile(directoryPath, { status: "blocked" })).rejects.toThrow();
+    await expect(lstat(directoryPath)).resolves.toMatchObject({
+      isDirectory: expect.any(Function),
+    });
+    expect((await lstat(directoryPath)).isDirectory()).toBe(true);
+    expect((await readdir(cwd)).filter((entry) => entry.includes(".tmp"))).toEqual([]);
   });
 
   it("accepts the older full config shape for backward compatibility", async () => {

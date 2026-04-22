@@ -1,10 +1,14 @@
-import { chmod, cp, lstat, mkdir, rm } from "node:fs/promises";
+import { chmod, cp, lstat, mkdir, readlink, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import type { ManagedTreeRules } from "../../../domain/config.js";
 
 import { fileContentsEqual } from "../../file-content.js";
-import { listManagedProjectEntries, type ManagedPathEntry } from "../../managed-tree.js";
+import {
+  listManagedProjectEntries,
+  type ManagedPathEntry,
+  shouldManageSymlinkTarget,
+} from "../../managed-tree.js";
 import { pathExists } from "../../project.js";
 
 import { compareManagedEntriesForRemoval, getManagedMode } from "../shared.js";
@@ -39,6 +43,12 @@ export async function syncWorkspaceIntoProject(
     if (workspaceSet.has(entry.path)) {
       continue;
     }
+    if (
+      entry.kind === "symlink" &&
+      !(await shouldRemoveMissingProjectSymlink(projectRoot, entry, managedTreeRules))
+    ) {
+      continue;
+    }
 
     const removed = await removeManagedPath(projectRoot, entry);
     if (removed) {
@@ -50,6 +60,21 @@ export async function syncWorkspaceIntoProject(
     appliedFiles,
     removedFiles,
   };
+}
+
+async function shouldRemoveMissingProjectSymlink(
+  projectRoot: string,
+  entry: ManagedPathEntry,
+  managedTreeRules: ManagedTreeRules,
+): Promise<boolean> {
+  const sourcePath = join(projectRoot, entry.path);
+  const target = await readlink(sourcePath);
+  return shouldManageSymlinkTarget({
+    rules: managedTreeRules,
+    sourcePath,
+    sourceRoot: projectRoot,
+    target,
+  });
 }
 
 async function syncManagedPath(

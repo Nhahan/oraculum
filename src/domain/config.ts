@@ -3,6 +3,7 @@ import { isAbsolute, win32 } from "node:path";
 import { z } from "zod";
 
 import { CONFIG_VERSION } from "../core/constants.js";
+import { artifactPathSegmentSchema } from "./artifact-id.js";
 
 export const adapterSchema = z.enum(["claude-code", "codex"]);
 export const roundIdSchema = z.enum(["fast", "impact", "deep"]);
@@ -99,7 +100,7 @@ export const roundSchema = z.object({
 });
 
 export const repoOracleSchema = z.object({
-  id: z.string().min(1),
+  id: artifactPathSegmentSchema,
   roundId: roundIdSchema,
   command: z.string().min(1),
   args: z.array(z.string()).default([]),

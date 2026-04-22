@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -63,6 +63,22 @@ describe("candidate workspace preparation", () => {
     await expect(
       stat(join(workspaceDir, ".config", "gcloud", "application_default_credentials.json")),
     ).rejects.toThrow();
+  });
+
+  const nonWindowsSymlink = process.platform === "win32" ? it.skip : it;
+
+  nonWindowsSymlink("does not copy managed symlinks that point at protected files", async () => {
+    const projectRoot = await createTempRoot();
+    const workspaceDir = join(projectRoot, ".oraculum", "workspaces", "run_1", "cand-01");
+
+    await writeFile(join(projectRoot, "README.md"), "hello\n", "utf8");
+    await writeFile(join(projectRoot, ".env"), "SECRET=1\n", "utf8");
+    await symlink(".env", join(projectRoot, "linked-env"));
+
+    await prepareCandidateWorkspace({ projectRoot, workspaceDir });
+
+    await expect(readFile(join(workspaceDir, "README.md"), "utf8")).resolves.toContain("hello");
+    await expect(lstat(join(workspaceDir, "linked-env"))).rejects.toThrow();
   });
 
   it("keeps local IDE and infra state unmanaged unless explicitly included", async () => {

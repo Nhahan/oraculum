@@ -6,6 +6,8 @@ export interface RunArtifactPaths {
   configPath: string;
   consultationPlanPath: string;
   consultationPlanMarkdownPath: string;
+  consultationPlanReadinessPath: string;
+  consultationPlanReviewPath: string;
   exportPlanPath: string;
   exportPatchPath: string;
   exportSyncSummaryPath: string;

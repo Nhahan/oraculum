@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 
 import { OraculumError } from "../core/errors.js";
 import {
@@ -207,5 +209,20 @@ export function hasNonEmptyTextArtifactSync(path: string): boolean {
 }
 
 export async function writeJsonFile(path: string, value: unknown): Promise<void> {
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  const contents = `${JSON.stringify(value, null, 2)}\n`;
+  await writeTextFileAtomically(path, contents);
+}
+
+export async function writeTextFileAtomically(path: string, contents: string): Promise<void> {
+  const directory = dirname(path);
+  await mkdir(directory, { recursive: true });
+
+  const tempPath = join(directory, `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`);
+  try {
+    await writeFile(tempPath, contents, "utf8");
+    await rename(tempPath, path);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
 }

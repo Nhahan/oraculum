@@ -1,8 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { type AgentRunResult, agentRunResultSchema } from "../../adapters/types.js";
 import { runSubprocess } from "../../core/subprocess.js";
+import { writeTextFileAtomically } from "../project.js";
 
 interface MaterializeExecutionFailureOptions {
   adapter: AgentRunResult["adapter"];
@@ -20,8 +20,7 @@ export async function materializeExecutionFailure(
   const errorPath = join(options.logDir, "execution-error.txt");
   const timestamp = new Date().toISOString();
 
-  await mkdir(options.logDir, { recursive: true });
-  await writeFile(errorPath, `${errorMessage}\n`, "utf8");
+  await writeTextFileAtomically(errorPath, `${errorMessage}\n`);
 
   return agentRunResultSchema.parse({
     runId: options.runId,

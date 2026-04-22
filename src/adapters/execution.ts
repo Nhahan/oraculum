@@ -1,7 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { runSubprocess, type SubprocessResult } from "../core/subprocess.js";
+import { writeTextFileAtomically } from "../services/project.js";
 
 import { shouldUseWindowsShell } from "./platform.js";
 import type { AgentArtifact } from "./types.js";
@@ -58,14 +59,12 @@ export function createAdapterPaths<Names extends Record<string, string>>(
 export async function executeAdapterCommand(
   options: ExecuteAdapterCommandOptions,
 ): Promise<AdapterExecutionResult> {
-  await mkdir(dirname(options.paths.prompt), { recursive: true });
-
   const startedAt = new Date().toISOString();
   const sidecarWrites = options.sidecarWrites ?? [];
 
   await Promise.all([
-    writeFile(options.paths.prompt, options.prompt, "utf8"),
-    ...sidecarWrites.map((artifact) => writeFile(artifact.path, artifact.content, "utf8")),
+    writeTextFileAtomically(options.paths.prompt, options.prompt),
+    ...sidecarWrites.map((artifact) => writeTextFileAtomically(artifact.path, artifact.content)),
   ]);
 
   const subprocessResult = await runSubprocess({
@@ -79,8 +78,8 @@ export async function executeAdapterCommand(
   });
 
   await Promise.all([
-    writeFile(options.paths.stdout, subprocessResult.stdout, "utf8"),
-    writeFile(options.paths.stderr, subprocessResult.stderr, "utf8"),
+    writeTextFileAtomically(options.paths.stdout, subprocessResult.stdout),
+    writeTextFileAtomically(options.paths.stderr, subprocessResult.stderr),
   ]);
 
   const optionalArtifacts = (

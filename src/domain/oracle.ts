@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { artifactPathSegmentSchema } from "./artifact-id.js";
 import { roundIdSchema } from "./config.js";
 
 export const witnessKindSchema = z.enum([
@@ -18,7 +19,7 @@ export const verdictSeveritySchema = z.enum(["info", "warning", "error", "critic
 export const verdictConfidenceSchema = z.enum(["low", "medium", "high"]);
 
 export const witnessSchema = z.object({
-  id: z.string().min(1),
+  id: artifactPathSegmentSchema,
   kind: witnessKindSchema,
   title: z.string().min(1),
   detail: z.string().min(1),
@@ -28,7 +29,7 @@ export const witnessSchema = z.object({
 });
 
 export const oracleVerdictSchema = z.object({
-  oracleId: z.string().min(1),
+  oracleId: artifactPathSegmentSchema,
   roundId: roundIdSchema,
   status: verdictStatusSchema,
   severity: verdictSeveritySchema,

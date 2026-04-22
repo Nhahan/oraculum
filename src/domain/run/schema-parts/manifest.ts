@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { artifactPathSegmentSchema } from "../../artifact-id.js";
 import { adapterSchema } from "../../config.js";
 import { consultationProfileSelectionSchema, getValidationGaps } from "../../profile.js";
 import { taskPacketSummarySchema } from "../../task.js";
@@ -13,7 +14,7 @@ import { getBlockedOutcomeType, runStatusSchema } from "./shared.js";
 
 export const runManifestSchema = z
   .object({
-    id: z.string().min(1),
+    id: artifactPathSegmentSchema,
     status: runStatusSchema,
     taskPath: z.string().min(1),
     taskPacket: taskPacketSummarySchema,

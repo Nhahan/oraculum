@@ -104,6 +104,22 @@ describe("managed tree symlink semantics", () => {
     ).toBe(false);
   });
 
+  it("rejects unsafe relative and absolute managed-tree paths", () => {
+    const rules = {
+      includePaths: ["../secrets", "/tmp/generated", "C:\\temp\\generated"],
+      excludePaths: [],
+    };
+
+    expect(shouldManageProjectPath("../secrets/token.txt")).toBe(false);
+    expect(shouldManageProjectPath("src/../secrets/token.txt")).toBe(false);
+    expect(shouldManageProjectPath("/tmp/generated/file.txt", rules)).toBe(false);
+    expect(shouldManageProjectPath("C:\\temp\\generated\\file.txt", rules)).toBe(false);
+    expect(shouldManageProjectPath("src\0secret.txt")).toBe(false);
+    expect(shouldManageProjectPath("src/index.ts", rules)).toBe(true);
+    expect(shouldLinkProjectDependencyTree("../node_modules/pkg")).toBe(false);
+    expect(shouldLinkProjectDependencyTree("/tmp/node_modules/pkg")).toBe(false);
+  });
+
   it("links only unmanaged dependency trees and respects explicit managed includes", () => {
     const rules = {
       includePaths: ["target/docs"],
@@ -174,22 +190,30 @@ describe("managed tree symlink semantics", () => {
   );
 
   nonWindowsFileSymlink(
-    "preserves absolute file symlinks that point into unmanaged subtrees",
+    "omits symlinks that would expose unmanaged or external paths",
     async () => {
       const sourceRoot = await createTempRoot();
       const destinationRoot = await createTempRoot();
+      const externalRoot = await createTempRoot();
       await mkdir(join(sourceRoot, "node_modules", "pkg"), { recursive: true });
       await writeFile(join(sourceRoot, "node_modules", "pkg", "index.js"), "module\n", "utf8");
+      await writeFile(join(sourceRoot, ".env"), "SECRET=1\n", "utf8");
+      await writeFile(join(externalRoot, "secret.txt"), "external\n", "utf8");
       await symlink(
         join(sourceRoot, "node_modules", "pkg", "index.js"),
-        join(sourceRoot, "linked.txt"),
+        join(sourceRoot, "linked-module.txt"),
       );
+      await symlink(join(sourceRoot, ".env"), join(sourceRoot, "linked-env.txt"));
+      await symlink(join(externalRoot, "secret.txt"), join(sourceRoot, "linked-external.txt"));
+      await mkdir(join(sourceRoot, "src"), { recursive: true });
+      await symlink("../.env", join(sourceRoot, "src", "relative-env.txt"));
 
       await copyManagedProjectTree(sourceRoot, destinationRoot);
 
-      expect(await readlink(join(destinationRoot, "linked.txt"))).toBe(
-        join(sourceRoot, "node_modules", "pkg", "index.js"),
-      );
+      await expect(lstat(join(destinationRoot, "linked-module.txt"))).rejects.toThrow();
+      await expect(lstat(join(destinationRoot, "linked-env.txt"))).rejects.toThrow();
+      await expect(lstat(join(destinationRoot, "linked-external.txt"))).rejects.toThrow();
+      await expect(lstat(join(destinationRoot, "src", "relative-env.txt"))).rejects.toThrow();
     },
   );
 });

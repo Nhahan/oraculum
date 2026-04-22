@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readlink, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -277,6 +277,36 @@ fs.writeFileSync(path.join(process.cwd(), "asset.bin"), binary);`,
       expect(await readFile(join(cwd, ".gradle", "caches", "state"), "utf8")).toBe(
         "gradle changed after run\n",
       );
+    },
+    EXPORT_WORKSPACE_SYNC_TEST_TIMEOUT_MS,
+  );
+
+  const nonWindowsSymlink = process.platform === "win32" ? it.skip : it;
+
+  nonWindowsSymlink(
+    "preserves project symlinks whose targets are unmanaged during workspace-sync export",
+    async () => {
+      const cwd = await createTempRoot();
+      await initializeProject({ cwd, force: false });
+      await writeFile(join(cwd, "app.txt"), "original\n", "utf8");
+      await writeFile(join(cwd, ".env"), "SECRET=1\n", "utf8");
+      await symlink(".env", join(cwd, "linked-env"));
+
+      const fakeCodex = await writeExportingCodex(cwd);
+      await runWorkspaceSyncConsultation({
+        cwd,
+        codexBinaryPath: fakeCodex,
+        taskInput: "patch app without exposing local secret links",
+      });
+
+      await materializeExport({
+        cwd,
+        withReport: false,
+      });
+
+      expect(await readFile(join(cwd, "app.txt"), "utf8")).toBe("patched\n");
+      expect(await readlink(join(cwd, "linked-env"))).toBe(".env");
+      expect(await readFile(join(cwd, ".env"), "utf8")).toBe("SECRET=1\n");
     },
     EXPORT_WORKSPACE_SYNC_TEST_TIMEOUT_MS,
   );

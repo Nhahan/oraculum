@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { artifactPathSegmentSchema } from "../../artifact-id.js";
 import { roundIdSchema } from "../../config.js";
 import { decisionConfidenceSchema } from "../../profile.js";
 import {
@@ -9,7 +10,7 @@ import {
 } from "./shared.js";
 
 export const candidateManifestSchema = z.object({
-  id: z.string().min(1),
+  id: artifactPathSegmentSchema,
   strategyId: z.string().min(1),
   strategyLabel: z.string().min(1),
   status: candidateStatusSchema,
@@ -36,7 +37,7 @@ export const roundManifestSchema = z.object({
 });
 
 export const runRecommendationSchema = z.object({
-  candidateId: z.string().min(1),
+  candidateId: artifactPathSegmentSchema,
   summary: z.string().min(1),
   confidence: decisionConfidenceSchema,
   source: z.enum(["llm-judge", "fallback-policy"]),
