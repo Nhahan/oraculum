@@ -24,6 +24,7 @@ Operational bias:
 
 - optimize for falsification and patch selection, not autonomy
 - `orc consult` is the default one-command flow with immediate latest-result output; `verdict` reopens a consultation later; planning-only flows are advanced
+- chat-native planning commands (`orc consult`, `orc plan`, `orc draft`) expose task input only; move runtime, candidate-count, timeout, and deliberate/deeper-planning controls into task contracts or `.oraculum/config.json` / `.oraculum/advanced.json`
 - quick-start stays one-command and near-zero-config; explicit settings beat inferred defaults; `/.oraculum/config.json` is for quick-start defaults, `/.oraculum/advanced.json` is for operator controls, and auto-init / `init --force` must not leak stale `advanced.json` settings into the default UX
 - Oraculum is local-first, not CI-first
 - follow [`internal/frontier-boundary-policy.md`](internal/frontier-boundary-policy.md): assume a frontier human-level coding model; deterministic code owns raw fact collection, contracts, and safety enforcement; the model owns semantic profile/check selection; prefer repo-local scripts/oracles, keep deterministic boundaries narrow and regression-tested, and do not treat Oraculum being Node-distributed as evidence that target repositories are Node projects

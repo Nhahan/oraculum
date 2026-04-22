@@ -34,10 +34,12 @@ orc consult tasks/fix-session-loss.md
 - a task note file
 - a task packet path
 
-## Choose Runtime And Candidate Count
+## Configure Runtime And Candidate Count
+
+Chat-native planning commands stay task-only:
 
 ```text
-orc consult tasks/fix-session-loss.md --agent codex --candidates 4
+orc consult tasks/fix-session-loss.md
 ```
 
 Available runtimes today:
@@ -45,22 +47,25 @@ Available runtimes today:
 - `codex`
 - `claude-code`
 
-Both runtimes support structured validation-posture selection through their structured non-interactive output paths.
+Choose the default runtime and candidate count by editing `.oraculum/config.json`:
 
-That structured step is what lets Oraculum treat validation posture choice as a bounded selection problem instead of an unstructured free-form guess.
-
-## Optional Consultation Timeout
-
-```text
-orc consult tasks/fix-session-loss.md --timeout-ms 300000
+```json
+{
+  "version": 1,
+  "defaultAgent": "codex",
+  "defaultCandidates": 4
+}
 ```
 
-Use `--timeout-ms` only when you want to put an explicit bound on consultation adapter calls.
+Both runtimes support structured validation-posture selection through their structured non-interactive output paths. That structured step is what lets Oraculum treat validation posture choice as a bounded selection problem instead of an unstructured free-form guess.
 
-- The default `consult` and `plan` product path does not impose an Oraculum-level adapter timeout.
-- `--timeout-ms` bounds runtime adapter calls only; it does not rewrite repo-local oracle policy.
-- Internal validation harnesses may still apply their own defaults. They are not the product default.
-- Repo-local oracle commands remain separate and can carry their own optional `timeoutMs` values in `.oraculum/advanced.json`.
+## Timeouts
+
+The default `consult` and `plan` product path does not expose a consultation-wide adapter timeout flag. Keep bounded long-running checks at the repo-local oracle boundary with `timeoutMs` in `.oraculum/advanced.json`.
+
+Internal validation harnesses may still apply their own process bounds. They are not part of the chat-native product input.
+
+Shell setup and diagnostics commands still keep their explicit safety and installation flags. The task-only rule applies to `orc consult`, `orc plan`, and `orc draft`.
 
 ## Automatic Validation Posture Selection
 
@@ -128,6 +133,8 @@ When available, the crowning record points at artifacts such as:
 - Markdown comparison reports
 - recommended result records
 - change summaries, witness rollups, and why-this-won rationale
+
+By default, `crown` refuses to materialize a result when validation gaps remain, the recommendation came from fallback policy, or a second-opinion judge disagreed or was unavailable. Use `orc crown --allow-unsafe` only after manual operator review; the export plan records `safetyOverride: "operator-allow-unsafe"`.
 
 ## Research Briefs And Failure Analysis
 
@@ -198,12 +205,13 @@ orc plan tasks/fix-session-loss.md
 Use this when the task is broad, risky, or still needs a stronger execution contract before candidate generation. Oraculum persists:
 
 - `.oraculum/runs/<consultation-id>/reports/consultation-plan.json`
+- `.oraculum/runs/<consultation-id>/reports/plan-readiness.json`
 - `.oraculum/runs/<consultation-id>/reports/consultation-plan.md`
 
-If the requested plan lacks a concrete result contract or judging basis, `orc plan` stops before candidate planning and asks one clarification question. Answer it by revising the task input or rerunning:
+If the requested plan lacks a concrete result contract or judging basis, `orc plan` stops before candidate planning and asks one clarification question. Answer it by revising the task input and rerunning:
 
 ```text
-orc plan "add authentication" --answer "Email/password login only, protect /dashboard, no OAuth."
+orc plan "add authentication. Email/password login only, protect /dashboard, no OAuth."
 ```
 
 The JSON artifact is rerunnable:
@@ -211,6 +219,10 @@ The JSON artifact is rerunnable:
 ```text
 orc consult .oraculum/runs/<consultation-id>/reports/consultation-plan.json
 ```
+
+`orc consult <consultation-plan.json>` checks `plan-readiness.json` before creating candidates. If the plan still lacks information, Oraculum asks for clarification instead of treating that as an execution block. It fails fast only for hard readiness problems such as invalid artifacts, stale plan basis, or planned oracle ids that no longer exist in the execution contract.
+
+Plan review findings, when present, are advisory unless deterministic readiness finds a hard execution blocker. `orc verdict` shows review and readiness artifacts that were produced by the planning lane.
 
 `orc draft ...` remains available as a compatibility alias for the same planning lane.
 
@@ -375,6 +387,6 @@ Use advanced settings only for things like:
 - choosing a specific runtime
 - changing candidate count
 - adding repo-local oracle commands in `.oraculum/advanced.json`
-- selecting a specific consultation for verdict inspection
+- tuning repair, judge, strategy, round, and managed-tree policy
 
 If a workflow can be expressed without these controls, prefer the simple path.

@@ -99,9 +99,11 @@ orc crown fix/session-loss
 
 In a Git-backed project, `crown` creates the named branch and materializes the recommended result there. In a non-Git project, use bare `orc crown`; it syncs the recommended result back into the project folder without requiring a fake branch name.
 
-By default, `consult` and `plan` do not impose an Oraculum-level adapter timeout. Use `--timeout-ms <ms>` only when you want to bound a specific consultation explicitly. Repo-local oracle commands remain independent and can still carry their own bounded `timeoutMs` values in `.oraculum/advanced.json`.
+`crown` blocks by default when the verdict still has validation gaps, a fallback-policy winner, or second-opinion manual-review pressure. After operator review, `orc crown --allow-unsafe` records that explicit override in the export plan.
 
-Use `orc plan "<task>"` when you want to shape a broad or high-risk consultation first. If the plan request is still unclear, Oraculum asks for one concrete clarification before creating a runnable plan; rerun with `--answer "<answer>"` or revise the task. When ready, it persists a reusable `consultation-plan.json` plus a human-readable `consultation-plan.md`, and you can later run `orc consult <plan-artifact>`. `orc draft` remains as a compatibility alias for the same planning lane.
+The chat-native planning commands keep their input surface task-only. Configure quick-start defaults in `.oraculum/config.json`, put advanced project policy in `.oraculum/advanced.json`, and keep task-specific requirements in the task text. Repo-local oracle commands can still carry their own bounded `timeoutMs` values in `.oraculum/advanced.json`.
+
+Use `orc plan "<task>"` when you want to shape a broad or high-risk consultation first. If the plan request is still unclear, Oraculum asks for one concrete clarification before creating a runnable plan; include the answer in the task and rerun `orc plan`. When ready, it persists a reusable `consultation-plan.json`, `plan-readiness.json`, and a human-readable `consultation-plan.md`, and you can later run `orc consult <plan-artifact>`. `orc draft` remains as a compatibility alias for the same planning lane.
 
 If you want to reopen the latest consultation later, inspect an older one, browse consultation history, or use shell-only setup, uninstall, diagnostics, or MCP commands, see [Advanced Usage](./docs/advanced-usage.md).
 
@@ -117,4 +119,4 @@ Results are saved under `.oraculum/`. The source of truth is the saved run state
 
 ## Advanced Usage
 
-If you want more control over runtimes, candidate counts, consultation history, repo-local checks, saved research artifacts, setup diagnostics, or explicit consultation timeouts, see [Advanced Usage](./docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; advanced project settings belong in `.oraculum/advanced.json`.
+If you want more control over runtimes, candidate counts, consultation history, repo-local checks, saved research artifacts, setup diagnostics, or repo-local oracle timeouts, see [Advanced Usage](./docs/advanced-usage.md). Quick-start defaults live in `.oraculum/config.json`; advanced project settings belong in `.oraculum/advanced.json`.
