@@ -1,13 +1,20 @@
 import type { z } from "zod";
 
 import type { agentJudgeResultSchema } from "../../../adapters/types.js";
-import type { consultationClarifyFollowUpSchema, RunManifest } from "../../../domain/run.js";
+import type {
+  consultationClarifyFollowUpSchema,
+  consultationPlanReadinessSchema,
+  consultationPlanReviewSchema,
+  RunManifest,
+} from "../../../domain/run.js";
 import type { secondOpinionWinnerSelectionArtifactSchema } from "../../finalist-judge.js";
 import type { comparisonReportSchema } from "../../finalist-report.js";
 
 export interface VerdictReviewArtifactPaths {
   consultationRoot?: string;
   configPath?: string;
+  consultationPlanReadinessPath?: string;
+  consultationPlanReviewPath?: string;
   preflightReadinessPath?: string;
   clarifyFollowUpPath?: string;
   researchBriefPath?: string;
@@ -24,6 +31,8 @@ export interface LoadedVerdictReviewArtifacts {
   clarifyFollowUp?: z.infer<typeof consultationClarifyFollowUpSchema>;
   comparisonMarkdownAvailable: boolean;
   comparisonReport?: z.infer<typeof comparisonReportSchema>;
+  consultationPlanReadiness?: z.infer<typeof consultationPlanReadinessSchema>;
+  consultationPlanReview?: z.infer<typeof consultationPlanReviewSchema>;
   exportPlan?: unknown;
   failureAnalysis?: unknown;
   hasExportedCandidate: boolean;

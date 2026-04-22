@@ -5,6 +5,8 @@ import { beforeEach, vi } from "vitest";
 import { runSubprocess } from "../../src/core/subprocess.js";
 import {
   buildVerdictReview,
+  isInvalidConsultationRecord,
+  listRecentConsultationRecords,
   listRecentConsultations,
   renderConsultationArchive,
   renderConsultationSummary,
@@ -54,7 +56,9 @@ export const mockedEnsureProjectInitialized = vi.mocked(ensureProjectInitialized
 export const mockedHasNonEmptyTextArtifact = vi.mocked(hasNonEmptyTextArtifact);
 export const mockedInitializeProject = vi.mocked(initializeProject);
 export const mockedListRecentConsultations = vi.mocked(listRecentConsultations);
+export const mockedListRecentConsultationRecords = vi.mocked(listRecentConsultationRecords);
 export const mockedBuildVerdictReview = vi.mocked(buildVerdictReview);
+export const mockedIsInvalidConsultationRecord = vi.mocked(isInvalidConsultationRecord);
 export const mockedRenderConsultationArchive = vi.mocked(renderConsultationArchive);
 export const mockedRenderConsultationSummary = vi.mocked(renderConsultationSummary);
 export const mockedMaterializeExport = vi.mocked(materializeExport);
@@ -75,7 +79,9 @@ export function registerMcpToolsTestHarness(): void {
     mockedHasNonEmptyTextArtifact.mockReset();
     mockedInitializeProject.mockReset();
     mockedListRecentConsultations.mockReset();
+    mockedListRecentConsultationRecords.mockReset();
     mockedBuildVerdictReview.mockReset();
+    mockedIsInvalidConsultationRecord.mockReset();
     mockedRenderConsultationArchive.mockReset();
     mockedRenderConsultationSummary.mockReset();
     mockedMaterializeExport.mockReset();
@@ -84,6 +90,10 @@ export function registerMcpToolsTestHarness(): void {
     mockedEnsureProjectInitialized.mockResolvedValue(undefined);
     mockedHasNonEmptyTextArtifact.mockResolvedValue(false);
     mockedListRecentConsultations.mockResolvedValue([createCompletedManifest()]);
+    mockedListRecentConsultationRecords.mockResolvedValue([createCompletedManifest()]);
+    mockedIsInvalidConsultationRecord.mockImplementation(
+      (record) => "invalid" in record && record.invalid === true,
+    );
     mockedBuildVerdictReview.mockResolvedValue(createDefaultVerdictReview());
     mockedRenderConsultationSummary.mockResolvedValue("Consultation summary.\n");
     mockedRenderConsultationArchive.mockReturnValue("Recent consultations.\n");

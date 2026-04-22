@@ -74,6 +74,51 @@ export async function buildConsultationSummaryDetailLines(
     lines.push(`Research conflict handling: ${status.researchConflictHandling}`);
   }
 
+  if (resolvedArtifacts.consultationPlan) {
+    lines.push(
+      `Plan ready for consult: ${resolvedArtifacts.consultationPlan.readyForConsult ? "yes" : "no"}`,
+      `Plan next action: ${resolvedArtifacts.consultationPlan.recommendedNextAction}`,
+    );
+    if (resolvedArtifacts.consultationPlanReadiness) {
+      lines.push(
+        `Plan readiness: ${resolvedArtifacts.consultationPlanReadiness.status}`,
+        `Plan readiness next action: ${resolvedArtifacts.consultationPlanReadiness.nextAction}`,
+        `Plan review status: ${resolvedArtifacts.consultationPlanReadiness.reviewStatus}`,
+        `Plan stale basis: ${resolvedArtifacts.consultationPlanReadiness.staleBasis ? "yes" : "no"}`,
+      );
+      if (resolvedArtifacts.consultationPlanReadiness.missingOracleIds.length > 0) {
+        lines.push(
+          `Plan missing oracles: ${resolvedArtifacts.consultationPlanReadiness.missingOracleIds.join(", ")}`,
+        );
+      }
+      if (resolvedArtifacts.consultationPlanReadiness.unresolvedQuestions.length > 0) {
+        lines.push(
+          "Plan open questions:",
+          ...resolvedArtifacts.consultationPlanReadiness.unresolvedQuestions.map(
+            (question) => `- ${question}`,
+          ),
+        );
+      }
+    }
+    if (resolvedArtifacts.consultationPlan.plannedStrategies.length > 0) {
+      lines.push(
+        "Plan strategies:",
+        ...resolvedArtifacts.consultationPlan.plannedStrategies.map(
+          (strategy) => `- ${strategy.label} (${strategy.id})`,
+        ),
+      );
+    }
+    if (resolvedArtifacts.consultationPlan.oracleIds.length > 0) {
+      lines.push(`Plan oracles: ${resolvedArtifacts.consultationPlan.oracleIds.join(", ")}`);
+    }
+    if (resolvedArtifacts.consultationPlanReview) {
+      lines.push(
+        `Plan review: ${resolvedArtifacts.consultationPlanReview.status}`,
+        resolvedArtifacts.consultationPlanReview.summary,
+      );
+    }
+  }
+
   if (manifest.preflight && manifest.preflight.decision !== "proceed") {
     lines.push(
       `Preflight: ${manifest.preflight.decision} (${manifest.preflight.confidence}, ${manifest.preflight.researchPosture})`,
@@ -112,6 +157,16 @@ export async function buildConsultationSummaryDetailLines(
     lines.push(
       `Second-opinion judge: ${resolvedArtifacts.secondOpinionWinnerSelection.adapter} (${resolvedArtifacts.secondOpinionWinnerSelection.agreement})`,
       resolvedArtifacts.secondOpinionWinnerSelection.advisorySummary,
+    );
+  }
+
+  if (resolvedArtifacts.artifactDiagnostics.length > 0) {
+    lines.push(
+      "Artifact diagnostics:",
+      ...resolvedArtifacts.artifactDiagnostics.map(
+        (diagnostic) =>
+          `- ${diagnostic.kind}: ${toDisplayPath(projectRoot, diagnostic.path)} (${diagnostic.message})`,
+      ),
     );
   }
 

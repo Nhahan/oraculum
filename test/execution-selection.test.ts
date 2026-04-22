@@ -171,7 +171,7 @@ if (out) {
         "selected validation posture (library) still has validation gaps",
       );
       expect(executed.manifest.recommendedWinner?.summary).toContain(
-        "No package packaging smoke check was selected.",
+        "No package packaging smoke check was detected.",
       );
     },
     EXECUTION_TEST_TIMEOUT_MS,

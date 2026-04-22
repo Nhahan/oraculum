@@ -9,6 +9,8 @@ export {
   readConsultationArtifacts,
   readConsultationArtifactsSync,
   readConsultationPlanArtifact,
+  readConsultationPlanReadinessArtifact,
+  readConsultationPlanReviewArtifact,
   readExportPlanArtifact,
   readFailureAnalysisArtifact,
   readPreflightReadinessArtifact,

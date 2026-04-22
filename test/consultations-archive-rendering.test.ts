@@ -1,8 +1,11 @@
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { getReportsDir, getRunManifestPath } from "../src/core/paths.js";
 import {
+  listRecentConsultationRecords,
   listRecentConsultations,
   renderConsultationArchive,
   renderConsultationSummary,
@@ -174,6 +177,28 @@ describe("consultation archive rendering", () => {
         }),
       }),
     ]);
+  });
+
+  it("keeps corrupt run records visible in archive output", async () => {
+    const cwd = await createInitializedProject();
+    await mkdir(getReportsDir(cwd, "run_corrupt"), { recursive: true });
+    await writeFile(getRunManifestPath(cwd, "run_corrupt"), "{ not json", "utf8");
+
+    const records = await listRecentConsultationRecords(cwd, 10);
+    const archive = renderConsultationArchive(records, { projectRoot: cwd });
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        id: "run_corrupt",
+        invalid: true,
+        diagnostic: expect.objectContaining({
+          kind: "run-manifest",
+          status: "invalid",
+        }),
+      }),
+    ]);
+    expect(archive).toContain("run_corrupt | invalid consultation record");
+    expect(archive).toContain(".oraculum/runs/run_corrupt/run.json");
   });
 
   it("renders archive output with the orc prefix for chat-native surfaces", async () => {

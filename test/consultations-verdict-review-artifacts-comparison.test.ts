@@ -122,8 +122,8 @@ describe("consultation verdict review artifact availability: comparison", () => 
     expect(summary).toContain(
       `- comparison report: ${toExpectedDisplayPath(cwd, getFinalistComparisonMarkdownPath(cwd, manifest.id))}`,
     );
-    expect(summary).not.toContain(
-      toExpectedDisplayPath(cwd, getFinalistComparisonJsonPath(cwd, manifest.id)),
+    expect(summary).toContain(
+      `- finalist-comparison: ${toExpectedDisplayPath(cwd, getFinalistComparisonJsonPath(cwd, manifest.id))} (Invalid JSON:`,
     );
     expect(review.artifactAvailability.comparisonReport).toBe(true);
   });

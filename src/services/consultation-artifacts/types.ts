@@ -5,6 +5,8 @@ import type { consultationProfileSelectionArtifactSchema } from "../../domain/pr
 import type {
   consultationClarifyFollowUpSchema,
   consultationPlanArtifactSchema,
+  consultationPlanReadinessSchema,
+  consultationPlanReviewSchema,
   consultationPreflightReadinessArtifactSchema,
   consultationResearchBriefSchema,
   exportPlanSchema,
@@ -13,11 +15,20 @@ import type { failureAnalysisSchema } from "../failure-analysis.js";
 import type { secondOpinionWinnerSelectionArtifactSchema } from "../finalist-judge.js";
 import type { comparisonReportSchema } from "../finalist-report.js";
 
+export interface ConsultationArtifactDiagnostic {
+  path: string;
+  kind: string;
+  status: "invalid";
+  message: string;
+}
+
 export interface ConsultationArtifactPaths {
   consultationRoot: string;
   configPath?: string;
   consultationPlanPath?: string;
   consultationPlanMarkdownPath?: string;
+  consultationPlanReadinessPath?: string;
+  consultationPlanReviewPath?: string;
   preflightReadinessPath?: string;
   clarifyFollowUpPath?: string;
   researchBriefPath?: string;
@@ -32,6 +43,8 @@ export interface ConsultationArtifactPaths {
 
 export interface ConsultationArtifactState extends ConsultationArtifactPaths {
   consultationPlan?: z.infer<typeof consultationPlanArtifactSchema>;
+  consultationPlanReadiness?: z.infer<typeof consultationPlanReadinessSchema>;
+  consultationPlanReview?: z.infer<typeof consultationPlanReviewSchema>;
   preflightReadiness?: z.infer<typeof consultationPreflightReadinessArtifactSchema>;
   clarifyFollowUp?: z.infer<typeof consultationClarifyFollowUpSchema>;
   researchBrief?: z.infer<typeof consultationResearchBriefSchema>;
@@ -45,11 +58,14 @@ export interface ConsultationArtifactState extends ConsultationArtifactPaths {
   manualReviewRequired: boolean;
   crowningRecordAvailable: boolean;
   hasExportedCandidate: boolean;
+  artifactDiagnostics: ConsultationArtifactDiagnostic[];
 }
 
 export interface LoadedConsultationArtifacts {
   consultationPlan: z.infer<typeof consultationPlanArtifactSchema> | undefined;
   consultationPlanMarkdownAvailable: boolean;
+  consultationPlanReadiness: z.infer<typeof consultationPlanReadinessSchema> | undefined;
+  consultationPlanReview: z.infer<typeof consultationPlanReviewSchema> | undefined;
   preflightReadiness: z.infer<typeof consultationPreflightReadinessArtifactSchema> | undefined;
   clarifyFollowUp: z.infer<typeof consultationClarifyFollowUpSchema> | undefined;
   researchBrief: z.infer<typeof consultationResearchBriefSchema> | undefined;
@@ -62,4 +78,5 @@ export interface LoadedConsultationArtifacts {
     | z.infer<typeof secondOpinionWinnerSelectionArtifactSchema>
     | undefined;
   crowningRecord: z.infer<typeof exportPlanSchema> | undefined;
+  artifactDiagnostics: ConsultationArtifactDiagnostic[];
 }

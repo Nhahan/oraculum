@@ -15,6 +15,14 @@ export function buildConsultationSummaryPathState(
     resolvedArtifacts.consultationPlan && resolvedArtifacts.consultationPlanPath
       ? resolvedArtifacts.consultationPlanPath
       : undefined;
+  const consultationPlanReadinessSummaryPath =
+    resolvedArtifacts.consultationPlanReadiness && resolvedArtifacts.consultationPlanReadinessPath
+      ? resolvedArtifacts.consultationPlanReadinessPath
+      : undefined;
+  const consultationPlanReviewSummaryPath =
+    resolvedArtifacts.consultationPlanReview && resolvedArtifacts.consultationPlanReviewPath
+      ? resolvedArtifacts.consultationPlanReviewPath
+      : undefined;
   const clarifyFollowUpSummaryPath =
     resolvedArtifacts.clarifyFollowUp && resolvedArtifacts.clarifyFollowUpPath
       ? resolvedArtifacts.clarifyFollowUpPath
@@ -50,6 +58,8 @@ export function buildConsultationSummaryPathState(
       ? { consultationPlanMarkdownSummaryPath: resolvedArtifacts.consultationPlanMarkdownPath }
       : {}),
     ...(consultationPlanSummaryPath ? { consultationPlanSummaryPath } : {}),
+    ...(consultationPlanReadinessSummaryPath ? { consultationPlanReadinessSummaryPath } : {}),
+    ...(consultationPlanReviewSummaryPath ? { consultationPlanReviewSummaryPath } : {}),
     ...(failureAnalysisSummaryPath ? { failureAnalysisSummaryPath } : {}),
     ...(preflightReadinessSummaryPath ? { preflightReadinessSummaryPath } : {}),
     ...(profileSelectionSummaryPath ? { profileSelectionSummaryPath } : {}),

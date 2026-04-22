@@ -34,6 +34,8 @@ vi.mock("../../src/services/project.js", async () => {
 
 vi.mock("../../src/services/consultations.js", () => ({
   buildVerdictReview: vi.fn(),
+  isInvalidConsultationRecord: vi.fn(),
+  listRecentConsultationRecords: vi.fn(),
   listRecentConsultations: vi.fn(),
   renderConsultationArchive: vi.fn(),
   renderConsultationSummary: vi.fn(),
@@ -68,6 +70,8 @@ export const createMcpTempRoot = mcpToolsHelperModule.createMcpTempRoot;
 export const mockedBuildVerdictReview = mcpToolsHelperModule.mockedBuildVerdictReview;
 export const mockedHasNonEmptyTextArtifact = mcpToolsHelperModule.mockedHasNonEmptyTextArtifact;
 export const mockedListRecentConsultations = mcpToolsHelperModule.mockedListRecentConsultations;
+export const mockedListRecentConsultationRecords =
+  mcpToolsHelperModule.mockedListRecentConsultationRecords;
 export const mockedReadRunManifest = mcpToolsHelperModule.mockedReadRunManifest;
 export const mockedRenderConsultationArchive = mcpToolsHelperModule.mockedRenderConsultationArchive;
 export const registerMcpToolsTestHarness = mcpToolsHelperModule.registerMcpToolsTestHarness;

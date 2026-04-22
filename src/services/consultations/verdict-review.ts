@@ -159,6 +159,20 @@ export async function buildVerdictReview(
     manualCrowningCandidateIds: derived.manualCrowningCandidateIds,
     ...(derived.manualCrowningReason ? { manualCrowningReason: derived.manualCrowningReason } : {}),
     ...validationFields,
+    ...(loaded.consultationPlanReadiness
+      ? {
+          planReadinessStatus: loaded.consultationPlanReadiness.status,
+          planReadyForConsult: loaded.consultationPlanReadiness.readyForConsult,
+          planReviewStatus: loaded.consultationPlanReadiness.reviewStatus,
+          planStaleBasis: loaded.consultationPlanReadiness.staleBasis,
+          planMissingOracleIds: loaded.consultationPlanReadiness.missingOracleIds,
+          planOpenQuestions: loaded.consultationPlanReadiness.unresolvedQuestions,
+          planNextAction: loaded.consultationPlanReadiness.nextAction,
+        }
+      : {}),
+    ...(loaded.consultationPlanReview
+      ? { planReviewSummary: loaded.consultationPlanReview.summary }
+      : {}),
     ...(manifest.preflight?.decision ? { preflightDecision: manifest.preflight.decision } : {}),
     researchPosture: derived.status.researchPosture,
     ...(manifest.preflight?.clarificationQuestion
@@ -182,6 +196,8 @@ export async function buildVerdictReview(
       ? { clarifyMissingJudgingBasis: loaded.clarifyFollowUp.missingJudgingBasis }
       : {}),
     artifactAvailability: {
+      ...(loaded.consultationPlanReadiness ? { planReadiness: true } : {}),
+      ...(loaded.consultationPlanReview ? { planReview: true } : {}),
       preflightReadiness: Boolean(loaded.preflightReadiness),
       clarifyFollowUp: Boolean(loaded.clarifyFollowUp),
       researchBrief: Boolean(loaded.researchBrief),

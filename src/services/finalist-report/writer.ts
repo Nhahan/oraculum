@@ -1,4 +1,3 @@
-import { writeFile } from "node:fs/promises";
 import type { z } from "zod";
 
 import type { AgentRunResult } from "../../adapters/types.js";
@@ -29,7 +28,7 @@ import {
   type TaskPacketSummary,
 } from "../../domain/task.js";
 import { buildEnrichedFinalistSummaries } from "../finalist-insights.js";
-import { writeJsonFile } from "../project.js";
+import { writeJsonFile, writeTextFileAtomically } from "../project.js";
 
 import { countVerdicts } from "./counts.js";
 import { toDisplayPath } from "./display-path.js";
@@ -116,7 +115,7 @@ export async function writeFinalistComparisonReport(
   const jsonPath = getFinalistComparisonJsonPath(projectRoot, options.runId);
   const markdownPath = getFinalistComparisonMarkdownPath(projectRoot, options.runId);
   await writeJsonFile(jsonPath, report);
-  await writeFile(markdownPath, buildComparisonMarkdown(report, projectRoot), "utf8");
+  await writeTextFileAtomically(markdownPath, buildComparisonMarkdown(report, projectRoot));
 
   return { jsonPath, markdownPath };
 }

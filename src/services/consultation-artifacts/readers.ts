@@ -5,6 +5,8 @@ import { consultationProfileSelectionArtifactSchema } from "../../domain/profile
 import {
   consultationClarifyFollowUpSchema,
   consultationPlanArtifactSchema,
+  consultationPlanReadinessSchema,
+  consultationPlanReviewSchema,
   consultationPreflightReadinessArtifactSchema,
   consultationResearchBriefSchema,
   exportPlanSchema,
@@ -105,6 +107,18 @@ export async function readConsultationPlanArtifact(
   path: string | undefined,
 ): Promise<z.infer<typeof consultationPlanArtifactSchema> | undefined> {
   return readOptionalArtifact(path, consultationPlanArtifactSchema);
+}
+
+export async function readConsultationPlanReadinessArtifact(
+  path: string | undefined,
+): Promise<z.infer<typeof consultationPlanReadinessSchema> | undefined> {
+  return readOptionalArtifact(path, consultationPlanReadinessSchema);
+}
+
+export async function readConsultationPlanReviewArtifact(
+  path: string | undefined,
+): Promise<z.infer<typeof consultationPlanReviewSchema> | undefined> {
+  return readOptionalArtifact(path, consultationPlanReviewSchema);
 }
 
 export function readClarifyFollowUpArtifactSync(

@@ -1,10 +1,8 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { getResearchBriefPath } from "../src/core/paths.js";
-import { consultationResearchBriefSchema } from "../src/domain/run.js";
 import { createInitializedProject } from "./helpers/consultations.js";
 import {
   createTimedOutPreflightAdapter,
@@ -16,7 +14,7 @@ import {
 registerConsultationsPreflightTempRootCleanup();
 
 describe("consultation preflight fallback policy", () => {
-  it("falls back to needs-clarification for vague low-contract tasks when runtime preflight times out", async () => {
+  it("does not invent clarification questions when runtime preflight times out", async () => {
     const cwd = await createInitializedProject();
     await mkdir(join(cwd, "dogfood-tasks"), { recursive: true });
     const taskPacket = await writePreflightTaskPacket({
@@ -52,17 +50,15 @@ describe("consultation preflight fallback policy", () => {
     });
 
     expect(result.preflight).toEqual({
-      decision: "needs-clarification",
+      decision: "proceed",
       confidence: "low",
       summary:
-        "Runtime preflight did not return a structured recommendation. The task still lacks a concrete target artifact or result contract for safe execution.",
+        "Runtime preflight did not return a structured recommendation. Proceed conservatively with the default consultation flow.",
       researchPosture: "repo-only",
-      clarificationQuestion:
-        "Which file or artifact should Oraculum update, and what concrete result should it produce?",
     });
   });
 
-  it("falls back to external-research-required for official current-version doc tasks when runtime preflight times out", async () => {
+  it("does not invent external-research questions when runtime preflight times out", async () => {
     const cwd = await createInitializedProject();
     await mkdir(join(cwd, "dogfood-tasks"), { recursive: true });
     const intent = [
@@ -90,21 +86,11 @@ describe("consultation preflight fallback policy", () => {
     });
 
     expect(result.preflight).toEqual({
-      decision: "external-research-required",
+      decision: "proceed",
       confidence: "low",
       summary:
-        "Runtime preflight did not return a structured recommendation. Official current-version documentation is still required before safe execution.",
-      researchPosture: "external-research-required",
-      researchQuestion:
-        "What do the official current-version docs say about the requested behavior or guidance?",
+        "Runtime preflight did not return a structured recommendation. Proceed conservatively with the default consultation flow.",
+      researchPosture: "repo-only",
     });
-    const researchBrief = consultationResearchBriefSchema.parse(
-      JSON.parse(
-        await readFile(getResearchBriefPath(cwd, "run_external_doc_timeout"), "utf8"),
-      ) as unknown,
-    );
-    expect(researchBrief.question).toBe(
-      "What do the official current-version docs say about the requested behavior or guidance?",
-    );
   });
 });

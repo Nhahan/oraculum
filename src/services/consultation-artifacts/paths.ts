@@ -44,6 +44,8 @@ export function buildConsultationArtifactPathCandidates(
     configPath: runPaths.configPath,
     consultationPlanPath: runPaths.consultationPlanPath,
     consultationPlanMarkdownPath: runPaths.consultationPlanMarkdownPath,
+    consultationPlanReadinessPath: runPaths.consultationPlanReadinessPath,
+    consultationPlanReviewPath: runPaths.consultationPlanReviewPath,
     preflightReadinessPath: runPaths.preflightReadinessPath,
     clarifyFollowUpPath: runPaths.clarifyFollowUpPath,
     researchBriefPath: runPaths.researchBriefPath,

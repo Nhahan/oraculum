@@ -7,10 +7,11 @@ import { describeRecommendedTaskResultLabel } from "../../domain/task.js";
 import { resolveConsultationArtifactsSync } from "../consultation-artifacts.js";
 import type { secondOpinionWinnerSelectionArtifactSchema } from "../finalist-judge.js";
 
+import { type ConsultationArchiveRecord, isInvalidConsultationRecord } from "./list.js";
 import { type ConsultationSurface, getSurfaceCommand, toDisplayPath } from "./shared.js";
 
 export function renderConsultationArchive(
-  manifests: RunManifest[],
+  records: ConsultationArchiveRecord[],
   options?: {
     surface?: ConsultationSurface;
     projectRoot?: string;
@@ -20,12 +21,21 @@ export function renderConsultationArchive(
   const consultCommand = getSurfaceCommand("consult");
   const verdictCommand = getSurfaceCommand("verdict");
 
-  if (manifests.length === 0) {
+  if (records.length === 0) {
     return `No consultations yet. Start with \`${consultCommand} ...\`.\n`;
   }
 
   const lines = ["Recent consultations:"];
-  for (const manifest of manifests) {
+  for (const record of records) {
+    if (isInvalidConsultationRecord(record)) {
+      lines.push(
+        `- ${record.id} | invalid consultation record | ${toArchiveDisplayPath(record.manifestPath, options?.projectRoot)} | ${record.diagnostic.message}`,
+        `  path: ${toArchiveDisplayPath(record.manifestPath, options?.projectRoot)}`,
+      );
+      continue;
+    }
+
+    const manifest = record;
     const resolvedArtifacts = options?.projectRoot
       ? resolveConsultationArtifactsSync(options.projectRoot, manifest.id, {
           hasExportedCandidate: manifest.candidates.some(
@@ -61,6 +71,10 @@ export function renderConsultationArchive(
   }
 
   return `${lines.join("\n")}\n`;
+}
+
+function toArchiveDisplayPath(path: string, projectRoot?: string): string {
+  return projectRoot ? toDisplayPath(projectRoot, path) : path;
 }
 
 function renderArchiveOutcomeSummary(

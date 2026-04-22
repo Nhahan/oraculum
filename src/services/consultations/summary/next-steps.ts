@@ -19,6 +19,15 @@ export function buildConsultationSummaryNextStepLines(
   const consultationPlanInputPath = pathState.consultationPlanSummaryPath
     ? toDisplayPath(projectRoot, pathState.consultationPlanSummaryPath)
     : undefined;
+  const planReadiness = resolvedArtifacts.consultationPlanReadiness;
+  const readyPlanForConsult =
+    Boolean(consultationPlanInputPath) &&
+    Boolean(resolvedArtifacts.consultationPlan?.readyForConsult) &&
+    Boolean(planReadiness?.readyForConsult) &&
+    planReadiness?.status !== "blocked" &&
+    planReadiness?.staleBasis !== true &&
+    (planReadiness?.missingOracleIds.length ?? 0) === 0 &&
+    (planReadiness?.unresolvedQuestions.length ?? 0) === 0;
 
   if (
     recommendedCandidateId &&
@@ -46,7 +55,8 @@ export function buildConsultationSummaryNextStepLines(
   } else if (
     manifest.status === "planned" &&
     status.outcomeType === "pending-execution" &&
-    consultationPlanInputPath
+    consultationPlanInputPath &&
+    readyPlanForConsult
   ) {
     lines.push(
       `- execute the persisted consultation plan: \`orc consult ${consultationPlanInputPath}\`.`,
@@ -56,10 +66,27 @@ export function buildConsultationSummaryNextStepLines(
         `- inspect the human-readable plan summary first: ${toDisplayPath(projectRoot, pathState.consultationPlanMarkdownSummaryPath)}.`,
       );
     }
+  } else if (
+    manifest.status === "planned" &&
+    status.outcomeType === "pending-execution" &&
+    consultationPlanInputPath &&
+    resolvedArtifacts.consultationPlanReadiness
+  ) {
+    lines.push(`- ${resolvedArtifacts.consultationPlanReadiness.nextAction}`);
+    if (pathState.consultationPlanReadinessSummaryPath) {
+      lines.push(
+        `- inspect the plan readiness artifact: ${toDisplayPath(projectRoot, pathState.consultationPlanReadinessSummaryPath)}.`,
+      );
+    }
+    if (pathState.consultationPlanReviewSummaryPath) {
+      lines.push(
+        `- inspect the plan review artifact: ${toDisplayPath(projectRoot, pathState.consultationPlanReviewSummaryPath)}.`,
+      );
+    }
   } else if (status.outcomeType === "needs-clarification") {
     const rerunCommand = pathState.consultationPlanSummaryPath
-      ? 'orc plan <task> --answer "<answer>"'
-      : 'orc consult <task> --answer "<answer>"';
+      ? 'orc plan "<task plus the answer>"'
+      : 'orc consult "<task plus the answer>"';
     if (resolvedArtifacts.clarifyFollowUp && pathState.clarifyFollowUpSummaryPath) {
       lines.push(
         `- inspect the persisted clarify follow-up: ${toDisplayPath(projectRoot, pathState.clarifyFollowUpSummaryPath)}.`,

@@ -9,16 +9,16 @@ import { buildConsultationSummaryDetailLines } from "./summary/details.js";
 import { buildConsultationSummaryEntryPathLines } from "./summary/entry-paths.js";
 import { buildConsultationSummaryNextStepLines } from "./summary/next-steps.js";
 import { buildConsultationSummaryPathState } from "./summary/paths.js";
-import type { ConsultationSummaryContext } from "./summary/types.js";
+import type { ConsultationArtifacts, ConsultationSummaryContext } from "./summary/types.js";
 
 export async function renderConsultationSummary(
   manifest: RunManifest,
   cwd: string,
   options?: {
+    resolvedArtifacts?: ConsultationArtifacts;
     surface?: ConsultationSurface;
   },
 ): Promise<string> {
-  void options?.surface;
   const store = new RunStore(cwd);
   const projectRoot = store.projectRoot;
   const runPaths = store.getRunPaths(manifest.id);
@@ -27,9 +27,13 @@ export async function renderConsultationSummary(
   const finalists = manifest.candidates.filter(
     (candidate) => candidate.status === "promoted" || candidate.status === "exported",
   );
-  const resolvedArtifacts = await resolveConsultationArtifacts(projectRoot, manifest.id, {
-    hasExportedCandidate: manifest.candidates.some((candidate) => candidate.status === "exported"),
-  });
+  const resolvedArtifacts =
+    options?.resolvedArtifacts ??
+    (await resolveConsultationArtifacts(projectRoot, manifest.id, {
+      hasExportedCandidate: manifest.candidates.some(
+        (candidate) => candidate.status === "exported",
+      ),
+    }));
   const status = buildSavedConsultationStatus(manifest, {
     comparisonReportAvailable: resolvedArtifacts.comparisonReportAvailable,
     crowningRecordAvailable: resolvedArtifacts.crowningRecordAvailable,
@@ -57,7 +61,7 @@ export async function renderConsultationSummary(
     finalists,
     hasExplicitResultIntent,
     manifest,
-    ...(options ? { options } : {}),
+    ...(options?.surface ? { options: { surface: options.surface } } : {}),
     projectRoot,
     ...(recommendedCandidateId ? { recommendedCandidateId } : {}),
     recommendedResultLabel,

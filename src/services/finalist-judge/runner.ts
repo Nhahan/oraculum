@@ -1,10 +1,11 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 
 import type { AgentAdapter, AgentJudgeRequest, AgentJudgeResult } from "../../adapters/types.js";
 import { agentJudgeResultSchema } from "../../adapters/types.js";
 import type { ConsultationProfileSelection } from "../../domain/profile.js";
 import type { ConsultationPlanArtifact } from "../../domain/run.js";
 import { materializedTaskPacketSchema } from "../../domain/task.js";
+import { writeTextFileAtomically } from "../project.js";
 
 import type { JudgableFinalists } from "./scorecards.js";
 
@@ -37,7 +38,7 @@ export async function runFinalistJudge(options: {
 }
 
 export async function writeJudgeWarning(resultPath: string, message: string): Promise<void> {
-  await writeFile(`${resultPath}.warning.txt`, `${message}\n`, "utf8");
+  await writeTextFileAtomically(`${resultPath}.warning.txt`, `${message}\n`);
 }
 
 export function canonicalizeSecondOpinionJudgeResult(

@@ -16,6 +16,12 @@ export function buildConsultationSummaryEntryPathLines(
     pathState.consultationPlanMarkdownSummaryPath
       ? `- consultation plan summary: ${toDisplayPath(projectRoot, pathState.consultationPlanMarkdownSummaryPath)}`
       : "- consultation plan summary: not available",
+    pathState.consultationPlanReadinessSummaryPath
+      ? `- plan readiness: ${toDisplayPath(projectRoot, pathState.consultationPlanReadinessSummaryPath)}`
+      : "- plan readiness: not available",
+    pathState.consultationPlanReviewSummaryPath
+      ? `- plan review: ${toDisplayPath(projectRoot, pathState.consultationPlanReviewSummaryPath)}`
+      : "- plan review: not available",
     pathState.preflightReadinessSummaryPath
       ? `- preflight readiness: ${toDisplayPath(projectRoot, pathState.preflightReadinessSummaryPath)}`
       : "- preflight readiness: not available",

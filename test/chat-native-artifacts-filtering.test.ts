@@ -17,6 +17,7 @@ import {
 } from "../src/core/paths.js";
 import { consultToolResponseSchema } from "../src/domain/chat-native.js";
 import { buildConsultationArtifacts } from "../src/services/chat-native.js";
+import { resolveConsultationArtifacts } from "../src/services/consultation-artifacts.js";
 import {
   createChatNativeTempRoot,
   registerChatNativeTempRootCleanup,
@@ -59,6 +60,23 @@ describe("chat-native consultation artifact filtering", () => {
     expect(parsed.winnerSelectionPath).toBeUndefined();
     expect(parsed.secondOpinionWinnerSelectionPath).toBeUndefined();
     expect(parsed.crowningRecordPath).toBeUndefined();
+
+    const state = await resolveConsultationArtifacts(projectRoot, consultationId);
+    expect(state.artifactDiagnostics.map((diagnostic) => diagnostic.kind)).toEqual([
+      "preflight-readiness",
+      "clarify-follow-up",
+      "research-brief",
+      "failure-analysis",
+      "profile-selection",
+      "finalist-comparison",
+      "winner-selection",
+      "winner-selection-second-opinion",
+      "crowning-record",
+    ]);
+    expect(state.artifactDiagnostics[0]).toMatchObject({
+      path: getPreflightReadinessPath(projectRoot, consultationId),
+      status: "invalid",
+    });
   });
 
   it("omits blank comparison markdown paths from MCP responses", async () => {
@@ -75,6 +93,26 @@ describe("chat-native consultation artifact filtering", () => {
     );
 
     expect(parsed.comparisonMarkdownPath).toBeUndefined();
+  });
+
+  it("reports unreadable machine-readable artifacts separately from invalid JSON", async () => {
+    const projectRoot = await createChatNativeTempRoot("oraculum-chat-native-unreadable-");
+    const consultationId = "run_20260409_unreadable";
+    const preflightReadinessPath = getPreflightReadinessPath(projectRoot, consultationId);
+
+    await mkdir(preflightReadinessPath, { recursive: true });
+
+    const state = await resolveConsultationArtifacts(projectRoot, consultationId);
+
+    expect(state.preflightReadinessPath).toBeUndefined();
+    expect(state.artifactDiagnostics).toEqual([
+      expect.objectContaining({
+        kind: "preflight-readiness",
+        path: preflightReadinessPath,
+        status: "invalid",
+        message: expect.stringContaining("Unreadable artifact:"),
+      }),
+    ]);
   });
 
   it("omits artifact paths that do not exist on disk", async () => {

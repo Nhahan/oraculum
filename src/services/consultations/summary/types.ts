@@ -30,6 +30,8 @@ export interface ConsultationSummaryPathState {
   clarifyFollowUpSummaryPath?: string;
   comparisonReportSummaryPath?: string;
   consultationPlanMarkdownSummaryPath?: string;
+  consultationPlanReadinessSummaryPath?: string;
+  consultationPlanReviewSummaryPath?: string;
   consultationPlanSummaryPath?: string;
   exportPlanPath: string;
   failureAnalysisSummaryPath?: string;

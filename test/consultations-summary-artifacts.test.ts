@@ -11,6 +11,7 @@ import {
   getWinnerSelectionPath,
 } from "../src/core/paths.js";
 import { consultationProfileSelectionArtifactSchema } from "../src/domain/profile.js";
+import type { ConsultationArtifacts } from "../src/services/consultations/summary/types.js";
 import { buildVerdictReview, renderConsultationSummary } from "../src/services/consultations.js";
 import {
   createConsultationCandidate,
@@ -114,6 +115,31 @@ describe("consultation summary artifact rendering", () => {
     );
   });
 
+  it("uses caller-provided artifact state when rendering summaries", async () => {
+    const cwd = await createInitializedProject();
+    const manifest = createManifest("completed");
+    const resolvedArtifacts: ConsultationArtifacts = {
+      consultationRoot: join(cwd, ".oraculum", "runs", manifest.id),
+      comparisonReportAvailable: false,
+      manualReviewRequired: false,
+      crowningRecordAvailable: false,
+      hasExportedCandidate: false,
+      artifactDiagnostics: [
+        {
+          kind: "profile-selection",
+          path: join(cwd, ".oraculum", "runs", manifest.id, "reports", "profile-selection.json"),
+          status: "invalid",
+          message: "Injected diagnostic from a preloaded artifact snapshot.",
+        },
+      ],
+    };
+
+    const summary = await renderConsultationSummary(manifest, cwd, { resolvedArtifacts });
+
+    expect(summary).toContain("Artifact diagnostics:");
+    expect(summary).toContain("Injected diagnostic from a preloaded artifact snapshot.");
+  });
+
   it("surfaces failure analysis artifacts in the consultation summary when investigation is recommended", async () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {
@@ -197,7 +223,7 @@ describe("consultation summary artifact rendering", () => {
     );
     expect(summary).toContain("- answer the preflight clarification question.");
     expect(summary).toContain(
-      '- rerun `orc consult <task> --answer "<answer>"` once the missing result contract and judging basis are explicit.',
+      '- rerun `orc consult "<task plus the answer>"` once the missing result contract and judging basis are explicit.',
     );
   });
 

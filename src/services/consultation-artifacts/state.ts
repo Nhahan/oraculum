@@ -22,6 +22,15 @@ export function buildConsultationArtifactState(
   const consultationPlan = filterArtifactForConsultationRun(loaded.consultationPlan, {
     expectedRunId,
   });
+  const consultationPlanReadiness = filterArtifactForConsultationRun(
+    loaded.consultationPlanReadiness,
+    {
+      expectedRunId,
+    },
+  );
+  const consultationPlanReview = filterArtifactForConsultationRun(loaded.consultationPlanReview, {
+    expectedRunId,
+  });
   const preflightReadiness = filterArtifactForConsultationRun(loaded.preflightReadiness, {
     expectedRunId,
   });
@@ -64,6 +73,15 @@ export function buildConsultationArtifactState(
     ...(loaded.consultationPlanMarkdownAvailable && paths.consultationPlanMarkdownPath
       ? { consultationPlanMarkdownPath: paths.consultationPlanMarkdownPath }
       : {}),
+    ...(consultationPlanReadiness && paths.consultationPlanReadinessPath
+      ? {
+          consultationPlanReadinessPath: paths.consultationPlanReadinessPath,
+          consultationPlanReadiness,
+        }
+      : {}),
+    ...(consultationPlanReview && paths.consultationPlanReviewPath
+      ? { consultationPlanReviewPath: paths.consultationPlanReviewPath, consultationPlanReview }
+      : {}),
     ...(preflightReadiness && paths.preflightReadinessPath
       ? { preflightReadinessPath: paths.preflightReadinessPath, preflightReadiness }
       : {}),
@@ -101,6 +119,7 @@ export function buildConsultationArtifactState(
     manualReviewRequired,
     crowningRecordAvailable: Boolean(crowningRecord),
     hasExportedCandidate,
+    artifactDiagnostics: loaded.artifactDiagnostics,
   };
 }
 
@@ -113,6 +132,12 @@ export function toAvailableConsultationArtifactPaths(
     ...(state.consultationPlanPath ? { consultationPlanPath: state.consultationPlanPath } : {}),
     ...(state.consultationPlanMarkdownPath
       ? { consultationPlanMarkdownPath: state.consultationPlanMarkdownPath }
+      : {}),
+    ...(state.consultationPlanReadinessPath
+      ? { consultationPlanReadinessPath: state.consultationPlanReadinessPath }
+      : {}),
+    ...(state.consultationPlanReviewPath
+      ? { consultationPlanReviewPath: state.consultationPlanReviewPath }
       : {}),
     ...(state.preflightReadinessPath
       ? { preflightReadinessPath: state.preflightReadinessPath }
