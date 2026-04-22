@@ -2,6 +2,7 @@ import { buildAdapterResultBase } from "../execution.js";
 import {
   buildCandidatePrompt,
   buildClarifyFollowUpPrompt,
+  buildPlanReviewPrompt,
   buildPreflightPrompt,
   buildProfileSelectionPrompt,
   buildWinnerSelectionPrompt,
@@ -12,6 +13,8 @@ import {
   type AgentClarifyFollowUpResult,
   type AgentJudgeRequest,
   type AgentJudgeResult,
+  type AgentPlanReviewRequest,
+  type AgentPlanReviewResult,
   type AgentPreflightRequest,
   type AgentPreflightResult,
   type AgentProfileRequest,
@@ -20,12 +23,14 @@ import {
   type AgentRunResult,
   agentClarifyFollowUpResultSchema,
   agentJudgeResultSchema,
+  agentPlanReviewResultSchema,
   agentPreflightResultSchema,
   agentProfileResultSchema,
   agentRunResultSchema,
 } from "../types.js";
 import {
   extractCodexClarifyFollowUpRecommendation,
+  extractCodexPlanReviewRecommendation,
   extractCodexPreflightRecommendation,
   extractCodexProfileRecommendation,
   extractCodexRecommendation,
@@ -34,6 +39,7 @@ import {
 import { executeCodexInteraction } from "./runtime.js";
 import {
   buildCodexClarifyFollowUpJsonSchema,
+  buildCodexPlanReviewJsonSchema,
   buildCodexPreflightJsonSchema,
   buildCodexProfileRecommendationJsonSchema,
   buildCodexWinnerRecommendationSchema,
@@ -156,6 +162,24 @@ export class CodexAdapter implements AgentAdapter {
       prompt: buildProfileSelectionPrompt(request),
       request,
       resultSchema: agentProfileResultSchema,
+    });
+  }
+
+  async recommendPlanReview(request: AgentPlanReviewRequest): Promise<AgentPlanReviewResult> {
+    return this.runRecommendation({
+      fallbackSummary: "Codex plan review finished.",
+      filenames: {
+        finalMessage: "plan-review.final-message.txt",
+        prompt: "plan-review.prompt.txt",
+        schema: "plan-review.schema.json",
+        stderr: "plan-review.stderr.txt",
+        stdout: "plan-review.stdout.jsonl",
+      },
+      outputParser: extractCodexPlanReviewRecommendation,
+      outputSchema: buildCodexPlanReviewJsonSchema(),
+      prompt: buildPlanReviewPrompt(request),
+      request,
+      resultSchema: agentPlanReviewResultSchema,
     });
   }
 

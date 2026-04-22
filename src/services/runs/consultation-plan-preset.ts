@@ -58,7 +58,7 @@ function resolveConsultationPlanCandidateCount(
     requestedCandidateCount !== consultationPlan.candidateCount
   ) {
     throw new OraculumError(
-      `Persisted consultation plan "${consultationPlan.runId}" binds candidateCount=${consultationPlan.candidateCount}; rerun the plan instead of overriding --candidates to ${requestedCandidateCount}.`,
+      `Persisted consultation plan "${consultationPlan.runId}" binds candidateCount=${consultationPlan.candidateCount}; rerun the plan after changing candidate-count config instead of overriding it to ${requestedCandidateCount}.`,
     );
   }
 

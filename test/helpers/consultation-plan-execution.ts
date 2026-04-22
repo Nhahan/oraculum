@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
 
-import { getAdvancedConfigPath } from "../../src/core/paths.js";
+import { getAdvancedConfigPath, getConsultationPlanReadinessPath } from "../../src/core/paths.js";
+import { consultationPlanReadinessSchema } from "../../src/domain/run.js";
 import { createTempRootHarness } from "./fs.js";
 
 const tempRootHarness = createTempRootHarness("oraculum-consultation-plan-");
@@ -53,4 +54,43 @@ export function createOracle(options: {
     enforcement: "hard",
     confidence: "high",
   };
+}
+
+export async function writePlanReadiness(
+  cwd: string,
+  runId: string,
+  overrides: Partial<{
+    status: "clear" | "issues" | "blocked";
+    readyForConsult: boolean;
+    blockers: string[];
+    warnings: string[];
+    staleBasis: boolean;
+    missingOracleIds: string[];
+    unresolvedQuestions: string[];
+    reviewStatus: "not-run" | "clear" | "issues" | "blocked";
+    nextAction: string;
+  }> = {},
+): Promise<void> {
+  await writeFile(
+    getConsultationPlanReadinessPath(cwd, runId),
+    `${JSON.stringify(
+      consultationPlanReadinessSchema.parse({
+        runId,
+        status: overrides.status ?? "clear",
+        readyForConsult: overrides.readyForConsult ?? true,
+        blockers: overrides.blockers ?? [],
+        warnings: overrides.warnings ?? [],
+        staleBasis: overrides.staleBasis ?? false,
+        missingOracleIds: overrides.missingOracleIds ?? [],
+        unresolvedQuestions: overrides.unresolvedQuestions ?? [],
+        reviewStatus: overrides.reviewStatus ?? "not-run",
+        nextAction:
+          overrides.nextAction ??
+          `Execute the planned consultation: \`orc consult .oraculum/runs/${runId}/reports/consultation-plan.json\`.`,
+      }),
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
 }

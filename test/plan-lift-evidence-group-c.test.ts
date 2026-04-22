@@ -39,15 +39,15 @@ definePlanLiftEvidenceSuite(
       expect(scenario?.planned.executedRepoOracleIds).toContain("release-rollback-impact");
     });
 
-    it("keeps package-script fallback lift for the staged release bundle scenario", () => {
+    it("blocks package-script fallback crown for the staged release bundle scenario", () => {
       const scenario = findScenario("package-script-fallback-stage-guard");
 
       expect(scenario).toBeDefined();
-      expect(scenario?.classification).toBe("lift");
+      expect(scenario?.classification).toBe("invalid");
       expect(scenario?.direct.winner?.source).toBe("fallback-policy");
       expect(scenario?.planned.winner?.source).toBe("fallback-policy");
-      expect(scenario?.direct.quality.score).toBe(1);
-      expect(scenario?.planned.quality.score).toBe(3);
+      expect(scenario?.direct.crownError).toContain("fallback-policy");
+      expect(scenario?.planned.crownError).toContain("fallback-policy");
       expect(scenario?.direct.executedRepoOracleIds).toContain("workspace-session-test");
       expect(scenario?.planned.executedRepoOracleIds).toContain("workspace-session-test");
       expect(scenario?.direct.executedRepoOracleIds).toContain("release-rollback-impact");
@@ -71,4 +71,5 @@ definePlanLiftEvidenceSuite(
       expect(scenario?.planned.repairCounts?.["cand-01"]).toBe(1);
     });
   },
+  { minimumLift: baselineScenarioGroupC.length - 1 },
 );

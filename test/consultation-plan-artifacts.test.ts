@@ -10,6 +10,7 @@ import {
   createOracle,
   createTempProject,
   writeAdvancedConfig,
+  writePlanReadiness,
 } from "./helpers/consultation-plan-execution.js";
 
 describe("consultation plan execution presets", () => {
@@ -67,8 +68,24 @@ describe("consultation plan execution presets", () => {
       "consultation-plan.md",
     );
     const planMarkdown = await readFile(planMarkdownPath, "utf8");
+    const planReadinessPath = join(
+      cwd,
+      ".oraculum",
+      "runs",
+      planned.id,
+      "reports",
+      "plan-readiness.json",
+    );
+    const planReadiness = JSON.parse(await readFile(planReadinessPath, "utf8")) as {
+      readyForConsult: boolean;
+      status: string;
+    };
 
     expect(planArtifact.mode).toBe("standard");
+    expect(planReadiness).toMatchObject({
+      readyForConsult: true,
+      status: "clear",
+    });
     expect(planArtifact.repoBasis.projectRoot).toBe(cwd);
     expect(planArtifact.repoBasis.signalFingerprint).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(planArtifact.workstreams).toEqual([
@@ -261,6 +278,7 @@ describe("consultation plan execution presets", () => {
       )}\n`,
       "utf8",
     );
+    await writePlanReadiness(cwd, "run_seed");
 
     const planned = await planRun({
       cwd,
@@ -302,5 +320,151 @@ describe("consultation plan execution presets", () => {
     ]);
     expect(savedConfig.rounds.map((round) => round.id)).toEqual(["fast", "impact"]);
     expect(savedConfig.oracles.map((oracle) => oracle.id)).toEqual(["lint-fast", "auth-impact"]);
+  });
+
+  it("replays run-local consultation config for auto-profile plan oracles", async () => {
+    const cwd = await createTempProject();
+    const taskPath = join(cwd, "tasks", "session.md");
+    const reportsDir = join(cwd, ".oraculum", "runs", "run_profile_plan", "reports");
+    const planPath = join(reportsDir, "consultation-plan.json");
+    const planConfigPath = join(reportsDir, "consultation-config.json");
+
+    await initializeProject({ cwd, force: false });
+    await mkdir(join(cwd, "tasks"), { recursive: true });
+    await mkdir(reportsDir, { recursive: true });
+    await writeFile(taskPath, "# Preserve session\nKeep login state stable.\n", "utf8");
+    await writeFile(
+      planConfigPath,
+      `${JSON.stringify(
+        projectConfigSchema.parse({
+          version: 1,
+          defaultAgent: "codex",
+          adapters: ["codex", "claude-code"],
+          defaultCandidates: 2,
+          strategies: [
+            {
+              id: "minimal-change",
+              label: "Minimal Change",
+              description: "Keep the diff small.",
+            },
+            {
+              id: "safety-first",
+              label: "Safety First",
+              description: "Prefer conservative edits.",
+            },
+          ],
+          rounds: [
+            {
+              id: "deep",
+              label: "Deep",
+              description: "Expensive checks.",
+            },
+          ],
+          oracles: [
+            createOracle({
+              id: "full-suite-deep",
+              roundId: "deep",
+              command: process.execPath,
+              args: ["-e", "process.exit(0)"],
+              invariant: "full suite passes",
+            }),
+          ],
+          repair: {
+            enabled: true,
+            maxAttemptsPerRound: 1,
+          },
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      planPath,
+      `${JSON.stringify(
+        consultationPlanArtifactSchema.parse({
+          runId: "run_profile_plan",
+          createdAt: "2026-04-15T00:00:00.000Z",
+          readyForConsult: true,
+          recommendedNextAction:
+            "Execute the planned consultation: `orc consult .oraculum/runs/run_profile_plan/reports/consultation-plan.json`.",
+          intendedResult: "recommended survivor",
+          decisionDrivers: ["Validation posture: library"],
+          openQuestions: [],
+          task: {
+            id: "session",
+            title: "Preserve session",
+            intent: "Keep login state stable.",
+            nonGoals: [],
+            acceptanceCriteria: [],
+            risks: [],
+            oracleHints: [],
+            strategyHints: [],
+            contextFiles: [taskPath],
+            source: {
+              kind: "task-note",
+              path: taskPath,
+            },
+          },
+          preflight: {
+            decision: "proceed",
+            confidence: "high",
+            summary: "Proceed with the persisted contract.",
+            researchPosture: "repo-only",
+          },
+          profileSelection: {
+            validationProfileId: "library",
+            confidence: "high",
+            source: "llm-recommendation",
+            validationSummary: "Use the generated full-suite oracle.",
+            candidateCount: 2,
+            strategyIds: ["minimal-change", "safety-first"],
+            oracleIds: ["full-suite-deep"],
+            validationGaps: [],
+            validationSignals: ["saved profile oracle"],
+          },
+          candidateCount: 2,
+          plannedStrategies: [
+            {
+              id: "minimal-change",
+              label: "Minimal Change",
+            },
+            {
+              id: "safety-first",
+              label: "Safety First",
+            },
+          ],
+          oracleIds: ["full-suite-deep"],
+          roundOrder: [
+            {
+              id: "deep",
+              label: "Deep",
+            },
+          ],
+        }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writePlanReadiness(cwd, "run_profile_plan");
+
+    const planned = await planRun({
+      cwd,
+      taskInput: planPath,
+      agent: "codex",
+    });
+
+    expect(planned.rounds.map((round) => round.id)).toEqual(["deep"]);
+    expect(planned.candidateCount).toBe(2);
+    expect(planned.configPath).toBeDefined();
+    const { configPath } = planned;
+    if (!configPath) {
+      throw new Error("Expected planRun() to persist a config path.");
+    }
+    const savedConfig = projectConfigSchema.parse(
+      JSON.parse(await readFile(configPath, "utf8")) as unknown,
+    );
+    expect(savedConfig.oracles.map((oracle) => oracle.id)).toEqual(["full-suite-deep"]);
   });
 });

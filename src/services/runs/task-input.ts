@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 
 import { OraculumError } from "../../core/errors.js";
 import { getGeneratedTasksDir } from "../../core/paths.js";
-import { pathExists } from "../project.js";
+import { pathExists, writeTextFileAtomically } from "../project.js";
 
 export async function materializeTaskInput(
   projectRoot: string,
@@ -30,11 +29,9 @@ export async function materializeTaskInput(
   }
 
   const generatedTasksDir = getGeneratedTasksDir(projectRoot);
-  await mkdir(generatedTasksDir, { recursive: true });
-
   const inlineTaskId = createInlineTaskId(normalized);
   const inlineTaskPath = resolve(generatedTasksDir, `${inlineTaskId}.md`);
-  await writeFile(inlineTaskPath, buildInlineTaskNote(normalized), "utf8");
+  await writeTextFileAtomically(inlineTaskPath, buildInlineTaskNote(normalized));
   return inlineTaskPath;
 }
 

@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 
 import { createAgentAdapter } from "../../adapters/index.js";
 import { OraculumError } from "../../core/errors.js";
 import { resolveProjectRoot } from "../../core/paths.js";
-import type { Adapter, ProjectConfig } from "../../domain/config.js";
+import { type Adapter, type ProjectConfig, projectConfigSchema } from "../../domain/config.js";
 import { toCanonicalConsultationProfileSelection } from "../../domain/profile.js";
 import {
   buildBlockedPreflightOutcome,
@@ -24,6 +25,9 @@ import { recommendConsultationProfile } from "../consultation-profile.js";
 import { loadProjectConfigLayers, pathExists, writeJsonFile } from "../project.js";
 import { RunStore } from "../run-store.js";
 import { loadTaskPacket, readConsultationPlanArtifact } from "../task-packets.js";
+import { buildConsultationPlanArtifact } from "./consultation-plan-artifacts/build.js";
+import { recommendConsultationPlanReview } from "./consultation-plan-artifacts/review.js";
+import { assertConsultationPlanReadyForConsult } from "./consultation-plan-artifacts/validation.js";
 import { writeConsultationPlanArtifacts } from "./consultation-plan-artifacts.js";
 import { applyConsultationPlanPreset } from "./consultation-plan-preset.js";
 import { selectStrategies } from "./strategy-selection.js";
@@ -35,6 +39,7 @@ interface PlanRunOptions {
   agent?: Adapter;
   candidates?: number;
   clarificationAnswer?: string;
+  deliberate?: boolean;
   requirePlanningClarification?: boolean;
   writeConsultationPlanArtifacts?: boolean;
   preflight?: {
@@ -73,7 +78,16 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
     options.clarificationAnswer,
   );
   const consultationPlan = await readConsultationPlanArtifact(resolvedTaskPath);
-  let config = configLayers.config;
+  let config = await loadConsultationPlanBaseConfig(configLayers.config, resolvedTaskPath, {
+    consultationPlanFound: Boolean(consultationPlan),
+  });
+  if (consultationPlan) {
+    await assertConsultationPlanReadyForConsult({
+      config,
+      consultationPlan,
+      planPath: resolvedTaskPath,
+    });
+  }
   const agent = options.agent ?? config.defaultAgent;
   if (!config.adapters.includes(agent)) {
     throw new OraculumError(`Agent "${agent}" is not enabled in the project config.`);
@@ -88,7 +102,7 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
   const adapterOptions = buildAdapterFactoryOptions(options.preflight, options.autoProfile);
 
   const adapter =
-    options.preflight || options.autoProfile
+    options.preflight || options.autoProfile || options.deliberate
       ? createAgentAdapter(agent, adapterOptions)
       : undefined;
 
@@ -146,6 +160,30 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
     runManifestSchema.parse(manifest);
     await store.writeRunManifest(manifest);
     if (options.writeConsultationPlanArtifacts) {
+      const planReview =
+        options.deliberate && adapter
+          ? await recommendConsultationPlanReview({
+              adapter,
+              consultationPlan: buildConsultationPlanArtifact({
+                projectRoot,
+                runId,
+                createdAt,
+                taskPacket,
+                candidateCount: 0,
+                strategies: [],
+                config,
+                deliberate: true,
+                preflight,
+                ...(recommendedPreflight?.clarifyFollowUp
+                  ? { clarifyFollowUp: recommendedPreflight.clarifyFollowUp }
+                  : {}),
+              }),
+              createdAt,
+              projectRoot,
+              reportsDir,
+              runId,
+            })
+          : undefined;
       await writeConsultationPlanArtifacts({
         projectRoot,
         runId,
@@ -154,10 +192,12 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
         candidateCount: 0,
         strategies: [],
         config,
+        ...(options.deliberate ? { deliberate: true } : {}),
         preflight,
         ...(recommendedPreflight?.clarifyFollowUp
           ? { clarifyFollowUp: recommendedPreflight.clarifyFollowUp }
           : {}),
+        ...(planReview ? { planReview } : {}),
       });
     }
     return manifest;
@@ -288,6 +328,33 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
       : {}),
   });
   if (options.writeConsultationPlanArtifacts) {
+    const planReview =
+      options.deliberate && adapter
+        ? await recommendConsultationPlanReview({
+            adapter,
+            consultationPlan: buildConsultationPlanArtifact({
+              projectRoot,
+              runId,
+              createdAt,
+              taskPacket,
+              candidateCount,
+              strategies,
+              config,
+              deliberate: true,
+              ...(preflight ? { preflight } : {}),
+              ...(recommendedPreflight?.clarifyFollowUp
+                ? { clarifyFollowUp: recommendedPreflight.clarifyFollowUp }
+                : {}),
+              ...(profileSelection
+                ? { profileSelection: toCanonicalConsultationProfileSelection(profileSelection) }
+                : {}),
+            }),
+            createdAt,
+            projectRoot,
+            reportsDir,
+            runId,
+          })
+        : undefined;
     await writeConsultationPlanArtifacts({
       projectRoot,
       runId,
@@ -296,10 +363,12 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
       candidateCount,
       strategies,
       config,
+      ...(options.deliberate ? { deliberate: true } : {}),
       ...(preflight ? { preflight } : {}),
       ...(recommendedPreflight?.clarifyFollowUp
         ? { clarifyFollowUp: recommendedPreflight.clarifyFollowUp }
         : {}),
+      ...(planReview ? { planReview } : {}),
       ...(profileSelection
         ? { profileSelection: toCanonicalConsultationProfileSelection(profileSelection) }
         : {}),
@@ -336,6 +405,23 @@ function buildPendingRounds(config: ProjectConfig): RunRound[] {
     survivorCount: 0,
     eliminatedCount: 0,
   }));
+}
+
+async function loadConsultationPlanBaseConfig(
+  fallbackConfig: ProjectConfig,
+  planPath: string,
+  options: { consultationPlanFound: boolean },
+): Promise<ProjectConfig> {
+  if (!options.consultationPlanFound) {
+    return fallbackConfig;
+  }
+
+  const configPath = join(dirname(planPath), "consultation-config.json");
+  if (!(await pathExists(configPath))) {
+    return fallbackConfig;
+  }
+
+  return projectConfigSchema.parse(JSON.parse(await readFile(configPath, "utf8")) as unknown);
 }
 
 function createRunId(): string {

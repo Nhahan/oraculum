@@ -8,6 +8,7 @@ import {
   type AgentJudgeRecommendation,
   agentClarifyFollowUpResultSchema,
   agentJudgeRecommendationSchema,
+  agentPlanReviewResultSchema,
 } from "../types.js";
 
 export function summarizeClaudeOutput(stdout: string, fallback: string): string {
@@ -151,6 +152,33 @@ export function extractClaudeClarifyFollowUpRecommendation(stdout: string) {
           "missingJudgingBasis" in nested
         ) {
           return agentClarifyFollowUpResultSchema.shape.recommendation.parse(nested);
+        }
+      }
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
+export function extractClaudePlanReviewRecommendation(stdout: string) {
+  const trimmed = stdout.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    if ("status" in parsed && "summary" in parsed && "nextAction" in parsed) {
+      return agentPlanReviewResultSchema.shape.recommendation.parse(parsed);
+    }
+
+    for (const value of nestedObjects(parsed)) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const nested = value as Record<string, unknown>;
+        if ("status" in nested && "summary" in nested && "nextAction" in nested) {
+          return agentPlanReviewResultSchema.shape.recommendation.parse(nested);
         }
       }
     }

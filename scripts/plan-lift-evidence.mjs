@@ -13,7 +13,6 @@ const distMcpToolsPath = join(repoRoot, "dist", "services", "mcp-tools.js");
 const distPlanLiftHarnessPath = join(repoRoot, "dist", "services", "plan-lift-harness.js");
 const distRunDomainPath = join(repoRoot, "dist", "domain", "run.js");
 const keepEvidence = process.env.ORACULUM_KEEP_EVIDENCE === "1";
-const routeTimeoutMs = 90_000;
 
 async function loadBuiltRuntime() {
   if (!existsSync(distMcpToolsPath)) {
@@ -191,9 +190,6 @@ async function runRoute(root, scenario, mode, mcpTools, runDomain) {
     const consult = await mcpTools.runConsultTool({
       cwd: root,
       taskInput: taskPath,
-      agent: "codex",
-      candidates: 2,
-      timeoutMs: routeTimeoutMs,
     });
     let crownVerified = false;
     let crownError;
@@ -225,17 +221,11 @@ async function runRoute(root, scenario, mode, mcpTools, runDomain) {
   const plan = await mcpTools.runPlanTool({
     cwd: root,
     taskInput: taskPath,
-    agent: "codex",
-    candidates: 2,
-    timeoutMs: routeTimeoutMs,
   });
   await promoteScenarioPlanIfNeeded(scenario, plan.artifacts.consultationPlanPath, runDomain);
   const consult = await mcpTools.runConsultTool({
     cwd: root,
     taskInput: plan.artifacts.consultationPlanPath,
-    agent: "codex",
-    candidates: 2,
-    timeoutMs: routeTimeoutMs,
   });
   let crownVerified = false;
   let crownError;

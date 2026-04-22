@@ -14,36 +14,15 @@ export function materializeConsultationPlanTaskPacket(
     consultationPlan.task.source.originPath ?? consultationPlan.task.source.path,
   );
   const planningContext = [
-    "Continue the original task using the persisted consultation plan.",
+    "Execute the persisted consultation plan contract.",
     `Planned from consultation: ${consultationPlan.runId}`,
     `Plan readiness: ${consultationPlan.readyForConsult ? "ready for consult" : "address open questions before consult"}`,
+    `Task: ${consultationPlan.task.title}`,
     `Intended result: ${consultationPlan.intendedResult}`,
   ];
 
   if (consultationPlan.mode !== "standard") {
     planningContext.push(`Plan mode: ${consultationPlan.mode}`);
-  }
-
-  if (consultationPlan.preflight) {
-    planningContext.push(
-      `Preflight decision: ${consultationPlan.preflight.decision}`,
-      `Preflight summary: ${consultationPlan.preflight.summary}`,
-    );
-    if (consultationPlan.preflight.clarificationQuestion) {
-      planningContext.push(
-        `Clarification question: ${consultationPlan.preflight.clarificationQuestion}`,
-      );
-    }
-    if (consultationPlan.preflight.researchQuestion) {
-      planningContext.push(`Research question: ${consultationPlan.preflight.researchQuestion}`);
-    }
-  }
-
-  if (consultationPlan.decisionDrivers.length > 0) {
-    planningContext.push(
-      "Decision drivers:",
-      ...consultationPlan.decisionDrivers.map((item) => `- ${item}`),
-    );
   }
 
   if (consultationPlan.plannedStrategies.length > 0) {
@@ -84,11 +63,10 @@ export function materializeConsultationPlanTaskPacket(
   }
 
   appendConsultationPlanExecutionGraphContext(planningContext, consultationPlan);
-  planningContext.push(`Recommended next action: ${consultationPlan.recommendedNextAction}`);
 
   return materializedTaskPacketSchema.parse({
     ...consultationPlan.task,
-    intent: `${consultationPlan.task.intent}\n\nConsultation plan context:\n${planningContext.join("\n")}`,
+    intent: planningContext.join("\n"),
     nonGoals: dedupeStrings([
       ...consultationPlan.task.nonGoals,
       ...consultationPlan.protectedPaths.map((targetPath) => `Do not modify ${targetPath}.`),
@@ -107,7 +85,7 @@ export function materializeConsultationPlanTaskPacket(
         (strategy) => `Planned strategy: ${strategy.label} (${strategy.id})`,
       ),
     ]),
-    contextFiles: dedupeStrings([...consultationPlan.task.contextFiles, originSourcePath]),
+    contextFiles: dedupeStrings(consultationPlan.task.contextFiles),
     source: {
       kind: "consultation-plan",
       path: taskPath,

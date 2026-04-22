@@ -3,6 +3,7 @@ import { buildAdapterResultBase } from "../execution.js";
 import {
   buildCandidatePrompt,
   buildClarifyFollowUpPrompt,
+  buildPlanReviewPrompt,
   buildPreflightPrompt,
   buildProfileSelectionPrompt,
   buildWinnerSelectionPrompt,
@@ -13,6 +14,8 @@ import {
   type AgentClarifyFollowUpResult,
   type AgentJudgeRequest,
   type AgentJudgeResult,
+  type AgentPlanReviewRequest,
+  type AgentPlanReviewResult,
   type AgentPreflightRequest,
   type AgentPreflightResult,
   type AgentProfileRequest,
@@ -21,14 +24,17 @@ import {
   type AgentRunResult,
   agentClarifyFollowUpResultSchema,
   agentJudgeResultSchema,
+  agentPlanReviewResultSchema,
   agentPreflightResultSchema,
   agentProfileResultSchema,
   agentRunResultSchema,
   buildAgentClarifyFollowUpJsonSchema,
+  buildAgentPlanReviewJsonSchema,
   buildAgentPreflightJsonSchema,
 } from "../types.js";
 import {
   extractClaudeClarifyFollowUpRecommendation,
+  extractClaudePlanReviewRecommendation,
   extractClaudePreflightRecommendation,
   extractClaudeProfileRecommendation,
   extractClaudeRecommendation,
@@ -145,6 +151,22 @@ export class ClaudeAdapter implements AgentAdapter {
       prompt: buildProfileSelectionPrompt(request),
       request,
       resultSchema: agentProfileResultSchema,
+    });
+  }
+
+  async recommendPlanReview(request: AgentPlanReviewRequest): Promise<AgentPlanReviewResult> {
+    return this.runRecommendation({
+      fallbackSummary: "Claude plan review finished.",
+      filenames: {
+        prompt: "plan-review.prompt.txt",
+        stderr: "plan-review.stderr.txt",
+        stdout: "plan-review.stdout.txt",
+      },
+      jsonSchema: buildAgentPlanReviewJsonSchema(),
+      outputParser: extractClaudePlanReviewRecommendation,
+      prompt: buildPlanReviewPrompt(request),
+      request,
+      resultSchema: agentPlanReviewResultSchema,
     });
   }
 

@@ -25,6 +25,17 @@ export function buildPreflightPrompt(request: AgentPreflightRequest): string {
     request.taskPacket.intent,
   ];
 
+  if (request.requirePlanningClarification) {
+    sections.push(
+      "",
+      "Planning lane contract:",
+      "- This readiness check is for `orc plan`, not direct candidate execution.",
+      "- Decide semantically whether the request is clear enough to create a useful, executable consultation plan.",
+      "- Prefer needs-clarification when the plan would lack a concrete result contract, scope boundary, or judging basis.",
+      "- Ask exactly one concise clarification question when one operator answer would make the plan more faithful to intent.",
+    );
+  }
+
   appendResultIntentContext(sections, request.taskPacket);
   appendArtifactIntentContext(sections, request.taskPacket);
   appendTaskSourceContext(sections, request.taskPacket);

@@ -1,6 +1,10 @@
 import type { ProjectConfig, Strategy } from "../../../domain/config.js";
 import type { ConsultationProfileSelection } from "../../../domain/profile.js";
-import type { ConsultationClarifyFollowUp, RunManifest } from "../../../domain/run.js";
+import type {
+  ConsultationClarifyFollowUp,
+  ConsultationPlanReview,
+  RunManifest,
+} from "../../../domain/run.js";
 import type { MaterializedTaskPacket } from "../../../domain/task.js";
 
 export interface ConsultationPlanArtifactWriterOptions {
@@ -11,7 +15,9 @@ export interface ConsultationPlanArtifactWriterOptions {
   candidateCount: number;
   strategies: Array<Pick<Strategy, "id" | "label">>;
   config: ProjectConfig;
+  deliberate?: boolean;
   preflight?: RunManifest["preflight"];
   clarifyFollowUp?: ConsultationClarifyFollowUp;
+  planReview?: ConsultationPlanReview;
   profileSelection?: ConsultationProfileSelection;
 }

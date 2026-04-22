@@ -8,7 +8,11 @@ import { candidateScorecardSchema, consultationPlanArtifactSchema } from "../src
 import { executeRun } from "../src/services/execution.js";
 import { initializeProject } from "../src/services/project.js";
 import { planRun } from "../src/services/runs.js";
-import { createTempProject, writeAdvancedConfig } from "./helpers/consultation-plan-execution.js";
+import {
+  createTempProject,
+  writeAdvancedConfig,
+  writePlanReadiness,
+} from "./helpers/consultation-plan-execution.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
 import { EXECUTION_TEST_TIMEOUT_MS, FAKE_AGENT_TIMEOUT_MS } from "./helpers/integration.js";
 
@@ -130,6 +134,7 @@ describe("consultation plan execution presets", () => {
         )}\n`,
         "utf8",
       );
+      await writePlanReadiness(cwd, "run_complex_scorecard");
 
       const fakeCodex = await writeNodeBinary(
         cwd,
@@ -326,6 +331,7 @@ if (out) {
         )}\n`,
         "utf8",
       );
+      await writePlanReadiness(cwd, "run_complex_miss");
 
       const fakeCodex = await writeNodeBinary(
         cwd,
@@ -510,6 +516,7 @@ if (out) {
       )}\n`,
       "utf8",
     );
+    await writePlanReadiness(cwd, "run_complex_invalid");
 
     await expect(
       planRun({
@@ -632,6 +639,7 @@ if (out) {
       )}\n`,
       "utf8",
     );
+    await writePlanReadiness(cwd, "run_complex_cycle");
 
     await expect(
       planRun({

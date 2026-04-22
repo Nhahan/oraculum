@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   getConsultationPlanPath,
+  getConsultationPlanReadinessPath,
+  getConsultationPlanReviewPath,
   getPreflightReadinessPath,
   getRunManifestPath,
   resolveProjectRoot,
@@ -12,11 +14,16 @@ import {
 import {
   buildSavedConsultationStatus,
   consultationPlanArtifactSchema,
+  consultationPlanReadinessSchema,
+  consultationPlanReviewSchema,
   runManifestSchema,
 } from "../src/domain/run.js";
 import { materializedTaskPacketSchema } from "../src/domain/task.js";
+import { renderConsultationSummary } from "../src/services/consultations.js";
 import { loadProjectConfig } from "../src/services/project.js";
 import { planRun, readLatestExportableRunId, readLatestRunId } from "../src/services/runs.js";
+import { writeNodeBinary } from "./helpers/fake-binary.js";
+import { FAKE_AGENT_TIMEOUT_MS } from "./helpers/integration.js";
 import { normalizePathForAssertion } from "./helpers/platform.js";
 import {
   createInitializedProject,
@@ -166,15 +173,37 @@ describe("project flows planning", () => {
 
   it("asks for a clarification before writing a runnable plan for underspecified work", async () => {
     const cwd = await createInitializedProject();
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    '{"decision":"needs-clarification","confidence":"medium","summary":"The plan lacks a result contract and judging basis.","researchPosture":"repo-only","clarificationQuestion":"Which user-visible flow, affected files, and acceptance checks should the plan bind?"}',
+    "utf8",
+  );
+}
+`,
+    );
 
     const manifest = await planRun({
       cwd,
       taskInput: "add authentication",
+      agent: "codex",
       candidates: 1,
       requirePlanningClarification: true,
       writeConsultationPlanArtifacts: true,
       preflight: {
-        allowRuntime: false,
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
       },
     });
 
@@ -184,7 +213,7 @@ describe("project flows planning", () => {
     expect(manifest.preflight).toMatchObject({
       decision: "needs-clarification",
       clarificationQuestion:
-        "Which auth or session flow should the plan target, what concrete behavior should change, and what is out of scope?",
+        "Which user-visible flow, affected files, and acceptance checks should the plan bind?",
     });
 
     const planArtifact = consultationPlanArtifactSchema.parse(
@@ -192,9 +221,15 @@ describe("project flows planning", () => {
     );
     expect(planArtifact.readyForConsult).toBe(false);
     expect(planArtifact.openQuestions).toContain(
-      "Which auth or session flow should the plan target, what concrete behavior should change, and what is out of scope?",
+      "Which user-visible flow, affected files, and acceptance checks should the plan bind?",
     );
-    expect(planArtifact.recommendedNextAction).toContain("orc plan <task> --answer");
+    expect(planArtifact.recommendedNextAction).toContain('orc plan "<task plus the answer>"');
+    await expect(
+      readFile(
+        join(cwd, ".oraculum", "runs", manifest.id, "reports", "preflight-judge.prompt.txt"),
+        "utf8",
+      ),
+    ).resolves.toContain("Planning lane contract:");
 
     const readiness = JSON.parse(
       await readFile(getPreflightReadinessPath(cwd, manifest.id), "utf8"),
@@ -204,7 +239,7 @@ describe("project flows planning", () => {
     expect(readiness.recommendation).toMatchObject({
       decision: "needs-clarification",
       clarificationQuestion:
-        "Which auth or session flow should the plan target, what concrete behavior should change, and what is out of scope?",
+        "Which user-visible flow, affected files, and acceptance checks should the plan bind?",
     });
   });
 
@@ -239,6 +274,117 @@ describe("project flows planning", () => {
     expect(taskPacket.acceptanceCriteria).toContain(
       "Plan must honor the operator clarification: Email/password login only; protect /dashboard; keep OAuth out of scope.",
     );
+  });
+
+  it("writes a ready plan-readiness artifact when a clarification answer completes a plan contract", async () => {
+    const cwd = await createInitializedProject();
+
+    const manifest = await planRun({
+      cwd,
+      taskInput: "add authentication",
+      clarificationAnswer:
+        "Email/password login only; protect /dashboard; keep OAuth out of scope.",
+      candidates: 1,
+      requirePlanningClarification: true,
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: false,
+      },
+    });
+
+    const readiness = consultationPlanReadinessSchema.parse(
+      JSON.parse(
+        await readFile(getConsultationPlanReadinessPath(cwd, manifest.id), "utf8"),
+      ) as unknown,
+    );
+    const summary = await renderConsultationSummary(manifest, cwd);
+
+    expect(readiness).toMatchObject({
+      status: "clear",
+      readyForConsult: true,
+      unresolvedQuestions: [],
+      reviewStatus: "not-run",
+    });
+    expect(readiness.nextAction).toContain("orc consult");
+    expect(summary).toContain(
+      `- execute the persisted consultation plan: \`orc consult .oraculum/runs/${manifest.id}/reports/consultation-plan.json\`.`,
+    );
+  });
+
+  it("treats deliberate plan review blockers as advisory unless readiness has hard blockers", async () => {
+    const cwd = await createInitializedProject();
+    const fakeCodex = await writeNodeBinary(
+      cwd,
+      "fake-codex-plan-review",
+      `const fs = require("node:fs");
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") {
+    out = process.argv[index + 1] ?? "";
+  }
+}
+if (out) {
+  fs.writeFileSync(
+    out,
+    JSON.stringify({
+      status: "blocked",
+      summary: "The plan lacks a rollback crown gate.",
+      blockers: ["Missing rollback crown gate."],
+      warnings: [],
+      riskFindings: ["Rollback risk is unbounded."],
+      invariantFindings: [],
+      crownGateFindings: ["Add a rollback crown gate before consult."],
+      repairPolicyFindings: [],
+      scorecardFindings: [],
+      nextAction: "Review plan findings before consult."
+    }),
+    "utf8",
+  );
+}
+`,
+    );
+
+    const manifest = await planRun({
+      cwd,
+      taskInput: "risky auth migration",
+      agent: "codex",
+      candidates: 1,
+      deliberate: true,
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: false,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+
+    const planArtifact = consultationPlanArtifactSchema.parse(
+      JSON.parse(await readFile(getConsultationPlanPath(cwd, manifest.id), "utf8")) as unknown,
+    );
+    const review = consultationPlanReviewSchema.parse(
+      JSON.parse(
+        await readFile(getConsultationPlanReviewPath(cwd, manifest.id), "utf8"),
+      ) as unknown,
+    );
+    const readiness = consultationPlanReadinessSchema.parse(
+      JSON.parse(
+        await readFile(getConsultationPlanReadinessPath(cwd, manifest.id), "utf8"),
+      ) as unknown,
+    );
+    const summary = await renderConsultationSummary(manifest, cwd);
+
+    expect(planArtifact.mode).toBe("deliberate");
+    expect(review.status).toBe("issues");
+    expect(readiness).toMatchObject({
+      status: "issues",
+      readyForConsult: true,
+      reviewStatus: "issues",
+    });
+    expect(readiness.warnings).toContain(
+      "Plan review requested a block: Missing rollback crown gate.",
+    );
+    expect(summary).toContain("Plan review: issues");
+    expect(summary).toContain("execute the persisted consultation plan");
   });
 
   it("guides missing project config toward init after setup", async () => {

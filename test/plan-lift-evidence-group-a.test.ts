@@ -14,15 +14,15 @@ definePlanLiftEvidenceSuite(
   "plan lift evidence baseline > group A",
   baselineScenarioGroupA,
   (findScenario) => {
-    it("keeps fallback-policy lift for the staged fallback scenario", () => {
+    it("blocks fallback-policy crown for the staged fallback scenario", () => {
       const scenario = findScenario("fallback-policy-stage-guard");
 
       expect(scenario).toBeDefined();
-      expect(scenario?.classification).toBe("lift");
+      expect(scenario?.classification).toBe("invalid");
       expect(scenario?.direct.winner?.source).toBe("fallback-policy");
       expect(scenario?.planned.winner?.source).toBe("fallback-policy");
-      expect(scenario?.direct.quality.score).toBe(1);
-      expect(scenario?.planned.quality.score).toBe(3);
+      expect(scenario?.direct.crownError).toContain("fallback-policy");
+      expect(scenario?.planned.crownError).toContain("fallback-policy");
     });
 
     it("keeps code-plus-config lift for the runtime bundle scenario", () => {
@@ -61,4 +61,5 @@ definePlanLiftEvidenceSuite(
       expect(scenario?.planned.quality.score).toBe(3);
     });
   },
+  { minimumLift: baselineScenarioGroupA.length - 1 },
 );

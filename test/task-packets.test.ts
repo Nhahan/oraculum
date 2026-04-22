@@ -98,18 +98,19 @@ describe("task packet loading", () => {
     expect(taskPacket.source.path).toBe(planPath);
     expect(taskPacket.source.originKind).toBe("task-note");
     expect(taskPacket.source.originPath).toBe(originalTaskPath);
-    expect(taskPacket.intent).toContain("Consultation plan context:");
+    expect(taskPacket.intent).toContain("Execute the persisted consultation plan contract.");
     expect(taskPacket.intent).toContain("Planned strategies:");
     expect(taskPacket.intent).toContain("Required changed paths:");
     expect(taskPacket.intent).toContain("Protected paths:");
-    expect(taskPacket.intent).toContain("Recommended next action:");
+    expect(taskPacket.intent).not.toContain("Recommended next action:");
     expect(taskPacket.intent).not.toContain("Planned workstreams:");
     expect(taskPacket.intent).not.toContain("Planned stage order:");
     expect(taskPacket.strategyHints).toContain("Planned strategy: Minimal Change (minimal-change)");
     expect(taskPacket.oracleHints).toContain("Planned oracle: lint-fast");
     expect(taskPacket.acceptanceCriteria).toContain("Must change src/session.ts.");
     expect(taskPacket.nonGoals).toContain("Do not modify docs/KEEP.md.");
-    expect(taskPacket.contextFiles).toContain(originalTaskPath);
+    expect(taskPacket.contextFiles).toContain("src/session.ts");
+    expect(taskPacket.contextFiles).not.toContain(originalTaskPath);
   });
 
   it("materializes complex consultation plan graphs into the task intent", async () => {
@@ -332,6 +333,52 @@ describe("task packet loading", () => {
       repairable: [],
       preferAbstainOverRetry: [],
     });
+  });
+
+  it("rejects consultation plans with unsafe project artifact paths", async () => {
+    expect(() =>
+      consultationPlanArtifactSchema.parse({
+        runId: "run_unsafe_paths",
+        createdAt: "2026-04-15T00:00:00.000Z",
+        readyForConsult: true,
+        recommendedNextAction: "Refresh the plan.",
+        intendedResult: "recommended result",
+        task: {
+          id: "unsafe-path-task",
+          title: "Unsafe path task",
+          intent: "Do not allow traversal paths in artifact contracts.",
+          targetArtifactPath: "../outside.txt",
+          nonGoals: [],
+          acceptanceCriteria: [],
+          risks: [],
+          oracleHints: [],
+          strategyHints: [],
+          contextFiles: [],
+          source: {
+            kind: "task-note",
+            path: "/tmp/task.md",
+          },
+        },
+        candidateCount: 1,
+        plannedStrategies: [],
+        requiredChangedPaths: ["/tmp/outside.txt"],
+        protectedPaths: ["src/../secret.txt"],
+        workstreams: [
+          {
+            id: "unsafe-workstream",
+            label: "Unsafe Workstream",
+            goal: "Reject unsafe artifact paths.",
+            targetArtifacts: ["..\\outside.txt"],
+            requiredChangedPaths: [],
+            protectedPaths: [],
+            oracleIds: [],
+            dependencies: [],
+            risks: [],
+            disqualifiers: [],
+          },
+        ],
+      }),
+    ).toThrow("Project artifact paths must be safe relative paths inside the project root.");
   });
 });
 

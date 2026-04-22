@@ -21,7 +21,7 @@ export function buildConsultationPlanArtifact(
   return consultationPlanArtifactSchema.parse({
     runId: options.runId,
     createdAt: options.createdAt,
-    mode: "standard",
+    mode: options.deliberate ? "deliberate" : "standard",
     readyForConsult:
       options.preflight?.decision !== undefined ? options.preflight.decision === "proceed" : true,
     recommendedNextAction: buildConsultationPlanNextAction(options),
@@ -91,6 +91,7 @@ function buildConsultationPlanRepoBasis(options: {
 
 function buildConsultationPlanWorkstreams(options: {
   config: ProjectConfig;
+  deliberate?: boolean;
   taskPacket: MaterializedTaskPacket;
 }) {
   const targetArtifacts = options.taskPacket.targetArtifactPath
@@ -104,6 +105,19 @@ function buildConsultationPlanWorkstreams(options: {
         `Do not satisfy the task without materially changing ${options.taskPacket.targetArtifactPath}.`,
       ]
     : [];
+  const risks = new Set(options.taskPacket.risks);
+  if (options.deliberate) {
+    risks.add(
+      "High-risk plan: preserve existing behavior while changing the smallest necessary surface.",
+    );
+    risks.add("Do not rely on unverified assumptions when oracle evidence is available.");
+  }
+  const plannedDisqualifiers = new Set(disqualifiers);
+  if (options.deliberate) {
+    plannedDisqualifiers.add(
+      "Do not crown a candidate with unresolved plan-review blockers or unexamined rollback risk.",
+    );
+  }
 
   return [
     {
@@ -122,16 +136,26 @@ function buildConsultationPlanWorkstreams(options: {
       protectedPaths: [],
       oracleIds: options.config.oracles.map((oracle) => oracle.id),
       dependencies: [],
-      risks: options.taskPacket.risks,
-      disqualifiers,
+      risks: [...risks],
+      disqualifiers: [...plannedDisqualifiers],
     },
   ];
 }
 
 function buildConsultationPlanStagePlan(options: {
   config: ProjectConfig;
+  deliberate?: boolean;
   taskPacket: MaterializedTaskPacket;
 }) {
+  const entryCriteria = ["Consultation plan basis remains current."];
+  const exitCriteria = options.taskPacket.targetArtifactPath
+    ? [`Materially change ${options.taskPacket.targetArtifactPath}.`]
+    : ["Leave a materialized, reviewable result in the workspace."];
+  if (options.deliberate) {
+    entryCriteria.push("Plan review has no blocking findings.");
+    exitCriteria.push("Crown gates, repair policy, and scorecard evidence are satisfied.");
+  }
+
   return [
     {
       id: "primary-stage",
@@ -139,40 +163,65 @@ function buildConsultationPlanStagePlan(options: {
       dependsOn: [],
       workstreamIds: ["primary-contract"],
       roundIds: options.config.rounds.map((round) => round.id),
-      entryCriteria: ["Consultation plan basis remains current."],
-      exitCriteria: options.taskPacket.targetArtifactPath
-        ? [`Materially change ${options.taskPacket.targetArtifactPath}.`]
-        : ["Leave a materialized, reviewable result in the workspace."],
+      entryCriteria,
+      exitCriteria,
     },
   ];
 }
 
-function buildConsultationPlanScorecardDefinition(options: { taskPacket: MaterializedTaskPacket }) {
+function buildConsultationPlanScorecardDefinition(options: {
+  deliberate?: boolean;
+  taskPacket: MaterializedTaskPacket;
+}) {
   const dimensions = new Set<string>(["oracle-pass-summary", "artifact-coherence"]);
   if (options.taskPacket.targetArtifactPath) {
     dimensions.add("target-artifact-coverage");
     dimensions.add("required-path-coverage");
   }
+  if (options.deliberate) {
+    dimensions.add("risk-reduction");
+    dimensions.add("invariant-preservation");
+    dimensions.add("crown-gate-evidence");
+    dimensions.add("repair-policy-fit");
+  }
 
-  return {
-    dimensions: [...dimensions],
-    abstentionTriggers: options.taskPacket.targetArtifactPath
-      ? [`Missing target coverage for ${options.taskPacket.targetArtifactPath}.`]
-      : [],
-  };
+  const abstentionTriggers = options.taskPacket.targetArtifactPath
+    ? [`Missing target coverage for ${options.taskPacket.targetArtifactPath}.`]
+    : [];
+  if (options.deliberate) {
+    abstentionTriggers.push(
+      "Plan review blockers, unresolved high-risk assumptions, or missing crown-gate evidence remain.",
+    );
+  }
+
+  return { dimensions: [...dimensions], abstentionTriggers };
 }
 
 function buildConsultationPlanRepairPolicy(options: {
   config: ProjectConfig;
+  deliberate?: boolean;
   taskPacket: MaterializedTaskPacket;
 }) {
+  const immediateElimination = new Set<string>();
+  const repairable = new Set<string>(
+    options.taskPacket.targetArtifactPath ? ["missing-target-coverage"] : [],
+  );
+  const preferAbstainOverRetry = new Set<string>();
+
+  if (options.deliberate) {
+    immediateElimination.add("violates-protected-path");
+    immediateElimination.add("ignores-crown-gate");
+    repairable.add("missing-invariant-evidence");
+    preferAbstainOverRetry.add("unbounded-risk-or-rollback-unclear");
+  }
+
   return {
     maxAttemptsPerStage: options.config.repair.enabled
       ? options.config.repair.maxAttemptsPerRound
       : 0,
-    immediateElimination: [],
-    repairable: options.taskPacket.targetArtifactPath ? ["missing-target-coverage"] : [],
-    preferAbstainOverRetry: [],
+    immediateElimination: [...immediateElimination],
+    repairable: [...repairable],
+    preferAbstainOverRetry: [...preferAbstainOverRetry],
   };
 }
 
@@ -224,6 +273,9 @@ function buildConsultationPlanJudgingCriteria(options: {
       `Leaves evidence strong enough for the selected ${options.profileSelection.validationProfileId} validation posture.`,
     );
   }
+  if (options.taskPacket.risks.length > 0) {
+    criteria.add("Directly addresses the recorded task risks or explains why they do not apply.");
+  }
 
   return [...criteria];
 }
@@ -248,6 +300,9 @@ function buildConsultationPlanCrownGates(options: {
     gates.add(
       "Abstain when the remaining finalist evidence is too weak to overcome the selected validation gaps.",
     );
+  }
+  if (options.taskPacket.risks.length > 0) {
+    gates.add("Do not crown a finalist that leaves the recorded task risks unexamined.");
   }
 
   return [...gates];
@@ -287,7 +342,7 @@ function buildConsultationPlanNextAction(options: {
 
   switch (options.preflight?.decision) {
     case "needs-clarification":
-      return 'Answer the clarification question, then rerun `orc plan <task> --answer "<answer>"` or revise the task contract before `orc consult`.';
+      return 'Answer the clarification question, then rerun `orc plan "<task plus the answer>"` before `orc consult`.';
     case "external-research-required":
       return "Gather bounded external research, refresh the task contract, and rerun `orc consult` or `orc plan`.";
     case "abstain":

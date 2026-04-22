@@ -4,7 +4,6 @@ import { consultationPreflightSchema } from "../../domain/run.js";
 import { writePreflightArtifacts } from "./artifacts.js";
 import { maybeWriteClarifyFollowUp } from "./clarify.js";
 import { buildFallbackPreflight, isClarifyBlockedPreflight } from "./fallback.js";
-import { recommendPlanningClarificationPreflight } from "./planning-clarity.js";
 import { collectPreflightSignalContext } from "./signals.js";
 import type {
   RecommendConsultationPreflightOptions,
@@ -20,13 +19,10 @@ export async function recommendConsultationPreflight(
     options.taskPacket,
   );
   const allowRuntime = options.allowRuntime ?? true;
-  const planningClarityPreflight = options.requirePlanningClarification
-    ? recommendPlanningClarificationPreflight(options.taskPacket)
-    : undefined;
   let llmResult: Awaited<ReturnType<AgentAdapter["recommendPreflight"]>> | undefined;
   let llmFailure: string | undefined;
 
-  if (allowRuntime && !planningClarityPreflight) {
+  if (allowRuntime) {
     try {
       llmResult = await options.adapter.recommendPreflight({
         runId: options.runId,
@@ -34,6 +30,7 @@ export async function recommendConsultationPreflight(
         logDir: options.reportsDir,
         taskPacket: options.taskPacket,
         signals: signalContext.signals,
+        ...(options.requirePlanningClarification ? { requirePlanningClarification: true } : {}),
       });
     } catch (error) {
       llmFailure = error instanceof Error ? error.message : String(error);
@@ -41,14 +38,13 @@ export async function recommendConsultationPreflight(
   }
 
   const preflight =
-    planningClarityPreflight ??
-    (llmResult?.status === "completed" && llmResult.recommendation
+    llmResult?.status === "completed" && llmResult.recommendation
       ? llmResult.recommendation
       : buildFallbackPreflight({
           runtimeAttempted: allowRuntime,
           taskPacket: options.taskPacket,
           ...(llmFailure ? { llmFailure } : {}),
-        }));
+        });
   const clarifyFollowUp =
     allowRuntime && isClarifyBlockedPreflight(preflight)
       ? await maybeWriteClarifyFollowUp({

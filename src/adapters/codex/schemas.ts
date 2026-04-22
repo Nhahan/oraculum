@@ -1,6 +1,10 @@
 import { buildAgentProfileRecommendationJsonSchema } from "../../domain/profile.js";
 
-import { buildAgentClarifyFollowUpJsonSchema, buildAgentPreflightJsonSchema } from "../types.js";
+import {
+  buildAgentClarifyFollowUpJsonSchema,
+  buildAgentPlanReviewJsonSchema,
+  buildAgentPreflightJsonSchema,
+} from "../types.js";
 
 export function buildCodexWinnerRecommendationSchema(): Record<string, unknown> {
   const judgingCriteriaProperty = {
@@ -51,6 +55,10 @@ export function buildCodexPreflightJsonSchema(): Record<string, unknown> {
 
 export function buildCodexClarifyFollowUpJsonSchema(): Record<string, unknown> {
   return buildAgentClarifyFollowUpJsonSchema();
+}
+
+export function buildCodexPlanReviewJsonSchema(): Record<string, unknown> {
+  return buildAgentPlanReviewJsonSchema();
 }
 
 export function buildCodexProfileRecommendationJsonSchema(): Record<string, unknown> {

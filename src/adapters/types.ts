@@ -10,11 +10,14 @@ import {
 } from "../domain/profile.js";
 import {
   type ConsultationClarifyFollowUp,
+  type ConsultationPlanArtifact,
+  type ConsultationPlanReview,
   type ConsultationPreflight,
   candidateScorecardSchema,
   type clarifyPressureKindSchema,
   type clarifyScopeKeyTypeSchema,
   consultationClarifyFollowUpSchema,
+  consultationPlanReviewSchema,
   consultationPreflightSchema,
 } from "../domain/run.js";
 import type { MaterializedTaskPacket } from "../domain/task.js";
@@ -200,6 +203,22 @@ export const agentClarifyFollowUpResultSchema = z.object({
     .optional(),
   artifacts: z.array(agentArtifactSchema).default([]),
 });
+export const agentPlanReviewResultSchema = z.object({
+  runId: z.string().min(1),
+  adapter: adapterSchema,
+  status: agentRunStatusSchema,
+  startedAt: z.string().min(1),
+  completedAt: z.string().min(1),
+  exitCode: z.number().int(),
+  summary: z.string().min(1),
+  recommendation: consultationPlanReviewSchema
+    .omit({
+      runId: true,
+      createdAt: true,
+    })
+    .optional(),
+  artifacts: z.array(agentArtifactSchema).default([]),
+});
 
 export interface AgentRunRequest {
   runId: string;
@@ -222,6 +241,7 @@ export interface AgentAdapter {
     request: AgentClarifyFollowUpRequest,
   ): Promise<AgentClarifyFollowUpResult>;
   recommendProfile(request: AgentProfileRequest): Promise<AgentProfileResult>;
+  recommendPlanReview?(request: AgentPlanReviewRequest): Promise<AgentPlanReviewResult>;
 }
 
 export interface AgentJudgeRequest {
@@ -262,6 +282,7 @@ export interface AgentPreflightRequest {
   logDir: string;
   taskPacket: MaterializedTaskPacket;
   signals: ProfileRepoSignals;
+  requirePlanningClarification?: boolean;
 }
 
 export interface AgentClarifyFollowUpRequest {
@@ -281,6 +302,13 @@ export interface AgentClarifyFollowUpRequest {
     recurringReasons: string[];
     priorQuestions: string[];
   };
+}
+
+export interface AgentPlanReviewRequest {
+  runId: string;
+  projectRoot: string;
+  logDir: string;
+  consultationPlan: ConsultationPlanArtifact;
 }
 
 export interface AgentRepairContext {
@@ -308,8 +336,10 @@ export type AgentJudgeResult = z.infer<typeof agentJudgeResultSchema>;
 export type AgentProfileResult = z.infer<typeof agentProfileResultSchema>;
 export type AgentPreflightResult = z.infer<typeof agentPreflightResultSchema>;
 export type AgentClarifyFollowUpResult = z.infer<typeof agentClarifyFollowUpResultSchema>;
+export type AgentPlanReviewResult = z.infer<typeof agentPlanReviewResultSchema>;
 export type AgentPreflightRecommendation = ConsultationPreflight;
 export type AgentClarifyFollowUpRecommendation = ConsultationClarifyFollowUp;
+export type AgentPlanReviewRecommendation = Omit<ConsultationPlanReview, "runId" | "createdAt">;
 export type { AgentProfileRecommendation };
 
 export function buildAgentPreflightJsonSchema(): Record<string, unknown> {
@@ -348,5 +378,44 @@ export function buildAgentClarifyFollowUpJsonSchema(): Record<string, unknown> {
       missingJudgingBasis: { type: "string", minLength: 1 },
     },
     required: ["summary", "keyQuestion", "missingResultContract", "missingJudgingBasis"],
+  };
+}
+
+export function buildAgentPlanReviewJsonSchema(): Record<string, unknown> {
+  const stringArraySchema = {
+    type: "array",
+    items: { type: "string", minLength: 1 },
+  };
+
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      status: {
+        type: "string",
+        enum: ["clear", "issues", "blocked"],
+      },
+      summary: { type: "string", minLength: 1 },
+      blockers: stringArraySchema,
+      warnings: stringArraySchema,
+      riskFindings: stringArraySchema,
+      invariantFindings: stringArraySchema,
+      crownGateFindings: stringArraySchema,
+      repairPolicyFindings: stringArraySchema,
+      scorecardFindings: stringArraySchema,
+      nextAction: { type: "string", minLength: 1 },
+    },
+    required: [
+      "status",
+      "summary",
+      "blockers",
+      "warnings",
+      "riskFindings",
+      "invariantFindings",
+      "crownGateFindings",
+      "repairPolicyFindings",
+      "scorecardFindings",
+      "nextAction",
+    ],
   };
 }

@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { basename, delimiter, isAbsolute, relative, resolve } from "node:path";
 
 import { runSubprocess } from "../../core/subprocess.js";
@@ -10,6 +10,7 @@ import {
   resolveRepoLocalEntrypointCommand,
   resolveRepoLocalWrapperCommand,
 } from "../oracle-local-tools.js";
+import { writeTextFileAtomically } from "../project.js";
 import { RunStore } from "../run-store.js";
 import type { EvaluateCandidateRoundOptions, OracleEvaluation } from "./shared.js";
 
@@ -52,8 +53,7 @@ export async function evaluateRepoOracle(
             projectRoot: options.projectRoot,
             scopeRoot,
           });
-    const shell =
-      oracle.shell ?? inferRepoOracleShell(resolvedCommand.resolvedCommand, oracle.args);
+    const shell = oracle.shell ?? inferRepoOracleShell(resolvedCommand, oracle.args);
     const commandResult = await runSubprocess({
       command: resolvedCommand.resolvedCommand,
       args: oracle.args,
@@ -65,8 +65,8 @@ export async function evaluateRepoOracle(
     });
 
     await Promise.all([
-      writeFile(stdoutPath, commandResult.stdout, "utf8"),
-      writeFile(stderrPath, commandResult.stderr, "utf8"),
+      writeTextFileAtomically(stdoutPath, commandResult.stdout),
+      writeTextFileAtomically(stderrPath, commandResult.stderr),
     ]);
 
     const failed = commandResult.exitCode !== 0 || commandResult.timedOut;
@@ -113,8 +113,8 @@ export async function evaluateRepoOracle(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await Promise.all([
-      writeFile(stdoutPath, "", "utf8"),
-      writeFile(stderrPath, `${message}\n`, "utf8"),
+      writeTextFileAtomically(stdoutPath, ""),
+      writeTextFileAtomically(stderrPath, `${message}\n`),
     ]);
 
     const witness = witnessSchema.parse({
@@ -224,7 +224,17 @@ function isContainedRelativePath(relativePath: string): boolean {
   return firstSegment !== ".." && !isAbsolute(relativePath);
 }
 
-function inferRepoOracleShell(command: string, args: string[]): boolean | undefined {
+function inferRepoOracleShell(
+  resolvedCommand: {
+    resolvedCommand: string;
+    resolution: "local-entrypoint" | "project-wrapper" | "workspace-wrapper" | "unresolved";
+  },
+  args: string[],
+): boolean | undefined {
+  if (resolvedCommand.resolution !== "unresolved") {
+    return undefined;
+  }
+
   if (args.length === 0) {
     return true;
   }
@@ -233,7 +243,7 @@ function inferRepoOracleShell(command: string, args: string[]): boolean | undefi
     return undefined;
   }
 
-  const base = basename(command).toLowerCase();
+  const base = basename(resolvedCommand.resolvedCommand).toLowerCase();
   if (["bun", "npm", "npx", "pnpm", "yarn", "yarnpkg"].includes(base)) {
     return true;
   }

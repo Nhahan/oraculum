@@ -12,6 +12,7 @@ import {
   createOracle,
   createTempProject,
   writeAdvancedConfig,
+  writePlanReadiness,
 } from "./helpers/consultation-plan-execution.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
 import { EXECUTION_TEST_TIMEOUT_MS, FAKE_AGENT_TIMEOUT_MS } from "./helpers/integration.js";
@@ -120,6 +121,7 @@ describe("consultation plan execution presets", () => {
         )}\n`,
         "utf8",
       );
+      await writePlanReadiness(cwd, "run_exec");
 
       const fakeCodex = await writeNodeBinary(
         cwd,
@@ -282,6 +284,7 @@ if (out) {
         )}\n`,
         "utf8",
       );
+      await writePlanReadiness(cwd, "run_target_guard");
 
       const fakeCodex = await writeNodeBinary(
         cwd,
@@ -424,6 +427,7 @@ if (out) {
         )}\n`,
         "utf8",
       );
+      await writePlanReadiness(cwd, "run_required_paths");
 
       const fakeCodex = await writeNodeBinary(
         cwd,
@@ -572,6 +576,7 @@ if (out) {
         )}\n`,
         "utf8",
       );
+      await writePlanReadiness(cwd, "run_protected_paths");
 
       const fakeCodex = await writeNodeBinary(
         cwd,

@@ -12,6 +12,7 @@ export interface PlanLiftEvidenceResult {
   results: Array<{
     classification: string;
     direct: {
+      crownError?: string;
       executedRepoOracleIds?: string[];
       quality: { score: number };
       repairCounts?: Record<string, number>;
@@ -19,6 +20,7 @@ export interface PlanLiftEvidenceResult {
     };
     id: string;
     planned: {
+      crownError?: string;
       executedRepoOracleIds?: string[];
       quality: { score: number };
       repairCounts?: Record<string, number>;
@@ -34,6 +36,7 @@ export function definePlanLiftEvidenceSuite(
   name: string,
   scenarioIds: readonly string[],
   defineAssertions: (findScenario: (id: string) => PlanLiftScenarioResult | undefined) => void,
+  options: { minimumLift?: number } = {},
 ): void {
   describe.sequential(name, () => {
     let evidence: PlanLiftEvidenceResult;
@@ -50,7 +53,9 @@ export function definePlanLiftEvidenceSuite(
     const findScenario = (id: string) => evidence.results.find((result) => result.id === id);
 
     it("keeps the validated plan lift baseline for this scenario group", () => {
-      expect(evidence.aggregate.lift).toBeGreaterThanOrEqual(scenarioIds.length);
+      expect(evidence.aggregate.lift).toBeGreaterThanOrEqual(
+        options.minimumLift ?? scenarioIds.length,
+      );
     });
 
     defineAssertions(findScenario);

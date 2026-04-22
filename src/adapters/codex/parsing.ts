@@ -8,6 +8,7 @@ import {
   type AgentJudgeRecommendation,
   agentClarifyFollowUpResultSchema,
   agentJudgeRecommendationSchema,
+  agentPlanReviewResultSchema,
 } from "../types.js";
 
 export function summarizeCodexOutput(output: string, fallback: string): string {
@@ -64,6 +65,19 @@ export function extractCodexClarifyFollowUpRecommendation(output: string) {
 
   try {
     return agentClarifyFollowUpResultSchema.shape.recommendation.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractCodexPlanReviewRecommendation(output: string) {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return agentPlanReviewResultSchema.shape.recommendation.parse(parsed);
   } catch {
     return undefined;
   }
