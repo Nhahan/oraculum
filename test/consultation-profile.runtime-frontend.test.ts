@@ -101,9 +101,7 @@ describe("consultation auto profile runtime: frontend", () => {
       "typecheck-fast",
       "full-suite-deep",
     ]);
-    expect(recommendation.selection.missingCapabilities).toEqual([
-      "No build validation command was selected.",
-    ]);
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
   });
 
   it("does not require frontend-only checks when a runtime-selected frontend has detector-only signals", async () => {

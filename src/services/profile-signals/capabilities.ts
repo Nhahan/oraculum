@@ -3,22 +3,11 @@ import type {
   ProfileRepoSignals,
   ProfileSignalProvenance,
 } from "../../domain/profile.js";
-import {
-  CYPRESS_CONFIG_PATHS,
-  FRONTEND_BUILD_CONFIG_PATHS,
-  MIGRATION_TOOL_SIGNALS,
-  PLAYWRIGHT_CONFIG_PATHS,
-} from "../profile-detector-data.js";
 import type {
   ProfilePackageJsonManifest,
   WorkspacePackageJsonManifest,
 } from "../profile-repo-facts.js";
-import {
-  collectManifestDependencies,
-  findSignalPath,
-  hasPackageExportMetadata,
-  signalSourceForPath,
-} from "./shared.js";
+import { collectManifestDependencies, hasPackageExportMetadata } from "./shared.js";
 
 export function buildCapabilitySignals(options: {
   files: string[];
@@ -35,12 +24,8 @@ export function buildCapabilitySignals(options: {
   workspacePackageJsons: WorkspacePackageJsonManifest[];
   workspaceRoots: string[];
 }): ProfileCapabilitySignal[] {
-  const files = new Set(options.files);
   const rootDependencies = new Set(collectManifestDependencies(options.packageJson));
   const rootScripts = new Set(Object.keys(options.packageJson?.scripts ?? {}));
-  const playwrightConfigPath = findSignalPath(files, PLAYWRIGHT_CONFIG_PATHS);
-  const cypressConfigPath = findSignalPath(files, CYPRESS_CONFIG_PATHS);
-  const frontendBuildConfigPath = findSignalPath(files, FRONTEND_BUILD_CONFIG_PATHS);
   const capabilities: ProfileCapabilitySignal[] = [];
   const seen = new Set<string>();
   type CapabilityInput = Omit<ProfileCapabilitySignal, "confidence"> &
@@ -88,18 +73,18 @@ export function buildCapabilitySignals(options: {
       detail: `Detected workspace roots: ${options.workspaceRoots.join(", ")}.`,
     });
   }
-  if (files.has("tsconfig.json") || rootDependencies.has("typescript")) {
+  if (options.files.includes("tsconfig.json") || rootDependencies.has("typescript")) {
     add({
       kind: "language",
       value: "typescript",
       source: "root-config",
-      path: files.has("tsconfig.json")
+      path: options.files.includes("tsconfig.json")
         ? "tsconfig.json"
         : rootDependencies.has("typescript")
           ? "package.json"
           : undefined,
       confidence: "high",
-      ...(files.has("tsconfig.json")
+      ...(options.files.includes("tsconfig.json")
         ? {}
         : rootDependencies.has("typescript")
           ? { detail: "TypeScript dependency is declared in package metadata." }
@@ -146,15 +131,6 @@ export function buildCapabilitySignals(options: {
         (options.packageJson
           ? "Package manager detected from package metadata."
           : "Package manager detected from a lockfile."),
-    });
-  }
-  if (frontendBuildConfigPath) {
-    add({
-      kind: "build-system",
-      value: "frontend-config",
-      source: signalSourceForPath(frontendBuildConfigPath, FRONTEND_BUILD_CONFIG_PATHS),
-      path: frontendBuildConfigPath,
-      detail: "Frontend build configuration file is present.",
     });
   }
   if (hasPackageExportMetadata(options.packageJson)) {
@@ -238,40 +214,9 @@ export function buildCapabilitySignals(options: {
       });
     }
   }
-  if (playwrightConfigPath) {
-    add({
-      kind: "test-runner",
-      value: "playwright",
-      source: signalSourceForPath(playwrightConfigPath, PLAYWRIGHT_CONFIG_PATHS),
-      path: playwrightConfigPath,
-    });
-  }
-  if (cypressConfigPath) {
-    add({
-      kind: "test-runner",
-      value: "cypress",
-      source: signalSourceForPath(cypressConfigPath, CYPRESS_CONFIG_PATHS),
-      path: cypressConfigPath,
-    });
-  }
-  for (const toolSignal of MIGRATION_TOOL_SIGNALS) {
-    const configPath = findSignalPath(files, [...toolSignal.configPaths]);
-    if (configPath) {
-      add({
-        kind: "migration-tool",
-        value: toolSignal.value,
-        source: signalSourceForPath(configPath, [...toolSignal.configPaths]),
-        path: configPath,
-        confidence: "high",
-        detail: "Migration tool configuration file is present.",
-      });
-    }
-  }
   const hasPostureEvidence = capabilities.some(
     (capability) =>
-      (capability.kind === "build-system" && capability.value === "package-export-metadata") ||
-      (capability.kind === "build-system" && capability.value === "frontend-config") ||
-      capability.kind === "migration-tool",
+      capability.kind === "build-system" && capability.value === "package-export-metadata",
   );
   if (capabilities.every((capability) => capability.kind !== "intent") && !hasPostureEvidence) {
     add({

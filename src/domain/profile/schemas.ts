@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { artifactPathSegmentSchema } from "../artifact-id.js";
 import { oraclePathPolicySchema, oracleRelativeCwdSchema, roundIdSchema } from "../config.js";
 import { stringArrayMembersEqual } from "../schema-compat.js";
 import {
@@ -18,7 +19,6 @@ export const profileSignalKindSchema = z.enum([
   "language",
   "build-system",
   "test-runner",
-  "migration-tool",
   "command",
 ]);
 export const profileSignalSourceSchema = z.enum([
@@ -59,7 +59,7 @@ export const profileSkippedCommandReasonSchema = z.enum([
 ]);
 
 export const profileCommandCandidateSchema = z.object({
-  id: z.string().min(1),
+  id: artifactPathSegmentSchema,
   roundId: roundIdSchema,
   label: z.string().min(1),
   command: z.string().min(1),
@@ -86,7 +86,7 @@ export const profileCapabilitySignalSchema = z.object({
 });
 
 export const profileSkippedCommandCandidateSchema = z.object({
-  id: z.string().min(1),
+  id: artifactPathSegmentSchema,
   label: z.string().min(1),
   capability: z.string().min(1),
   reason: profileSkippedCommandReasonSchema,
@@ -224,7 +224,7 @@ const consultationProfileSelectionBaseSchema = z
     validationSummary: z.string().min(1),
     candidateCount: z.number().int().min(1).max(16),
     strategyIds: z.array(z.string().min(1)).min(1),
-    oracleIds: z.array(z.string().min(1)).default([]),
+    oracleIds: z.array(artifactPathSegmentSchema).default([]),
     missingCapabilities: z.array(z.string().min(1)).optional(),
     validationGaps: z.array(z.string().min(1)).default([]),
     signals: z.array(z.string().min(1)).optional(),

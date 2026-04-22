@@ -14,7 +14,7 @@ import {
 registerConsultationProfileTempRootCleanup();
 
 describe("consultation auto profile fallback: package managers and migrations", () => {
-  it("uses nested workspace migration files as profile signals without inventing unsafe commands", async () => {
+  it("uses nested workspace files as raw facts without inventing unsafe commands", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
     await writeFile(
@@ -35,7 +35,7 @@ describe("consultation auto profile fallback: package managers and migrations", 
       signals: {
         commandCatalog: Array<{ command: string }>;
         capabilities: Array<{ kind: string; path?: string; source: string; value: string }>;
-        provenance: Array<{ path?: string; signal: string; source: string }>;
+        files: string[];
       };
     };
     expect(recommendation.selection.profileId).toBe("generic");
@@ -46,24 +46,10 @@ describe("consultation auto profile fallback: package managers and migrations", 
     expect(artifact.signals.capabilities).not.toContainEqual(
       expect.objectContaining({ kind: "intent", value: "migration" }),
     );
-    expect(artifact.signals.capabilities).toContainEqual(
-      expect.objectContaining({
-        kind: "migration-tool",
-        path: "services/api/alembic.ini",
-        source: "workspace-config",
-        value: "alembic",
-      }),
-    );
-    expect(artifact.signals.provenance).toContainEqual(
-      expect.objectContaining({
-        path: "services/api/alembic.ini",
-        signal: "migration-tool:alembic",
-        source: "workspace-config",
-      }),
-    );
+    expect(artifact.signals.files).toContain("services/api/alembic.ini");
     expect(artifact.signals.commandCatalog).toEqual([]);
   });
-  it("detects non-Prisma migration capabilities without inventing unsafe commands", async () => {
+  it("keeps migration-shaped config files as raw facts without inventing unsafe commands", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
     await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nReview the migration config.\n", "utf8");
@@ -94,26 +80,16 @@ describe("consultation auto profile fallback: package managers and migrations", 
       signals: {
         capabilities: Array<{ kind: string; path?: string; source: string; value: string }>;
         commandCatalog: Array<{ command: string }>;
-        provenance: Array<{ path?: string; signal: string; source: string }>;
+        dependencies: string[];
+        files: string[];
       };
     };
     expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([]);
-    expect(artifact.signals.capabilities).toContainEqual(
-      expect.objectContaining({
-        kind: "migration-tool",
-        path: "drizzle.config.ts",
-        source: "root-config",
-        value: "drizzle",
-      }),
+    expect(artifact.signals.dependencies).toEqual(
+      expect.arrayContaining(["drizzle-kit", "drizzle-orm"]),
     );
-    expect(artifact.signals.provenance).toContainEqual(
-      expect.objectContaining({
-        path: "drizzle.config.ts",
-        signal: "migration-tool:drizzle",
-        source: "root-config",
-      }),
-    );
+    expect(artifact.signals.files).toContain("drizzle.config.ts");
     expect(artifact.signals.commandCatalog).toEqual([]);
   });
   it("keeps dependency-only migration packages as raw dependencies without semantic migration shortcuts", async () => {
@@ -269,6 +245,54 @@ describe("consultation auto profile fallback: package managers and migrations", 
     );
     expect(artifact.signals.notes).toContain(
       "No root package.json was found; repository facts come from workspace manifests, files, and task context.",
+    );
+  });
+  it("continues profile fallback when the root package manifest is invalid", async () => {
+    const cwd = await createTempRoot();
+    await initializeProject({ cwd, force: false });
+    await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep checks honest.\n", "utf8");
+    await writeFile(join(cwd, "package.json"), "{\n", "utf8");
+    await mkdir(join(cwd, "packages", "app"), { recursive: true });
+    await writeFile(
+      join(cwd, "packages", "app", "package.json"),
+      `${JSON.stringify(
+        {
+          name: "app",
+          packageManager: "pnpm@10.0.0",
+          scripts: {
+            lint: 'node -e "process.exit(0)"',
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await mkdir(getReportsDir(cwd, "run_invalid_root_package_json"), { recursive: true });
+
+    await recommendFallbackProfile({ cwd, runId: "run_invalid_root_package_json" });
+
+    const artifact = JSON.parse(
+      await readFile(getProfileSelectionPath(cwd, "run_invalid_root_package_json"), "utf8"),
+    ) as {
+      signals: {
+        commandCatalog: Array<{ id: string; relativeCwd?: string }>;
+        notes: string[];
+      };
+    };
+    expect(artifact.signals.commandCatalog).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "lint-fast",
+          relativeCwd: "packages/app",
+        }),
+      ]),
+    );
+    expect(artifact.signals.notes).toContain(
+      "Skipped invalid package.json manifest: package.json.",
+    );
+    expect(artifact.signals.notes).toContain(
+      "Root package.json is invalid; repository facts come from valid workspace manifests, files, and task context.",
     );
   });
   it("does not invent npm script commands when the package manager is unknown", async () => {

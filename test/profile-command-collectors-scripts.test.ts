@@ -3,7 +3,6 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { buildCommandCatalog } from "../src/services/profile-command-catalog.js";
 import { collectExplicitCommandCatalog } from "../src/services/profile-explicit-command-collector.js";
 import { collectPackageScriptSurfaces } from "../src/services/profile-explicit-command-package.js";
 import { collectProfileRepoFacts } from "../src/services/profile-repo-facts.js";
@@ -15,72 +14,6 @@ import {
 registerProfileCommandCollectorsCleanup();
 
 describe("profile explicit command collector: package scripts", () => {
-  it("treats deep e2e capability coverage by capability instead of a built-in command id", () => {
-    const result = buildCommandCatalog({
-      capabilities: [
-        {
-          kind: "test-runner",
-          value: "playwright",
-          source: "root-config",
-          confidence: "high",
-          path: "playwright.config.ts",
-        },
-      ],
-      explicitCommandCatalog: [
-        {
-          id: "custom-e2e-check",
-          roundId: "deep",
-          label: "Custom e2e check",
-          command: "npm",
-          args: ["run", "qa:e2e"],
-          invariant: "Custom deep e2e validation should pass.",
-          capability: "e2e-or-visual",
-        },
-      ],
-      explicitSkippedCommandCandidates: [],
-      packageJson: undefined,
-      packageManager: "unknown",
-      workspacePackageJsons: [],
-    });
-
-    expect(result.skippedCommandCandidates).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: "e2e-deep" })]),
-    );
-  });
-
-  it("treats migration validation coverage by capability instead of built-in command ids", () => {
-    const result = buildCommandCatalog({
-      capabilities: [
-        {
-          kind: "migration-tool",
-          value: "prisma",
-          source: "root-config",
-          confidence: "high",
-          path: "prisma/schema.prisma",
-        },
-      ],
-      explicitCommandCatalog: [
-        {
-          id: "custom-migration-verify",
-          roundId: "impact",
-          label: "Custom migration verify",
-          command: "npm",
-          args: ["run", "qa:migrate"],
-          invariant: "Custom migration validation should pass.",
-          capability: "migration-dry-run",
-        },
-      ],
-      explicitSkippedCommandCandidates: [],
-      packageJson: undefined,
-      packageManager: "unknown",
-      workspacePackageJsons: [],
-    });
-
-    expect(result.skippedCommandCandidates).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: "migration-impact" })]),
-    );
-  });
-
   it("collects explicit package scripts only when the package manager is known", async () => {
     const cwd = await createProfileCollectorsTempRoot();
     await writeFile(

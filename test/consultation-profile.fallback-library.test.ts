@@ -326,7 +326,7 @@ describe("consultation auto profile fallback: library and anchor signals", () =>
     );
     expect(artifact.signals.skippedCommandCandidates).toEqual([]);
   });
-  it("uses explicit repo-owned frontend evidence without treating product-owned package smoke as a conflicting anchor", async () => {
+  it("keeps explicit repo-owned frontend evidence on generic fallback posture", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
     await writeFile(
@@ -362,9 +362,9 @@ describe("consultation auto profile fallback: library and anchor signals", () =>
       runId: "run_conflicting_fallback_anchors",
     });
 
-    expect(recommendation.selection.profileId).toBe("frontend");
+    expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.summary).toContain(
-      "detected a unique frontend validation posture anchor",
+      "runtime semantic posture selection was unavailable",
     );
     expect(recommendation.selection.summary).not.toContain("pack-impact");
     expect(recommendation.selection.summary).not.toContain("package-smoke-deep");
@@ -372,11 +372,9 @@ describe("consultation auto profile fallback: library and anchor signals", () =>
       "lint-fast",
       "typecheck-fast",
       "full-suite-deep",
-      "e2e-deep",
     ]);
-    expect(recommendation.selection.missingCapabilities).toEqual([
-      "No build validation command was detected.",
-    ]);
+    expect(recommendation.selection.oracleIds).not.toContain("e2e-deep");
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
   });
   it("keeps conflicting explicit anchors on the generic fallback bundle", async () => {
     const cwd = await createTempRoot();
@@ -412,7 +410,7 @@ describe("consultation auto profile fallback: library and anchor signals", () =>
 
     expect(recommendation.selection.profileId).toBe("generic");
     expect(recommendation.selection.summary).toContain(
-      "defaulted to the generic validation posture because posture-specific validation anchors conflicted",
+      "runtime semantic posture selection was unavailable",
     );
     expect(recommendation.selection.oracleIds).toEqual([
       "lint-fast",

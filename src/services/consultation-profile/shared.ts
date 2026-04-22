@@ -68,17 +68,6 @@ export function commandExecutionKey(candidate: ProfileCommandCandidate): string 
   );
 }
 
-export type FallbackAnchoredProfileId = "frontend" | "migration";
-export type FallbackDetectedProfileId = "generic" | FallbackAnchoredProfileId;
-export type MissingCapabilityRule = {
-  runtimeEvidencePredicate?: (context: {
-    capabilities: import("../../domain/profile.js").ProfileRepoSignals["capabilities"];
-    hasCatalogEvidence: boolean;
-    hasSkippedEvidence: boolean;
-  }) => boolean;
-  slots: ProfileCommandSlot[];
-  whenDetectedButNotSelected: string;
-  whenNotDetected: string;
-};
+export type FallbackDetectedProfileId = "generic";
 
 export const FALLBACK_STRATEGY_IDS: ProfileStrategyId[] = ["minimal-change", "safety-first"];

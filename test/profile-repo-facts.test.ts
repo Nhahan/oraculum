@@ -100,4 +100,29 @@ describe("profile repo facts collector", () => {
     });
     expect(facts.workspaceRoots).toEqual(["packages/app"]);
   });
+
+  it("records invalid package manifests without aborting workspace fact collection", async () => {
+    const cwd = await createProfileCollectorsTempRoot();
+    await mkdir(join(cwd, "packages", "app"), { recursive: true });
+    await writeFile(join(cwd, "package.json"), "{\n", "utf8");
+    await writeFile(
+      join(cwd, "packages", "app", "package.json"),
+      `${JSON.stringify({
+        name: "app",
+        packageManager: "pnpm@10.0.0",
+        scripts: {
+          lint: 'node -e "process.exit(0)"',
+        },
+      })}\n`,
+      "utf8",
+    );
+
+    const facts = await collectProfileRepoFacts(cwd);
+
+    expect(facts.invalidPackageJsons).toEqual(["package.json"]);
+    expect(facts.packageJson).toBeUndefined();
+    expect(facts.packageManager).toBe("pnpm");
+    expect(facts.scripts).toEqual(["lint"]);
+    expect(facts.manifests).toEqual(["package.json", "packages/app/package.json"]);
+  });
 });

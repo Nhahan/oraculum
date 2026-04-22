@@ -8,20 +8,17 @@ import type { MaterializedTaskPacket } from "../../../domain/task.js";
 
 import {
   clampCandidateCount,
-  commandSlotKey,
   FALLBACK_STRATEGY_IDS,
-  type FallbackAnchoredProfileId,
   type FallbackDetectedProfileId,
 } from "../shared.js";
 import {
   buildFallbackCommandSlots,
   chooseFallbackCommandIds,
-  inferMissingCapabilities,
+  inferGenericFallbackValidationGaps,
 } from "./commands.js";
 import {
   FALLBACK_DEFAULT_CANDIDATE_COUNT,
   FALLBACK_LOW_CONFIDENCE_CANDIDATE_COUNT,
-  VALIDATION_POSTURE_FALLBACK_ANCHORS,
 } from "./config.js";
 import { buildFallbackSummary } from "./summary.js";
 
@@ -29,56 +26,32 @@ export function buildFallbackRecommendation(
   signals: ProfileRepoSignals,
   taskPacket: MaterializedTaskPacket,
 ): AgentProfileRecommendation {
-  const commandSlots = new Set(
-    signals.commandCatalog
-      .filter((command) => command.source === "repo-local-script")
-      .map(commandSlotKey),
+  const chosenProfile: FallbackDetectedProfileId = "generic";
+  const hasRepoLocalCommands = signals.commandCatalog.some(
+    (command) => command.source === "repo-local-script",
   );
-  const anchoredProfiles = (
-    Object.entries(VALIDATION_POSTURE_FALLBACK_ANCHORS) as Array<
-      [
-        FallbackAnchoredProfileId,
-        (typeof VALIDATION_POSTURE_FALLBACK_ANCHORS)[FallbackAnchoredProfileId],
-      ]
-    >
-  )
-    .filter(([, anchors]) => anchors.some((anchor) => commandSlots.has(commandSlotKey(anchor))))
-    .map(([profileId]) => profileId);
-  const [anchoredProfile] = anchoredProfiles;
-  const chosenProfile: FallbackDetectedProfileId =
-    anchoredProfiles.length === 1 && anchoredProfile ? anchoredProfile : "generic";
-  const confidence =
-    anchoredProfiles.length === 1 ? "high" : commandSlots.size > 0 ? "medium" : "low";
+  const confidence = hasRepoLocalCommands ? "medium" : "low";
 
   const selectedCommandIds = chooseFallbackCommandIds(
-    buildFallbackCommandSlots(chosenProfile),
+    buildFallbackCommandSlots(),
     signals.commandCatalog,
   );
-  const missingCapabilities = inferMissingCapabilities(
-    chosenProfile,
+  const validationGaps = inferGenericFallbackValidationGaps(
     selectedCommandIds,
     signals.commandCatalog,
-    signals.capabilities,
-    signals.skippedCommandCandidates,
   );
 
   return agentProfileRecommendationSchema.parse({
     validationProfileId: chosenProfile,
     confidence,
-    validationSummary: buildFallbackSummary(
-      chosenProfile,
-      confidence,
-      anchoredProfiles,
-      signals,
-      taskPacket,
-    ),
+    validationSummary: buildFallbackSummary(chosenProfile, confidence, taskPacket),
     candidateCount:
       confidence === "low"
         ? FALLBACK_LOW_CONFIDENCE_CANDIDATE_COUNT
         : FALLBACK_DEFAULT_CANDIDATE_COUNT,
     strategyIds: FALLBACK_STRATEGY_IDS,
     selectedCommandIds,
-    validationGaps: missingCapabilities,
+    validationGaps,
   });
 }
 
@@ -99,14 +72,12 @@ export function sanitizeRecommendation(
     return fallback;
   }
   const validationSummary = recommendation.validationSummary;
-  const validationGaps = inferMissingCapabilities(
-    validationProfileId,
-    selectedCommandIds,
-    signals.commandCatalog,
-    signals.capabilities,
-    signals.skippedCommandCandidates,
-    true,
-  );
+  const validationGaps = [
+    ...new Set([
+      ...recommendation.validationGaps,
+      ...inferGenericFallbackValidationGaps(selectedCommandIds, signals.commandCatalog),
+    ]),
+  ];
 
   return agentProfileRecommendationSchema.parse({
     validationProfileId,

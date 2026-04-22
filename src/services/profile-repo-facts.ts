@@ -49,6 +49,7 @@ export interface WorkspacePackageJsonManifest {
 export interface ProfileRepoFacts {
   dependencies: string[];
   files: string[];
+  invalidPackageJsons: string[];
   lockfiles: string[];
   manifests: string[];
   packageJson?: ProfilePackageJsonManifest;
@@ -72,15 +73,16 @@ export async function collectProfileRepoFacts(
   projectRoot: string,
   options: { rules?: ManagedTreeRules } = {},
 ): Promise<ProfileRepoFacts> {
-  const packageJson = await readPackageJson(projectRoot, options.rules);
+  const rootPackageJson = await readPackageJson(projectRoot, options.rules);
   const workspaceRoots = await detectWorkspaceRoots(projectRoot, options.rules);
-  const workspacePackageJsons = await collectWorkspacePackageJsons(
+  const workspacePackageJsonsResult = await collectWorkspacePackageJsons(
     projectRoot,
     workspaceRoots,
     options.rules,
   );
+  const workspacePackageJsons = workspacePackageJsonsResult.manifests;
   const packageManagerResolution = await detectPackageManager(projectRoot, {
-    rootPackageManagerField: packageJson?.packageManager,
+    rootPackageManagerField: rootPackageJson.packageJson?.packageManager,
     workspacePackageJsons,
     ...(options.rules ? { rules: options.rules } : {}),
   });
@@ -100,7 +102,7 @@ export async function collectProfileRepoFacts(
   const workspaceMetadata = buildWorkspaceMetadata(workspaceRoots, manifests);
   const scripts = [
     ...new Set([
-      ...collectManifestScripts(packageJson),
+      ...collectManifestScripts(rootPackageJson.packageJson),
       ...workspacePackageJsons.flatMap((workspaceManifest) =>
         collectManifestScripts(workspaceManifest.packageJson),
       ),
@@ -108,19 +110,24 @@ export async function collectProfileRepoFacts(
   ].sort((left, right) => left.localeCompare(right));
   const dependencies = [
     ...new Set([
-      ...collectManifestDependencies(packageJson),
+      ...collectManifestDependencies(rootPackageJson.packageJson),
       ...workspacePackageJsons.flatMap((workspaceManifest) =>
         collectManifestDependencies(workspaceManifest.packageJson),
       ),
     ]),
   ].sort((left, right) => left.localeCompare(right));
+  const invalidPackageJsons = [
+    ...rootPackageJson.invalidPaths,
+    ...workspacePackageJsonsResult.invalidPaths,
+  ].sort((left, right) => left.localeCompare(right));
 
   return {
     dependencies,
     files,
+    invalidPackageJsons,
     lockfiles,
     manifests,
-    ...(packageJson ? { packageJson } : {}),
+    ...(rootPackageJson.packageJson ? { packageJson: rootPackageJson.packageJson } : {}),
     packageManager: packageManagerResolution.packageManager,
     ...(packageManagerResolution.evidence
       ? { packageManagerEvidence: packageManagerResolution.evidence }
@@ -217,13 +224,20 @@ export async function detectPackageManager(
 async function readPackageJson(
   projectRoot: string,
   rules?: ManagedTreeRules,
-): Promise<ProfilePackageJsonManifest | undefined> {
+): Promise<{ invalidPaths: string[]; packageJson?: ProfilePackageJsonManifest }> {
   const packageJsonPath = join(projectRoot, "package.json");
   if (!shouldManageProjectPath("package.json", rules) || !(await pathExists(packageJsonPath))) {
-    return undefined;
+    return { invalidPaths: [] };
   }
 
-  return JSON.parse(await readFile(packageJsonPath, "utf8")) as ProfilePackageJsonManifest;
+  try {
+    return {
+      packageJson: parsePackageJsonManifest(await readFile(packageJsonPath, "utf8")),
+      invalidPaths: [],
+    };
+  } catch {
+    return { invalidPaths: ["package.json"] };
+  }
 }
 
 async function collectRelativePaths(
@@ -264,8 +278,9 @@ async function collectWorkspacePackageJsons(
   projectRoot: string,
   workspaceRoots: readonly string[],
   rules?: ManagedTreeRules,
-): Promise<WorkspacePackageJsonManifest[]> {
+): Promise<{ invalidPaths: string[]; manifests: WorkspacePackageJsonManifest[] }> {
   const manifests: WorkspacePackageJsonManifest[] = [];
+  const invalidPaths: string[] = [];
 
   for (const root of workspaceRoots) {
     const manifestPath = `${root}/package.json`;
@@ -279,17 +294,33 @@ async function collectWorkspacePackageJsons(
       continue;
     }
 
-    manifests.push({
-      manifestPath,
-      packageJson: JSON.parse(
-        // eslint-disable-next-line no-await-in-loop
-        await readFile(absolutePath, "utf8"),
-      ) as ProfilePackageJsonManifest,
-      root,
-    });
+    try {
+      manifests.push({
+        manifestPath,
+        packageJson: parsePackageJsonManifest(
+          // eslint-disable-next-line no-await-in-loop
+          await readFile(absolutePath, "utf8"),
+        ),
+        root,
+      });
+    } catch {
+      invalidPaths.push(manifestPath);
+    }
   }
 
-  return manifests.sort((left, right) => left.root.localeCompare(right.root));
+  return {
+    invalidPaths: invalidPaths.sort((left, right) => left.localeCompare(right)),
+    manifests: manifests.sort((left, right) => left.root.localeCompare(right.root)),
+  };
+}
+
+function parsePackageJsonManifest(contents: string): ProfilePackageJsonManifest {
+  const parsed = JSON.parse(contents) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("package.json must contain a JSON object.");
+  }
+
+  return parsed as ProfilePackageJsonManifest;
 }
 
 function buildWorkspaceMetadata(

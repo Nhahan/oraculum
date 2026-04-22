@@ -166,12 +166,6 @@ export function buildCommandCatalog(options: {
     }
   }
 
-  recordCapabilitySkips({
-    commandCatalog,
-    capabilities: options.capabilities,
-    addSkipped,
-  });
-
   return { commandCatalog, skippedCommandCandidates };
 }
 
@@ -187,50 +181,6 @@ export function hasCapabilityCommand(
   );
 }
 
-function recordCapabilitySkips(options: {
-  commandCatalog: ProfileCommandCandidate[];
-  capabilities: ProfileCapabilitySignal[];
-  addSkipped: (candidate: ProfileSkippedCommandCandidate) => void;
-}): void {
-  const e2eCapability = options.capabilities.find(
-    (capability) =>
-      capability.kind === "test-runner" &&
-      (capability.value === "playwright" || capability.value === "cypress"),
-  );
-  if (e2eCapability && !hasCapabilityCommand(options.commandCatalog, "e2e-or-visual", ["deep"])) {
-    options.addSkipped({
-      id: "e2e-deep",
-      label: "End-to-end or visual checks",
-      capability: "e2e-or-visual",
-      reason: "missing-explicit-command",
-      detail:
-        "Test-runner evidence was detected, but no repo-local e2e/smoke script or explicit oracle exposes the executable command.",
-      provenance: capabilityProvenance(e2eCapability),
-    });
-  }
-
-  const migrationCapability = options.capabilities.find(
-    (capability) => capability.kind === "migration-tool",
-  );
-  if (
-    migrationCapability &&
-    !hasCapabilityCommand(options.commandCatalog, "schema-validation", ["fast"]) &&
-    !hasCapabilityCommand(options.commandCatalog, "migration-dry-run", ["impact"]) &&
-    !hasCapabilityCommand(options.commandCatalog, "rollback-simulation", ["deep"]) &&
-    !hasCapabilityCommand(options.commandCatalog, "migration-drift", ["deep"])
-  ) {
-    options.addSkipped({
-      id: "migration-impact",
-      label: "Migration dry-run",
-      capability: "migration-dry-run",
-      reason: "missing-explicit-command",
-      detail:
-        "Migration-tool evidence was detected, but no repo-local migration validation script or explicit oracle exposes the executable command.",
-      provenance: capabilityProvenance(migrationCapability),
-    });
-  }
-}
-
 function packageMetadataProvenance(target: {
   path: string;
   source: ProfileSignalProvenance["source"];
@@ -243,15 +193,6 @@ function packageMetadataProvenance(target: {
       target.source === "workspace-config"
         ? "Workspace package export metadata."
         : "Package export metadata.",
-  };
-}
-
-function capabilityProvenance(capability: ProfileCapabilitySignal): ProfileSignalProvenance {
-  return {
-    signal: `${capability.kind}:${capability.value}`,
-    source: capability.source,
-    ...(capability.path ? { path: capability.path } : {}),
-    ...(capability.detail ? { detail: capability.detail } : {}),
   };
 }
 

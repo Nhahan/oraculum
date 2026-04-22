@@ -46,6 +46,7 @@ export async function collectProfileRepoSignals(
     commandCatalog,
     facts.packageManager,
     facts.packageJson,
+    facts.invalidPackageJsons,
     facts.workspaceMetadata,
   );
 
@@ -76,23 +77,9 @@ export function buildSelectionSignalSummary(
   const hasCapability = (
     predicate: (capability: ProfileRepoSignals["capabilities"][number]) => boolean,
   ) => signals.capabilities.some(predicate);
-  const hasRepoLocalCapability = (capability: string) =>
-    signals.commandCatalog.some(
-      (command) => command.source === "repo-local-script" && command.capability === capability,
-    );
 
   if (signals.commandCatalog.some((command) => command.source === "repo-local-script")) {
     add("repo-local-validation");
-  }
-  if (hasRepoLocalCapability("e2e-or-visual")) {
-    add("repo-e2e-anchor");
-  }
-  if (
-    ["schema-validation", "migration-dry-run", "rollback-simulation", "migration-drift"].some(
-      hasRepoLocalCapability,
-    )
-  ) {
-    add("repo-migration-anchor");
   }
   if (
     hasCapability(
@@ -101,25 +88,6 @@ export function buildSelectionSignalSummary(
     )
   ) {
     add("package-export-metadata");
-  }
-  if (
-    hasCapability(
-      (capability) => capability.kind === "build-system" && capability.value === "frontend-config",
-    )
-  ) {
-    add("frontend-config-evidence");
-  }
-  if (
-    hasCapability(
-      (capability) =>
-        capability.kind === "test-runner" &&
-        (capability.value === "playwright" || capability.value === "cypress"),
-    )
-  ) {
-    add("e2e-runner-evidence");
-  }
-  if (hasCapability((capability) => capability.kind === "migration-tool")) {
-    add("migration-tool-evidence");
   }
   if (signals.workspaceRoots.length > 0) {
     add("workspace");
@@ -146,9 +114,18 @@ function buildSignalNotes(
         types?: string;
       }
     | undefined,
+  invalidPackageJsons: readonly string[],
   workspaceMetadata: ProfileRepoSignals["workspaceMetadata"],
 ): string[] {
   const notes: string[] = [];
+  if (invalidPackageJsons.length > 0) {
+    notes.push(
+      [
+        `Skipped invalid package.json manifest${invalidPackageJsons.length === 1 ? "" : "s"}:`,
+        `${invalidPackageJsons.join(", ")}.`,
+      ].join(" "),
+    );
+  }
   if (
     capabilities.some(
       (capability) =>
@@ -166,13 +143,23 @@ function buildSignalNotes(
     );
   }
   if (!packageJson) {
-    notes.push(
-      workspaceMetadata.some((workspace) =>
-        workspace.manifests.some((manifestPath) => manifestPath.endsWith("/package.json")),
-      )
-        ? "No root package.json was found; repository facts come from workspace manifests, files, and task context."
-        : "No package.json was found; repository facts are limited to files and task context.",
-    );
+    if (invalidPackageJsons.includes("package.json")) {
+      notes.push(
+        workspaceMetadata.some((workspace) =>
+          workspace.manifests.some((manifestPath) => manifestPath.endsWith("/package.json")),
+        )
+          ? "Root package.json is invalid; repository facts come from valid workspace manifests, files, and task context."
+          : "Root package.json is invalid; repository facts are limited to files and task context.",
+      );
+    } else {
+      notes.push(
+        workspaceMetadata.some((workspace) =>
+          workspace.manifests.some((manifestPath) => manifestPath.endsWith("/package.json")),
+        )
+          ? "No root package.json was found; repository facts come from workspace manifests, files, and task context."
+          : "No package.json was found; repository facts are limited to files and task context.",
+      );
+    }
   }
 
   return notes;

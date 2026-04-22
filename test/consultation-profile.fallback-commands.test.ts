@@ -338,7 +338,7 @@ describe("consultation auto profile fallback: command surfaces", () => {
       "No package.json was found; repository facts are limited to files and task context.",
     );
   });
-  it("uses nested workspace config files as profile signals without inventing root-level commands", async () => {
+  it("uses nested workspace config files as raw facts without inventing root-level commands", async () => {
     const cwd = await createTempRoot();
     await initializeProject({ cwd, force: false });
     await writeFile(join(cwd, "tasks", "fix.md"), "# Fix\nKeep nested frontend healthy.\n", "utf8");
@@ -364,7 +364,7 @@ describe("consultation auto profile fallback: command surfaces", () => {
       signals: {
         commandCatalog: Array<{ command: string }>;
         capabilities: Array<{ kind: string; path?: string; source: string; value: string }>;
-        provenance: Array<{ path?: string; signal: string; source: string }>;
+        files: string[];
       };
     };
     expect(recommendation.selection.profileId).toBe("generic");
@@ -375,27 +375,8 @@ describe("consultation auto profile fallback: command surfaces", () => {
     expect(artifact.signals.capabilities).not.toContainEqual(
       expect.objectContaining({ kind: "intent", value: "frontend" }),
     );
-    expect(artifact.signals.capabilities).toContainEqual(
-      expect.objectContaining({
-        kind: "test-runner",
-        path: "packages/app/playwright.config.ts",
-        source: "workspace-config",
-        value: "playwright",
-      }),
-    );
-    expect(artifact.signals.provenance).toContainEqual(
-      expect.objectContaining({
-        path: "packages/app/playwright.config.ts",
-        signal: "test-runner:playwright",
-        source: "workspace-config",
-      }),
-    );
-    expect(artifact.signals.provenance).toContainEqual(
-      expect.objectContaining({
-        path: "packages/app/vite.config.ts",
-        signal: "build-system:frontend-config",
-        source: "workspace-config",
-      }),
+    expect(artifact.signals.files).toEqual(
+      expect.arrayContaining(["packages/app/playwright.config.ts", "packages/app/vite.config.ts"]),
     );
     expect(artifact.signals.commandCatalog).toEqual([]);
   });

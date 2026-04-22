@@ -85,9 +85,7 @@ if (out) {
         "typecheck-fast",
         "full-suite-deep",
       ]);
-      expect(savedManifest.profileSelection?.missingCapabilities).toEqual([
-        "No package packaging smoke check was selected.",
-      ]);
+      expect(savedManifest.profileSelection?.missingCapabilities).toEqual([]);
 
       const configPath = savedManifest.configPath;
       expect(configPath).toBeDefined();
@@ -121,9 +119,7 @@ if (out) {
         "repo-local-validation",
         "package-export-metadata",
       ]);
-      expect(savedManifest.profileSelection?.validationGaps).toEqual([
-        "No package packaging smoke check was selected.",
-      ]);
+      expect(savedManifest.profileSelection?.validationGaps).toEqual([]);
 
       const rawSavedManifest = JSON.parse(
         await readFile(getRunManifestPath(cwd, manifest.id), "utf8"),
@@ -182,9 +178,7 @@ if (out) {
         "repo-local-validation",
         "package-export-metadata",
       ]);
-      expect(selectionArtifact.appliedSelection.validationGaps).toEqual([
-        "No package packaging smoke check was selected.",
-      ]);
+      expect(selectionArtifact.appliedSelection.validationGaps).toEqual([]);
     },
     EXECUTION_TEST_TIMEOUT_MS,
   );
@@ -412,9 +406,7 @@ if (out) {
       "typecheck-fast",
       "full-suite-deep",
     ]);
-    expect(recommendation.selection.missingCapabilities).toEqual([
-      "No package packaging smoke check was selected.",
-    ]);
+    expect(recommendation.selection.missingCapabilities).toEqual([]);
   });
 
   it("can skip runtime profile selection and rely on fallback detection for planning-only flows", async () => {

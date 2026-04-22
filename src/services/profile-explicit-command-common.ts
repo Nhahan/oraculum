@@ -7,10 +7,7 @@ import type {
 export const DEDUPED_PACKAGE_SCRIPT_CAPABILITIES = new Set([
   "build",
   "changed-area-test",
-  "e2e-or-visual",
   "full-suite-test",
-  "migration-dry-run",
-  "rollback-simulation",
   "unit-test",
 ]);
 
@@ -54,14 +51,6 @@ export const EXPLICIT_COMMAND_DEFINITIONS: ExplicitCommandDefinition[] = [
     invariant: "The codebase should satisfy type checking.",
   },
   {
-    id: "schema-fast",
-    roundId: "fast",
-    label: "Schema validation",
-    capability: "schema-validation",
-    aliases: ["schema-validation"],
-    invariant: "Schema definitions should validate cleanly.",
-  },
-  {
     id: "unit-impact",
     roundId: "impact",
     label: "Unit tests",
@@ -86,41 +75,12 @@ export const EXPLICIT_COMMAND_DEFINITIONS: ExplicitCommandDefinition[] = [
     invariant: "The project should build successfully after the patch.",
   },
   {
-    id: "migration-impact",
-    roundId: "impact",
-    label: "Migration dry-run",
-    capability: "migration-dry-run",
-    aliases: ["migration-dry-run", "migrate-dry-run", "db-dry-run"],
-    invariant: "Migration planning or dry-run should succeed.",
-  },
-  {
-    id: "e2e-deep",
-    roundId: "deep",
-    label: "End-to-end or visual checks",
-    capability: "e2e-or-visual",
-    aliases: ["e2e", "test-e2e"],
-    invariant: "Deep end-to-end or visual validation should pass.",
-  },
-  {
     id: "full-suite-deep",
     roundId: "deep",
     label: "Full test suite",
     capability: "full-suite-test",
     aliases: ["test", "test-full", "test-ci", "ci-test", "verify"],
     invariant: "The full test suite should pass before crowning.",
-  },
-  {
-    id: "rollback-deep",
-    roundId: "deep",
-    label: "Rollback simulation",
-    capability: "rollback-simulation",
-    aliases: [
-      "migration-rollback",
-      "rollback-simulate",
-      "rollback-simulation",
-      "db-rollback-dry-run",
-    ],
-    invariant: "Rollback simulation should succeed.",
   },
 ];
 
