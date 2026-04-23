@@ -25,7 +25,7 @@ describe("CLI argument parsing", () => {
     });
   });
 
-  it("rejects legacy setup scope flags", async () => {
+  it("rejects deprecated setup scope flags", async () => {
     const program = createProgram();
 
     await expect(
@@ -65,6 +65,31 @@ describe("CLI argument parsing", () => {
       code: "commander.unknownCommand",
     });
     await expect(program.parseAsync(["init"], { from: "user" })).rejects.toMatchObject({
+      code: "commander.unknownCommand",
+    });
+  });
+
+  it("exposes workflow commands only under the direct orc route", async () => {
+    const program = createProgram();
+
+    await expect(program.parseAsync(["orc", "consult"], { from: "user" })).rejects.toThrow(
+      'No resumable consultation or ready consultation plan found. Start with `orc plan "<task>"`, `orc consult "<task>"`, or `orc consult <consultation-plan-path>`.',
+    );
+    expect(program.commands.map((command) => command.name())).toContain("orc");
+  });
+
+  it("does not expose the removed draft workflow under the direct orc route", async () => {
+    const program = createProgram();
+
+    await expect(program.parseAsync(["orc", "draft"], { from: "user" })).rejects.toMatchObject({
+      code: "commander.unknownCommand",
+    });
+  });
+
+  it("does not expose the removed init workflow under the direct orc route", async () => {
+    const program = createProgram();
+
+    await expect(program.parseAsync(["orc", "init"], { from: "user" })).rejects.toMatchObject({
       code: "commander.unknownCommand",
     });
   });

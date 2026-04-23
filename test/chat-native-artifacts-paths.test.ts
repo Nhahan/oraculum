@@ -22,7 +22,7 @@ import {
   getSecondOpinionWinnerSelectionPath,
   getWinnerSelectionPath,
 } from "../src/core/paths.js";
-import { consultToolResponseSchema } from "../src/domain/chat-native.js";
+import { consultActionResponseSchema } from "../src/domain/chat-native.js";
 import {
   consultationClarifyFollowUpSchema,
   consultationResearchBriefSchema,
@@ -43,13 +43,13 @@ import {
 registerChatNativeTempRootCleanup();
 
 describe("chat-native consultation artifacts", () => {
-  it("builds machine-readable consultation artifact paths for MCP responses", async () => {
+  it("builds machine-readable consultation artifact paths for action responses", async () => {
     const projectRoot = await createChatNativeTempRoot();
     const consultationId = "run_20260409_demo";
 
     await writeCompleteConsultationArtifacts(projectRoot, consultationId);
 
-    const parsed = consultToolResponseSchema.shape.artifacts.parse(
+    const parsed = consultActionResponseSchema.shape.artifacts.parse(
       buildConsultationArtifacts(projectRoot, consultationId, {
         hasExportedCandidate: true,
       }),
@@ -144,7 +144,7 @@ describe("chat-native consultation artifacts", () => {
     );
     await writePreflightReadinessArtifact(projectRoot, consultationId);
 
-    const parsed = consultToolResponseSchema.shape.artifacts.parse(
+    const parsed = consultActionResponseSchema.shape.artifacts.parse(
       buildConsultationArtifacts(nestedCwd, consultationId, {
         hasExportedCandidate: false,
       }),
@@ -180,7 +180,7 @@ describe("chat-native consultation artifacts", () => {
       }),
     );
 
-    const parsed = consultToolResponseSchema.shape.artifacts.parse(
+    const parsed = consultActionResponseSchema.shape.artifacts.parse(
       buildConsultationArtifacts(projectRoot, consultationId, {
         hasExportedCandidate: false,
       }),

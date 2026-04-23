@@ -1,7 +1,7 @@
 import { Command } from "commander";
 
 import { registerHostWrapperCommand } from "./commands/host-wrapper.js";
-import { registerMcpCommand } from "./commands/mcp.js";
+import { registerOrcCommand } from "./commands/orc.js";
 import { registerSetupCommand } from "./commands/setup.js";
 import { APP_NAME, APP_VERSION } from "./core/constants.js";
 
@@ -10,12 +10,12 @@ export function buildProgram(): Command {
 
   program
     .name(APP_NAME)
-    .description("Set up or remove Oraculum host integration and run internal MCP services.")
+    .description("Set up Oraculum host integration and run direct host-native commands.")
     .version(APP_VERSION);
 
   registerSetupCommand(program);
+  registerOrcCommand(program);
   registerHostWrapperCommand(program);
-  registerMcpCommand(program);
 
   return program;
 }

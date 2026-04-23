@@ -5,23 +5,7 @@ import { commandPrefixSchema } from "./command.js";
 
 export const hostTransportModeSchema = z.enum(["official", "unavailable"]);
 
-export const initToolRequestSchema = z
-  .object({
-    cwd: z.string().min(1),
-    force: z.boolean().default(false),
-  })
-  .strict();
-
-export const initToolResponseSchema = z.object({
-  mode: z.literal("init"),
-  initialization: z.object({
-    projectRoot: z.string().min(1),
-    configPath: z.string().min(1),
-    createdPaths: z.array(z.string().min(1)),
-  }),
-});
-
-export const setupStatusToolRequestSchema = z
+export const setupStatusActionRequestSchema = z
   .object({
     cwd: z.string().min(1),
     host: adapterSchema.optional(),
@@ -38,7 +22,7 @@ export const hostSetupStatusSchema = z.object({
   notes: z.array(z.string().min(1)).default([]),
 });
 
-export const setupStatusToolResponseSchema = z.object({
+export const setupStatusActionResponseSchema = z.object({
   mode: z.literal("setup-status"),
   cwd: z.string().min(1),
   projectInitialized: z.boolean(),
@@ -49,8 +33,6 @@ export const setupStatusToolResponseSchema = z.object({
   summary: z.string().min(1),
 });
 
-export type InitToolRequest = z.infer<typeof initToolRequestSchema>;
-export type InitToolResponse = z.infer<typeof initToolResponseSchema>;
 export type HostTransportMode = z.infer<typeof hostTransportModeSchema>;
-export type SetupStatusToolRequest = z.infer<typeof setupStatusToolRequestSchema>;
-export type SetupStatusToolResponse = z.infer<typeof setupStatusToolResponseSchema>;
+export type SetupStatusActionRequest = z.infer<typeof setupStatusActionRequestSchema>;
+export type SetupStatusActionResponse = z.infer<typeof setupStatusActionResponseSchema>;

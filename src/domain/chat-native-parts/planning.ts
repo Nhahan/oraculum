@@ -7,14 +7,21 @@ import {
   projectInitializationResultSchema,
 } from "./common.js";
 
-const planningToolRequestBaseSchema = z
+const planningActionRequestBaseSchema = z
   .object({
     cwd: z.string().min(1),
     taskInput: z.string().min(1),
   })
   .strict();
 
-const planningToolResponseBaseSchema = z.object({
+const consultActionRequestBaseSchema = z
+  .object({
+    cwd: z.string().min(1),
+    taskInput: z.string().min(1).optional(),
+  })
+  .strict();
+
+const planningActionResponseBaseSchema = z.object({
   consultation: runManifestSchema,
   status: savedConsultationStatusSchema,
   summary: z.string().min(1),
@@ -23,24 +30,17 @@ const planningToolResponseBaseSchema = z.object({
   initializedProject: projectInitializationResultSchema.optional(),
 });
 
-export const consultToolRequestSchema = planningToolRequestBaseSchema;
-export const consultToolResponseSchema = planningToolResponseBaseSchema.extend({
+export const consultActionRequestSchema = consultActionRequestBaseSchema;
+export const consultActionResponseSchema = planningActionResponseBaseSchema.extend({
   mode: z.literal("consult"),
 });
 
-export const planToolRequestSchema = planningToolRequestBaseSchema;
-export const planToolResponseSchema = planningToolResponseBaseSchema.extend({
+export const planActionRequestSchema = planningActionRequestBaseSchema;
+export const planActionResponseSchema = planningActionResponseBaseSchema.extend({
   mode: z.literal("plan"),
 });
 
-export const draftToolRequestSchema = planningToolRequestBaseSchema;
-export const draftToolResponseSchema = planningToolResponseBaseSchema.extend({
-  mode: z.literal("draft"),
-});
-
-export type ConsultToolRequest = z.infer<typeof consultToolRequestSchema>;
-export type ConsultToolResponse = z.infer<typeof consultToolResponseSchema>;
-export type PlanToolRequest = z.infer<typeof planToolRequestSchema>;
-export type PlanToolResponse = z.infer<typeof planToolResponseSchema>;
-export type DraftToolRequest = z.infer<typeof draftToolRequestSchema>;
-export type DraftToolResponse = z.infer<typeof draftToolResponseSchema>;
+export type ConsultActionRequest = z.infer<typeof consultActionRequestSchema>;
+export type ConsultActionResponse = z.infer<typeof consultActionResponseSchema>;
+export type PlanActionRequest = z.infer<typeof planActionRequestSchema>;
+export type PlanActionResponse = z.infer<typeof planActionResponseSchema>;

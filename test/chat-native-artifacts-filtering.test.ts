@@ -15,7 +15,7 @@ import {
   getSecondOpinionWinnerSelectionPath,
   getWinnerSelectionPath,
 } from "../src/core/paths.js";
-import { consultToolResponseSchema } from "../src/domain/chat-native.js";
+import { consultActionResponseSchema } from "../src/domain/chat-native.js";
 import { buildConsultationArtifacts } from "../src/services/chat-native.js";
 import { resolveConsultationArtifacts } from "../src/services/consultation-artifacts.js";
 import {
@@ -27,7 +27,7 @@ import {
 registerChatNativeTempRootCleanup();
 
 describe("chat-native consultation artifact filtering", () => {
-  it("omits invalid machine-readable artifact paths from MCP responses", async () => {
+  it("omits invalid machine-readable artifact paths from action responses", async () => {
     const projectRoot = await createChatNativeTempRoot("oraculum-chat-native-invalid-");
     const consultationId = "run_20260409_invalid";
 
@@ -45,7 +45,7 @@ describe("chat-native consultation artifact filtering", () => {
       "{}\n",
     );
 
-    const parsed = consultToolResponseSchema.shape.artifacts.parse(
+    const parsed = consultActionResponseSchema.shape.artifacts.parse(
       buildConsultationArtifacts(projectRoot, consultationId, {
         hasExportedCandidate: false,
       }),
@@ -79,14 +79,14 @@ describe("chat-native consultation artifact filtering", () => {
     });
   });
 
-  it("omits blank comparison markdown paths from MCP responses", async () => {
+  it("omits blank comparison markdown paths from action responses", async () => {
     const projectRoot = await createChatNativeTempRoot("oraculum-chat-native-blank-md-");
     const consultationId = "run_20260409_blank_markdown";
 
     await mkdir(getRunDir(projectRoot, consultationId), { recursive: true });
     await writeTextArtifact(getFinalistComparisonMarkdownPath(projectRoot, consultationId), " \n");
 
-    const parsed = consultToolResponseSchema.shape.artifacts.parse(
+    const parsed = consultActionResponseSchema.shape.artifacts.parse(
       buildConsultationArtifacts(projectRoot, consultationId, {
         hasExportedCandidate: false,
       }),
@@ -121,7 +121,7 @@ describe("chat-native consultation artifact filtering", () => {
 
     await mkdir(getRunDir(projectRoot, consultationId), { recursive: true });
 
-    const parsed = consultToolResponseSchema.shape.artifacts.parse(
+    const parsed = consultActionResponseSchema.shape.artifacts.parse(
       buildConsultationArtifacts(projectRoot, consultationId, {
         hasExportedCandidate: false,
       }),
