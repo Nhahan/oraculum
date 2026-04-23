@@ -11,7 +11,7 @@ import {
   getRunConfigPath,
   getRunDir,
 } from "../../src/core/paths.js";
-import { crownToolResponseSchema } from "../../src/domain/chat-native.js";
+import { crownActionResponseSchema } from "../../src/domain/chat-native.js";
 import {
   consultationPlanArtifactSchema,
   consultationResearchBriefSchema,
@@ -45,8 +45,8 @@ export async function createChatNativeTempRoot(prefix = "oraculum-chat-native-")
   return tempRootHarness.createTempRoot(prefix);
 }
 
-export function createCrownToolResponse(candidateId: string) {
-  return crownToolResponseSchema.parse({
+export function createCrownActionResponse(candidateId: string) {
+  return crownActionResponseSchema.parse({
     mode: "crown",
     plan: {
       runId: "run_1",
@@ -56,7 +56,6 @@ export function createCrownToolResponse(candidateId: string) {
       materializationMode: "branch",
       workspaceDir: "/tmp/workspace",
       patchPath: "/tmp/export.patch",
-      materializationPatchPath: "/tmp/export.patch",
       withReport: false,
       createdAt: "2026-04-05T00:00:00.000Z",
     },
@@ -143,7 +142,7 @@ export function createCrownToolResponse(candidateId: string) {
       researchPosture: "repo-only",
       researchRerunRecommended: false,
       researchConflictsPresent: false,
-      nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-result"],
+      nextActions: ["reopen-verdict", "crown-recommended-result"],
       recommendedCandidateId: candidateId,
       validationSignals: [],
       validationGaps: [],
@@ -226,15 +225,16 @@ export async function writeCompleteConsultationArtifacts(
     planningDepthArtifactSchema.parse({
       runId: consultationId,
       createdAt: "2026-04-14T00:00:00.000Z",
-      depth: "skip-interview",
+      interviewDepth: "skip-interview",
       readiness: "ready",
       confidence: "high",
       summary: "The task is ready for planning.",
       reasons: [],
       estimatedInterviewRounds: 0,
-      consensusReviewDepth: "standard",
+      consensusReviewIntensity: "standard",
       maxInterviewRounds: 8,
-      maxConsensusRevisions: 3,
+      operatorMaxConsensusRevisions: 10,
+      maxConsensusRevisions: 1,
     }),
   );
   await writeJsonArtifact(
@@ -245,7 +245,7 @@ export async function writeCompleteConsultationArtifacts(
       updatedAt: "2026-04-14T00:00:00.000Z",
       status: "ready-for-spec",
       taskId: "task",
-      depth: "skip-interview",
+      interviewDepth: "skip-interview",
       rounds: [],
     }),
   );

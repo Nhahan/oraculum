@@ -7,27 +7,6 @@ import {
 } from "./helpers/project-contracts.js";
 
 describe("project contracts", () => {
-  it("rejects conflicting persisted outcome gap aliases during manifest normalization", () => {
-    expect(() =>
-      parseRunManifestArtifact(
-        createRunManifestArtifact({
-          candidateCount: 1,
-          outcome: {
-            type: "completed-with-validation-gaps",
-            terminal: true,
-            crownable: false,
-            finalistCount: 0,
-            validationPosture: "validation-gaps",
-            verificationLevel: "none",
-            judgingBasisKind: "missing-capability",
-            validationGapCount: 1,
-            missingCapabilityCount: 2,
-          },
-        }),
-      ),
-    ).toThrow("validationGapCount must match missingCapabilityCount");
-  });
-
   it("rejects manifests whose outcome gap count disagrees with persisted profile selection gaps", () => {
     expect(() =>
       parseRunManifestArtifact(

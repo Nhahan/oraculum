@@ -162,7 +162,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"profileId":"library","confidence":"high","summary":"Library scripts are present.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast","pack-impact","full-suite-deep"],"missingCapabilities":[]}',
+    '{"validationProfileId":"library","confidence":"high","validationSummary":"Library scripts are present.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast","pack-impact","full-suite-deep"],"validationGaps":[]}',
     "utf8",
   );
 }
@@ -211,19 +211,14 @@ if (out) {
         timeoutMs: FAKE_AGENT_TIMEOUT_MS,
       });
 
-      expect(executed.manifest.profileSelection?.profileId).toBe("library");
+      expect(executed.manifest.profileSelection?.validationProfileId).toBe("library");
       expect(executed.manifest.rounds[0]?.verdictCount).toBeGreaterThanOrEqual(4);
       expect(executed.manifest.rounds[1]?.verdictCount).toBeGreaterThanOrEqual(3);
       expect(executed.manifest.rounds[2]?.verdictCount).toBeGreaterThanOrEqual(1);
       const rawSavedManifest = JSON.parse(
         await readFile(getRunManifestPath(cwd, planned.id), "utf8"),
       ) as {
-        profileSelection?: {
-          profileId?: string;
-          summary?: string;
-          signals?: string[];
-          missingCapabilities?: string[];
-        };
+        profileSelection?: Record<string, unknown>;
       };
       expect(rawSavedManifest.profileSelection).not.toHaveProperty("profileId");
       expect(rawSavedManifest.profileSelection).not.toHaveProperty("summary");
@@ -279,7 +274,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"profileId":"library","confidence":"high","summary":"Workspace package scripts are present.","candidateCount":3,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","full-suite-deep"],"missingCapabilities":["No package packaging smoke check was detected."]}',
+    '{"validationProfileId":"library","confidence":"high","validationSummary":"Workspace package scripts are present.","candidateCount":3,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","full-suite-deep"],"validationGaps":["No package packaging smoke check was detected."]}',
     "utf8",
   );
 }
@@ -332,7 +327,7 @@ if (out) {
         timeoutMs: FAKE_AGENT_TIMEOUT_MS,
       });
 
-      expect(executed.manifest.profileSelection?.profileId).toBe("library");
+      expect(executed.manifest.profileSelection?.validationProfileId).toBe("library");
       expect(executed.manifest.profileSelection?.oracleIds).toEqual([
         "lint-fast",
         "full-suite-deep",
@@ -396,7 +391,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"profileId":"library","confidence":"high","summary":"Workspace-local entrypoints are present.","candidateCount":3,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","full-suite-deep"],"missingCapabilities":["No package packaging smoke check was detected."]}',
+    '{"validationProfileId":"library","confidence":"high","validationSummary":"Workspace-local entrypoints are present.","candidateCount":3,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","full-suite-deep"],"validationGaps":["No package packaging smoke check was detected."]}',
     "utf8",
   );
 }
@@ -449,7 +444,7 @@ if (out) {
         timeoutMs: FAKE_AGENT_TIMEOUT_MS,
       });
 
-      expect(executed.manifest.profileSelection?.profileId).toBe("library");
+      expect(executed.manifest.profileSelection?.validationProfileId).toBe("library");
       expect(executed.manifest.profileSelection?.oracleIds).toEqual([
         "lint-fast",
         "full-suite-deep",
@@ -528,7 +523,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"profileId":"library","confidence":"high","summary":"Workspace package scripts and export metadata are present.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","pack-impact","full-suite-deep","package-smoke-deep"],"missingCapabilities":[]}',
+    '{"validationProfileId":"library","confidence":"high","validationSummary":"Workspace package scripts and export metadata are present.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","pack-impact","full-suite-deep","package-smoke-deep"],"validationGaps":[]}',
     "utf8",
   );
 }
@@ -581,7 +576,7 @@ if (out) {
         timeoutMs: FAKE_AGENT_TIMEOUT_MS,
       });
 
-      expect(executed.manifest.profileSelection?.profileId).toBe("library");
+      expect(executed.manifest.profileSelection?.validationProfileId).toBe("library");
       expect(executed.manifest.profileSelection?.oracleIds).toEqual([
         "lint-fast",
         "pack-impact",

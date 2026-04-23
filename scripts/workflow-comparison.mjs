@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
-const distMcpToolsPath = join(repoRoot, "dist", "services", "mcp-tools.js");
+const distOrcActionsPath = join(repoRoot, "dist", "services", "orc-actions.js");
 const keepEvidence = process.env.ORACULUM_KEEP_EVIDENCE === "1";
 const workflowCandidateCount = parseBoundedInteger(
   process.env.ORACULUM_WORKFLOW_COMPARISON_CANDIDATES ?? "4",
@@ -164,7 +164,7 @@ const scenarios = [
     targetPath: "src/app.py",
     expectedValue: "stable python status",
     packageJson: false,
-    profileId: "generic",
+    validationProfileId: "generic",
     shallowCheck: {
       command: process.execPath,
       args: ["checks/smoke.mjs"],
@@ -208,8 +208,8 @@ const scenarios = [
 ];
 
 async function main() {
-  if (!existsSync(distMcpToolsPath)) {
-    throw new Error("dist/services/mcp-tools.js is missing. Run `npm run build` first.");
+  if (!existsSync(distOrcActionsPath)) {
+    throw new Error("dist/services/orc-actions.js is missing. Run `npm run build` first.");
   }
 
   const tempRoot = await mkdtemp(join(tmpdir(), "oraculum-workflow-comparison-"));
@@ -253,14 +253,14 @@ async function runScenario(tempRoot, fakeCodex, scenario) {
   assertEqual(oneShot.shallow, "passed", `${scenario.id}: one-shot shallow test should pass.`);
   assertEqual(oneShot.invariant, "failed", `${scenario.id}: one-shot invariant should fail.`);
 
-  const mcpTools = await loadDistMcpTools();
+  const orcActions = await loadDistOrcActions();
   const restoreEnv = patchEnv({
     ORACULUM_CODEX_BIN: fakeCodex,
     ORACULUM_COMPARISON_SCENARIO: scenario.id,
     ORACULUM_WORKFLOW_COMPARISON_CANDIDATES: String(workflowCandidateCount),
   });
   try {
-    const consultation = await mcpTools.runConsultTool({
+    const consultation = await orcActions.runConsultAction({
       cwd: oraculumRoot,
       taskInput: scenario.invariant,
       agent: "codex",
@@ -281,7 +281,7 @@ async function runScenario(tempRoot, fakeCodex, scenario) {
       `${scenario.id}: Oraculum should recommend the surviving good candidate.`,
     );
 
-    const crown = await mcpTools.runCrownTool({
+    const crown = await orcActions.runCrownAction({
       cwd: oraculumRoot,
       branchName: `fix/${scenario.id}`,
       withReport: false,
@@ -410,7 +410,7 @@ function buildFakeCodexSource() {
       {
         targetPath: scenario.targetPath,
         expectedValue: scenario.expectedValue,
-        profileId: scenario.profileId ?? "library",
+        validationProfileId: scenario.validationProfileId ?? "library",
       },
     ]),
   );
@@ -433,7 +433,6 @@ const candidateMatch = prompt.match(/^Candidate ID: (.+)$/m);
 const candidateId = candidateMatch ? candidateMatch[1].trim() : "cand-01";
 const isPreflight = prompt.includes("You are deciding whether an Oraculum consultation is ready to proceed before any candidate is generated.");
 const isProfile =
-  prompt.includes("You are selecting the best Oraculum consultation profile") ||
   prompt.includes("You are selecting the best Oraculum consultation validation posture");
 const isWinner = prompt.includes("You are selecting the best Oraculum finalist.");
 
@@ -503,13 +502,13 @@ function preflightPayload() {
 
 function profilePayload() {
   return {
-    profileId: scenario.profileId,
-    confidence: scenario.profileId === "generic" ? "medium" : "high",
-    summary: "Controlled workflow comparison fixture.",
+    validationProfileId: scenario.validationProfileId,
+    confidence: scenario.validationProfileId === "generic" ? "medium" : "high",
+    validationSummary: "Controlled workflow comparison fixture.",
     candidateCount,
     strategyIds: ["minimal-change", "test-amplified"],
     selectedCommandIds: ["scenario-invariant"],
-    missingCapabilities: [],
+    validationGaps: [],
   };
 }
 
@@ -540,14 +539,14 @@ process.stdout.write(JSON.stringify({ event: "completed", scenario: scenarioId, 
 `;
 }
 
-let cachedMcpToolsModule;
+let cachedOrcActionsModule;
 
-async function loadDistMcpTools() {
-  if (!cachedMcpToolsModule) {
-    cachedMcpToolsModule = import(pathToFileURL(distMcpToolsPath).href);
+async function loadDistOrcActions() {
+  if (!cachedOrcActionsModule) {
+    cachedOrcActionsModule = import(pathToFileURL(distOrcActionsPath).href);
   }
 
-  return cachedMcpToolsModule;
+  return cachedOrcActionsModule;
 }
 
 function writeFileSync(root, relativePath, contents) {

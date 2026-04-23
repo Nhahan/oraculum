@@ -59,7 +59,7 @@ describe("consultation auto profile fallback: library and anchor signals", () =>
         }>;
       };
     };
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(artifact.signals.capabilities).toContainEqual(
       expect.objectContaining({
         kind: "build-system",
@@ -142,9 +142,9 @@ describe("consultation auto profile fallback: library and anchor signals", () =>
       };
     };
 
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
     const lintOracle = recommendation.config.oracles.find((oracle) => oracle.id === "lint-fast");
     const packOracle = recommendation.config.oracles.find((oracle) => oracle.id === "pack-impact");
     const packageSmokeOracle = recommendation.config.oracles.find(
@@ -226,7 +226,7 @@ describe("consultation auto profile fallback: library and anchor signals", () =>
       };
     };
 
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(artifact.signals.commandCatalog).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "pack-impact" }),
@@ -263,13 +263,13 @@ describe("consultation auto profile fallback: library and anchor signals", () =>
 
     const recommendation = await recommendFallbackProfile({ cwd, runId: "run_library_pack" });
 
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([
       "lint-fast",
       "typecheck-fast",
       "full-suite-deep",
     ]);
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
     const artifact = JSON.parse(
       await readFile(getProfileSelectionPath(cwd, "run_library_pack"), "utf8"),
     ) as {
@@ -362,19 +362,19 @@ describe("consultation auto profile fallback: library and anchor signals", () =>
       runId: "run_conflicting_fallback_anchors",
     });
 
-    expect(recommendation.selection.profileId).toBe("generic");
-    expect(recommendation.selection.summary).toContain(
+    expect(recommendation.selection.validationProfileId).toBe("generic");
+    expect(recommendation.selection.validationSummary).toContain(
       "runtime semantic posture selection was unavailable",
     );
-    expect(recommendation.selection.summary).not.toContain("pack-impact");
-    expect(recommendation.selection.summary).not.toContain("package-smoke-deep");
+    expect(recommendation.selection.validationSummary).not.toContain("pack-impact");
+    expect(recommendation.selection.validationSummary).not.toContain("package-smoke-deep");
     expect(recommendation.selection.oracleIds).toEqual([
       "lint-fast",
       "typecheck-fast",
       "full-suite-deep",
     ]);
     expect(recommendation.selection.oracleIds).not.toContain("e2e-deep");
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
   });
   it("keeps conflicting explicit anchors on the generic fallback bundle", async () => {
     const cwd = await createTempRoot();
@@ -408,8 +408,8 @@ describe("consultation auto profile fallback: library and anchor signals", () =>
 
     const recommendation = await recommendFallbackProfile({ cwd, runId: "run_anchor_conflict" });
 
-    expect(recommendation.selection.profileId).toBe("generic");
-    expect(recommendation.selection.summary).toContain(
+    expect(recommendation.selection.validationProfileId).toBe("generic");
+    expect(recommendation.selection.validationSummary).toContain(
       "runtime semantic posture selection was unavailable",
     );
     expect(recommendation.selection.oracleIds).toEqual([
@@ -419,6 +419,6 @@ describe("consultation auto profile fallback: library and anchor signals", () =>
     ]);
     expect(recommendation.selection.oracleIds).not.toContain("e2e-deep");
     expect(recommendation.selection.oracleIds).not.toContain("migration-impact");
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
   });
 });

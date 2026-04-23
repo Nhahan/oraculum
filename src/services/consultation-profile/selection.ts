@@ -35,14 +35,10 @@ export function applyProfileSelection(options: {
   );
 
   const explicitCandidateCount =
-    options.configLayers.usesLegacyConfig ||
-    (options.configLayers.quick.defaultCandidates !== undefined &&
-      options.configLayers.quick.defaultCandidates !== defaultProjectConfig.defaultCandidates);
-  const explicitStrategies =
-    options.configLayers.usesLegacyConfig ||
-    options.configLayers.advanced?.strategies !== undefined;
-  const explicitOracles =
-    options.configLayers.usesLegacyConfig || options.configLayers.advanced?.oracles !== undefined;
+    options.configLayers.quick.defaultCandidates !== undefined &&
+    options.configLayers.quick.defaultCandidates !== defaultProjectConfig.defaultCandidates;
+  const explicitStrategies = options.configLayers.advanced?.strategies !== undefined;
+  const explicitOracles = options.configLayers.advanced?.oracles !== undefined;
 
   const effectiveCandidateCount = explicitCandidateCount
     ? options.baseConfig.defaultCandidates

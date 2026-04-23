@@ -2,13 +2,10 @@ import {
   normalizeConsultationScopePath,
   resolveConsultationArtifacts,
 } from "../consultation-artifacts.js";
-import { buildVerdictReview, listRecentConsultations } from "../consultations.js";
+import { buildVerdictReview } from "../consultations.js";
 
-export { renderPressureEvidenceSummary } from "./render.js";
-
+import { listPressureEvidenceConsultations } from "./history.js";
 import { buildClarifyPressure, buildFinalistSelectionPressure } from "./pressure.js";
-
-export { pressureEvidenceReportSchema } from "./schema.js";
 
 import { RunStore } from "../run-store.js";
 import {
@@ -20,12 +17,10 @@ import {
   pressureEvidenceReportSchema,
 } from "./schema.js";
 
-export type { PressureEvidenceReport } from "./schema.js";
-
 export async function collectPressureEvidence(cwd: string): Promise<PressureEvidenceReport> {
   const store = new RunStore(cwd);
   const projectRoot = store.projectRoot;
-  const manifests = await listRecentConsultations(projectRoot, Number.MAX_SAFE_INTEGER);
+  const manifests = await listPressureEvidenceConsultations(projectRoot, Number.MAX_SAFE_INTEGER);
   const clarifyCases: PressureEvidenceCase[] = [];
   const finalistSelectionCases: PressureEvidenceCase[] = [];
   const artifactCoverage = createArtifactCoverageAccumulator();
@@ -300,7 +295,7 @@ function normalizeOptionalConsultationScopePath(
 }
 
 function resolveCandidateStrategyLabels(
-  manifest: Awaited<ReturnType<typeof listRecentConsultations>>[number],
+  manifest: Awaited<ReturnType<typeof listPressureEvidenceConsultations>>[number],
   candidateIds: string[],
 ): string[] {
   if (candidateIds.length === 0) {

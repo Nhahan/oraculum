@@ -131,6 +131,7 @@ export async function writeExportPlanArtifact(
       mode: "git-branch",
       materializationMode: "branch",
       workspaceDir: "/tmp/workspace",
+      patchPath: `/tmp/${runId}-${winnerId}.patch`,
       withReport: true,
       createdAt: "2026-04-04T00:00:00.000Z",
     }),

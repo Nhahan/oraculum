@@ -13,7 +13,7 @@ import {
 export async function prepareScenario(
   workdir,
   scenario,
-  { invocationCwdForScenario, runInitToolRequest, runOrThrow },
+  { initializeProjectForScenario, invocationCwdForScenario, runOrThrow },
 ) {
   await mkdir(workdir, { recursive: true });
   await writeRepositoryTemplate(workdir, scenario);
@@ -30,7 +30,7 @@ export async function prepareScenario(
     runOrThrow("git", ["commit", "-m", "base"], { cwd: workdir });
   }
 
-  await runInitToolRequest({ cwd: workdir });
+  await initializeProjectForScenario({ cwd: workdir });
 
   if (scenario.kind === "no-finalist") {
     await writeAdvancedConfig(workdir, {
@@ -925,14 +925,13 @@ const candidateMatch = prompt.match(/^Candidate ID: (.+)$/m);
 const candidateId = candidateMatch ? candidateMatch[1].trim() : "cand-01";
 const isPreflight = prompt.includes("You are deciding whether an Oraculum consultation is ready to proceed before any candidate is generated.");
 const isProfile =
-  prompt.includes("You are selecting the best Oraculum consultation validation posture") ||
-  prompt.includes("You are selecting the best Oraculum consultation profile");
+  prompt.includes("You are selecting the best Oraculum consultation validation posture");
 const isWinner = prompt.includes("You are selecting the best Oraculum finalist.");
 const isRepair = prompt.includes("Repair context:");
 const scenario = ${JSON.stringify({
     kind: scenario.kind,
     repoKind: scenario.repoKind,
-    profileId: scenario.profileId,
+    validationProfileId: scenario.validationProfileId,
     candidateCount: scenario.candidateCount,
     agent: scenario.agent,
   })};
@@ -1027,21 +1026,21 @@ function winnerPayload() {
 }
 
 function profilePayload() {
-  const selectedCommandIds = scenario.profileId === "frontend"
+  const selectedCommandIds = scenario.validationProfileId === "frontend"
     ? ["lint-fast"]
-    : scenario.profileId === "migration"
+    : scenario.validationProfileId === "migration"
       ? ["lint-fast"]
       : ["lint-fast"];
   return {
-    profileId: scenario.profileId,
+    validationProfileId: scenario.validationProfileId,
     confidence: scenario.repoKind === "plain" ? "low" : "high",
-    summary: scenario.profileId + " profile fits the repository signals.",
+    validationSummary: scenario.validationProfileId + " profile fits the repository signals.",
     candidateCount: scenario.candidateCount,
-    strategyIds: scenario.profileId === "migration"
+    strategyIds: scenario.validationProfileId === "migration"
       ? ["safety-first", "structural-refactor"]
       : ["minimal-change", "test-amplified"],
     selectedCommandIds,
-    missingCapabilities: [],
+    validationGaps: [],
   };
 }
 

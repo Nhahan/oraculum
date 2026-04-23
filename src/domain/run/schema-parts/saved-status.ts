@@ -2,7 +2,6 @@ import { z } from "zod";
 
 import { decisionConfidenceSchema } from "../../profile.js";
 import {
-  deriveResearchConflictHandling,
   taskResearchBasisStatusSchema,
   taskResearchConflictHandlingSchema,
   taskSourceKindSchema,
@@ -20,100 +19,44 @@ import {
   runStatusSchema,
 } from "./shared.js";
 
-export const savedConsultationStatusSchema = z.preprocess(
-  (value) => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      return value;
-    }
-
-    const payload = value as Record<string, unknown>;
-    const missingCapabilitiesPresent =
-      typeof payload.missingCapabilitiesPresent === "boolean"
-        ? payload.missingCapabilitiesPresent
-        : undefined;
-    const validationGapsPresent =
-      typeof payload.validationGapsPresent === "boolean"
-        ? payload.validationGapsPresent
-        : undefined;
-    const hasPersistedResearchContext =
-      (typeof payload.researchSignalCount === "number" && payload.researchSignalCount > 0) ||
-      typeof payload.researchSignalFingerprint === "string" ||
-      typeof payload.researchConfidence === "string" ||
-      typeof payload.researchRerunInputPath === "string" ||
-      payload.researchConflictsPresent === true ||
-      typeof payload.researchConflictHandling === "string";
-    const researchConflictHandling =
-      typeof payload.researchConflictHandling === "string"
-        ? payload.researchConflictHandling
-        : hasPersistedResearchContext
-          ? deriveResearchConflictHandling(
-              payload.researchConflictsPresent === true ? ["persisted-conflict"] : [],
-            )
-          : undefined;
-    const researchBasisStatus =
-      typeof payload.researchBasisStatus === "string"
-        ? payload.researchBasisStatus
-        : payload.researchBasisDrift === true
-          ? "stale"
-          : hasPersistedResearchContext
-            ? "current"
-            : "unknown";
-
-    return {
-      ...payload,
-      ...(validationGapsPresent !== undefined
-        ? { validationGapsPresent }
-        : missingCapabilitiesPresent !== undefined
-          ? { validationGapsPresent: missingCapabilitiesPresent }
-          : {}),
-      ...(missingCapabilitiesPresent !== undefined
-        ? { missingCapabilitiesPresent }
-        : validationGapsPresent !== undefined
-          ? { missingCapabilitiesPresent: validationGapsPresent }
-          : {}),
-      researchBasisStatus,
-      ...(researchConflictHandling ? { researchConflictHandling } : {}),
-    };
-  },
-  z
-    .object({
-      consultationId: z.string().min(1),
-      consultationState: runStatusSchema,
-      outcomeType: consultationOutcomeTypeSchema,
-      terminal: z.boolean(),
-      crownable: z.boolean(),
-      taskSourceKind: taskSourceKindSchema,
-      taskSourcePath: z.string().min(1),
-      taskArtifactKind: z.string().min(1).optional(),
-      targetArtifactPath: z.string().min(1).optional(),
-      researchConfidence: decisionConfidenceSchema.optional(),
-      researchBasisStatus: taskResearchBasisStatusSchema,
-      researchConflictHandling: taskResearchConflictHandlingSchema.optional(),
-      researchSignalCount: z.number().int().min(0),
-      researchSignalFingerprint: z.string().min(1).optional(),
-      researchBasisDrift: z.boolean().optional(),
-      researchRerunRecommended: z.boolean(),
-      researchRerunInputPath: z.string().min(1).optional(),
-      researchConflictsPresent: z.boolean(),
-      taskOriginSourceKind: taskSourceKindSchema.optional(),
-      taskOriginSourcePath: z.string().min(1).optional(),
-      validationPosture: consultationValidationPostureSchema,
-      validationProfileId: z.string().min(1).optional(),
-      validationSummary: z.string().min(1).optional(),
-      validationSignals: z.array(z.string().min(1)).default([]),
-      validationGaps: z.array(z.string().min(1)).default([]),
-      recommendedCandidateId: z.string().min(1).optional(),
-      finalistCount: z.number().int().min(0),
-      missingCapabilitiesPresent: z.boolean().optional(),
-      validationGapsPresent: z.boolean(),
-      judgingBasisKind: consultationJudgingBasisKindSchema,
-      verificationLevel: consultationVerificationLevelSchema,
-      preflightDecision: consultationPreflightDecisionSchema.optional(),
-      researchPosture: consultationResearchPostureSchema,
-      nextActions: z.array(consultationNextActionSchema).default([]),
-      updatedAt: z.string().min(1),
-    })
-    .superRefine((value, context) => {
+export const savedConsultationStatusSchema = z
+  .object({
+    consultationId: z.string().min(1),
+    consultationState: runStatusSchema,
+    outcomeType: consultationOutcomeTypeSchema,
+    terminal: z.boolean(),
+    crownable: z.boolean(),
+    taskSourceKind: taskSourceKindSchema,
+    taskSourcePath: z.string().min(1),
+    taskArtifactKind: z.string().min(1).optional(),
+    targetArtifactPath: z.string().min(1).optional(),
+    researchConfidence: decisionConfidenceSchema.optional(),
+    researchBasisStatus: taskResearchBasisStatusSchema,
+    researchConflictHandling: taskResearchConflictHandlingSchema.optional(),
+    researchSignalCount: z.number().int().min(0),
+    researchSignalFingerprint: z.string().min(1).optional(),
+    researchBasisDrift: z.boolean().optional(),
+    researchRerunRecommended: z.boolean(),
+    researchRerunInputPath: z.string().min(1).optional(),
+    researchConflictsPresent: z.boolean(),
+    taskOriginSourceKind: taskSourceKindSchema.optional(),
+    taskOriginSourcePath: z.string().min(1).optional(),
+    validationPosture: consultationValidationPostureSchema,
+    validationProfileId: z.string().min(1).optional(),
+    validationSummary: z.string().min(1).optional(),
+    validationSignals: z.array(z.string().min(1)).default([]),
+    validationGaps: z.array(z.string().min(1)).default([]),
+    recommendedCandidateId: z.string().min(1).optional(),
+    finalistCount: z.number().int().min(0),
+    validationGapsPresent: z.boolean(),
+    judgingBasisKind: consultationJudgingBasisKindSchema,
+    verificationLevel: consultationVerificationLevelSchema,
+    preflightDecision: consultationPreflightDecisionSchema.optional(),
+    researchPosture: consultationResearchPostureSchema,
+    nextActions: z.array(consultationNextActionSchema).default([]),
+    updatedAt: z.string().min(1),
+  })
+  .superRefine((value, context) => {
       const expectedFlags = getExpectedOutcomeFlags(value.outcomeType);
       if (value.terminal !== expectedFlags.terminal) {
         context.addIssue({
@@ -128,18 +71,6 @@ export const savedConsultationStatusSchema = z.preprocess(
           code: z.ZodIssueCode.custom,
           path: ["crownable"],
           message: `crownable must be ${expectedFlags.crownable} when outcomeType is ${value.outcomeType}.`,
-        });
-      }
-
-      if (
-        value.missingCapabilitiesPresent !== undefined &&
-        value.missingCapabilitiesPresent !== value.validationGapsPresent
-      ) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["validationGapsPresent"],
-          message:
-            "validationGapsPresent must match missingCapabilitiesPresent when both legacy and validation aliases are present.",
         });
       }
 
@@ -338,5 +269,4 @@ export const savedConsultationStatusSchema = z.preprocess(
             "completed consultation statuses cannot use outcomeType pending-execution or running.",
         });
       }
-    }),
-);
+  });

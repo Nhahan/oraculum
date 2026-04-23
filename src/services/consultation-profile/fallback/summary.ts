@@ -6,13 +6,13 @@ import type { MaterializedTaskPacket } from "../../../domain/task.js";
 import type { FallbackDetectedProfileId } from "../shared.js";
 
 export function buildFallbackSummary(
-  profileId: FallbackDetectedProfileId,
+  validationProfileId: FallbackDetectedProfileId,
   confidence: AgentProfileRecommendation["confidence"],
   taskPacket: MaterializedTaskPacket,
 ): string {
   const rationale =
-    profileId === "generic"
+    validationProfileId === "generic"
       ? "defaulted to the generic validation posture because runtime semantic posture selection was unavailable"
-      : `used ${profileId} validation posture from runtime semantic selection`;
+      : `used ${validationProfileId} validation posture from runtime semantic selection`;
   return `Fallback detection ${rationale}; confidence=${confidence} for task "${basename(taskPacket.source.path)}".`;
 }

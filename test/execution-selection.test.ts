@@ -107,7 +107,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"profileId":"library","confidence":"high","summary":"Workspace package scripts and export metadata are present.","candidateCount":3,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","full-suite-deep"],"missingCapabilities":["No package packaging smoke check was detected."]}',
+    '{"validationProfileId":"library","confidence":"high","validationSummary":"Workspace package scripts and export metadata are present.","candidateCount":3,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","full-suite-deep"],"validationGaps":["No package packaging smoke check was detected."]}',
     "utf8",
   );
 }

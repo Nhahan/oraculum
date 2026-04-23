@@ -30,7 +30,7 @@ export const VALIDATION_POSTURE_DESCRIPTIONS: Record<ConsultationProfileId, stri
 };
 
 export function getSupportedValidationPostureId(
-  recommendation: Pick<AgentProfileRecommendation, "profileId" | "validationProfileId">,
+  recommendation: Pick<AgentProfileRecommendation, "validationProfileId">,
 ): ConsultationProfileId {
   const validationProfileId = getValidationProfileId(recommendation);
   if (!validationProfileId || !isSupportedConsultationProfileId(validationProfileId)) {

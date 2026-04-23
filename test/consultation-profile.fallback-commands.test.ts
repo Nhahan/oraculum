@@ -87,10 +87,10 @@ describe("consultation auto profile fallback: command surfaces", () => {
         oracle.command === "npm" &&
         (oracle.args.join(" ") === "run unit" || oracle.args.join(" ") === "run test"),
     );
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toContain("unit-impact");
     expect(recommendation.selection.oracleIds).not.toContain("full-suite-deep");
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
     expect(testOracles).toHaveLength(1);
   });
   it("records nested workspace signals without inventing root-level commands", async () => {
@@ -156,7 +156,7 @@ describe("consultation auto profile fallback: command surfaces", () => {
       ]),
     );
     expect(artifact.signals.commandCatalog).toEqual([]);
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
   });
   it("uses an unambiguous workspace package script as executable evidence with a relative cwd", async () => {
     const cwd = await createTempRoot();
@@ -212,7 +212,7 @@ describe("consultation auto profile fallback: command surfaces", () => {
       };
     };
 
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
     expect(recommendation.config.oracles).toEqual(
       expect.arrayContaining([
@@ -294,7 +294,7 @@ describe("consultation auto profile fallback: command surfaces", () => {
       };
     };
 
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
     expect(recommendation.config.oracles).toEqual(
       expect.arrayContaining([
@@ -367,9 +367,9 @@ describe("consultation auto profile fallback: command surfaces", () => {
         files: string[];
       };
     };
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([]);
-    expect(recommendation.selection.missingCapabilities).toContain(
+    expect(recommendation.selection.validationGaps).toContain(
       "No repo-local validation command was detected.",
     );
     expect(artifact.signals.capabilities).not.toContainEqual(

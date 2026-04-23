@@ -38,19 +38,19 @@ describe("consultation auto profile runtime: migration", () => {
       cwd,
       runId: "run_migration_runtime_no_evidence",
       recommendation: {
-        profileId: "migration",
+        validationProfileId: "migration",
         confidence: "medium",
-        summary: "Treat this as migration work.",
+        validationSummary: "Treat this as migration work.",
         candidateCount: 4,
         strategyIds: ["minimal-change"],
         selectedCommandIds: ["lint-fast", "full-suite-deep"],
-        missingCapabilities: [],
+        validationGaps: [],
       },
     });
 
-    expect(recommendation.selection.profileId).toBe("migration");
+    expect(recommendation.selection.validationProfileId).toBe("migration");
     expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
   });
 
   it("does not require migration-only checks when a runtime-selected migration only has detector signals", async () => {
@@ -81,18 +81,18 @@ describe("consultation auto profile runtime: migration", () => {
       cwd,
       runId: "run_migration_runtime_detector_only",
       recommendation: {
-        profileId: "migration",
+        validationProfileId: "migration",
         confidence: "medium",
-        summary: "Treat this as migration work.",
+        validationSummary: "Treat this as migration work.",
         candidateCount: 4,
         strategyIds: ["minimal-change"],
         selectedCommandIds: ["lint-fast", "full-suite-deep"],
-        missingCapabilities: [],
+        validationGaps: [],
       },
     });
 
-    expect(recommendation.selection.profileId).toBe("migration");
+    expect(recommendation.selection.validationProfileId).toBe("migration");
     expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
   });
 });

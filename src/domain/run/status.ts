@@ -177,7 +177,7 @@ function buildConsultationNextActions(
     researchBasisDrift?: boolean;
   },
 ): ConsultationNextAction[] {
-  const actions = new Set<ConsultationNextAction>(["reopen-verdict", "browse-archive"]);
+  const actions = new Set<ConsultationNextAction>(["reopen-verdict"]);
 
   if (options?.manualReviewRequired === true) {
     actions.add("perform-manual-review");

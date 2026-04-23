@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { getLatestExportableRunStatePath } from "../src/core/paths.js";
-import { exportPlanSchema } from "../src/domain/run.js";
 import { buildExportPlan, planRun } from "../src/services/runs.js";
 import {
   createFinalistsWithoutRecommendationProjectFlowManifest,
@@ -35,7 +34,7 @@ describe("project flows export contracts", () => {
         cwd,
         runId: manifest.id,
         winnerId: "cand-01",
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: false,
       }),
     ).rejects.toThrow('status is "planned"');
@@ -55,7 +54,7 @@ describe("project flows export contracts", () => {
       buildExportPlan({
         cwd,
         runId: manifest.id,
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: false,
       }),
     ).rejects.toThrow("does not have a recommended survivor");
@@ -110,7 +109,7 @@ describe("project flows export contracts", () => {
     );
   });
 
-  it("accepts implicit export for legacy survivor manifests that only persist outcome survivor ids", async () => {
+  it("accepts implicit export when the outcome records the recommended survivor id", async () => {
     const cwd = await createInitializedProject();
     const runId = "run_legacy_survivor";
 
@@ -146,24 +145,6 @@ describe("project flows export contracts", () => {
     expect(result.plan.winnerId).toBe("cand-01");
     expect(result.plan.mode).toBe("workspace-sync");
     expect(result.plan.materializationMode).toBe("workspace-sync");
-  });
-
-  it("backfills legacy export aliases from canonical materialization fields", () => {
-    const plan = exportPlanSchema.parse({
-      runId: "run_alias_only",
-      winnerId: "cand-01",
-      branchName: "fix/session-loss",
-      materializationMode: "branch",
-      workspaceDir: "/tmp/workspace",
-      materializationPatchPath: "/tmp/export.patch",
-      withReport: false,
-      createdAt: "2026-04-06T00:00:00.000Z",
-    });
-
-    expect(plan.mode).toBe("git-branch");
-    expect(plan.materializationMode).toBe("branch");
-    expect(plan.patchPath).toBe("/tmp/export.patch");
-    expect(plan.materializationPatchPath).toBe("/tmp/export.patch");
   });
 
   it("rejects older exportable runs that do not record base metadata", async () => {
@@ -217,9 +198,7 @@ describe("project flows export contracts", () => {
         ],
       },
     });
-    const { outcome, ...rawLegacyManifest } = legacyManifest;
-
-    await writeRawRunManifest(cwd, runId, rawLegacyManifest);
+    await writeRawRunManifest(cwd, runId, legacyManifest);
     await writeFile(
       getLatestExportableRunStatePath(cwd),
       `${JSON.stringify({ runId, updatedAt: createdAt }, null, 2)}\n`,
@@ -229,7 +208,7 @@ describe("project flows export contracts", () => {
     await expect(
       buildExportPlan({
         cwd,
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: false,
       }),
     ).rejects.toThrow("git base revision needed for branch materialization");

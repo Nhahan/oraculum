@@ -48,7 +48,7 @@ describe("project flows export runtime", () => {
         cwd,
         runId: manifest.id,
         winnerId: "cand-01",
-        branchName: "manual-sync-label",
+        materializationName: "manual-sync-label",
         withReport: true,
       });
 
@@ -94,7 +94,7 @@ describe("project flows export runtime", () => {
 
       const result = await buildExportPlan({
         cwd,
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: true,
       });
 
@@ -148,7 +148,7 @@ describe("project flows export runtime", () => {
 
       const result = await buildExportPlan({
         cwd,
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: false,
       });
 

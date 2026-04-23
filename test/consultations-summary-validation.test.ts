@@ -46,15 +46,15 @@ describe("consultation summary validation rendering", () => {
         },
       ],
       profileSelection: {
-        profileId: "frontend",
+        validationProfileId: "frontend",
         confidence: "medium",
         source: "fallback-detection",
-        summary: "Frontend signals are strongest.",
+        validationSummary: "Frontend signals are strongest.",
         candidateCount: 4,
         strategyIds: ["minimal-change", "safety-first"],
         oracleIds: ["lint-fast", "typecheck-fast", "build-impact"],
-        missingCapabilities: ["No e2e or visual deep check was detected."],
-        signals: ["frontend-framework", "build-script"],
+        validationGaps: ["No e2e or visual deep check was detected."],
+        validationSignals: ["frontend-framework", "build-script"],
       },
     });
     await writeManifest(cwd, manifest);
@@ -78,7 +78,6 @@ describe("consultation summary validation rendering", () => {
     expect(status.researchRerunInputPath).toBeUndefined();
     expect(status.nextActions).toEqual([
       "reopen-verdict",
-      "browse-archive",
       "inspect-comparison-report",
       "rerun-with-different-candidate-count",
       "review-validation-gaps",
@@ -90,15 +89,15 @@ describe("consultation summary validation rendering", () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {
       profileSelection: {
-        profileId: "generic",
+        validationProfileId: "generic",
         confidence: "low",
         source: "fallback-detection",
-        summary: "No executable profile-specific command evidence was detected.",
+        validationSummary: "No executable profile-specific command evidence was detected.",
         candidateCount: 3,
         strategyIds: ["minimal-change", "safety-first"],
         oracleIds: [],
-        missingCapabilities: ["No repo-local validation command was detected."],
-        signals: ["e2e-config"],
+        validationGaps: ["No repo-local validation command was detected."],
+        validationSignals: ["e2e-config"],
       },
     });
     await writeManifest(cwd, manifest);
@@ -194,15 +193,15 @@ describe("consultation summary validation rendering", () => {
         },
       ],
       profileSelection: {
-        profileId: "library",
+        validationProfileId: "library",
         confidence: "high",
         source: "llm-recommendation",
-        summary: "Library validation coverage is explicit.",
+        validationSummary: "Library validation coverage is explicit.",
         candidateCount: 1,
         strategyIds: ["minimal-change"],
         oracleIds: ["lint-fast", "unit-impact", "full-suite-deep"],
-        missingCapabilities: [],
-        signals: ["library"],
+        validationGaps: [],
+        validationSignals: ["library"],
       },
     });
     await writeManifest(cwd, manifest);
@@ -218,15 +217,15 @@ describe("consultation summary validation rendering", () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {
       profileSelection: {
-        profileId: "library",
+        validationProfileId: "library",
         confidence: "high",
         source: "llm-recommendation",
-        summary: "Package export evidence is strongest.",
+        validationSummary: "Package export evidence is strongest.",
         candidateCount: 2,
         strategyIds: ["minimal-change"],
         oracleIds: ["lint-fast"],
-        missingCapabilities: [],
-        signals: ["package-export"],
+        validationGaps: [],
+        validationSignals: ["package-export"],
       },
     });
     await writeManifest(cwd, manifest);

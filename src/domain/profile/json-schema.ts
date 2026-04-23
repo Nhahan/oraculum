@@ -2,9 +2,6 @@ import { decisionConfidenceLevels, profileStrategyIds } from "./constants.js";
 
 export function buildAgentProfileRecommendationJsonSchema(): Record<string, unknown> {
   const properties = {
-    profileId: {
-      type: "string",
-    },
     validationProfileId: {
       type: "string",
     },
@@ -12,7 +9,6 @@ export function buildAgentProfileRecommendationJsonSchema(): Record<string, unkn
       type: "string",
       enum: [...decisionConfidenceLevels],
     },
-    summary: { type: "string", minLength: 1 },
     validationSummary: { type: "string", minLength: 1 },
     candidateCount: { type: "integer", minimum: 1, maximum: 16 },
     strategyIds: {
@@ -25,10 +21,6 @@ export function buildAgentProfileRecommendationJsonSchema(): Record<string, unkn
       },
     },
     selectedCommandIds: {
-      type: "array",
-      items: { type: "string" },
-    },
-    missingCapabilities: {
       type: "array",
       items: { type: "string" },
     },

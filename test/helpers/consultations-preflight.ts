@@ -203,7 +203,6 @@ export function createBlockedPreflightManifest(
       validationPosture:
         options.preflightDecision === "needs-clarification" ? "unknown" : "validation-gaps",
       verificationLevel: "none",
-      missingCapabilityCount: 0,
       validationGapCount: 0,
       judgingBasisKind: "unknown",
     },

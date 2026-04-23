@@ -106,7 +106,7 @@ export async function recommendConsultationProfile(
 }
 
 function validationProfileIdOf(
-  recommendation: Pick<AgentProfileRecommendation, "profileId" | "validationProfileId">,
+  recommendation: Pick<AgentProfileRecommendation, "validationProfileId">,
 ): string | undefined {
-  return recommendation.validationProfileId ?? recommendation.profileId;
+  return recommendation.validationProfileId;
 }

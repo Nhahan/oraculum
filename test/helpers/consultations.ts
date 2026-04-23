@@ -28,19 +28,15 @@ export { createTaskPacketFixture } from "./run-manifest.js";
 
 const tempRootHarness = createTempRootHarness("oraculum-");
 type ProfileSelectionFixture = {
-  profileId: NonNullable<RunManifest["profileSelection"]>["validationProfileId"];
+  validationProfileId: NonNullable<RunManifest["profileSelection"]>["validationProfileId"];
   confidence: NonNullable<RunManifest["profileSelection"]>["confidence"];
   source: NonNullable<RunManifest["profileSelection"]>["source"];
-  summary: string;
+  validationSummary: string;
   candidateCount: number;
   strategyIds: string[];
   oracleIds: string[];
-  missingCapabilities: string[];
-  signals: string[];
-  validationProfileId?: NonNullable<RunManifest["profileSelection"]>["validationProfileId"];
-  validationSummary?: string;
-  validationSignals?: string[];
-  validationGaps?: string[];
+  validationGaps: string[];
+  validationSignals: string[];
 };
 type RecommendedManifestOverrides = Partial<
   Omit<RunManifest, "recommendedWinner" | "outcome" | "candidates" | "profileSelection">
@@ -78,18 +74,7 @@ export function createManifest(
     profileSelection?: ProfileSelectionFixture;
   } = {},
 ): RunManifest {
-  const { profileSelection: rawProfileSelection, ...restOverrides } = overrides;
-  const profileSelection = rawProfileSelection
-    ? {
-        ...rawProfileSelection,
-        validationProfileId:
-          rawProfileSelection.validationProfileId ?? rawProfileSelection.profileId,
-        validationSummary: rawProfileSelection.validationSummary ?? rawProfileSelection.summary,
-        validationSignals: rawProfileSelection.validationSignals ?? rawProfileSelection.signals,
-        validationGaps:
-          rawProfileSelection.validationGaps ?? rawProfileSelection.missingCapabilities,
-      }
-    : undefined;
+  const { profileSelection, ...restOverrides } = overrides;
 
   return createRunManifestFixture({
     status,
@@ -161,7 +146,6 @@ export function createRecommendedManifest(
   const inferredValidationGapCount =
     options.outcomeOverrides?.validationGapCount ??
     profileSelection?.validationGaps?.length ??
-    profileSelection?.missingCapabilities?.length ??
     0;
   const inferredValidationPosture =
     options.outcomeOverrides?.validationPosture ??

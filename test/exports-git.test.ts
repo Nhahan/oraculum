@@ -60,7 +60,6 @@ describe("materialized exports", () => {
       expect(result.plan.mode).toBe("git-branch");
       expect(result.plan.materializationMode).toBe("branch");
       expect(result.plan.patchPath).toBe(getExportPatchPath(cwd, planned.id));
-      expect(result.plan.materializationPatchPath).toBe(getExportPatchPath(cwd, planned.id));
       expect(normalizeLineEndings(await readFile(join(cwd, "app.txt"), "utf8"))).toBe("patched\n");
       expect(normalizeLineEndings(await readFile(join(cwd, "added.txt"), "utf8"))).toBe(
         "new file\n",

@@ -50,7 +50,6 @@ describe("project contracts", () => {
           finalistCount: 2,
           validationPosture: "sufficient",
           verificationLevel: "standard",
-          missingCapabilityCount: 0,
           validationGapCount: 0,
           judgingBasisKind: "repo-local-oracle",
         },
@@ -62,7 +61,6 @@ describe("project contracts", () => {
 
     expect(status.nextActions).toEqual([
       "reopen-verdict",
-      "browse-archive",
       "rerun-with-different-candidate-count",
     ]);
   });
@@ -103,7 +101,6 @@ describe("project contracts", () => {
           finalistCount: 1,
           validationPosture: "sufficient",
           verificationLevel: "standard",
-          missingCapabilityCount: 0,
           validationGapCount: 0,
           judgingBasisKind: "repo-local-oracle",
           recommendedCandidateId: "cand-01",
@@ -116,7 +113,6 @@ describe("project contracts", () => {
 
     expect(status.nextActions).toEqual([
       "reopen-verdict",
-      "browse-archive",
       "perform-manual-review",
     ]);
   });
@@ -157,7 +153,6 @@ describe("project contracts", () => {
           finalistCount: 1,
           validationPosture: "sufficient",
           verificationLevel: "standard",
-          missingCapabilityCount: 0,
           validationGapCount: 0,
           judgingBasisKind: "repo-local-oracle",
           recommendedCandidateId: "cand-01",
@@ -168,7 +163,7 @@ describe("project contracts", () => {
       },
     );
 
-    expect(status.nextActions).toEqual(["reopen-verdict", "browse-archive"]);
+    expect(status.nextActions).toEqual(["reopen-verdict"]);
   });
 
   it("keeps manual review explicit when a crowning record already exists", () => {
@@ -207,7 +202,6 @@ describe("project contracts", () => {
           finalistCount: 1,
           validationPosture: "sufficient",
           verificationLevel: "standard",
-          missingCapabilityCount: 0,
           validationGapCount: 0,
           judgingBasisKind: "repo-local-oracle",
           recommendedCandidateId: "cand-01",
@@ -221,7 +215,6 @@ describe("project contracts", () => {
 
     expect(status.nextActions).toEqual([
       "reopen-verdict",
-      "browse-archive",
       "perform-manual-review",
     ]);
   });

@@ -22,7 +22,7 @@ export async function loadProjectConfigLayers(cwd: string): Promise<ProjectConfi
 
   if (!(await pathExists(configPath))) {
     throw new OraculumError(
-      `Missing ${configPath}. Run "orc init" after setup from the project root first.`,
+      `Missing ${configPath}. Start with "orc consult <task>" or "orc plan <task>" from the project root first.`,
     );
   }
 
@@ -34,38 +34,11 @@ export async function loadProjectConfigLayers(cwd: string): Promise<ProjectConfi
       )
     : undefined;
 
-  const legacyParse = projectConfigSchema.safeParse({
-    ...(parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}),
-    repair:
-      parsed && typeof parsed === "object" && !Array.isArray(parsed) && "repair" in parsed
-        ? (parsed as Record<string, unknown>).repair
-        : defaultProjectConfig.repair,
-  });
-  if (legacyParse.success) {
-    return {
-      projectRoot,
-      quick: {},
-      usesLegacyConfig: true,
-      ...(advanced ? { advanced } : {}),
-      config: projectConfigSchema.parse({
-        ...legacyParse.data,
-        ...(advanced?.adapters ? { adapters: advanced.adapters } : {}),
-        ...(advanced?.strategies ? { strategies: advanced.strategies } : {}),
-        ...(advanced?.rounds ? { rounds: advanced.rounds } : {}),
-        ...(advanced?.oracles ? { oracles: advanced.oracles } : {}),
-        ...(advanced?.repair ? { repair: advanced.repair } : {}),
-        ...(advanced?.judge ? { judge: advanced.judge } : {}),
-        ...(advanced?.managedTree ? { managedTree: advanced.managedTree } : {}),
-      }),
-    };
-  }
-
   const quick = projectQuickConfigSchema.parse(parsed);
 
   return {
     projectRoot,
     quick,
-    usesLegacyConfig: false,
     ...(advanced ? { advanced } : {}),
     config: projectConfigSchema.parse({
       ...defaultProjectConfig,

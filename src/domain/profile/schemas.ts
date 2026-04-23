@@ -2,7 +2,6 @@ import { z } from "zod";
 
 import { artifactPathSegmentSchema } from "../artifact-id.js";
 import { oraclePathPolicySchema, oracleRelativeCwdSchema, roundIdSchema } from "../config.js";
-import { stringArrayMembersEqual } from "../schema-compat.js";
 import {
   consultationProfileIds,
   decisionConfidenceLevels,
@@ -114,198 +113,27 @@ export const profileRepoSignalsSchema = z.object({
   skippedCommandCandidates: z.array(profileSkippedCommandCandidateSchema).default([]),
 });
 
-const agentProfileRecommendationBaseSchema = z
-  .object({
-    profileId: agentProfileRecommendationIdSchema.optional(),
-    validationProfileId: agentProfileRecommendationIdSchema,
-    confidence: decisionConfidenceSchema,
-    summary: z.string().min(1).optional(),
-    validationSummary: z.string().min(1),
-    candidateCount: z.number().int().min(1).max(16),
-    strategyIds: z.array(profileStrategyIdSchema).min(1).max(4),
-    selectedCommandIds: z.array(z.string().min(1)),
-    missingCapabilities: z.array(z.string().min(1)).optional(),
-    validationGaps: z.array(z.string().min(1)),
-  })
-  .superRefine((value, context) => {
-    if (value.profileId && value.validationProfileId !== value.profileId) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["profileId"],
-        message: "profileId must match validationProfileId when both are present.",
-      });
-    }
+export const agentProfileRecommendationSchema = z.object({
+  validationProfileId: agentProfileRecommendationIdSchema,
+  confidence: decisionConfidenceSchema,
+  validationSummary: z.string().min(1),
+  candidateCount: z.number().int().min(1).max(16),
+  strategyIds: z.array(profileStrategyIdSchema).min(1).max(4),
+  selectedCommandIds: z.array(z.string().min(1)),
+  validationGaps: z.array(z.string().min(1)),
+});
 
-    if (value.summary && value.validationSummary !== value.summary) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["summary"],
-        message: "summary must match validationSummary when both are present.",
-      });
-    }
-
-    if (
-      value.missingCapabilities &&
-      !stringArrayMembersEqual(value.missingCapabilities, value.validationGaps)
-    ) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["missingCapabilities"],
-        message:
-          "missingCapabilities must match validationGaps when both legacy and validation aliases are present.",
-      });
-    }
-  });
-
-export const agentProfileRecommendationSchema = z.preprocess((value) => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return value;
-  }
-
-  const payload = value as Record<string, unknown>;
-  const normalized: Record<string, unknown> = { ...payload };
-
-  if (normalized.profileId === null) {
-    delete normalized.profileId;
-  }
-  if (normalized.validationProfileId === null) {
-    delete normalized.validationProfileId;
-  }
-  if (normalized.summary === null) {
-    delete normalized.summary;
-  }
-  if (normalized.validationSummary === null) {
-    delete normalized.validationSummary;
-  }
-  if (normalized.missingCapabilities === null) {
-    delete normalized.missingCapabilities;
-  }
-  if (normalized.validationGaps === null) {
-    delete normalized.validationGaps;
-  }
-
-  if (
-    typeof normalized.profileId !== "string" &&
-    typeof normalized.validationProfileId === "string"
-  ) {
-    normalized.profileId = normalized.validationProfileId;
-  }
-  if (
-    typeof normalized.validationProfileId !== "string" &&
-    typeof normalized.profileId === "string"
-  ) {
-    normalized.validationProfileId = normalized.profileId;
-  }
-
-  if (typeof normalized.summary !== "string" && typeof normalized.validationSummary === "string") {
-    normalized.summary = normalized.validationSummary;
-  }
-  if (typeof normalized.validationSummary !== "string" && typeof normalized.summary === "string") {
-    normalized.validationSummary = normalized.summary;
-  }
-
-  if (!Array.isArray(normalized.missingCapabilities) && Array.isArray(normalized.validationGaps)) {
-    normalized.missingCapabilities = normalized.validationGaps;
-  }
-  if (!Array.isArray(normalized.validationGaps) && Array.isArray(normalized.missingCapabilities)) {
-    normalized.validationGaps = normalized.missingCapabilities;
-  }
-
-  return normalized;
-}, agentProfileRecommendationBaseSchema);
-
-const consultationProfileSelectionBaseSchema = z
-  .object({
-    profileId: consultationProfileIdSchema.optional(),
-    validationProfileId: consultationProfileIdSchema,
-    confidence: decisionConfidenceSchema,
-    source: z.enum(["llm-recommendation", "fallback-detection"]),
-    summary: z.string().min(1).optional(),
-    validationSummary: z.string().min(1),
-    candidateCount: z.number().int().min(1).max(16),
-    strategyIds: z.array(z.string().min(1)).min(1),
-    oracleIds: z.array(artifactPathSegmentSchema).default([]),
-    missingCapabilities: z.array(z.string().min(1)).optional(),
-    validationGaps: z.array(z.string().min(1)).default([]),
-    signals: z.array(z.string().min(1)).optional(),
-    validationSignals: z.array(z.string().min(1)).default([]),
-  })
-  .superRefine((value, context) => {
-    if (value.profileId && value.profileId !== value.validationProfileId) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["profileId"],
-        message: "profileId must match validationProfileId when both are present.",
-      });
-    }
-
-    if (value.summary && value.summary !== value.validationSummary) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["summary"],
-        message: "summary must match validationSummary when both are present.",
-      });
-    }
-
-    if (
-      value.missingCapabilities &&
-      !stringArrayMembersEqual(value.missingCapabilities, value.validationGaps)
-    ) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["missingCapabilities"],
-        message:
-          "missingCapabilities must match validationGaps when both legacy and validation aliases are present.",
-      });
-    }
-
-    if (value.signals && !stringArrayMembersEqual(value.signals, value.validationSignals)) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["signals"],
-        message:
-          "signals must match validationSignals when both legacy and validation aliases are present.",
-      });
-    }
-  });
-
-export const consultationProfileSelectionSchema = z.preprocess((value) => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return value;
-  }
-
-  const payload = { ...(value as Record<string, unknown>) };
-
-  if (typeof payload.validationProfileId !== "string" && typeof payload.profileId === "string") {
-    payload.validationProfileId = payload.profileId;
-  }
-  if (typeof payload.profileId !== "string" && typeof payload.validationProfileId === "string") {
-    payload.profileId = payload.validationProfileId;
-  }
-
-  if (typeof payload.validationSummary !== "string" && typeof payload.summary === "string") {
-    payload.validationSummary = payload.summary;
-  }
-  if (typeof payload.summary !== "string" && typeof payload.validationSummary === "string") {
-    payload.summary = payload.validationSummary;
-  }
-
-  if (!Array.isArray(payload.validationGaps) && Array.isArray(payload.missingCapabilities)) {
-    payload.validationGaps = payload.missingCapabilities;
-  }
-  if (!Array.isArray(payload.missingCapabilities) && Array.isArray(payload.validationGaps)) {
-    payload.missingCapabilities = payload.validationGaps;
-  }
-
-  if (!Array.isArray(payload.validationSignals) && Array.isArray(payload.signals)) {
-    payload.validationSignals = payload.signals;
-  }
-  if (!Array.isArray(payload.signals) && Array.isArray(payload.validationSignals)) {
-    payload.signals = payload.validationSignals;
-  }
-
-  return payload;
-}, consultationProfileSelectionBaseSchema);
+export const consultationProfileSelectionSchema = z.object({
+  validationProfileId: consultationProfileIdSchema,
+  confidence: decisionConfidenceSchema,
+  source: z.enum(["llm-recommendation", "fallback-detection"]),
+  validationSummary: z.string().min(1),
+  candidateCount: z.number().int().min(1).max(16),
+  strategyIds: z.array(z.string().min(1)).min(1),
+  oracleIds: z.array(artifactPathSegmentSchema).default([]),
+  validationGaps: z.array(z.string().min(1)).default([]),
+  validationSignals: z.array(z.string().min(1)).default([]),
+});
 
 export const consultationProfileSelectionArtifactSchema = z
   .object({

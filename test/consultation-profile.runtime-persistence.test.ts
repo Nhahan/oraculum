@@ -53,7 +53,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"profileId":"library","confidence":"high","summary":"Library scripts and package export signals are strongest.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast","unit-impact","full-suite-deep"],"missingCapabilities":[]}',
+    '{"validationProfileId":"library","confidence":"high","validationSummary":"Library scripts and package export signals are strongest.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast","unit-impact","full-suite-deep"],"validationGaps":[]}',
     "utf8",
   );
 }
@@ -70,7 +70,7 @@ if (out) {
         },
       });
 
-      expect(manifest.profileSelection?.profileId).toBe("library");
+      expect(manifest.profileSelection?.validationProfileId).toBe("library");
       expect(manifest.candidateCount).toBe(4);
       expect(manifest.profileSelection?.strategyIds).toEqual([
         "minimal-change",
@@ -85,7 +85,7 @@ if (out) {
         "typecheck-fast",
         "full-suite-deep",
       ]);
-      expect(savedManifest.profileSelection?.missingCapabilities).toEqual([]);
+      expect(savedManifest.profileSelection?.validationGaps).toEqual([]);
 
       const configPath = savedManifest.configPath;
       expect(configPath).toBeDefined();
@@ -124,12 +124,7 @@ if (out) {
       const rawSavedManifest = JSON.parse(
         await readFile(getRunManifestPath(cwd, manifest.id), "utf8"),
       ) as {
-        profileSelection?: {
-          profileId?: string;
-          summary?: string;
-          signals?: string[];
-          missingCapabilities?: string[];
-        };
+        profileSelection?: Record<string, unknown>;
       };
       expect(rawSavedManifest.profileSelection).not.toHaveProperty("profileId");
       expect(rawSavedManifest.profileSelection).not.toHaveProperty("summary");
@@ -137,23 +132,11 @@ if (out) {
       expect(rawSavedManifest.profileSelection).not.toHaveProperty("missingCapabilities");
 
       const selectionArtifact = await readProfileSelectionArtifact<{
-        recommendation: {
-          profileId?: string;
-          summary?: string;
-          missingCapabilities?: string[];
-        };
+        recommendation: Record<string, unknown>;
         llmResult?: {
-          recommendation?: {
-            profileId?: string;
-            summary?: string;
-            missingCapabilities?: string[];
-          };
+          recommendation?: Record<string, unknown>;
         };
-        appliedSelection: {
-          profileId?: string;
-          summary?: string;
-          signals?: string[];
-          missingCapabilities?: string[];
+        appliedSelection: Record<string, unknown> & {
           validationProfileId: string;
           validationSummary: string;
           validationSignals: string[];
@@ -221,7 +204,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"profileId":"library","confidence":"high","summary":"Library scripts are strongest.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast","unit-impact","full-suite-deep"],"missingCapabilities":[]}',
+    '{"validationProfileId":"library","confidence":"high","validationSummary":"Library scripts are strongest.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast","unit-impact","full-suite-deep"],"validationGaps":[]}',
     "utf8",
   );
 }
@@ -238,13 +221,13 @@ if (out) {
         },
       });
 
-      expect(manifest.profileSelection?.profileId).toBe("library");
+      expect(manifest.profileSelection?.validationProfileId).toBe("library");
       expect(manifest.profileSelection?.oracleIds).toEqual([
         "lint-fast",
         "typecheck-fast",
         "full-suite-deep",
       ]);
-      expect(manifest.profileSelection?.missingCapabilities).toEqual([]);
+      expect(manifest.profileSelection?.validationGaps).toEqual([]);
     },
     EXECUTION_TEST_TIMEOUT_MS,
   );
@@ -283,7 +266,7 @@ if (out) {
       },
     });
 
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.source).toBe("fallback-detection");
 
     const selectionArtifact = await readProfileSelectionArtifact<{
@@ -352,7 +335,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"profileId":"library","confidence":"high","summary":"Library scripts are present.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast"],"missingCapabilities":[]}',
+    '{"validationProfileId":"library","confidence":"high","validationSummary":"Library scripts are present.","candidateCount":4,"strategyIds":["minimal-change","test-amplified"],"selectedCommandIds":["lint-fast","typecheck-fast"],"validationGaps":[]}',
     "utf8",
   );
 }
@@ -370,9 +353,9 @@ if (out) {
     });
 
     expect(manifest.candidateCount).toBe(2);
-    expect(manifest.profileSelection?.profileId).toBe("library");
+    expect(manifest.profileSelection?.validationProfileId).toBe("library");
     expect(manifest.profileSelection?.oracleIds).toEqual(["custom-impact"]);
-    expect(manifest.profileSelection?.missingCapabilities).toEqual([]);
+    expect(manifest.profileSelection?.validationGaps).toEqual([]);
     expect(manifest.profileSelection?.strategyIds).toEqual(["minimal-change", "test-amplified"]);
   });
 
@@ -386,13 +369,13 @@ if (out) {
       cwd,
       runId: "run_profile",
       recommendation: {
-        profileId: "library",
+        validationProfileId: "library",
         confidence: "high",
-        summary: "Library defaults fit this repository.",
+        validationSummary: "Library defaults fit this repository.",
         candidateCount: 4,
         strategyIds: ["minimal-change", "test-amplified"],
         selectedCommandIds: ["lint-fast", "typecheck-fast", "unit-impact", "full-suite-deep"],
-        missingCapabilities: [],
+        validationGaps: [],
       },
     });
 
@@ -406,7 +389,7 @@ if (out) {
       "typecheck-fast",
       "full-suite-deep",
     ]);
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
   });
 
   it("can skip runtime profile selection and rely on fallback detection for planning-only flows", async () => {

@@ -67,7 +67,7 @@ describe("consultation verdict review artifact availability: preflight", () => {
     expect(review.artifactAvailability.preflightReadiness).toBe(false);
   });
 
-  it("treats legacy preflight-readiness artifacts that omit runId as unavailable in verdict review", async () => {
+  it("treats stale preflight-readiness artifacts that omit runId as unavailable in verdict review", async () => {
     const cwd = await createInitializedProject();
     const manifest = createClarificationManifest("run_legacy_preflight_readiness");
     await writeManifest(cwd, manifest);
@@ -91,7 +91,7 @@ describe("consultation verdict review artifact availability: preflight", () => {
           recommendation: {
             decision: "needs-clarification",
             confidence: "medium",
-            summary: "Legacy preflight readiness remains usable.",
+            summary: "Stale preflight artifact should not be reused.",
             researchPosture: "repo-only",
             clarificationQuestion: "Which sections must docs/PRD.md contain?",
           },
@@ -113,7 +113,7 @@ describe("consultation verdict review artifact availability: preflight", () => {
     expect(review.artifactAvailability.preflightReadiness).toBe(false);
   });
 
-  it("treats legacy research brief and profile selection artifacts that omit runId as unavailable in verdict review", async () => {
+  it("treats stale research brief and profile selection artifacts that omit runId as unavailable in verdict review", async () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {
       id: "run_legacy_research_profile",
@@ -136,7 +136,6 @@ describe("consultation verdict review artifact availability: preflight", () => {
         finalistCount: 0,
         validationPosture: "validation-gaps",
         verificationLevel: "none",
-        missingCapabilityCount: 0,
         validationGapCount: 0,
         judgingBasisKind: "unknown",
       },
@@ -157,7 +156,7 @@ describe("consultation verdict review artifact availability: preflight", () => {
           question: "What do the official docs require?",
           confidence: "medium",
           researchPosture: "external-research-required",
-          summary: "Legacy research brief remains parseable but should not be replayed.",
+          summary: "Stale research brief should not be replayed.",
           task: {
             id: "task",
             title: "Task",
@@ -199,25 +198,21 @@ describe("consultation verdict review artifact availability: preflight", () => {
           recommendation: {
             validationProfileId: "library",
             confidence: "high",
-            validationSummary: "Legacy profile selection remains parseable.",
+            validationSummary: "Stale profile selection artifact should not be reused.",
             candidateCount: 4,
             strategyIds: ["minimal-change"],
             selectedCommandIds: [],
             validationGaps: [],
           },
           appliedSelection: {
-            profileId: "library",
             validationProfileId: "library",
             confidence: "high",
             source: "llm-recommendation",
-            summary: "Legacy profile selection remains parseable.",
-            validationSummary: "Legacy profile selection remains parseable.",
+            validationSummary: "Stale profile selection artifact should not be reused.",
             candidateCount: 4,
             strategyIds: ["minimal-change"],
             oracleIds: ["lint-fast"],
-            missingCapabilities: [],
             validationGaps: [],
-            signals: ["package-export"],
             validationSignals: ["package-export"],
           },
         },

@@ -90,8 +90,6 @@ export const verdictReviewObjectSchema = z.object({
   validationSummary: z.string().min(1).optional(),
   validationSignals: z.array(z.string().min(1)).default([]),
   validationGaps: z.array(z.string().min(1)).default([]),
-  profileId: z.string().min(1).optional(),
-  profileMissingCapabilities: z.array(z.string().min(1)).optional(),
   planReadinessStatus: consultationPlanReadinessStatusSchema.optional(),
   planReadyForConsult: z.boolean().optional(),
   planReviewStatus: consultationPlanReviewStatusSchema.optional(),

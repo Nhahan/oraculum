@@ -150,17 +150,6 @@ function buildScenarioMatrix() {
     }
   }
 
-  for (const repoKind of repoKinds) {
-    scenarios.push(
-      createScenario({
-        kind: "draft",
-        repoKind,
-        agent: "codex",
-        workspaceMode: "git",
-      }),
-    );
-  }
-
   for (const repoKind of ["library", "frontend", "migration"]) {
     for (const agent of agents) {
       for (const workspaceMode of workspaceModes) {
@@ -226,15 +215,6 @@ function buildScenarioMatrix() {
       taskInputMode: "filelike-inline",
     }),
   );
-  scenarios.push(
-    createScenario({
-      kind: "filelike-inline-draft",
-      repoKind: "library",
-      agent: "codex",
-      workspaceMode: "git",
-      taskInputMode: "filelike-inline",
-    }),
-  );
 
   for (const agent of agents) {
     for (const workspaceMode of workspaceModes) {
@@ -245,7 +225,7 @@ function buildScenarioMatrix() {
           agent,
           workspaceMode,
           packageManager: "pnpm",
-          profileId: "library",
+          validationProfileId: "library",
         }),
       );
       scenarios.push(
@@ -299,7 +279,7 @@ export function buildPolyglotScenarios() {
       repoKind: "plain",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       corpusName: "generic-no-package-json",
     }),
     createScenario({
@@ -307,7 +287,7 @@ export function buildPolyglotScenarios() {
       repoKind: "python",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       corpusName: "python-explicit-oracle",
     }),
     createScenario({
@@ -315,7 +295,7 @@ export function buildPolyglotScenarios() {
       repoKind: "go",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       corpusName: "go-explicit-oracle",
     }),
     createScenario({
@@ -323,7 +303,7 @@ export function buildPolyglotScenarios() {
       repoKind: "rust",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       corpusName: "rust-explicit-oracle",
     }),
     createScenario({
@@ -331,7 +311,7 @@ export function buildPolyglotScenarios() {
       repoKind: "java-gradle",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       corpusName: "java-gradle-explicit-oracle",
     }),
     createScenario({
@@ -339,7 +319,7 @@ export function buildPolyglotScenarios() {
       repoKind: "java-maven",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       corpusName: "java-maven-explicit-oracle",
     }),
     createScenario({
@@ -347,7 +327,7 @@ export function buildPolyglotScenarios() {
       repoKind: "docs-static",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       corpusName: "docs-static-no-node-scripts",
     }),
     createScenario({
@@ -355,7 +335,7 @@ export function buildPolyglotScenarios() {
       repoKind: "polyglot",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       corpusName: "mixed-polyglot-explicit-oracle",
     }),
     createScenario({
@@ -363,7 +343,7 @@ export function buildPolyglotScenarios() {
       repoKind: "nested-workspace",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       taskInputMode: "inline",
       corpusName: "nested-workspace-explicit-oracle",
     }),
@@ -372,7 +352,7 @@ export function buildPolyglotScenarios() {
       repoKind: "plain",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       corpusName: "package-free-subdirectory-invocation",
     }),
     createScenario({
@@ -380,7 +360,7 @@ export function buildPolyglotScenarios() {
       repoKind: "plain",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       candidateCount: 1,
       corpusName: "timed-out-oracle-child-cleanup",
     }),
@@ -389,7 +369,7 @@ export function buildPolyglotScenarios() {
       repoKind: "alembic",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       corpusName: "alembic-missing-capability",
     }),
     createScenario({
@@ -397,7 +377,7 @@ export function buildPolyglotScenarios() {
       repoKind: "alembic",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "migration",
+      validationProfileId: "migration",
       corpusName: "alembic-explicit-oracle",
     }),
   ];
@@ -411,7 +391,7 @@ export function buildCorpusScenarios() {
       repoKind: "library",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "library",
+      validationProfileId: "library",
       taskInputMode: "unicode-file",
       corpusName: "task-input-unicode-file",
     }),
@@ -420,7 +400,7 @@ export function buildCorpusScenarios() {
       repoKind: "library",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "library",
+      validationProfileId: "library",
       taskInputMode: "space-file",
       corpusName: "task-input-space-path",
     }),
@@ -429,7 +409,7 @@ export function buildCorpusScenarios() {
       repoKind: "docs-static",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       taskInputMode: "source-html",
       corpusName: "task-input-source-html",
     }),
@@ -438,7 +418,7 @@ export function buildCorpusScenarios() {
       repoKind: "python",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       taskInputMode: "source-py",
       corpusName: "task-input-source-py",
     }),
@@ -447,7 +427,7 @@ export function buildCorpusScenarios() {
       repoKind: "go",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       taskInputMode: "source-go",
       corpusName: "task-input-source-go",
     }),
@@ -456,7 +436,7 @@ export function buildCorpusScenarios() {
       repoKind: "rust",
       agent: "codex",
       workspaceMode: "copy",
-      profileId: "generic",
+      validationProfileId: "generic",
       taskInputMode: "source-rs",
       corpusName: "task-input-source-rs",
     }),
@@ -465,7 +445,7 @@ export function buildCorpusScenarios() {
       repoKind: "docs",
       agent: "codex",
       workspaceMode: "git",
-      profileId: "library",
+      validationProfileId: "library",
       corpusName: "docs-git-codex",
     }),
     createScenario({
@@ -473,7 +453,7 @@ export function buildCorpusScenarios() {
       repoKind: "docs",
       agent: "claude-code",
       workspaceMode: "copy",
-      profileId: "library",
+      validationProfileId: "library",
       corpusName: "docs-copy-claude",
     }),
     createScenario({
@@ -481,7 +461,7 @@ export function buildCorpusScenarios() {
       repoKind: "docs",
       agent: "codex",
       workspaceMode: "git",
-      profileId: "library",
+      validationProfileId: "library",
       corpusName: "docs-no-finalist-codex",
     }),
     createScenario({
@@ -490,7 +470,7 @@ export function buildCorpusScenarios() {
       agent: "codex",
       workspaceMode: "git",
       packageManager: "pnpm",
-      profileId: "library",
+      validationProfileId: "library",
       corpusName: "monorepo-git-codex",
     }),
     createScenario({
@@ -499,7 +479,7 @@ export function buildCorpusScenarios() {
       agent: "claude-code",
       workspaceMode: "git",
       packageManager: "pnpm",
-      profileId: "library",
+      validationProfileId: "library",
       corpusName: "monorepo-git-claude",
     }),
     createScenario({
@@ -508,7 +488,7 @@ export function buildCorpusScenarios() {
       agent: "codex",
       workspaceMode: "copy",
       packageManager: "pnpm",
-      profileId: "library",
+      validationProfileId: "library",
       corpusName: "monorepo-copy-codex",
     }),
     createScenario({
@@ -517,7 +497,7 @@ export function buildCorpusScenarios() {
       agent: "claude-code",
       workspaceMode: "copy",
       packageManager: "pnpm",
-      profileId: "library",
+      validationProfileId: "library",
       corpusName: "monorepo-copy-claude",
     }),
     createScenario({
@@ -526,7 +506,7 @@ export function buildCorpusScenarios() {
       agent: "codex",
       workspaceMode: "git",
       packageManager: "bun",
-      profileId: "library",
+      validationProfileId: "library",
       corpusName: "monorepo-bun-git-codex",
     }),
     createScenario({
@@ -535,7 +515,7 @@ export function buildCorpusScenarios() {
       agent: "claude-code",
       workspaceMode: "copy",
       packageManager: "yarn",
-      profileId: "library",
+      validationProfileId: "library",
       corpusName: "monorepo-yarn-copy-claude",
     }),
     createScenario({
@@ -543,7 +523,7 @@ export function buildCorpusScenarios() {
       repoKind: "service",
       agent: "codex",
       workspaceMode: "git",
-      profileId: "library",
+      validationProfileId: "library",
       corpusName: "service-git-codex",
     }),
     createScenario({
@@ -551,7 +531,7 @@ export function buildCorpusScenarios() {
       repoKind: "service",
       agent: "claude-code",
       workspaceMode: "copy",
-      profileId: "library",
+      validationProfileId: "library",
       corpusName: "service-copy-claude",
     }),
     createScenario({
@@ -559,7 +539,7 @@ export function buildCorpusScenarios() {
       repoKind: "service",
       agent: "codex",
       workspaceMode: "git",
-      profileId: "library",
+      validationProfileId: "library",
       corpusName: "service-no-finalist-codex",
     }),
     createScenario({
@@ -734,14 +714,6 @@ export function buildCorpusScenarios() {
       taskInputMode: "filelike-inline",
       corpusName: "filelike-inline-consult",
     }),
-    createScenario({
-      kind: "filelike-inline-draft",
-      repoKind: "library",
-      agent: "codex",
-      workspaceMode: "git",
-      taskInputMode: "filelike-inline",
-      corpusName: "filelike-inline-draft",
-    }),
   ];
 }
 
@@ -754,14 +726,12 @@ function createScenario({
   candidateCount,
   packageManager,
   taskInputMode,
-  profileId,
+  validationProfileId,
   timeoutMs,
   manualCandidateId,
   corpusName,
 }) {
-  const resolvedCandidateCount =
-    candidateCount ??
-    (kind === "repair" || kind === "draft" || kind === "filelike-inline-draft" ? 1 : 2);
+  const resolvedCandidateCount = candidateCount ?? (kind === "repair" ? 1 : 2);
   const resolvedTaskInputMode =
     taskInputMode ??
     (kind === "happy" || kind === "repair" || kind === "single" || kind === "runtime-missing"
@@ -782,8 +752,8 @@ function createScenario({
     repoKind,
     agent,
     workspaceMode,
-    profileId:
-      profileId ??
+    validationProfileId:
+      validationProfileId ??
       (kind === "runtime-missing" || kind === "hung-runtime"
         ? "generic"
         : repoKind === "plain" ||

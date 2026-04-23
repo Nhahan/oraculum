@@ -67,7 +67,7 @@ export async function collectProfileRepoSignals(
 
 export function buildSelectionSignalSummary(
   signals: ProfileRepoSignals,
-): ConsultationProfileSelection["signals"] {
+): ConsultationProfileSelection["validationSignals"] {
   const summary: string[] = [];
   const add = (label: string) => {
     if (!summary.includes(label)) {

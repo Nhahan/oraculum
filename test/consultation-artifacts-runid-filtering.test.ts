@@ -133,18 +133,14 @@ describe("consultation artifact run-id filtering", () => {
           validationGaps: [],
         },
         appliedSelection: {
-          profileId: "library",
           validationProfileId: "library",
           confidence: "high",
           source: "llm-recommendation",
-          summary: "The stale profile recommendation should be ignored.",
           validationSummary: "The stale profile recommendation should be ignored.",
           candidateCount: 4,
           strategyIds: ["minimal-change"],
           oracleIds: ["lint-fast"],
-          missingCapabilities: [],
           validationGaps: [],
-          signals: ["package-export"],
           validationSignals: ["package-export"],
         },
       }),
@@ -243,6 +239,7 @@ describe("consultation artifact run-id filtering", () => {
         mode: "git-branch",
         materializationMode: "branch",
         workspaceDir: "/tmp/workspace",
+        patchPath: "/tmp/stale-cand-01.patch",
         withReport: true,
         createdAt: "2026-04-14T00:00:00.000Z",
       }),
@@ -268,7 +265,7 @@ describe("consultation artifact run-id filtering", () => {
     }
   });
 
-  it("treats legacy research brief and profile selection artifacts that omit runId as unavailable", async () => {
+  it("treats stale research brief and profile selection artifacts that omit runId as unavailable", async () => {
     const cwd = await createInitializedProject();
     const runId = "run-legacy";
     await ensureReportsDir(cwd, runId);
@@ -277,7 +274,7 @@ describe("consultation artifact run-id filtering", () => {
       question: "What do the official docs require?",
       confidence: "medium",
       researchPosture: "external-research-required",
-      summary: "Legacy research brief remains usable.",
+      summary: "Stale research brief should not be reused.",
       task: {
         id: "task",
         title: "Task",
@@ -311,25 +308,21 @@ describe("consultation artifact run-id filtering", () => {
       recommendation: {
         validationProfileId: "library",
         confidence: "high",
-        validationSummary: "Legacy profile selection remains usable.",
+        validationSummary: "Stale profile selection artifact should not be reused.",
         candidateCount: 4,
         strategyIds: ["minimal-change"],
         selectedCommandIds: [],
         validationGaps: [],
       },
       appliedSelection: {
-        profileId: "library",
         validationProfileId: "library",
         confidence: "high",
         source: "llm-recommendation",
-        summary: "Legacy profile selection remains usable.",
-        validationSummary: "Legacy profile selection remains usable.",
+        validationSummary: "Stale profile selection artifact should not be reused.",
         candidateCount: 4,
         strategyIds: ["minimal-change"],
         oracleIds: ["lint-fast"],
-        missingCapabilities: [],
         validationGaps: [],
-        signals: ["package-export"],
         validationSignals: ["package-export"],
       },
     });
@@ -340,7 +333,7 @@ describe("consultation artifact run-id filtering", () => {
     }
   });
 
-  it("treats legacy preflight-readiness artifacts that omit runId as unavailable", async () => {
+  it("treats stale preflight-readiness artifacts that omit runId as unavailable", async () => {
     const cwd = await createInitializedProject();
     const runId = "run-legacy-preflight";
     await ensureReportsDir(cwd, runId);
@@ -361,7 +354,7 @@ describe("consultation artifact run-id filtering", () => {
       recommendation: {
         decision: "proceed",
         confidence: "low",
-        summary: "Legacy preflight remains usable.",
+        summary: "Stale preflight artifact should not be reused.",
         researchPosture: "repo-only",
       },
     });

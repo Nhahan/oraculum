@@ -11,7 +11,6 @@ import {
 import { verdictReviewSchema } from "../src/domain/chat-native.js";
 import {
   buildVerdictReview,
-  renderConsultationArchive,
   renderConsultationSummary,
 } from "../src/services/consultations.js";
 import {
@@ -42,15 +41,15 @@ describe("consultation verdict review runtime", () => {
       },
       manifestOverrides: {
         profileSelection: {
-          profileId: "frontend",
+          validationProfileId: "frontend",
           confidence: "high",
           source: "llm-recommendation",
-          summary: "Frontend evidence is strongest.",
+          validationSummary: "Frontend evidence is strongest.",
           candidateCount: 4,
           strategyIds: ["minimal-change", "test-amplified"],
           oracleIds: ["build-impact"],
-          missingCapabilities: ["No e2e or visual deep check was detected."],
-          signals: ["frontend-framework", "build-script"],
+          validationGaps: ["No e2e or visual deep check was detected."],
+          validationSignals: ["frontend-framework", "build-script"],
         },
         preflight: {
           decision: "proceed",
@@ -233,7 +232,7 @@ describe("consultation verdict review runtime", () => {
     );
   });
 
-  it("allows legacy validation-gap reviews that only know the gap count", async () => {
+  it("allows validation-gap reviews that only persist the gap count", async () => {
     const manifest = createManifest("completed", {
       id: "run_gap_review",
       candidateCount: 0,
@@ -261,7 +260,7 @@ describe("consultation verdict review runtime", () => {
     expect(review.manualReviewRecommended).toBe(true);
   });
 
-  it("allows legacy survivor reviews that only know the recommended survivor id", async () => {
+  it("allows survivor reviews that only persist the recommended survivor id", async () => {
     const manifest = createManifest("completed", {
       id: "run_legacy_survivor_review",
       candidateCount: 1,
@@ -288,7 +287,7 @@ describe("consultation verdict review runtime", () => {
     expect(review.manualReviewRecommended).toBe(false);
   });
 
-  it("allows legacy finalists-without-recommendation reviews without invented finalist ids", async () => {
+  it("allows finalists-without-recommendation reviews without invented finalist ids", async () => {
     const manifest = createManifest("completed", {
       id: "run_legacy_finalists_review",
       candidateCount: 2,
@@ -471,50 +470,6 @@ describe("consultation verdict review runtime", () => {
     expect(review.artifactAvailability.secondOpinionWinnerSelection).toBe(true);
   });
 
-  it("marks archive recommendations as manual review when second-opinion disagreement exists", async () => {
-    const cwd = await createInitializedProject();
-    const manifest = createRecommendedManifest("run_second_opinion_archive");
-    await writeManifest(cwd, manifest);
-    await writeSecondOpinionWinnerSelection(cwd, manifest.id, {
-      runId: manifest.id,
-      advisoryOnly: true,
-      adapter: "claude-code",
-      triggerKinds: ["many-changed-paths"],
-      triggerReasons: ["A finalist changed 3 paths, meeting the second-opinion threshold (1)."],
-      primaryRecommendation: {
-        source: "llm-judge",
-        decision: "select",
-        candidateId: "cand-01",
-        confidence: "high",
-        summary: "cand-01 is the recommended promotion.",
-      },
-      result: {
-        runId: manifest.id,
-        adapter: "claude-code",
-        status: "completed",
-        startedAt: "2026-04-04T00:00:00.000Z",
-        completedAt: "2026-04-04T00:00:01.000Z",
-        exitCode: 0,
-        summary: "Second opinion abstained.",
-        recommendation: {
-          decision: "abstain",
-          confidence: "medium",
-          summary: "Manual review is safer before crowning.",
-        },
-        artifacts: [],
-      },
-      agreement: "disagrees-select-vs-abstain",
-      advisorySummary:
-        "Second-opinion judge abstained, while the primary path selected a finalist.",
-    });
-
-    const archive = renderConsultationArchive([manifest], { projectRoot: cwd });
-
-    expect(archive).toContain(
-      "- run_second_opinion_archive | completed | Task | no auto validation posture | recommended survivor cand-01 (manual review)",
-    );
-  });
-
   it("surfaces second-opinion unavailability in verdict review and blocks direct crown guidance", async () => {
     const cwd = await createInitializedProject();
     const manifest = createRecommendedManifest("run_second_opinion_unavailable_review");
@@ -569,44 +524,6 @@ describe("consultation verdict review runtime", () => {
     expect(review.artifactAvailability.secondOpinionWinnerSelection).toBe(true);
   });
 
-  it("marks archive recommendations as manual review when second-opinion is unavailable", async () => {
-    const cwd = await createInitializedProject();
-    const manifest = createRecommendedManifest("run_second_opinion_unavailable_archive");
-    await writeManifest(cwd, manifest);
-    await writeSecondOpinionWinnerSelection(cwd, manifest.id, {
-      runId: manifest.id,
-      advisoryOnly: true,
-      adapter: "claude-code",
-      triggerKinds: ["low-confidence"],
-      triggerReasons: ["Primary judge confidence was low."],
-      primaryRecommendation: {
-        source: "llm-judge",
-        decision: "select",
-        candidateId: "cand-01",
-        confidence: "high",
-        summary: "cand-01 is the recommended promotion.",
-      },
-      result: {
-        runId: manifest.id,
-        adapter: "claude-code",
-        status: "failed",
-        startedAt: "2026-04-04T00:00:00.000Z",
-        completedAt: "2026-04-04T00:00:01.000Z",
-        exitCode: 1,
-        summary: "Second opinion was unavailable.",
-        artifacts: [],
-      },
-      agreement: "unavailable",
-      advisorySummary: "Second-opinion judge was unavailable, so manual review is still required.",
-    });
-
-    const archive = renderConsultationArchive([manifest], { projectRoot: cwd });
-
-    expect(archive).toContain(
-      "- run_second_opinion_unavailable_archive | completed | Task | no auto validation posture | recommended survivor cand-01 (manual review)",
-    );
-  });
-
   it("keeps manual-review guidance visible after crowning when second-opinion is unavailable", async () => {
     const cwd = await createInitializedProject();
     const manifest = createRecommendedManifest("run_second_opinion_unavailable_crowned", {
@@ -646,8 +563,6 @@ describe("consultation verdict review runtime", () => {
       secondOpinionWinnerSelectionPath: getSecondOpinionWinnerSelectionPath(cwd, manifest.id),
       crowningRecordPath: getExportPlanPath(cwd, manifest.id),
     });
-    const archive = renderConsultationArchive([manifest], { projectRoot: cwd });
-
     expect(summary).toContain("Second-opinion judge: claude-code (unavailable)");
     expect(summary).toContain(
       "- inspect the second-opinion judge before relying on the recommended result: .oraculum/runs/run_second_opinion_unavailable_crowned/reports/winner-selection.second-opinion.json.",
@@ -661,9 +576,6 @@ describe("consultation verdict review runtime", () => {
     expect(review.manualReviewRecommended).toBe(true);
     expect(review.artifactAvailability.crowningRecord).toBe(true);
     expect(review.secondOpinionAgreement).toBe("unavailable");
-    expect(archive).toContain(
-      "- run_second_opinion_unavailable_crowned | completed | Task | no auto validation posture | recommended survivor cand-01 (manual review)",
-    );
   });
 
   it("keeps disagreeing second-opinion guidance visible after crowning", async () => {
@@ -711,8 +623,6 @@ describe("consultation verdict review runtime", () => {
       secondOpinionWinnerSelectionPath: getSecondOpinionWinnerSelectionPath(cwd, manifest.id),
       crowningRecordPath: getExportPlanPath(cwd, manifest.id),
     });
-    const archive = renderConsultationArchive([manifest], { projectRoot: cwd });
-
     expect(summary).toContain("Second-opinion judge: claude-code (disagrees-select-vs-abstain)");
     expect(summary).toContain(
       "- inspect the second-opinion judge before relying on the recommended result: .oraculum/runs/run_second_opinion_disagreement_crowned/reports/winner-selection.second-opinion.json.",
@@ -726,8 +636,5 @@ describe("consultation verdict review runtime", () => {
     expect(review.manualReviewRecommended).toBe(true);
     expect(review.artifactAvailability.crowningRecord).toBe(true);
     expect(review.secondOpinionAgreement).toBe("disagrees-select-vs-abstain");
-    expect(archive).toContain(
-      "- run_second_opinion_disagreement_crowned | completed | Task | no auto validation posture | recommended survivor cand-01 (manual review)",
-    );
   });
 });

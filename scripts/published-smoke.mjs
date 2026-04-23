@@ -72,15 +72,12 @@ const shouldPublishedSmokeMutateWorkspace = ${shouldPublishedSmokeMutateWorkspac
 
 	function profilePayload() {
 	  return {
-	    profileId: null,
 	    validationProfileId: "library",
     confidence: "high",
-    summary: null,
     validationSummary: "library profile fits the repository signals.",
     candidateCount: 2,
     strategyIds: ["minimal-change", "test-amplified"],
     selectedCommandIds: ["lint-fast", "typecheck-fast", "unit-impact", "full-suite-deep"],
-    missingCapabilities: null,
     validationGaps: [],
   };
 }
@@ -178,10 +175,10 @@ async function main() {
     if (!existsSync(oraculumCliPath)) {
       throw new Error(`Installed Oraculum CLI entry was not found at ${oraculumCliPath}.`);
     }
-    const oraculumMcpToolsPath = join(packageRoot, "dist", "services", "mcp-tools.js");
-    if (!existsSync(oraculumMcpToolsPath)) {
+    const oraculumOrcActionsPath = join(packageRoot, "dist", "services", "orc-actions.js");
+    if (!existsSync(oraculumOrcActionsPath)) {
       throw new Error(
-        `Installed Oraculum MCP tool entry was not found at ${oraculumMcpToolsPath}.`,
+        `Installed Oraculum Orc action entry was not found at ${oraculumOrcActionsPath}.`,
       );
     }
 
@@ -234,10 +231,12 @@ async function main() {
       ORACULUM_CODEX_BIN: fakeBinaryPath,
     };
 
-    const { runConsultTool, runCrownTool } = await import(pathToFileURL(oraculumMcpToolsPath).href);
+    const { runConsultAction, runCrownAction } = await import(
+      pathToFileURL(oraculumOrcActionsPath).href
+    );
 
     const consult = await invokeTool(env, async () => {
-      const response = await runConsultTool({
+      const response = await runConsultAction({
         cwd: projectRoot,
         taskInput: "Update src/index.js so greet() returns a winner-specific hello string.",
       });
@@ -246,7 +245,7 @@ async function main() {
     assertContains(consult.stdout, "Consultation complete.");
 
     const crown = await invokeTool(env, async () => {
-      const response = await runCrownTool({
+      const response = await runCrownAction({
         cwd: projectRoot,
         branchName: "fix/published-smoke",
       });

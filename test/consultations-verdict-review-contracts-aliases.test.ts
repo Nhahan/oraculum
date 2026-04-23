@@ -1,44 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { verdictReviewSchema } from "../src/domain/chat-native.js";
-import {
-  createVerdictReviewInput,
-  parseVerdictReview,
-} from "./helpers/verdict-review-contracts.js";
+import { parseVerdictReview } from "./helpers/verdict-review-contracts.js";
 
 describe("consultation verdict review contracts", () => {
-  it("backfills and validates legacy verdict review aliases at the schema boundary", () => {
-    const parsed = verdictReviewSchema.parse(
-      createVerdictReviewInput({
-        profileId: undefined,
-        profileMissingCapabilities: undefined,
-        validationPosture: "validation-gaps",
-        validationProfileId: "frontend",
-        validationSignals: ["frontend-framework"],
-        validationGaps: ["No build validation command was selected."],
-      }),
-    );
-
-    expect(parsed.profileId).toBe("frontend");
-    expect(parsed.profileMissingCapabilities).toEqual([
-      "No build validation command was selected.",
-    ]);
-
-    expect(() =>
-      verdictReviewSchema.parse({
-        ...parsed,
-        profileId: "library",
-      }),
-    ).toThrow("profileId must match validationProfileId");
-  });
-
-  it("backfills researchConflictHandling from persisted verdict review research signals", () => {
+  it("validates canonical research review fields", () => {
     const conflicted = parseVerdictReview({
       outcomeType: "external-research-required",
       verificationLevel: "none",
       validationPosture: "validation-gaps",
       judgingBasisKind: "missing-capability",
-      researchBasisStatus: undefined,
+      researchBasisStatus: "current",
+      researchConflictHandling: "manual-review-required",
       recommendedCandidateId: undefined,
       finalistIds: [],
       taskSourceKind: "research-brief",
@@ -55,7 +27,8 @@ describe("consultation verdict review contracts", () => {
     });
 
     const current = parseVerdictReview({
-      researchBasisStatus: undefined,
+      researchBasisStatus: "current",
+      researchConflictHandling: "accepted",
       taskSourceKind: "research-brief",
       taskSourcePath: "/tmp/research-brief.json",
       researchSignalCount: 1,
@@ -71,33 +44,5 @@ describe("consultation verdict review contracts", () => {
     expect(conflicted.researchBasisStatus).toBe("current");
     expect(conflicted.researchConflictHandling).toBe("manual-review-required");
     expect(current.researchConflictHandling).toBe("accepted");
-  });
-
-  it("accepts reordered legacy verdict review gap aliases", () => {
-    const parsed = verdictReviewSchema.parse(
-      createVerdictReviewInput({
-        profileId: undefined,
-        validationPosture: "validation-gaps",
-        validationProfileId: "frontend",
-        validationSignals: ["frontend-framework"],
-        validationGaps: [
-          "No build validation command was selected.",
-          "No e2e or visual deep check was detected.",
-        ],
-        profileMissingCapabilities: [
-          "No e2e or visual deep check was detected.",
-          "No build validation command was selected.",
-        ],
-      }),
-    );
-
-    expect(parsed.validationGaps).toEqual([
-      "No build validation command was selected.",
-      "No e2e or visual deep check was detected.",
-    ]);
-    expect(parsed.profileMissingCapabilities).toEqual([
-      "No e2e or visual deep check was detected.",
-      "No build validation command was selected.",
-    ]);
   });
 });

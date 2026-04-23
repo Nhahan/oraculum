@@ -3,7 +3,6 @@ import {
   deriveConsultationOutcomeForManifest,
   type ExportPlan,
   exportPlanSchema,
-  getExportMaterializationMode,
   type RunManifest,
 } from "../../domain/run.js";
 import { describeRecommendedTaskResultLabel } from "../../domain/task.js";
@@ -16,8 +15,7 @@ interface BuildExportPlanOptions {
   cwd: string;
   runId?: string;
   winnerId?: string;
-  branchName?: string;
-  materializationLabel?: string;
+  materializationName?: string;
   withReport: boolean;
   allowUnsafe?: boolean;
 }
@@ -87,8 +85,8 @@ export async function prepareExportPlan(
 
   const reportFiles = options.withReport ? await collectReportFiles(projectRoot, manifest.id) : [];
   const mode = winner.workspaceMode === "git-worktree" ? "git-branch" : "workspace-sync";
-  const materializationMode = getExportMaterializationMode({ mode });
-  if (mode === "git-branch" && !options.branchName) {
+  const materializationMode = mode === "git-branch" ? "branch" : "workspace-sync";
+  if (mode === "git-branch" && !options.materializationName) {
     throw new OraculumError(
       "Branch materialization requires a target branch name. Use `orc crown <branch-name>`.",
     );
@@ -111,14 +109,13 @@ export async function prepareExportPlan(
     mode,
     materializationMode,
     workspaceDir: winner.workspaceDir,
-    ...(mode === "git-branch" ? { branchName: options.branchName } : {}),
-    ...(mode === "workspace-sync"
-      ? { materializationLabel: options.materializationLabel ?? options.branchName }
+    ...(mode === "git-branch" ? { branchName: options.materializationName } : {}),
+    ...(mode === "workspace-sync" && options.materializationName
+      ? { materializationLabel: options.materializationName }
       : {}),
     ...(mode === "git-branch"
       ? {
           patchPath: store.getRunPaths(manifest.id).exportPatchPath,
-          materializationPatchPath: store.getRunPaths(manifest.id).exportPatchPath,
         }
       : {}),
     withReport: options.withReport,

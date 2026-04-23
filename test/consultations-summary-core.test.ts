@@ -29,7 +29,7 @@ describe("consultation summary core rendering", () => {
     expect(summary).toContain(`orc verdict ${manifest.id}`);
   });
 
-  it("renders legacy survivor manifests that only persist the outcome survivor id", async () => {
+  it("renders outcome-only recommended survivor manifests", async () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {
       recommendedWinner: undefined,
@@ -136,7 +136,6 @@ describe("consultation summary core rendering", () => {
 
     expect(summary).toContain("orc crown <branch-name>");
     expect(summary).toContain("orc verdict");
-    expect(summary).toContain("orc verdict archive");
     expect(summary).not.toContain("oraculum crown");
   });
 

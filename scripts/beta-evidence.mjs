@@ -16,14 +16,15 @@ import {
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const distCliPath = join(repoRoot, "dist", "cli.js");
-const distMcpToolsPath = join(repoRoot, "dist", "services", "mcp-tools.js");
+const distOrcActionsPath = join(repoRoot, "dist", "services", "orc-actions.js");
+const distProjectPath = join(repoRoot, "dist", "services", "project.js");
 const keepEvidence = process.env.ORACULUM_KEEP_EVIDENCE === "1";
 const evidenceMode = resolveEvidenceMode();
 const evidenceAdapterTimeoutMs = 60_000;
 const evidenceScenarioIds = resolveScenarioIds();
 
 async function main() {
-  if (!existsSync(distCliPath) || !existsSync(distMcpToolsPath)) {
+  if (!existsSync(distCliPath) || !existsSync(distOrcActionsPath) || !existsSync(distProjectPath)) {
     throw new Error(
       `Built Oraculum artifacts were not found under dist. Run "npm run build" first.`,
     );
@@ -46,8 +47,8 @@ async function main() {
 
     try {
       await prepareScenario(workdir, scenario, {
+        initializeProjectForScenario,
         invocationCwdForScenario,
-        runInitToolRequest,
         runOrThrow,
       });
       await executeScenario(workdir, scenario);
@@ -108,41 +109,7 @@ async function executeScenario(workdir, scenario) {
   const toolCwd = invocationCwdForScenario(workdir, scenario);
   const taskArgument = buildTaskArgument(scenario);
 
-  if (scenario.kind === "draft" || scenario.kind === "filelike-inline-draft") {
-    const draft = await runDraftToolRequest(
-      {
-        cwd: toolCwd,
-        taskInput: taskArgument,
-        agent: scenario.agent,
-        candidates: 1,
-      },
-      { env },
-    );
-    assertContains(draft.stdout, "Drafted only.");
-    const run = await readNewestRunManifest(workdir);
-    assertEqual(run.status, "planned", `${scenario.id}: expected a planned consultation.`);
-    assertEqual(
-      run.profileSelection?.source,
-      "fallback-detection",
-      `${scenario.id}: draft should skip runtime profile selection.`,
-    );
-    if (scenario.kind === "filelike-inline-draft") {
-      const normalizedSourcePath = run.taskPacket.sourcePath.replaceAll("\\", "/");
-      assertEqual(
-        run.taskPacket.sourceKind,
-        "task-note",
-        `${scenario.id}: file-like draft input should materialize as a generated task note.`,
-      );
-      assertContains(
-        normalizedSourcePath,
-        ".oraculum/tasks/",
-        `${scenario.id}: file-like draft input should land under generated tasks.`,
-      );
-    }
-    return;
-  }
-
-  const consult = await runConsultToolRequest(
+  const consult = await runConsultActionRequest(
     {
       cwd: toolCwd,
       taskInput: taskArgument,
@@ -158,8 +125,8 @@ async function executeScenario(workdir, scenario) {
   assertEqual(run.status, "completed", `${scenario.id}: expected a completed consultation.`);
   assertEqual(
     readValidationProfileId(run.profileSelection),
-    scenario.profileId,
-    `${scenario.id}: unexpected consultation profile.`,
+    scenario.validationProfileId,
+    `${scenario.id}: unexpected consultation validation posture.`,
   );
 
   if (scenario.kind === "happy") {
@@ -192,7 +159,7 @@ async function executeScenario(workdir, scenario) {
       false,
       `${scenario.id}: no-finalist should not leave promoted candidates.`,
     );
-    const verdict = await runVerdictToolRequest({ cwd: workdir }, { env });
+    const verdict = await runVerdictActionRequest({ cwd: workdir }, { env });
     assertContains(verdict.stdout, "review why no candidate survived the oracle rounds");
     assertNotContains(verdict.stdout, "crown the recommended survivor");
     return;
@@ -208,7 +175,7 @@ async function executeScenario(workdir, scenario) {
       true,
       `${scenario.id}: missing runtime should eliminate every candidate.`,
     );
-    const verdict = await runVerdictToolRequest({ cwd: workdir }, { env });
+    const verdict = await runVerdictActionRequest({ cwd: workdir }, { env });
     assertContains(verdict.stdout, "review why no candidate survived the oracle rounds");
     return;
   }
@@ -220,12 +187,12 @@ async function executeScenario(workdir, scenario) {
       true,
       `${scenario.id}: abstain should still leave survivors.`,
     );
-    const verdict = await runVerdictToolRequest({ cwd: workdir }, { env });
+    const verdict = await runVerdictActionRequest({ cwd: workdir }, { env });
     assertContains(
       verdict.stdout,
       "The shared `orc crown` path only crowns a recommended survivor.",
     );
-    const crown = await runCrownToolRequest(
+    const crown = await runCrownActionRequest(
       {
         cwd: workdir,
         candidateId: "cand-02",
@@ -295,7 +262,7 @@ async function executeScenario(workdir, scenario) {
         ? { ORACULUM_CODEX_BIN: secondBinaryPath }
         : { ORACULUM_CLAUDE_BIN: secondBinaryPath }),
     };
-    const followup = await runConsultToolRequest(
+    const followup = await runConsultActionRequest(
       {
         cwd: workdir,
         taskInput: buildInlineTaskText(scenario.repoKind),
@@ -306,7 +273,7 @@ async function executeScenario(workdir, scenario) {
       { env: secondEnv },
     );
     assertContains(followup.stdout, "Consultation complete.");
-    const crown = await runCrownToolRequest(
+    const crown = await runCrownActionRequest(
       {
         cwd: workdir,
         candidateId: scenario.manualCandidateId,
@@ -345,7 +312,7 @@ async function executeScenario(workdir, scenario) {
     await writeFile(join(workdir, "post-consult-change.txt"), "moved head\n", "utf8");
     runOrThrow("git", ["add", "post-consult-change.txt"], { cwd: workdir });
     runOrThrow("git", ["commit", "-m", "move head"], { cwd: workdir });
-    const crown = await runCrownToolRequest(
+    const crown = await runCrownActionRequest(
       {
         cwd: workdir,
         branchName: buildBranchName(scenario, "stale"),
@@ -368,7 +335,7 @@ async function executeScenario(workdir, scenario) {
     const branchName = buildBranchName(scenario, "exists");
     runOrThrow("git", ["checkout", "-b", branchName], { cwd: workdir });
     runOrThrow("git", ["checkout", "-"], { cwd: workdir });
-    const crown = await runCrownToolRequest(
+    const crown = await runCrownActionRequest(
       {
         cwd: workdir,
         branchName,
@@ -392,7 +359,7 @@ async function executeScenario(workdir, scenario) {
       true,
       `${scenario.id}: hung runtime should eliminate every candidate.`,
     );
-    const verdict = await runVerdictToolRequest({ cwd: workdir }, { env });
+    const verdict = await runVerdictActionRequest({ cwd: workdir }, { env });
     assertContains(verdict.stdout, "review why no candidate survived the oracle rounds");
     return;
   }
@@ -454,7 +421,7 @@ async function executeScenario(workdir, scenario) {
     assertContains(skippedCommandCandidates, "migration-impact");
     assertContains(skippedCommandCandidates, "missing-explicit-command");
     assertContains(skippedCommandCandidates, "migration-tool:alembic");
-    const verdict = await runVerdictToolRequest({ cwd: workdir }, { env });
+    const verdict = await runVerdictActionRequest({ cwd: workdir }, { env });
     assertContains(verdict.stdout, "Validation gaps from the selected posture:");
     assertContains(verdict.stdout, "No repo-local validation command was detected.");
     assertContains(verdict.stdout, "Skipped validation posture commands:");
@@ -535,7 +502,7 @@ async function executeScenario(workdir, scenario) {
 async function assertHappyCrown(workdir, scenario, env, candidateId = "cand-02") {
   const branchName = buildBranchName(scenario, "winner");
   const toolCwd = invocationCwdForScenario(workdir, scenario);
-  const crown = await runCrownToolRequest(
+  const crown = await runCrownActionRequest(
     {
       cwd: toolCwd,
       ...(candidateId === "cand-02" ? {} : { candidateId }),
@@ -625,7 +592,7 @@ async function assertSubdirectoryInvocation(workdir, scenario, run, env) {
     false,
     `${scenario.id}: nested invocation must not create a stray .oraculum directory.`,
   );
-  const verdict = await runVerdictToolRequest({ cwd: toolCwd }, { env });
+  const verdict = await runVerdictActionRequest({ cwd: toolCwd }, { env });
   assertContains(
     verdict.stdout,
     "crown the recommended survivor",
@@ -718,70 +685,70 @@ function runOrThrow(command, args, options) {
   };
 }
 
-let cachedMcpToolsModule;
+let cachedOrcActionsModule;
+let cachedProjectModule;
 
-async function loadDistMcpTools() {
-  if (!cachedMcpToolsModule) {
-    cachedMcpToolsModule = import(pathToFileURL(distMcpToolsPath).href);
+async function loadDistOrcActions() {
+  if (!cachedOrcActionsModule) {
+    cachedOrcActionsModule = import(pathToFileURL(distOrcActionsPath).href);
   }
 
-  return cachedMcpToolsModule;
+  return cachedOrcActionsModule;
 }
 
-async function runInitToolRequest(request, options = {}) {
-  const module = await loadDistMcpTools();
+async function loadDistProject() {
+  if (!cachedProjectModule) {
+    cachedProjectModule = import(pathToFileURL(distProjectPath).href);
+  }
+
+  return cachedProjectModule;
+}
+
+async function initializeProjectForScenario(request, options = {}) {
+  const module = await loadDistProject();
   return invokeTool(
     options.env,
     async () => {
-      const response = await module.runInitTool(request);
-      return `Initialized Oraculum in ${response.initialization.projectRoot}\n`;
+      await module.initializeProject({
+        cwd: request.cwd,
+        force: false,
+      });
+      return "";
     },
     options.allowFailure,
   );
 }
 
-async function runConsultToolRequest(request, options = {}) {
-  const module = await loadDistMcpTools();
+async function runConsultActionRequest(request, options = {}) {
+  const module = await loadDistOrcActions();
   return invokeTool(
     options.env,
     async () => {
-      const response = await module.runConsultTool(request);
+      const response = await module.runConsultAction(request);
       return `Consultation complete.\n${response.summary}`;
     },
     options.allowFailure,
   );
 }
 
-async function runDraftToolRequest(request, options = {}) {
-  const module = await loadDistMcpTools();
+async function runVerdictActionRequest(request, options = {}) {
+  const module = await loadDistOrcActions();
   return invokeTool(
     options.env,
     async () => {
-      const response = await module.runDraftTool(request);
-      return `Drafted only. Execution was skipped because the draft command was requested.\n${response.summary}`;
-    },
-    options.allowFailure,
-  );
-}
-
-async function runVerdictToolRequest(request, options = {}) {
-  const module = await loadDistMcpTools();
-  return invokeTool(
-    options.env,
-    async () => {
-      const response = await module.runVerdictTool(request);
+      const response = await module.runVerdictAction(request);
       return response.summary;
     },
     options.allowFailure,
   );
 }
 
-async function runCrownToolRequest(request, options = {}) {
-  const module = await loadDistMcpTools();
+async function runCrownActionRequest(request, options = {}) {
+  const module = await loadDistOrcActions();
   return invokeTool(
     options.env,
     async () => {
-      const response = await module.runCrownTool(request);
+      const response = await module.runCrownAction(request);
       return [
         `Crowned ${response.plan.winnerId}`,
         `Consultation: ${response.plan.runId}`,
@@ -852,20 +819,6 @@ async function readLatestRunManifest(root) {
   );
 }
 
-async function readNewestRunManifest(root) {
-  const runsDir = join(root, ".oraculum", "runs");
-  const entries = (await readdir(runsDir, { withFileTypes: true }))
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort((left, right) => right.localeCompare(left));
-  const runId = entries[0];
-  if (!runId) {
-    throw new Error(`No consultation artifacts were created under ${runsDir}.`);
-  }
-
-  return JSON.parse(await readFile(join(runsDir, runId, "run.json"), "utf8"));
-}
-
 async function readProfileSelectionArtifact(root, runId) {
   return JSON.parse(
     await readFile(
@@ -924,12 +877,9 @@ function readValidationProfileId(profileSelection) {
     return undefined;
   }
 
-  return (
-    (typeof profileSelection.validationProfileId === "string"
-      ? profileSelection.validationProfileId
-      : undefined) ??
-    (typeof profileSelection.profileId === "string" ? profileSelection.profileId : undefined)
-  );
+  return typeof profileSelection.validationProfileId === "string"
+    ? profileSelection.validationProfileId
+    : undefined;
 }
 
 function readValidationGaps(profileSelection) {
@@ -939,10 +889,6 @@ function readValidationGaps(profileSelection) {
 
   if (Array.isArray(profileSelection.validationGaps)) {
     return profileSelection.validationGaps;
-  }
-
-  if (Array.isArray(profileSelection.missingCapabilities)) {
-    return profileSelection.missingCapabilities;
   }
 
   return [];

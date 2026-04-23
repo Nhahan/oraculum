@@ -25,12 +25,14 @@ import {
 } from "../src/domain/config.js";
 import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
 import { profileRepoSignalsSchema } from "../src/domain/profile.js";
+import { planningDepthArtifactSchema } from "../src/domain/run.js";
 import {
   deriveResearchSignalFingerprint,
   deriveTaskPacketId,
   materializedTaskPacketSchema,
   taskPacketSchema,
 } from "../src/domain/task.js";
+import { resolveConsensusLoopRevisionBudget } from "../src/services/planning-interview/index.js";
 import { initializeProject } from "../src/services/project.js";
 import { planRun } from "../src/services/runs.js";
 import { loadTaskPacket } from "../src/services/task-packets.js";
@@ -155,6 +157,7 @@ describe("task packet contracts", () => {
           ],
           versionNotes: ["Behavior changed in v3.2 compared with the legacy session API."],
           unresolvedConflicts: ["The repo comments still describe the pre-v3.2 refresh flow."],
+          conflictHandling: "manual-review-required",
           notes: ["Prefer official docs over third-party blog posts."],
           signalSummary: ["Detected package.json and explicit lint/test scripts."],
         },
@@ -211,7 +214,7 @@ describe("task packet contracts", () => {
     expect(packet.contextFiles).toEqual([join(root, "fix-session-loss.md")]);
   });
 
-  it("rejects legacy research briefs that omit runId", async () => {
+  it("rejects stale research briefs that omit runId", async () => {
     const root = await createTempProject();
     const taskPath = join(root, "research-brief.json");
     await writeFile(
@@ -235,6 +238,7 @@ describe("task packet contracts", () => {
           claims: [],
           versionNotes: [],
           unresolvedConflicts: [],
+          conflictHandling: "accepted",
           notes: [],
           signalSummary: [],
         },
@@ -276,6 +280,7 @@ describe("task packet contracts", () => {
           claims: [],
           versionNotes: [],
           unresolvedConflicts: [],
+          conflictHandling: "accepted",
         },
         null,
         2,
@@ -324,6 +329,58 @@ describe("task packet contracts", () => {
 
     expect(packet.source.path).toBe(join(root, "reports", "research-brief.json"));
     expect(packet.source.originPath).toBe(join(root, "docs", "ROLL_OUT_NOTE.md"));
+  });
+});
+
+describe("planning artifact contracts", () => {
+  it("accepts canonical elevated consensus intensity", () => {
+    const depth = planningDepthArtifactSchema.parse({
+      runId: "run_elevated_depth",
+      createdAt: "2026-04-23T00:00:00.000Z",
+      interviewDepth: "skip-interview",
+      readiness: "ready",
+      confidence: "medium",
+      summary: "Elevated artifact.",
+      reasons: ["Non-trivial review risk."],
+      estimatedInterviewRounds: 0,
+      consensusReviewIntensity: "elevated",
+      maxInterviewRounds: 8,
+      operatorMaxConsensusRevisions: 10,
+      maxConsensusRevisions: 3,
+    });
+
+    expect(depth.consensusReviewIntensity).toBe("elevated");
+  });
+
+  it("derives consensus loop revision budget from intensity and interview depth", () => {
+    const cases = [
+      ["standard", "skip-interview", 1],
+      ["standard", "interview", 2],
+      ["standard", "deep-interview", 3],
+      ["elevated", "skip-interview", 3],
+      ["elevated", "interview", 4],
+      ["elevated", "deep-interview", 5],
+      ["high", "skip-interview", 6],
+      ["high", "interview", 7],
+      ["high", "deep-interview", 10],
+    ] as const;
+
+    for (const [consensusReviewIntensity, interviewDepth, expected] of cases) {
+      expect(
+        resolveConsensusLoopRevisionBudget({
+          consensusReviewIntensity,
+          interviewDepth,
+          operatorMaxConsensusLoopRevisions: 10,
+        }),
+      ).toBe(expected);
+    }
+    expect(
+      resolveConsensusLoopRevisionBudget({
+        consensusReviewIntensity: "high",
+        interviewDepth: "deep-interview",
+        operatorMaxConsensusLoopRevisions: 4,
+      }),
+    ).toBe(4);
   });
 });
 
@@ -740,9 +797,7 @@ describe("oracle and adapter contracts", () => {
 
     expect(profileResult.status).toBe("completed");
     expect(profileResult.recommendation?.validationProfileId).toBe("docs-review");
-    expect(profileResult.recommendation?.profileId).toBe("docs-review");
     expect(profileResult.recommendation?.validationSummary).toBe("Stub profile recommendation.");
-    expect(profileResult.recommendation?.summary).toBe("Stub profile recommendation.");
   });
 });
 

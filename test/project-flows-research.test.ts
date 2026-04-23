@@ -86,6 +86,7 @@ describe("project flows research", () => {
           signalFingerprint: deriveResearchSignalFingerprint([
             "Detected explicit lint and test scripts.",
           ]),
+          conflictHandling: "accepted",
         },
         null,
         2,
@@ -126,7 +127,7 @@ describe("project flows research", () => {
     });
   });
 
-  it("uses repo-plus-external-docs fallback posture when preflighting a persisted research brief without runtime", async () => {
+  it("uses repo-plus-external-docs fallback posture while failing closed for a persisted research brief without runtime", async () => {
     const cwd = await createInitializedProject();
     await writeProjectFlowFile(cwd, "tasks/fix-session-loss.md", "# fix session loss\n");
     await mkdir(dirname(getResearchBriefPath(cwd, "run_research")), { recursive: true });
@@ -148,6 +149,7 @@ describe("project flows research", () => {
           },
           notes: ["Prefer official docs."],
           signalSummary: ["Detected explicit lint and test scripts."],
+          conflictHandling: "accepted",
         },
         null,
         2,
@@ -165,12 +167,14 @@ describe("project flows research", () => {
     });
 
     expect(manifest.preflight).toMatchObject({
-      decision: "proceed",
+      decision: "needs-clarification",
       confidence: "low",
       researchPosture: "repo-plus-external-docs",
+      clarificationQuestion:
+        "What exact outcome should Oraculum produce so the tournament can judge success?",
     });
     expect(manifest.preflight?.summary).toContain(
-      "Proceed conservatively using the persisted research brief plus repository evidence.",
+      "Candidate generation is blocked until the operator confirms the task contract.",
     );
   });
 
@@ -225,6 +229,7 @@ describe("project flows research", () => {
           signalSummary: ["language:typescript"],
           signalFingerprint: "stale-fingerprint",
           notes: ["Prefer official docs."],
+          conflictHandling: "accepted",
         },
         null,
         2,
@@ -241,7 +246,7 @@ describe("project flows research", () => {
       },
     });
 
-    expect(manifest.preflight?.decision).toBe("proceed");
+    expect(manifest.preflight?.decision).toBe("needs-clarification");
     expect(manifest.preflight?.researchBasisDrift).toBe(true);
     const readiness = JSON.parse(
       await readFile(getPreflightReadinessPath(cwd, manifest.id), "utf8"),
@@ -278,6 +283,7 @@ describe("project flows research", () => {
           },
           notes: ["Prefer official docs."],
           signalSummary: ["Detected explicit lint and test scripts."],
+          conflictHandling: "accepted",
         },
         null,
         2,

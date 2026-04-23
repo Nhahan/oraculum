@@ -54,25 +54,21 @@ export const consultationResearchPostureSchema = z.enum([
 ]);
 export const clarifyPressureKindSchema = z.enum(["clarify-needed", "external-research-required"]);
 export const clarifyScopeKeyTypeSchema = z.enum(["target-artifact", "task-source"]);
-export const consultationNextActionSchema = z.preprocess(
-  (value) => (value === "crown-recommended-survivor" ? "crown-recommended-result" : value),
-  z.enum([
-    "reopen-verdict",
-    "browse-archive",
-    "perform-manual-review",
-    "review-preflight-readiness",
-    "answer-clarification-and-rerun",
-    "gather-external-research-and-rerun",
-    "rerun-with-research-brief",
-    "refresh-stale-research-and-rerun",
-    "revise-task-and-rerun",
-    "crown-recommended-result",
-    "inspect-comparison-report",
-    "review-validation-gaps",
-    "add-repo-local-oracle",
-    "rerun-with-different-candidate-count",
-  ]),
-);
+export const consultationNextActionSchema = z.enum([
+  "reopen-verdict",
+  "perform-manual-review",
+  "review-preflight-readiness",
+  "answer-clarification-and-rerun",
+  "gather-external-research-and-rerun",
+  "rerun-with-research-brief",
+  "refresh-stale-research-and-rerun",
+  "revise-task-and-rerun",
+  "crown-recommended-result",
+  "inspect-comparison-report",
+  "review-validation-gaps",
+  "add-repo-local-oracle",
+  "rerun-with-different-candidate-count",
+]);
 export const runStatusSchema = z.enum(["planned", "running", "completed"]);
 export const reportBundleSchema = z.object({
   rootDir: z.string().min(1),
@@ -84,18 +80,6 @@ export const optionalNonEmptyStringSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim().length === 0 ? undefined : value),
   z.string().min(1).optional(),
 );
-
-export function deriveExportModeFromMaterializationMode(
-  materializationMode: z.infer<typeof exportMaterializationModeSchema>,
-): z.infer<typeof exportModeSchema> {
-  return materializationMode === "branch" ? "git-branch" : "workspace-sync";
-}
-
-export function deriveExportMaterializationMode(
-  mode: z.infer<typeof exportModeSchema>,
-): z.infer<typeof exportMaterializationModeSchema> {
-  return mode === "git-branch" ? "branch" : "workspace-sync";
-}
 
 export function getExpectedOutcomeFlags(type: z.infer<typeof consultationOutcomeTypeSchema>): {
   terminal: boolean;

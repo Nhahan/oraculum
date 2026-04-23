@@ -39,19 +39,19 @@ describe("consultation auto profile runtime: library", () => {
       cwd,
       runId: "run_library_no_deep_test",
       recommendation: {
-        profileId: "library",
+        validationProfileId: "library",
         confidence: "high",
-        summary: "Library signals are strongest.",
+        validationSummary: "Library signals are strongest.",
         candidateCount: 4,
         strategyIds: ["minimal-change"],
         selectedCommandIds: ["lint-fast", "typecheck-fast"],
-        missingCapabilities: [],
+        validationGaps: [],
       },
     });
 
-    expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.validationProfileId).toBe("library");
     expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "typecheck-fast"]);
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
   });
 
   it("does not require a full-suite deep test when a runtime-selected library only has detector test-runner signals", async () => {
@@ -81,19 +81,19 @@ describe("consultation auto profile runtime: library", () => {
       cwd,
       runId: "run_library_detector_test_runner_only",
       recommendation: {
-        profileId: "library",
+        validationProfileId: "library",
         confidence: "high",
-        summary: "Library signals are strongest.",
+        validationSummary: "Library signals are strongest.",
         candidateCount: 4,
         strategyIds: ["minimal-change"],
         selectedCommandIds: ["lint-fast", "typecheck-fast"],
-        missingCapabilities: [],
+        validationGaps: [],
       },
     });
 
-    expect(recommendation.selection.profileId).toBe("library");
+    expect(recommendation.selection.validationProfileId).toBe("library");
     expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "typecheck-fast"]);
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
   });
 
   it("reports unselected repo-local validation when a generic runtime recommendation omits commands", async () => {
@@ -121,19 +121,19 @@ describe("consultation auto profile runtime: library", () => {
       cwd,
       runId: "run_generic_runtime_empty_selection",
       recommendation: {
-        profileId: "generic",
+        validationProfileId: "generic",
         confidence: "medium",
-        summary: "Keep the generic profile.",
+        validationSummary: "Keep the generic profile.",
         candidateCount: 4,
         strategyIds: ["minimal-change"],
         selectedCommandIds: [],
-        missingCapabilities: [],
+        validationGaps: [],
       },
     });
 
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([]);
-    expect(recommendation.selection.missingCapabilities).toEqual([
+    expect(recommendation.selection.validationGaps).toEqual([
       "No repo-local validation command was selected.",
     ]);
   });

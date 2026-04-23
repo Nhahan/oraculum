@@ -38,9 +38,9 @@ describe("consultation auto profile fallback: package managers and migrations", 
         files: string[];
       };
     };
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([]);
-    expect(recommendation.selection.missingCapabilities).toContain(
+    expect(recommendation.selection.validationGaps).toContain(
       "No repo-local validation command was detected.",
     );
     expect(artifact.signals.capabilities).not.toContainEqual(
@@ -84,7 +84,7 @@ describe("consultation auto profile fallback: package managers and migrations", 
         files: string[];
       };
     };
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([]);
     expect(artifact.signals.dependencies).toEqual(
       expect.arrayContaining(["drizzle-kit", "drizzle-orm"]),
@@ -129,7 +129,7 @@ describe("consultation auto profile fallback: package managers and migrations", 
         provenance: Array<{ path?: string; signal: string; source: string }>;
       };
     };
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([]);
     expect(artifact.signals.dependencies).toEqual(expect.arrayContaining(["knex"]));
     expect(artifact.signals.capabilities).not.toContainEqual(
@@ -449,6 +449,6 @@ describe("consultation auto profile fallback: package managers and migrations", 
       ]),
     );
     expect(recommendation.selection.oracleIds).not.toContain("package-smoke-deep");
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
   });
 });

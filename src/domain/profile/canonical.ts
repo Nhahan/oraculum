@@ -1,8 +1,6 @@
 import {
   getValidationGaps,
-  getValidationProfileId,
   getValidationSignals,
-  getValidationSummary,
 } from "./accessors.js";
 import type {
   AgentProfileRecommendation,
@@ -20,17 +18,10 @@ export function toCanonicalAgentProfileRecommendation(recommendation: AgentProfi
   selectedCommandIds: string[];
   validationGaps: string[];
 } {
-  const validationProfileId = getValidationProfileId(recommendation);
-  const validationSummary = getValidationSummary(recommendation);
-
-  if (!validationProfileId || !validationSummary) {
-    throw new Error("Canonical agent profile recommendation requires validation profile fields.");
-  }
-
   return {
-    validationProfileId,
+    validationProfileId: recommendation.validationProfileId,
     confidence: recommendation.confidence,
-    validationSummary,
+    validationSummary: recommendation.validationSummary,
     candidateCount: recommendation.candidateCount,
     strategyIds: recommendation.strategyIds,
     selectedCommandIds: recommendation.selectedCommandIds,
@@ -49,18 +40,11 @@ export function toCanonicalConsultationProfileSelection(selection: ConsultationP
   validationGaps: string[];
   validationSignals: string[];
 } {
-  const validationProfileId = getValidationProfileId(selection);
-  const validationSummary = getValidationSummary(selection);
-
-  if (!validationProfileId || !validationSummary) {
-    throw new Error("Canonical consultation profile selection requires validation profile fields.");
-  }
-
   return {
-    validationProfileId,
+    validationProfileId: selection.validationProfileId,
     confidence: selection.confidence,
     source: selection.source,
-    validationSummary,
+    validationSummary: selection.validationSummary,
     candidateCount: selection.candidateCount,
     strategyIds: selection.strategyIds,
     oracleIds: selection.oracleIds,

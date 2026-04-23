@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import { getAdvancedConfigPath, getConfigPath } from "../src/core/paths.js";
 import {
   projectAdvancedConfigSchema,
-  projectConfigSchema,
   projectQuickConfigSchema,
 } from "../src/domain/config.js";
 import {
@@ -154,7 +153,7 @@ describe("project scaffold", () => {
     expect((await readdir(cwd)).filter((entry) => entry.includes(".tmp"))).toEqual([]);
   });
 
-  it("accepts the older full config shape for backward compatibility", async () => {
+  it("rejects the removed older full config shape", async () => {
     const cwd = await createInitializedProject();
 
     await writeFile(
@@ -196,15 +195,11 @@ describe("project scaffold", () => {
       "utf8",
     );
 
-    const config = await loadProjectConfig(cwd);
-
-    expect(projectConfigSchema.parse(config).defaultAgent).toBe("codex");
-    expect(config.rounds).toHaveLength(1);
-    expect(config.oracles[0]?.id).toBe("lint-fast");
+    await expect(loadProjectConfig(cwd)).rejects.toThrow(/Unrecognized keys/);
     await expect(readFile(getAdvancedConfigPath(cwd), "utf8")).rejects.toThrow();
   });
 
-  it("applies advanced overrides on top of the older full config shape", async () => {
+  it("rejects advanced overrides on top of the removed older full config shape", async () => {
     const cwd = await createInitializedProject();
 
     await writeFile(
@@ -267,16 +262,10 @@ describe("project scaffold", () => {
       "utf8",
     );
 
-    const config = await loadProjectConfig(cwd);
-
-    expect(config.defaultAgent).toBe("codex");
-    expect(config.rounds).toHaveLength(1);
-    expect(config.oracles).toHaveLength(1);
-    expect(config.oracles[0]?.id).toBe("impact-review");
-    expect(config.oracles[0]?.roundId).toBe("impact");
+    await expect(loadProjectConfig(cwd)).rejects.toThrow(/Unrecognized keys/);
   });
 
-  it("removes stale advanced settings when force init resets the project", async () => {
+  it("removes stale advanced settings when force reinitialization resets the project", async () => {
     const cwd = await createInitializedProject();
 
     await writeFile(

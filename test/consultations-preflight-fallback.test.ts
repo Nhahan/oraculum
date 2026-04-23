@@ -14,7 +14,7 @@ import {
 registerConsultationsPreflightTempRootCleanup();
 
 describe("consultation preflight fallback policy", () => {
-  it("does not invent clarification questions when runtime preflight times out", async () => {
+  it("fails closed with a bounded clarification when runtime preflight times out", async () => {
     const cwd = await createInitializedProject();
     await mkdir(join(cwd, "dogfood-tasks"), { recursive: true });
     const taskPacket = await writePreflightTaskPacket({
@@ -50,15 +50,17 @@ describe("consultation preflight fallback policy", () => {
     });
 
     expect(result.preflight).toEqual({
-      decision: "proceed",
+      decision: "needs-clarification",
       confidence: "low",
       summary:
-        "Runtime preflight did not return a structured recommendation. Proceed conservatively with the default consultation flow.",
+        "Runtime preflight did not return a structured recommendation. Candidate generation is blocked until the operator confirms the task contract.",
       researchPosture: "repo-only",
+      clarificationQuestion:
+        "What exact outcome should Oraculum produce so the tournament can judge success?",
     });
   });
 
-  it("does not invent external-research questions when runtime preflight times out", async () => {
+  it("fails closed without inventing external-research questions when runtime preflight times out", async () => {
     const cwd = await createInitializedProject();
     await mkdir(join(cwd, "dogfood-tasks"), { recursive: true });
     const intent = [
@@ -86,11 +88,13 @@ describe("consultation preflight fallback policy", () => {
     });
 
     expect(result.preflight).toEqual({
-      decision: "proceed",
+      decision: "needs-clarification",
       confidence: "low",
       summary:
-        "Runtime preflight did not return a structured recommendation. Proceed conservatively with the default consultation flow.",
+        "Runtime preflight did not return a structured recommendation. Candidate generation is blocked until the operator confirms the task contract.",
       researchPosture: "repo-only",
+      clarificationQuestion:
+        "What exact outcome should Oraculum produce so the tournament can judge success?",
     });
   });
 });

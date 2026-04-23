@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
-const distMcpToolsPath = join(repoRoot, "dist", "services", "mcp-tools.js");
+const distOrcActionsPath = join(repoRoot, "dist", "services", "orc-actions.js");
 const keepEvidence = process.env.ORACULUM_KEEP_EVIDENCE === "1";
 const candidateCount = parseBoundedInteger(
   process.env.ORACULUM_SPEC_FIRST_CANDIDATES ?? "4",
@@ -220,8 +220,8 @@ const scenarios = [
 ];
 
 async function main() {
-  if (!existsSync(distMcpToolsPath)) {
-    throw new Error("dist/services/mcp-tools.js is missing. Run `npm run build` first.");
+  if (!existsSync(distOrcActionsPath)) {
+    throw new Error("dist/services/orc-actions.js is missing. Run `npm run build` first.");
   }
 
   const tempRoot = await mkdtemp(join(tmpdir(), "oraculum-spec-first-comparison-"));
@@ -284,7 +284,7 @@ async function runScenario(tempRoot, fakeCodex, scenario) {
 }
 
 async function runPatchFirstRoute(root, fakeCodex, eventLogPath, scenario) {
-  const mcpTools = await loadDistMcpTools();
+  const orcActions = await loadDistOrcActions();
   const restoreEnv = patchEnv({
     ORACULUM_CODEX_BIN: fakeCodex,
     ORACULUM_SPEC_FIRST_EVENT_LOG: eventLogPath,
@@ -292,11 +292,11 @@ async function runPatchFirstRoute(root, fakeCodex, eventLogPath, scenario) {
     ORACULUM_SPEC_FIRST_CANDIDATES: String(candidateCount),
   });
   try {
-    const consultation = await mcpTools.runConsultTool({
+    const consultation = await orcActions.runConsultAction({
       cwd: root,
       taskInput: scenario.invariant,
     });
-    const crown = await mcpTools.runCrownTool({
+    const crown = await orcActions.runCrownAction({
       cwd: root,
       branchName: `spec-first-benchmark/${scenario.id}`,
       withReport: false,
@@ -477,7 +477,6 @@ const candidateMatch = prompt.match(/^Candidate ID: (.+)$/m);
 const candidateId = candidateMatch ? candidateMatch[1].trim() : "cand-01";
 const isPreflight = prompt.includes("You are deciding whether an Oraculum consultation is ready to proceed before any candidate is generated.");
 const isProfile =
-  prompt.includes("You are selecting the best Oraculum consultation profile") ||
   prompt.includes("You are selecting the best Oraculum consultation validation posture");
 const isSpecProposal = prompt.includes("You are proposing one Oraculum implementation spec.");
 const isSpecSelection = prompt.includes("You are selecting Oraculum implementation specs");
@@ -578,13 +577,13 @@ function preflightPayload() {
 function profilePayload() {
   const candidateCount = Number.parseInt(process.env.ORACULUM_SPEC_FIRST_CANDIDATES || "4", 10);
   return {
-    profileId: "library",
+    validationProfileId: "library",
     confidence: "high",
-    summary: "Controlled spec-first comparison fixture.",
+    validationSummary: "Controlled spec-first comparison fixture.",
     candidateCount,
     strategyIds: ["minimal-change", "test-amplified"],
     selectedCommandIds: ["scenario-invariant"],
-    missingCapabilities: [],
+    validationGaps: [],
   };
 }
 
@@ -670,14 +669,14 @@ process.stdout.write(JSON.stringify({ event: "completed", scenarioId, candidateI
 `;
 }
 
-let cachedMcpToolsModule;
+let cachedOrcActionsModule;
 
-async function loadDistMcpTools() {
-  if (!cachedMcpToolsModule) {
-    cachedMcpToolsModule = import(pathToFileURL(distMcpToolsPath).href);
+async function loadDistOrcActions() {
+  if (!cachedOrcActionsModule) {
+    cachedOrcActionsModule = import(pathToFileURL(distOrcActionsPath).href);
   }
 
-  return cachedMcpToolsModule;
+  return cachedOrcActionsModule;
 }
 
 function measureQuality(root) {

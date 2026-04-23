@@ -78,18 +78,14 @@ describe("finalist comparison reports", () => {
         researchBasisDrift: true,
       },
       consultationProfile: {
-        profileId: "library",
         validationProfileId: "library",
         confidence: "high",
         source: "llm-recommendation",
-        summary: "Package export evidence is strongest.",
         validationSummary: "Package export evidence is strongest.",
         candidateCount: 4,
         strategyIds: ["minimal-change", "test-amplified"],
         oracleIds: ["lint-fast", "full-suite-deep"],
-        missingCapabilities: [],
         validationGaps: [],
-        signals: ["build-system:package-export-metadata"],
         validationSignals: ["build-system:package-export-metadata"],
       },
       candidates: [

@@ -4,7 +4,6 @@ import type { ConsultationProfileId } from "./schemas.js";
 export function getValidationProfileId(
   selection:
     | {
-        profileId?: ConsultationProfileId | undefined;
         validationProfileId?: ConsultationProfileId | undefined;
       }
     | undefined,
@@ -12,7 +11,6 @@ export function getValidationProfileId(
 export function getValidationProfileId(
   selection:
     | {
-        profileId?: string | undefined;
         validationProfileId?: string | undefined;
       }
     | undefined,
@@ -20,12 +18,11 @@ export function getValidationProfileId(
 export function getValidationProfileId(
   selection:
     | {
-        profileId?: string | undefined;
         validationProfileId?: string | undefined;
       }
     | undefined,
 ): string | undefined {
-  return selection?.validationProfileId ?? selection?.profileId;
+  return selection?.validationProfileId;
 }
 
 export function isSupportedConsultationProfileId(value: string): value is ConsultationProfileId {
@@ -35,32 +32,29 @@ export function isSupportedConsultationProfileId(value: string): value is Consul
 export function getValidationSummary(
   selection:
     | {
-        summary?: string | undefined;
         validationSummary?: string | undefined;
       }
     | undefined,
 ): string | undefined {
-  return selection?.validationSummary ?? selection?.summary;
+  return selection?.validationSummary;
 }
 
 export function getValidationSignals(
   selection:
     | {
-        signals?: string[] | undefined;
         validationSignals?: string[] | undefined;
       }
     | undefined,
 ): string[] {
-  return selection?.validationSignals ?? selection?.signals ?? [];
+  return selection?.validationSignals ?? [];
 }
 
 export function getValidationGaps(
   selection:
     | {
-        missingCapabilities?: string[] | undefined;
         validationGaps?: string[] | undefined;
       }
     | undefined,
 ): string[] {
-  return selection?.validationGaps ?? selection?.missingCapabilities ?? [];
+  return selection?.validationGaps ?? [];
 }

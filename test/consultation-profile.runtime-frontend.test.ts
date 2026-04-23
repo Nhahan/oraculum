@@ -39,23 +39,23 @@ describe("consultation auto profile runtime: frontend", () => {
       cwd,
       runId: "run_frontend_runtime_no_evidence",
       recommendation: {
-        profileId: "frontend",
+        validationProfileId: "frontend",
         confidence: "medium",
-        summary: "Treat this as frontend work.",
+        validationSummary: "Treat this as frontend work.",
         candidateCount: 4,
         strategyIds: ["minimal-change"],
         selectedCommandIds: ["lint-fast", "typecheck-fast", "full-suite-deep"],
-        missingCapabilities: [],
+        validationGaps: [],
       },
     });
 
-    expect(recommendation.selection.profileId).toBe("frontend");
+    expect(recommendation.selection.validationProfileId).toBe("frontend");
     expect(recommendation.selection.oracleIds).toEqual([
       "lint-fast",
       "typecheck-fast",
       "full-suite-deep",
     ]);
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
   });
 
   it("requires build validation when a runtime-selected frontend has build evidence but no build command selected", async () => {
@@ -85,23 +85,23 @@ describe("consultation auto profile runtime: frontend", () => {
       cwd,
       runId: "run_frontend_runtime_build_evidence",
       recommendation: {
-        profileId: "frontend",
+        validationProfileId: "frontend",
         confidence: "medium",
-        summary: "Treat this as frontend work.",
+        validationSummary: "Treat this as frontend work.",
         candidateCount: 4,
         strategyIds: ["minimal-change"],
         selectedCommandIds: ["lint-fast", "typecheck-fast", "full-suite-deep"],
-        missingCapabilities: [],
+        validationGaps: [],
       },
     });
 
-    expect(recommendation.selection.profileId).toBe("frontend");
+    expect(recommendation.selection.validationProfileId).toBe("frontend");
     expect(recommendation.selection.oracleIds).toEqual([
       "lint-fast",
       "typecheck-fast",
       "full-suite-deep",
     ]);
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
   });
 
   it("does not require frontend-only checks when a runtime-selected frontend has detector-only signals", async () => {
@@ -131,22 +131,22 @@ describe("consultation auto profile runtime: frontend", () => {
       cwd,
       runId: "run_frontend_runtime_detector_only",
       recommendation: {
-        profileId: "frontend",
+        validationProfileId: "frontend",
         confidence: "medium",
-        summary: "Treat this as frontend work.",
+        validationSummary: "Treat this as frontend work.",
         candidateCount: 4,
         strategyIds: ["minimal-change"],
         selectedCommandIds: ["lint-fast", "typecheck-fast", "full-suite-deep"],
-        missingCapabilities: [],
+        validationGaps: [],
       },
     });
 
-    expect(recommendation.selection.profileId).toBe("frontend");
+    expect(recommendation.selection.validationProfileId).toBe("frontend");
     expect(recommendation.selection.oracleIds).toEqual([
       "lint-fast",
       "typecheck-fast",
       "full-suite-deep",
     ]);
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
   });
 });

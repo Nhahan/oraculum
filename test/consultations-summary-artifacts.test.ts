@@ -33,15 +33,15 @@ describe("consultation summary artifact rendering", () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {
       profileSelection: {
-        profileId: "library",
+        validationProfileId: "library",
         confidence: "high",
         source: "llm-recommendation",
-        summary: "Library scripts and package export signals are strongest.",
+        validationSummary: "Library scripts and package export signals are strongest.",
         candidateCount: 4,
         strategyIds: ["minimal-change", "test-amplified"],
         oracleIds: ["lint-fast", "typecheck-fast"],
-        missingCapabilities: [],
-        signals: ["package-export", "lint-script"],
+        validationGaps: [],
+        validationSignals: ["package-export", "lint-script"],
       },
       recommendedWinner: {
         candidateId: "cand-01",
@@ -152,7 +152,6 @@ describe("consultation summary artifact rendering", () => {
         finalistCount: 0,
         validationPosture: "sufficient",
         verificationLevel: "lightweight",
-        missingCapabilityCount: 0,
         validationGapCount: 0,
         judgingBasisKind: "repo-local-oracle",
       },
@@ -199,7 +198,6 @@ describe("consultation summary artifact rendering", () => {
         finalistCount: 0,
         validationPosture: "unknown",
         verificationLevel: "none",
-        missingCapabilityCount: 0,
         validationGapCount: 0,
         judgingBasisKind: "unknown",
       },
@@ -253,15 +251,15 @@ describe("consultation summary artifact rendering", () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {
       profileSelection: {
-        profileId: "library",
+        validationProfileId: "library",
         confidence: "high",
         source: "llm-recommendation",
-        summary: "Library scripts and package export signals are strongest.",
+        validationSummary: "Library scripts and package export signals are strongest.",
         candidateCount: 4,
         strategyIds: ["minimal-change", "test-amplified"],
         oracleIds: ["lint-fast", "typecheck-fast"],
-        missingCapabilities: [],
-        signals: ["package-export", "lint-script"],
+        validationGaps: [],
+        validationSignals: ["package-export", "lint-script"],
       },
     });
     await writeManifest(cwd, manifest);
@@ -275,15 +273,15 @@ describe("consultation summary artifact rendering", () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {
       profileSelection: {
-        profileId: "library",
+        validationProfileId: "library",
         confidence: "high",
         source: "llm-recommendation",
-        summary: "Library scripts and package export signals are strongest.",
+        validationSummary: "Library scripts and package export signals are strongest.",
         candidateCount: 4,
         strategyIds: ["minimal-change", "test-amplified"],
         oracleIds: ["lint-fast", "typecheck-fast"],
-        missingCapabilities: [],
-        signals: ["package-export", "lint-script"],
+        validationGaps: [],
+        validationSignals: ["package-export", "lint-script"],
       },
     });
     await writeManifest(cwd, manifest);
@@ -302,15 +300,15 @@ describe("consultation summary artifact rendering", () => {
     const cwd = await createInitializedProject();
     const manifest = createManifest("completed", {
       profileSelection: {
-        profileId: "generic",
+        validationProfileId: "generic",
         confidence: "low",
         source: "fallback-detection",
-        summary: "No executable profile-specific command evidence was detected.",
+        validationSummary: "No executable profile-specific command evidence was detected.",
         candidateCount: 3,
         strategyIds: ["minimal-change", "safety-first"],
         oracleIds: [],
-        missingCapabilities: ["No repo-local validation command was detected."],
-        signals: ["e2e-config"],
+        validationGaps: ["No repo-local validation command was detected."],
+        validationSignals: ["e2e-config"],
       },
     });
     await writeManifest(cwd, manifest);
@@ -351,18 +349,14 @@ describe("consultation summary artifact rendering", () => {
             validationGaps: ["No repo-local validation command was detected."],
           },
           appliedSelection: {
-            profileId: "generic",
             validationProfileId: "generic",
             confidence: "low",
             source: "fallback-detection",
             validationSummary: "No executable profile-specific command evidence was detected.",
-            summary: "No executable profile-specific command evidence was detected.",
             candidateCount: 3,
             strategyIds: ["minimal-change", "safety-first"],
             oracleIds: [],
-            missingCapabilities: ["No repo-local validation command was detected."],
             validationGaps: ["No repo-local validation command was detected."],
-            signals: ["e2e-config"],
             validationSignals: ["e2e-config"],
           },
         }),
@@ -413,7 +407,6 @@ describe("consultation summary artifact rendering", () => {
         finalistCount: 0,
         validationPosture: "sufficient",
         verificationLevel: "lightweight",
-        missingCapabilityCount: 0,
         validationGapCount: 0,
         judgingBasisKind: "unknown",
       },

@@ -22,13 +22,13 @@ describe("consultation auto profile fallback: baseline signals", () => {
 
     const recommendation = await recommendFallbackProfile({ cwd, runId: "run_zero_signals" });
 
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.candidateCount).toBe(3);
     expect(recommendation.selection.strategyIds).toEqual(["minimal-change", "safety-first"]);
-    expect(recommendation.selection.summary).toContain(
+    expect(recommendation.selection.validationSummary).toContain(
       "defaulted to the generic validation posture",
     );
-    expect(recommendation.selection.missingCapabilities).toContain(
+    expect(recommendation.selection.validationGaps).toContain(
       "No repo-local validation command was detected.",
     );
     const artifact = JSON.parse(
@@ -57,13 +57,13 @@ describe("consultation auto profile fallback: baseline signals", () => {
 
     const recommendation = await recommendFallbackProfile({ cwd, runId: "run_explicit_targets" });
 
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([
       "lint-fast",
       "typecheck-fast",
       "full-suite-deep",
     ]);
-    expect(recommendation.selection.missingCapabilities).toEqual([]);
+    expect(recommendation.selection.validationGaps).toEqual([]);
     const artifact = JSON.parse(
       await readFile(getProfileSelectionPath(cwd, "run_explicit_targets"), "utf8"),
     ) as {
@@ -110,8 +110,8 @@ describe("consultation auto profile fallback: baseline signals", () => {
 
     const recommendation = await recommendFallbackProfile({ cwd, runId: "run_task_keyword_only" });
 
-    expect(recommendation.selection.profileId).toBe("generic");
-    expect(recommendation.selection.signals).toEqual(["unknown"]);
+    expect(recommendation.selection.validationProfileId).toBe("generic");
+    expect(recommendation.selection.validationSignals).toEqual(["unknown"]);
   });
   it("does not let a frontend dependency alone force the frontend profile", async () => {
     const cwd = await createTempRoot();
@@ -136,7 +136,7 @@ describe("consultation auto profile fallback: baseline signals", () => {
 
     const recommendation = await recommendFallbackProfile({ cwd, runId: "run_react_only" });
 
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([]);
   });
   it("keeps workspace-only frontend dependencies as raw facts without semantic frontend shortcuts", async () => {
@@ -188,7 +188,7 @@ describe("consultation auto profile fallback: baseline signals", () => {
         notes: string[];
       };
     };
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual([]);
     expect(artifact.signals.dependencies).toEqual(expect.arrayContaining(["react", "vite"]));
     expect(artifact.signals.capabilities).not.toContainEqual(
@@ -255,7 +255,7 @@ describe("consultation auto profile fallback: baseline signals", () => {
       };
     };
 
-    expect(recommendation.selection.profileId).toBe("generic");
+    expect(recommendation.selection.validationProfileId).toBe("generic");
     expect(recommendation.selection.oracleIds).toEqual(["lint-fast", "full-suite-deep"]);
     expect(artifact.signals.workspaceRoots).toEqual(["modules/app"]);
     expect(artifact.signals.workspaceMetadata).toEqual([

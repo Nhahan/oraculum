@@ -97,7 +97,6 @@ describe("consultation preflight and replay", () => {
     expect(status.researchConflictsPresent).toBe(true);
     expect(status.nextActions).toEqual([
       "reopen-verdict",
-      "browse-archive",
       "inspect-comparison-report",
       "rerun-with-different-candidate-count",
       "refresh-stale-research-and-rerun",

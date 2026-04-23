@@ -45,14 +45,27 @@ export async function runExecutionRounds(options: {
 }): Promise<{ manifest: RunManifest; roundStates: RunManifest["rounds"] }> {
   let manifest = options.manifest;
   const roundStates = manifest.rounds.map((round) => ({ ...round }));
-  const survivors = new Set(options.executionRecords.map((record) => record.candidate.id));
-  const completedRoundIds = new Set<string>();
+  const survivors = new Set(
+    options.executionRecords
+      .map((record) => options.candidateMap.get(record.candidate.id) ?? record.candidate)
+      .filter((candidate) => candidate.status !== "eliminated")
+      .map((candidate) => candidate.id),
+  );
+  const completedRoundIds = new Set(
+    options.accumulateRoundCounts
+      ? []
+      : roundStates.filter((round) => round.status === "completed").map((round) => round.id),
+  );
   const candidatePositions = new Map(
     options.manifest.candidates.map((candidate, index) => [candidate.id, index + 1]),
   );
   const totalCandidateCount = options.manifest.candidates.length;
 
   for (const [index, round] of roundStates.entries()) {
+    if (round.status === "completed" && !options.accumulateRoundCounts) {
+      continue;
+    }
+
     const candidatesEnteringRound = survivors.size;
     await options.onProgress?.(roundStartedEvent(round.id, round.label, candidatesEnteringRound));
     const startedAt = new Date().toISOString();

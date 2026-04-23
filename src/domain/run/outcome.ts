@@ -13,7 +13,6 @@ interface ConsultationOutcomeInput {
   rounds?: Array<Pick<RunRound, "id" | "status" | "verdictCount">>;
   profileSelection?: {
     validationGaps?: string[] | undefined;
-    missingCapabilities?: string[] | undefined;
     oracleIds: string[];
   };
   recommendedWinner?: Pick<NonNullable<RunManifest["recommendedWinner"]>, "candidateId">;
@@ -27,7 +26,6 @@ interface ConsultationOutcomeManifestInput {
   profileSelection?:
     | {
         validationGaps?: string[] | undefined;
-        missingCapabilities?: string[] | undefined;
         oracleIds: string[];
       }
     | undefined;

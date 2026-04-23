@@ -15,5 +15,4 @@ export interface ProjectConfigLayers {
   config: ProjectConfig;
   quick: ProjectQuickConfig;
   advanced?: ProjectAdvancedConfig;
-  usesLegacyConfig: boolean;
 }

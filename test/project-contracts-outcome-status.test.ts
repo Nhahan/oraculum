@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { consultationOutcomeSchema, savedConsultationStatusSchema } from "../src/domain/run.js";
 
 describe("project contracts", () => {
-  it("rejects conflicting legacy and validation outcome gap aliases", () => {
+  it("accepts canonical outcome gap counts", () => {
     expect(() =>
       consultationOutcomeSchema.parse({
         type: "pending-execution",
@@ -12,61 +12,13 @@ describe("project contracts", () => {
         finalistCount: 0,
         validationPosture: "unknown",
         verificationLevel: "none",
-        missingCapabilityCount: 0,
         validationGapCount: 1,
         judgingBasisKind: "unknown",
       }),
-    ).toThrow("validationGapCount must match missingCapabilityCount");
+    ).not.toThrow();
   });
 
-  it("backfills legacy outcome gap aliases from validation-first payloads", () => {
-    const parsed = consultationOutcomeSchema.parse({
-      type: "pending-execution",
-      terminal: false,
-      crownable: false,
-      finalistCount: 0,
-      validationPosture: "unknown",
-      verificationLevel: "none",
-      validationGapCount: 2,
-      judgingBasisKind: "unknown",
-    });
-
-    expect(parsed.missingCapabilityCount).toBe(2);
-  });
-
-  it("normalizes legacy crown-recommended-survivor next actions to crown-recommended-result", () => {
-    const parsed = savedConsultationStatusSchema.parse({
-      consultationId: "run_1",
-      consultationState: "completed",
-      outcomeType: "recommended-survivor",
-      terminal: true,
-      crownable: true,
-      taskSourceKind: "task-note",
-      taskSourcePath: "/tmp/task.md",
-      researchSignalCount: 0,
-      researchRerunRecommended: false,
-      researchConflictsPresent: false,
-      validationPosture: "sufficient",
-      finalistCount: 1,
-      validationGapsPresent: false,
-      judgingBasisKind: "repo-local-oracle",
-      verificationLevel: "lightweight",
-      researchPosture: "repo-only",
-      nextActions: ["reopen-verdict", "browse-archive", "crown-recommended-survivor"],
-      recommendedCandidateId: "cand-01",
-      validationSignals: [],
-      validationGaps: [],
-      updatedAt: "2026-04-05T00:00:00.000Z",
-    });
-
-    expect(parsed.nextActions).toEqual([
-      "reopen-verdict",
-      "browse-archive",
-      "crown-recommended-result",
-    ]);
-  });
-
-  it("backfills researchConflictHandling from persisted research status signals", () => {
+  it("requires explicit persisted research status fields", () => {
     const conflicted = savedConsultationStatusSchema.parse({
       consultationId: "run_1",
       consultationState: "completed",
@@ -75,6 +27,8 @@ describe("project contracts", () => {
       crownable: false,
       taskSourceKind: "task-note",
       taskSourcePath: "/tmp/task.md",
+      researchBasisStatus: "current",
+      researchConflictHandling: "manual-review-required",
       researchSignalCount: 0,
       researchRerunRecommended: true,
       researchConflictsPresent: true,
@@ -98,6 +52,8 @@ describe("project contracts", () => {
       crownable: true,
       taskSourceKind: "research-brief",
       taskSourcePath: "/tmp/research-brief.json",
+      researchBasisStatus: "current",
+      researchConflictHandling: "accepted",
       researchSignalCount: 1,
       researchSignalFingerprint: "fingerprint",
       researchRerunRecommended: false,
@@ -120,7 +76,7 @@ describe("project contracts", () => {
     expect(current.researchConflictHandling).toBe("accepted");
   });
 
-  it("rejects outcome payloads that omit both legacy and validation gap counts", () => {
+  it("rejects outcome payloads that omit validation gap counts", () => {
     expect(() =>
       consultationOutcomeSchema.parse({
         type: "pending-execution",
@@ -189,6 +145,7 @@ describe("project contracts", () => {
         crownable: true,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
@@ -232,6 +189,7 @@ describe("project contracts", () => {
         crownable: false,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
@@ -274,6 +232,7 @@ describe("project contracts", () => {
         crownable: false,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
@@ -316,6 +275,7 @@ describe("project contracts", () => {
         crownable: false,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
@@ -369,6 +329,7 @@ describe("project contracts", () => {
         crownable: false,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
@@ -396,6 +357,7 @@ describe("project contracts", () => {
         crownable: false,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
@@ -451,6 +413,7 @@ describe("project contracts", () => {
         crownable: false,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: true,
         researchConflictsPresent: false,
@@ -478,6 +441,7 @@ describe("project contracts", () => {
         crownable: false,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,

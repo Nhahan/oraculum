@@ -13,9 +13,6 @@ export function buildFallbackPreflight(options: {
   llmFailure?: string;
 }): ConsultationPreflight {
   const reusedResearchBrief = options.taskPacket.source.kind === "research-brief";
-  const defaultFlow = reusedResearchBrief
-    ? "Proceed conservatively using the persisted research brief plus repository evidence."
-    : "Proceed conservatively with the default consultation flow.";
   const runtimeSummary = options.runtimeAttempted
     ? options.llmFailure
       ? `Runtime preflight failed: ${options.llmFailure}.`
@@ -23,12 +20,14 @@ export function buildFallbackPreflight(options: {
     : "Runtime preflight was skipped.";
 
   return consultationPreflightSchema.parse({
-    decision: "proceed",
+    decision: "needs-clarification",
     confidence: "low",
-    summary: `${runtimeSummary} ${defaultFlow}`,
+    summary: `${runtimeSummary} Candidate generation is blocked until the operator confirms the task contract.`,
     researchPosture: reusedResearchBrief
       ? consultationResearchPostureSchema.enum["repo-plus-external-docs"]
       : consultationResearchPostureSchema.enum["repo-only"],
+    clarificationQuestion:
+      "What exact outcome should Oraculum produce so the tournament can judge success?",
   });
 }
 

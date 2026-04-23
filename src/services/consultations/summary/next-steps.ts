@@ -29,6 +29,10 @@ export function buildConsultationSummaryNextStepLines(
     (planReadiness?.missingOracleIds.length ?? 0) === 0 &&
     (planReadiness?.unresolvedQuestions.length ?? 0) === 0;
 
+  if (manifest.status === "planned" && consultationPlanInputPath) {
+    lines.push(`- consultation plan path: ${consultationPlanInputPath}.`);
+  }
+
   if (
     recommendedCandidateId &&
     resolvedArtifacts.secondOpinionWinnerSelection &&
@@ -171,7 +175,6 @@ export function buildConsultationSummaryNextStepLines(
   }
 
   lines.push(`- reopen the latest consultation later: ${context.verdictCommand}`);
-  lines.push(`- browse recent consultations: ${context.verdictCommand} archive`);
 
   return lines;
 }

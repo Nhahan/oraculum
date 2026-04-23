@@ -13,6 +13,7 @@ describe("project contracts", () => {
         crownable: false,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
@@ -39,6 +40,7 @@ describe("project contracts", () => {
         crownable: false,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
@@ -67,6 +69,7 @@ describe("project contracts", () => {
         crownable: true,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
@@ -93,6 +96,7 @@ describe("project contracts", () => {
         crownable: false,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
@@ -122,6 +126,7 @@ describe("project contracts", () => {
         crownable: true,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
@@ -152,6 +157,7 @@ describe("project contracts", () => {
         crownable: false,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
@@ -169,9 +175,9 @@ describe("project contracts", () => {
     ).toThrow("validationGapsPresent must be true when detailed validationGaps are present");
   });
 
-  it("allows legacy validation-gap statuses that only know the gap count", () => {
+  it("derives canonical validation-gap presence from the manifest outcome", () => {
     const status = buildSavedConsultationStatus({
-      id: "run_legacy_gap_status",
+      id: "run_gap_status",
       status: "completed",
       taskPath: "/tmp/task.md",
       taskPacket: {
@@ -203,35 +209,7 @@ describe("project contracts", () => {
     expect(status.validationGaps).toEqual([]);
   });
 
-  it("rejects conflicting legacy and validation status gap-presence aliases", () => {
-    expect(() =>
-      savedConsultationStatusSchema.parse({
-        consultationId: "run_1",
-        consultationState: "completed",
-        outcomeType: "no-survivors",
-        terminal: true,
-        crownable: false,
-        taskSourceKind: "task-note",
-        taskSourcePath: "/tmp/task.md",
-        researchSignalCount: 0,
-        researchRerunRecommended: false,
-        researchConflictsPresent: false,
-        validationPosture: "unknown",
-        validationSignals: [],
-        validationGaps: [],
-        finalistCount: 0,
-        missingCapabilitiesPresent: false,
-        validationGapsPresent: true,
-        judgingBasisKind: "unknown",
-        verificationLevel: "none",
-        researchPosture: "unknown",
-        nextActions: [],
-        updatedAt: "2026-04-04T00:00:00.000Z",
-      }),
-    ).toThrow("validationGapsPresent must match missingCapabilitiesPresent");
-  });
-
-  it("backfills legacy status gap-presence aliases from validation-first payloads", () => {
+  it("accepts canonical validation gap presence", () => {
     const parsed = savedConsultationStatusSchema.parse({
       consultationId: "run_1",
       consultationState: "completed",
@@ -240,6 +218,7 @@ describe("project contracts", () => {
       crownable: false,
       taskSourceKind: "task-note",
       taskSourcePath: "/tmp/task.md",
+      researchBasisStatus: "unknown",
       researchSignalCount: 0,
       researchRerunRecommended: false,
       researchConflictsPresent: false,
@@ -255,10 +234,10 @@ describe("project contracts", () => {
       updatedAt: "2026-04-04T00:00:00.000Z",
     });
 
-    expect(parsed.missingCapabilitiesPresent).toBe(false);
+    expect(parsed.validationGapsPresent).toBe(false);
   });
 
-  it("rejects status payloads that omit both legacy and validation gap-presence aliases", () => {
+  it("rejects status payloads that omit validation gap presence", () => {
     expect(() =>
       savedConsultationStatusSchema.parse({
         consultationId: "run_1",
@@ -268,6 +247,7 @@ describe("project contracts", () => {
         crownable: false,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
@@ -294,6 +274,7 @@ describe("project contracts", () => {
         crownable: true,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
@@ -321,6 +302,7 @@ describe("project contracts", () => {
         crownable: false,
         taskSourceKind: "task-note",
         taskSourcePath: "/tmp/task.md",
+        researchBasisStatus: "unknown",
         researchSignalCount: 0,
         researchRerunRecommended: false,
         researchConflictsPresent: false,
