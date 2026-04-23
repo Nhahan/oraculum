@@ -295,6 +295,49 @@ describe("Codex official host transport failure handling", () => {
     ).rejects.toThrow("Timed out waiting for Codex app-server request initialize");
   });
 
+  it("includes JSON-RPC error details when an app-server request fails", async () => {
+    const projectRoot = await createChatNativeTempRoot("oraculum-codex-transport-rpc-error-");
+    const packet = parseOrcCommandLine('orc consult "안녕"', projectRoot);
+    const fakeCodex = await writeNodeBinary(
+      projectRoot,
+      "fake-codex-app-server-rpc-error",
+      [
+        "const readline = require('node:readline');",
+        "const rl = readline.createInterface({ input: process.stdin });",
+        "const send = (payload) => process.stdout.write(JSON.stringify(payload) + '\\n');",
+        "rl.on('line', (line) => {",
+        "  const message = JSON.parse(line);",
+        "  if (message.method === 'initialize') {",
+        "    send({ id: message.id, result: { protocolVersion: '2025-03-26' } });",
+        "    return;",
+        "  }",
+        "  if (message.method === 'thread/start') {",
+        "    send({ id: message.id, result: { thread: { id: 'thread-fake' } } });",
+        "    send({ method: 'mcpServer/startupStatus/updated', params: { name: 'orc', status: 'ready' } });",
+        "    return;",
+        "  }",
+        "  if (message.method === 'mcpServer/tool/call') {",
+        "    send({ id: message.id, error: { code: -32001, message: 'tool rejected', data: { reason: 'missing permission' } } });",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+
+    await expect(
+      rejectIfHung(
+        runCodexOfficialTransport(packet, {
+          command: fakeCodex,
+          commandArgs: [],
+          cwd: projectRoot,
+          startupTimeoutMs: 250,
+          transportTimeoutMs: 1_000,
+        }),
+      ),
+    ).rejects.toThrow(
+      /Codex app-server request tool-call failed: code -32001; tool rejected; data \{"reason":"missing permission"\}/u,
+    );
+  });
+
   it.skipIf(process.platform === "win32")(
     "terminates the app-server process group when a request times out",
     async () => {
@@ -333,6 +376,56 @@ describe("Codex official host transport failure handling", () => {
 });
 
 describe("Claude official host transport failure handling", () => {
+  it("passes the MCP tool prompt as a text prompt argument and parses the tool result", async () => {
+    const projectRoot = await createChatNativeTempRoot("oraculum-claude-transport-success-");
+    const packet = parseOrcCommandLine('orc verdict "run_1"', projectRoot);
+    const fakeClaude = await writeNodeBinary(
+      projectRoot,
+      "fake-claude-text-prompt-success",
+      [
+        "const prompt = process.argv.slice(2).join(' ');",
+        "if (!prompt.includes('oraculum_verdict')) process.exit(9);",
+        "process.stdout.write(JSON.stringify({ type: 'assistant' }) + '\\n');",
+        "process.stdout.write(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: JSON.stringify({ structuredContent: { summary: 'fake verdict' } }) }] } }) + '\\n');",
+        "process.stdout.write(JSON.stringify({ type: 'result', result: 'fake verdict' }) + '\\n');",
+      ].join("\n"),
+    );
+
+    const result = await runClaudeOfficialTransport(packet, {
+      command: fakeClaude,
+      commandArgs: [],
+      cwd: projectRoot,
+      transportTimeoutMs: 1_000,
+    });
+
+    expect(result.finalResult).toBe("fake verdict");
+    expect(result.streamEvents.some((event) => event.type === "assistant")).toBe(true);
+    expect(result.toolResult).toEqual({ structuredContent: { summary: "fake verdict" } });
+  });
+
+  it("includes stderr and stdout excerpts when Claude exits non-zero", async () => {
+    const projectRoot = await createChatNativeTempRoot("oraculum-claude-transport-failure-");
+    const packet = parseOrcCommandLine('orc verdict "run_1"', projectRoot);
+    const fakeClaude = await writeNodeBinary(
+      projectRoot,
+      "fake-claude-text-prompt-failure",
+      [
+        "process.stdout.write(JSON.stringify({ type: 'system', subtype: 'startup' }) + '\\n');",
+        "process.stderr.write('bad claude invocation');",
+        "process.exit(2);",
+      ].join("\n"),
+    );
+
+    await expect(
+      runClaudeOfficialTransport(packet, {
+        command: fakeClaude,
+        commandArgs: [],
+        cwd: projectRoot,
+        transportTimeoutMs: 1_000,
+      }),
+    ).rejects.toThrow(/exited with code 2[\s\S]*bad claude invocation[\s\S]*startup/u);
+  });
+
   it("rejects when stream-json execution exceeds the transport timeout", async () => {
     const projectRoot = await createChatNativeTempRoot("oraculum-claude-transport-timeout-");
     const packet = parseOrcCommandLine('orc consult "안녕"', projectRoot);

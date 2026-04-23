@@ -73,6 +73,52 @@ describe("host wrapper official route", () => {
     expect(writeSpy).toHaveBeenCalledWith("claude summary\n");
   });
 
+  it("ignores a mismatched real-binary override for the selected host", async () => {
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    const code = await runHostWrapper({
+      host: "claude-code",
+      args: ['orc verdict "run_1"'],
+      cwd: "/tmp/project",
+      env: {
+        ...process.env,
+        ORACULUM_HOST_WRAPPER_REAL_BINARY: "/tmp/bin/codex",
+      },
+    });
+
+    expect(code).toBe(0);
+    expect(runClaudeOfficialTransport).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        command: "claude",
+      }),
+    );
+    expect(writeSpy).toHaveBeenCalledWith("claude summary\n");
+  });
+
+  it("uses a matching real-binary override for the selected host", async () => {
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    const code = await runHostWrapper({
+      host: "claude-code",
+      args: ['orc verdict "run_1"'],
+      cwd: "/tmp/project",
+      env: {
+        ...process.env,
+        ORACULUM_HOST_WRAPPER_REAL_BINARY: "/tmp/bin/claude",
+      },
+    });
+
+    expect(code).toBe(0);
+    expect(runClaudeOfficialTransport).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        command: "/tmp/bin/claude",
+      }),
+    );
+    expect(writeSpy).toHaveBeenCalledWith("claude summary\n");
+  });
+
   it("fails closed with setup guidance when official transport fails", async () => {
     vi.mocked(runCodexOfficialTransport).mockRejectedValueOnce(new Error("boom"));
     const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);

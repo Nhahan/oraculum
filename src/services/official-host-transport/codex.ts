@@ -218,7 +218,11 @@ export async function runCodexOfficialTransport(
     }
 
     if ("error" in message) {
-      entry.reject(new OraculumError(`Codex app-server request ${message.id} failed.`));
+      entry.reject(
+        new OraculumError(
+          `Codex app-server request ${message.id} failed: ${formatJsonRpcError(message.error)}`,
+        ),
+      );
       return;
     }
 
@@ -285,4 +289,29 @@ export async function runCodexOfficialTransport(
   } finally {
     cleanup();
   }
+}
+
+function formatJsonRpcError(error: unknown): string {
+  if (!error || typeof error !== "object" || Array.isArray(error)) {
+    return String(error);
+  }
+
+  const payload = error as { code?: unknown; message?: unknown; data?: unknown };
+  const parts: string[] = [];
+  if (typeof payload.code === "number" || typeof payload.code === "string") {
+    parts.push(`code ${payload.code}`);
+  }
+  if (typeof payload.message === "string" && payload.message.length > 0) {
+    parts.push(payload.message);
+  }
+  if (payload.data !== undefined) {
+    parts.push(`data ${summarizeJsonRpcData(payload.data)}`);
+  }
+
+  return parts.length > 0 ? parts.join("; ") : JSON.stringify(error);
+}
+
+function summarizeJsonRpcData(data: unknown, maxLength = 500): string {
+  const rendered = typeof data === "string" ? data : JSON.stringify(data);
+  return rendered.length > maxLength ? `${rendered.slice(0, maxLength)}...` : rendered;
 }

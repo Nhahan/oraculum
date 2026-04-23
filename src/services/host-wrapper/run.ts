@@ -49,11 +49,16 @@ export async function runHostWrapper(options: HostWrapperRunOptions): Promise<nu
 
 function resolveWrappedHostBinary(defaultBinary: string, env: NodeJS.ProcessEnv): string {
   const explicit = env.ORACULUM_HOST_WRAPPER_REAL_BINARY?.trim();
-  if (explicit) {
+  if (explicit && isMatchingHostBinary(explicit, defaultBinary)) {
     return explicit;
   }
 
   return defaultBinary;
+}
+
+function isMatchingHostBinary(candidate: string, expectedBinary: string): boolean {
+  const normalizedCandidate = candidate.replaceAll("\\", "/").split("/").at(-1)?.toLowerCase();
+  return Boolean(normalizedCandidate?.includes(expectedBinary.toLowerCase()));
 }
 
 async function runOfficialTransport(

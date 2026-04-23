@@ -60,13 +60,12 @@ export async function runClaudeOfficialTransport(
     "--verbose",
     "--permission-mode",
     "bypassPermissions",
-    "--input-format",
-    "stream-json",
     "--output-format",
     "stream-json",
   ];
+  const prompt = buildClaudeOfficialTransportPrompt(packet);
 
-  const child = spawn(command, commandArgs, {
+  const child = spawn(command, [...commandArgs, prompt], {
     cwd: options.cwd ?? packet.cwd,
     detached: process.platform !== "win32",
     env: options.env ?? process.env,
@@ -76,6 +75,7 @@ export async function runClaudeOfficialTransport(
 
   const streamEvents: Array<{ type: string; subtype?: string }> = [];
   let buffer = "";
+  let stderr = "";
   let finalResult: string | undefined;
   let toolResult: unknown;
 
@@ -83,12 +83,8 @@ export async function runClaudeOfficialTransport(
     buffer += chunk.toString("utf8");
   });
 
-  child.stderr.on("data", () => {
-    // verbose mode emits stream output on stdout; ignore stderr noise here.
-  });
-
-  child.stdin.on("error", () => {
-    // The process exit path below reports the transport failure.
+  child.stderr.on("data", (chunk) => {
+    stderr = appendBounded(stderr, chunk.toString("utf8"));
   });
 
   const exitCodePromise = new Promise<number>((resolve, reject) => {
@@ -146,7 +142,6 @@ export async function runClaudeOfficialTransport(
     });
   });
 
-  child.stdin.write(`${JSON.stringify(buildClaudeStreamJsonUserMessage(packet))}\n`);
   child.stdin.end();
   const exitCode = await exitCodePromise;
 
@@ -188,11 +183,23 @@ export async function runClaudeOfficialTransport(
   }
 
   if (exitCode !== 0) {
-    throw new OraculumError(`Claude official transport exited with code ${exitCode}.`);
+    throw new OraculumError(
+      [
+        `Claude official transport exited with code ${exitCode}.`,
+        ...(stderr.trim() ? [`stderr:\n${stderr.trim()}`] : []),
+        ...(buffer.trim() ? [`stdout:\n${summarizeStreamOutput(buffer)}`] : []),
+      ].join("\n"),
+    );
   }
 
   if (toolResult == null) {
-    throw new OraculumError("Claude official transport did not surface an MCP tool result.");
+    throw new OraculumError(
+      [
+        "Claude official transport did not surface an MCP tool result.",
+        ...(stderr.trim() ? [`stderr:\n${stderr.trim()}`] : []),
+        ...(buffer.trim() ? [`stdout:\n${summarizeStreamOutput(buffer)}`] : []),
+      ].join("\n"),
+    );
   }
 
   return {
@@ -200,4 +207,18 @@ export async function runClaudeOfficialTransport(
     streamEvents,
     toolResult,
   };
+}
+
+function appendBounded(current: string, next: string, maxLength = 4000): string {
+  const combined = `${current}${next}`;
+  return combined.length > maxLength ? combined.slice(combined.length - maxLength) : combined;
+}
+
+function summarizeStreamOutput(output: string, maxLines = 20): string {
+  return output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(-maxLines)
+    .join("\n");
 }
