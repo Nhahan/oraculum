@@ -5,10 +5,10 @@ import type {
   ProfileRepoSignals,
 } from "../../domain/profile.js";
 import { profileRepoSignalsSchema } from "../../domain/profile.js";
-import { buildCommandCatalog, hasCapabilityCommand } from "../profile-command-catalog.js";
-import { collectExplicitCommandCatalog } from "../profile-explicit-command-collector.js";
-import { collectProfileRepoFacts } from "../profile-repo-facts.js";
 import { buildCapabilitySignals, buildSignalProvenance } from "../profile-signals.js";
+import { buildCommandCatalog, hasCapabilityCommand } from "./command-catalog.js";
+import { collectExplicitCommandCatalog } from "./explicit-command-collector.js";
+import { collectProfileRepoFacts } from "./repo-facts.js";
 
 export async function collectProfileRepoSignals(
   projectRoot: string,

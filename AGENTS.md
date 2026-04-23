@@ -35,6 +35,7 @@ Operational bias:
 
 - Humans set intent and judge tradeoffs; agents execute loops.
 - Before editing, read the full affected files plus immediate contracts, call sites, and tests; after non-trivial edits, re-read touched scope and fix local drift before moving on.
+- Keep `src/services/*.ts` root files as facades or cross-cutting services; feature implementation belongs under a domain directory such as `src/services/<domain>/...`.
 - Wire every new field/state/path/flag/schema through read/write paths, CLI/API boundaries, persistence, and tests, and add failure-path tests for execution, state, isolation, subprocess, and artifact changes.
 - Cross-platform support is mandatory: avoid POSIX-only assumptions; prefer Node APIs or explicit `command + args`; canonicalize in-repo persisted/compared paths to portable forward-slash relative paths unless a boundary explicitly requires native absolute paths; keep diagnostics portable; in tests, normalize cwd-derived paths and parse structured logs semantically instead of assuming raw JSON-only stderr/stdout.
 - Prefer mechanized enforcement over prose, small legible abstractions over cleverness, lean context over repetition, and replayable machine-readable outputs over ad-hoc chat state.

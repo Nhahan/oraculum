@@ -1,14 +1,14 @@
-import type { ProfileSkippedCommandCandidate } from "../domain/profile.js";
+import type { ProfileSkippedCommandCandidate } from "../../domain/profile.js";
 
 import type {
   ExplicitCommandDefinition,
   ExplicitCommandSurface,
-} from "./profile-explicit-command-common.js";
+} from "./explicit-command-common.js";
 import {
   normalizeCommandName,
   pushUniqueSkippedCommandCandidate,
-} from "./profile-explicit-command-common.js";
-import type { ProfileRepoFacts } from "./profile-repo-facts.js";
+} from "./explicit-command-common.js";
+import type { ProfileRepoFacts } from "./repo-facts.js";
 
 export function collectPackageScriptSurfaces(facts: ProfileRepoFacts): ExplicitCommandSurface[] {
   if (

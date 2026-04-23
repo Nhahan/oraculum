@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { collectProfileRepoFacts } from "../src/services/profile-repo-facts.js";
+import { collectProfileRepoFacts } from "../src/services/consultation-profile/repo-facts.js";
 import {
   createProfileCollectorsTempRoot,
   registerProfileCommandCollectorsCleanup,

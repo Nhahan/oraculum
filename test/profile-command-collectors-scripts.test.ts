@@ -3,9 +3,9 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { collectExplicitCommandCatalog } from "../src/services/profile-explicit-command-collector.js";
-import { collectPackageScriptSurfaces } from "../src/services/profile-explicit-command-package.js";
-import { collectProfileRepoFacts } from "../src/services/profile-repo-facts.js";
+import { collectExplicitCommandCatalog } from "../src/services/consultation-profile/explicit-command-collector.js";
+import { collectPackageScriptSurfaces } from "../src/services/consultation-profile/explicit-command-package.js";
+import { collectProfileRepoFacts } from "../src/services/consultation-profile/repo-facts.js";
 import {
   createProfileCollectorsTempRoot,
   registerProfileCommandCollectorsCleanup,

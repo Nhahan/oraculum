@@ -3,9 +3,9 @@ import { join, posix } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { collectExplicitCommandCatalog } from "../src/services/profile-explicit-command-collector.js";
-import { collectLocalEntrypointSurfaces } from "../src/services/profile-explicit-command-entrypoints.js";
-import { collectProfileRepoFacts } from "../src/services/profile-repo-facts.js";
+import { collectExplicitCommandCatalog } from "../src/services/consultation-profile/explicit-command-collector.js";
+import { collectLocalEntrypointSurfaces } from "../src/services/consultation-profile/explicit-command-entrypoints.js";
+import { collectProfileRepoFacts } from "../src/services/consultation-profile/repo-facts.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
 import {
   createProfileCollectorsTempRoot,

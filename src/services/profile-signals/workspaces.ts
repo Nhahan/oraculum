@@ -3,8 +3,8 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { ManagedTreeRules } from "../../domain/config.js";
+import { WORKSPACE_MARKER_FILES } from "../consultation-profile/detector-data.js";
 import { shouldManageProjectPath } from "../managed-tree.js";
-import { WORKSPACE_MARKER_FILES } from "../profile-detector-data.js";
 
 export async function detectWorkspaceRoots(
   projectRoot: string,

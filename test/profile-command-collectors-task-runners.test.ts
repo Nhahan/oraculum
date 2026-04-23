@@ -3,13 +3,13 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { collectExplicitCommandCatalog } from "../src/services/profile-explicit-command-collector.js";
+import { collectExplicitCommandCatalog } from "../src/services/consultation-profile/explicit-command-collector.js";
 import {
   collectJustTargetSurfaces,
   collectMakeTargetSurfaces,
   collectTaskfileTargetSurfaces,
-} from "../src/services/profile-explicit-command-task-runners.js";
-import { collectProfileRepoFacts } from "../src/services/profile-repo-facts.js";
+} from "../src/services/consultation-profile/explicit-command-task-runners.js";
+import { collectProfileRepoFacts } from "../src/services/consultation-profile/repo-facts.js";
 import {
   createProfileCollectorsTempRoot,
   registerProfileCommandCollectorsCleanup,

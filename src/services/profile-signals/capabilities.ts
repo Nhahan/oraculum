@@ -6,7 +6,7 @@ import type {
 import type {
   ProfilePackageJsonManifest,
   WorkspacePackageJsonManifest,
-} from "../profile-repo-facts.js";
+} from "../consultation-profile/repo-facts.js";
 import { collectManifestDependencies, hasPackageExportMetadata } from "./shared.js";
 
 export function buildCapabilitySignals(options: {

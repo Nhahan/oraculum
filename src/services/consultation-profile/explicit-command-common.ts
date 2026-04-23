@@ -2,7 +2,7 @@ import type {
   ProfileCommandCandidate,
   ProfileSignalProvenance,
   ProfileSkippedCommandCandidate,
-} from "../domain/profile.js";
+} from "../../domain/profile.js";
 
 export const DEDUPED_PACKAGE_SCRIPT_CAPABILITIES = new Set([
   "build",

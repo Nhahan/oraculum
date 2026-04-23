@@ -1,11 +1,11 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { ManagedTreeRules } from "../domain/config.js";
+import type { ManagedTreeRules } from "../../domain/config.js";
 
-import { shouldManageProjectPath } from "./managed-tree.js";
-import type { ExplicitCommandSurface } from "./profile-explicit-command-common.js";
-import { normalizeCommandName } from "./profile-explicit-command-common.js";
+import { shouldManageProjectPath } from "../managed-tree.js";
+import type { ExplicitCommandSurface } from "./explicit-command-common.js";
+import { normalizeCommandName } from "./explicit-command-common.js";
 
 export async function collectMakeTargetSurfaces(
   projectRoot: string,

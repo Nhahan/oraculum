@@ -1,5 +1,8 @@
-import type { ManagedTreeRules } from "../domain/config.js";
-import type { ProfileCommandCandidate, ProfileSkippedCommandCandidate } from "../domain/profile.js";
+import type { ManagedTreeRules } from "../../domain/config.js";
+import type {
+  ProfileCommandCandidate,
+  ProfileSkippedCommandCandidate,
+} from "../../domain/profile.js";
 
 import {
   DEDUPED_PACKAGE_SCRIPT_CAPABILITIES,
@@ -7,18 +10,18 @@ import {
   type ExplicitCommandSurface,
   normalizeScriptBody,
   pushUniqueSkippedCommandCandidate,
-} from "./profile-explicit-command-common.js";
-import { collectLocalEntrypointSurfaceReport } from "./profile-explicit-command-entrypoints.js";
+} from "./explicit-command-common.js";
+import { collectLocalEntrypointSurfaceReport } from "./explicit-command-entrypoints.js";
 import {
   collectPackageScriptSurfaces,
   recordAmbiguousPackageScriptSkip,
-} from "./profile-explicit-command-package.js";
+} from "./explicit-command-package.js";
 import {
   collectJustTargetSurfaces,
   collectMakeTargetSurfaces,
   collectTaskfileTargetSurfaces,
-} from "./profile-explicit-command-task-runners.js";
-import type { ProfileRepoFacts } from "./profile-repo-facts.js";
+} from "./explicit-command-task-runners.js";
+import type { ProfileRepoFacts } from "./repo-facts.js";
 
 export interface ExplicitCommandCatalogResult {
   commandCatalog: ProfileCommandCandidate[];

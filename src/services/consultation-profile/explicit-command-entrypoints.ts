@@ -2,12 +2,12 @@ import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { extname, join, posix } from "node:path";
 
-import type { ManagedTreeRules } from "../domain/config.js";
+import type { ManagedTreeRules } from "../../domain/config.js";
 
-import { shouldManageProjectPath } from "./managed-tree.js";
-import type { ExplicitCommandSurface } from "./profile-explicit-command-common.js";
-import { normalizeCommandName } from "./profile-explicit-command-common.js";
-import { pathExists } from "./project.js";
+import { shouldManageProjectPath } from "../managed-tree.js";
+import { pathExists } from "../project.js";
+import type { ExplicitCommandSurface } from "./explicit-command-common.js";
+import { normalizeCommandName } from "./explicit-command-common.js";
 
 export interface LocalEntrypointSurfaceReport {
   ambiguousRootEntrypoints: Array<{
