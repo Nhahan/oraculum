@@ -7,8 +7,11 @@ import { agentRunResultSchema } from "../src/adapters/types.js";
 import {
   getAdvancedConfigPath,
   getCandidateAgentResultPath,
+  getCandidateLogsDir,
   getCandidateOracleStderrLogPath,
   getCandidateOracleStdoutLogPath,
+  getCandidateSpecPath,
+  getCandidateSpecSelectionPath,
   getCandidateVerdictPath,
   getCandidateWitnessPath,
   getFinalistComparisonJsonPath,
@@ -180,6 +183,288 @@ if (out) {
         "comparing-finalists",
         "verdict-ready",
       ]);
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "compares specs first and only implements the selected spec by default",
+    async () => {
+      const cwd = await createTempRoot();
+      await initializeProject({ cwd, force: false });
+      await writeFile(
+        join(cwd, "tasks", "spec-first.md"),
+        "# Spec first\nPick the smallest implementation path.\n",
+      );
+
+      const fakeCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex-spec-first",
+        `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+const candidate = /Candidate ID: (cand-[0-9]+)/.exec(prompt)?.[1] ?? "cand-00";
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") out = process.argv[index + 1] ?? "";
+}
+if (prompt.includes("You are proposing one Oraculum implementation spec.")) {
+  fs.writeFileSync(out, JSON.stringify({
+    summary: "Spec for " + candidate,
+    approach: "Implement " + candidate + " with a direct file change.",
+    keyChanges: ["Write the selected implementation marker."],
+    expectedChangedPaths: ["src/" + candidate + ".txt"],
+    acceptanceCriteria: ["The selected marker exists."],
+    validationPlan: ["Use built-in materialized patch checks."],
+    riskNotes: []
+  }), "utf8");
+} else if (prompt.includes("You are selecting Oraculum implementation specs")) {
+  fs.writeFileSync(out, JSON.stringify({
+    rankedCandidateIds: ["cand-02", "cand-03", "cand-01", "cand-04"],
+    selectedCandidateIds: ["cand-02"],
+    implementationVarianceRisk: "low",
+    validationGaps: [],
+    summary: "cand-02 is the narrowest safe spec.",
+    reasons: [
+      { candidateId: "cand-02", rank: 1, selected: true, reason: "Best direct path." },
+      { candidateId: "cand-03", rank: 2, selected: false, reason: "Backup if implementation fails." },
+      { candidateId: "cand-01", rank: 3, selected: false, reason: "Less focused." },
+      { candidateId: "cand-04", rank: 4, selected: false, reason: "Too broad." }
+    ]
+  }), "utf8");
+} else if (prompt.includes("You are selecting the best Oraculum finalist.")) {
+  fs.writeFileSync(out, '{"decision":"select","candidateId":"cand-02","confidence":"high","summary":"cand-02 is the only surviving implementation."}', "utf8");
+} else {
+  fs.mkdirSync(path.join(process.cwd(), "src"), { recursive: true });
+  fs.writeFileSync(path.join(process.cwd(), "src", candidate + ".txt"), "implemented " + candidate + "\\n", "utf8");
+  fs.writeFileSync(out, "Implemented " + candidate, "utf8");
+}
+`,
+      );
+
+      const planned = await planRun({
+        cwd,
+        taskInput: "tasks/spec-first.md",
+        agent: "codex",
+        candidates: 4,
+      });
+
+      const executed = await executeRun({
+        cwd,
+        runId: planned.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
+
+      expect(executed.candidateResults.map((result) => result.candidateId)).toEqual(["cand-02"]);
+      expect(executed.manifest.searchStrategy).toBe("spec-first");
+      expect(executed.manifest.recommendedWinner?.candidateId).toBe("cand-02");
+      expect(
+        executed.manifest.candidates
+          .filter((candidate) => candidate.specPath)
+          .map((candidate) => candidate.id),
+      ).toEqual(["cand-01", "cand-02", "cand-03", "cand-04"]);
+      expect(
+        executed.manifest.candidates
+          .filter((candidate) => candidate.lastRunResultPath)
+          .map((candidate) => candidate.id),
+      ).toEqual(["cand-02"]);
+      expect(
+        executed.manifest.candidates.find((candidate) => candidate.id === "cand-02")?.status,
+      ).toBe("promoted");
+      expect(
+        executed.manifest.candidates.find((candidate) => candidate.id === "cand-03")?.status,
+      ).toBe("eliminated");
+
+      await expect(
+        readFile(getCandidateSpecPath(cwd, planned.id, "cand-02"), "utf8"),
+      ).resolves.toContain('"summary": "Spec for cand-02"');
+      await expect(
+        readFile(getCandidateSpecSelectionPath(cwd, planned.id), "utf8"),
+      ).resolves.toContain('"selectedCandidateIds": [');
+      await expect(
+        readFile(join(getCandidateLogsDir(cwd, planned.id, "cand-02"), "prompt.txt"), "utf8"),
+      ).resolves.toContain("Selected implementation spec:");
+
+      const comparisonJson = JSON.parse(
+        await readFile(getFinalistComparisonJsonPath(cwd, planned.id), "utf8"),
+      ) as {
+        searchStrategy?: string;
+        specSearch?: {
+          specCount: number;
+          implementationCount: number;
+          selectedSpecSummary?: string;
+          rejectedSpecs: Array<{ candidateId: string }>;
+        };
+      };
+      expect(comparisonJson.searchStrategy).toBe("spec-first");
+      expect(comparisonJson.specSearch?.specCount).toBe(4);
+      expect(comparisonJson.specSearch?.implementationCount).toBe(1);
+      expect(comparisonJson.specSearch?.selectedSpecSummary).toBe("Spec for cand-02");
+      expect(comparisonJson.specSearch?.rejectedSpecs.map((spec) => spec.candidateId)).toEqual([
+        "cand-01",
+        "cand-03",
+        "cand-04",
+      ]);
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "implements the backup ranked spec when the first selected spec is not crownable",
+    async () => {
+      const cwd = await createTempRoot();
+      await initializeProject({ cwd, force: false });
+      await writeFile(
+        join(cwd, "tasks", "spec-backup.md"),
+        "# Spec backup\nRecover when the first implementation misses the patch.\n",
+      );
+
+      const fakeCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex-spec-backup",
+        `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+const candidate = /Candidate ID: (cand-[0-9]+)/.exec(prompt)?.[1] ?? "cand-00";
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") out = process.argv[index + 1] ?? "";
+}
+if (prompt.includes("You are proposing one Oraculum implementation spec.")) {
+  fs.writeFileSync(out, JSON.stringify({
+    summary: "Spec for " + candidate,
+    approach: "Implementation path for " + candidate + ".",
+    keyChanges: ["Change a file if this spec is implemented."],
+    expectedChangedPaths: ["src/" + candidate + ".txt"],
+    acceptanceCriteria: ["A materialized patch exists."],
+    validationPlan: ["Use built-in materialized patch checks."],
+    riskNotes: []
+  }), "utf8");
+} else if (prompt.includes("You are selecting Oraculum implementation specs")) {
+  fs.writeFileSync(out, JSON.stringify({
+    rankedCandidateIds: ["cand-01", "cand-02"],
+    selectedCandidateIds: ["cand-01"],
+    implementationVarianceRisk: "low",
+    validationGaps: [],
+    summary: "cand-01 is preferred, cand-02 is a backup.",
+    reasons: [
+      { candidateId: "cand-01", rank: 1, selected: true, reason: "Preferred spec." },
+      { candidateId: "cand-02", rank: 2, selected: false, reason: "Backup spec." }
+    ]
+  }), "utf8");
+} else if (prompt.includes("You are selecting the best Oraculum finalist.")) {
+  fs.writeFileSync(out, '{"decision":"select","candidateId":"cand-02","confidence":"high","summary":"cand-02 recovered with a materialized patch."}', "utf8");
+} else {
+  if (candidate === "cand-02") {
+    fs.mkdirSync(path.join(process.cwd(), "src"), { recursive: true });
+    fs.writeFileSync(path.join(process.cwd(), "src", "backup.txt"), "backup patch\\n", "utf8");
+  }
+  fs.writeFileSync(out, "Candidate " + candidate + " finished", "utf8");
+}
+`,
+      );
+
+      const planned = await planRun({
+        cwd,
+        taskInput: "tasks/spec-backup.md",
+        agent: "codex",
+        candidates: 2,
+      });
+
+      const executed = await executeRun({
+        cwd,
+        runId: planned.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
+
+      expect(executed.candidateResults.map((result) => result.candidateId)).toEqual([
+        "cand-01",
+        "cand-02",
+      ]);
+      expect(executed.manifest.recommendedWinner?.candidateId).toBe("cand-02");
+      expect(
+        executed.manifest.candidates.find((candidate) => candidate.id === "cand-01")?.status,
+      ).toBe("eliminated");
+      expect(
+        executed.manifest.candidates.find((candidate) => candidate.id === "cand-02")?.status,
+      ).toBe("promoted");
+      expect(
+        executed.manifest.candidates.find((candidate) => candidate.id === "cand-02")
+          ?.specSelectionReason,
+      ).toContain("Backup implementation triggered");
+    },
+    EXECUTION_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "falls back to the patch tournament when spec selection fails",
+    async () => {
+      const cwd = await createTempRoot();
+      await initializeProject({ cwd, force: false });
+      await writeFile(
+        join(cwd, "tasks", "spec-fallback.md"),
+        "# Spec fallback\nUse patch tournament if selection fails.\n",
+      );
+
+      const fakeCodex = await writeNodeBinary(
+        cwd,
+        "fake-codex-spec-fallback",
+        `const fs = require("node:fs");
+const path = require("node:path");
+const prompt = fs.readFileSync(0, "utf8");
+const candidate = /Candidate ID: (cand-[0-9]+)/.exec(prompt)?.[1] ?? "cand-00";
+let out = "";
+for (let index = 0; index < process.argv.length; index += 1) {
+  if (process.argv[index] === "-o") out = process.argv[index + 1] ?? "";
+}
+if (prompt.includes("You are proposing one Oraculum implementation spec.")) {
+  fs.writeFileSync(out, JSON.stringify({
+    summary: "Spec for " + candidate,
+    approach: "Implementation path for " + candidate + ".",
+    keyChanges: ["Write a fallback tournament patch."],
+    expectedChangedPaths: ["src/" + candidate + ".txt"],
+    acceptanceCriteria: ["A materialized patch exists."],
+    validationPlan: ["Use built-in materialized patch checks."],
+    riskNotes: []
+  }), "utf8");
+} else if (prompt.includes("You are selecting Oraculum implementation specs")) {
+  fs.writeFileSync(out, "not structured json", "utf8");
+} else if (prompt.includes("You are selecting the best Oraculum finalist.")) {
+  fs.writeFileSync(out, '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 wins after fallback."}', "utf8");
+} else {
+  fs.mkdirSync(path.join(process.cwd(), "src"), { recursive: true });
+  fs.writeFileSync(path.join(process.cwd(), "src", candidate + ".txt"), "implemented " + candidate + "\\n", "utf8");
+  fs.writeFileSync(out, "Implemented " + candidate, "utf8");
+}
+`,
+      );
+
+      const planned = await planRun({
+        cwd,
+        taskInput: "tasks/spec-fallback.md",
+        agent: "codex",
+        candidates: 2,
+      });
+
+      const executed = await executeRun({
+        cwd,
+        runId: planned.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
+
+      expect(executed.manifest.searchStrategy).toBe("patch-tournament");
+      expect(executed.candidateResults.map((result) => result.candidateId)).toEqual([
+        "cand-01",
+        "cand-02",
+      ]);
+      expect(executed.manifest.recommendedWinner?.candidateId).toBe("cand-01");
+      expect(executed.manifest.candidates.every((candidate) => !candidate.specPath)).toBe(true);
+      await expect(
+        readFile(getCandidateSpecSelectionPath(cwd, planned.id), "utf8"),
+      ).resolves.toContain("fallback-to-patch-tournament");
     },
     EXECUTION_TEST_TIMEOUT_MS,
   );

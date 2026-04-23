@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import type { z } from "zod";
 
 import type { AgentRunResult } from "../../adapters/types.js";
@@ -17,6 +19,7 @@ import {
 } from "../../domain/profile.js";
 import type {
   CandidateManifest,
+  candidateSpecArtifactSchema,
   consultationPreflightSchema,
   consultationVerificationLevelSchema,
   RunRecommendation,
@@ -33,7 +36,7 @@ import { writeJsonFile, writeTextFileAtomically } from "../project.js";
 import { countVerdicts } from "./counts.js";
 import { toDisplayPath } from "./display-path.js";
 import { buildComparisonMarkdown } from "./markdown.js";
-import { comparisonReportSchema } from "./schema.js";
+import { type ComparisonReport, comparisonReportSchema } from "./schema.js";
 
 interface WriteFinalistComparisonReportOptions {
   candidateResults: AgentRunResult[];
@@ -67,6 +70,11 @@ export async function writeFinalistComparisonReport(
   const researchRerunInputPath =
     options.taskPacket.sourceKind === "research-brief" ? options.taskPacket.sourcePath : undefined;
   const researchRerunRecommended = options.preflight?.researchBasisDrift === true;
+  const specSearch = await buildSpecSearchReport(
+    options.candidates,
+    options.candidateResults,
+    options.recommendedWinner,
+  );
   const report = comparisonReportSchema.parse({
     runId: options.runId,
     generatedAt: new Date().toISOString(),
@@ -76,6 +84,8 @@ export async function writeFinalistComparisonReport(
       ...(options.taskPacket.artifactKind ? { artifactKind: options.taskPacket.artifactKind } : {}),
       ...(displayTargetArtifactPath ? { targetArtifactPath: displayTargetArtifactPath } : {}),
     }),
+    searchStrategy: inferSearchStrategy(options.candidates),
+    ...(specSearch ? { specSearch } : {}),
     finalistCount: finalists.length,
     ...(options.recommendedWinner ? { recommendedWinner: options.recommendedWinner } : {}),
     ...(options.recommendedWinner ? { whyThisWon: options.recommendedWinner.summary } : {}),
@@ -118,4 +128,57 @@ export async function writeFinalistComparisonReport(
   await writeTextFileAtomically(markdownPath, buildComparisonMarkdown(report, projectRoot));
 
   return { jsonPath, markdownPath };
+}
+
+async function buildSpecSearchReport(
+  candidates: CandidateManifest[],
+  candidateResults: AgentRunResult[],
+  recommendedWinner: RunRecommendation | undefined,
+): Promise<ComparisonReport["specSearch"] | undefined> {
+  const specCandidates = candidates.filter((candidate) => candidate.specPath);
+  if (specCandidates.length === 0) {
+    return undefined;
+  }
+
+  const selectedCandidate =
+    (recommendedWinner
+      ? candidates.find((candidate) => candidate.id === recommendedWinner.candidateId)
+      : undefined) ?? candidates.find((candidate) => candidate.specSelected);
+  const selectedSpec = await readCandidateSpec(selectedCandidate?.specPath);
+  return {
+    specCount: specCandidates.length,
+    implementationCount: candidateResults.length,
+    ...(selectedCandidate ? { selectedCandidateId: selectedCandidate.id } : {}),
+    ...(selectedSpec ? { selectedSpecSummary: selectedSpec.summary } : {}),
+    ...(selectedCandidate?.specSelectionReason
+      ? { selectedSpecReason: selectedCandidate.specSelectionReason }
+      : {}),
+    rejectedSpecs: specCandidates
+      .filter((candidate) => !candidate.lastRunResultPath)
+      .map((candidate) => ({
+        candidateId: candidate.id,
+        reason: candidate.specSelectionReason ?? "Spec was not selected for implementation.",
+      })),
+  };
+}
+
+async function readCandidateSpec(
+  specPath: string | undefined,
+): Promise<z.infer<typeof candidateSpecArtifactSchema> | undefined> {
+  if (!specPath) {
+    return undefined;
+  }
+
+  try {
+    const { candidateSpecArtifactSchema } = await import("../../domain/run.js");
+    return candidateSpecArtifactSchema.parse(
+      JSON.parse(await readFile(specPath, "utf8")) as unknown,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+function inferSearchStrategy(candidates: CandidateManifest[]): "spec-first" | undefined {
+  return candidates.some((candidate) => candidate.specPath) ? "spec-first" : undefined;
 }

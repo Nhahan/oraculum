@@ -15,6 +15,24 @@ export const comparisonReportSchema = z.object({
   agent: z.string().min(1),
   task: taskPacketSummarySchema,
   targetResultLabel: z.string().min(1),
+  searchStrategy: z.enum(["spec-first", "patch-tournament"]).optional(),
+  specSearch: z
+    .object({
+      specCount: z.number().int().min(0),
+      implementationCount: z.number().int().min(0),
+      selectedCandidateId: z.string().min(1).optional(),
+      selectedSpecSummary: z.string().min(1).optional(),
+      selectedSpecReason: z.string().min(1).optional(),
+      rejectedSpecs: z
+        .array(
+          z.object({
+            candidateId: z.string().min(1),
+            reason: z.string().min(1),
+          }),
+        )
+        .default([]),
+    })
+    .optional(),
   finalistCount: z.number().int().min(0),
   recommendedWinner: runRecommendationSchema.optional(),
   whyThisWon: z.string().min(1).optional(),

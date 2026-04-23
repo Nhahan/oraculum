@@ -41,6 +41,7 @@ export async function runExecutionRounds(options: {
   selectionMetrics: Map<string, CandidateSelectionMetrics>;
   store: RunStore;
   verdictsByCandidate: Map<string, OracleVerdict[]>;
+  accumulateRoundCounts?: boolean;
 }): Promise<{ manifest: RunManifest; roundStates: RunManifest["rounds"] }> {
   let manifest = options.manifest;
   const roundStates = manifest.rounds.map((round) => ({ ...round }));
@@ -242,12 +243,15 @@ export async function runExecutionRounds(options: {
       await writeCandidateManifest(options.store, manifest.id, nextCandidate);
     }
 
+    const baseVerdictCount = options.accumulateRoundCounts ? round.verdictCount : 0;
+    const baseSurvivorCount = options.accumulateRoundCounts ? round.survivorCount : 0;
+    const baseEliminatedCount = options.accumulateRoundCounts ? round.eliminatedCount : 0;
     roundStates[index] = roundManifestSchema.parse({
       ...roundStates[index],
       status: "completed",
-      verdictCount,
-      survivorCount,
-      eliminatedCount,
+      verdictCount: baseVerdictCount + verdictCount,
+      survivorCount: baseSurvivorCount + survivorCount,
+      eliminatedCount: baseEliminatedCount + eliminatedCount,
       completedAt: new Date().toISOString(),
     });
     completedRoundIds.add(round.id);

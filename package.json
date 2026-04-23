@@ -34,6 +34,7 @@
     "evidence:launch-smoke": "npm run build && node scripts/launch-smoke.mjs",
     "evidence:plan-lift": "npm run build && node scripts/plan-lift-evidence.mjs",
     "evidence:pressure": "npm run build && node scripts/pressure-evidence.mjs",
+    "evidence:spec-first": "npm run build && node scripts/spec-first-comparison.mjs",
     "evidence:workflow-comparison": "npm run build && node scripts/workflow-comparison.mjs",
     "evidence:smoke": "npm run evidence:published-smoke && npm run evidence:release-smoke",
     "evidence:published-smoke": "node scripts/published-smoke.mjs",

@@ -42,6 +42,13 @@ export function buildComparisonMarkdown(report: ComparisonReport, projectRoot: s
   lines.push(
     `- Task source: ${report.task.sourceKind} (${taskSourcePath})`,
     `- Agent: ${report.agent}`,
+    ...(report.searchStrategy ? [`- Search strategy: ${report.searchStrategy}`] : []),
+    ...(report.specSearch
+      ? [
+          `- Specs compared: ${report.specSearch.specCount}`,
+          `- Implementations executed: ${report.specSearch.implementationCount}`,
+        ]
+      : []),
     `- Finalists: ${report.finalistCount}`,
     `- Verification level: ${report.verificationLevel}`,
   );
@@ -83,6 +90,20 @@ export function buildComparisonMarkdown(report: ComparisonReport, projectRoot: s
       `- Confidence: ${report.recommendedWinner.confidence}`,
       `- Source: ${report.recommendedWinner.source}`,
       `- Why this won: ${report.whyThisWon ?? report.recommendedWinner.summary}`,
+    );
+    if (report.specSearch?.selectedSpecSummary) {
+      lines.push(`- Selected spec: ${report.specSearch.selectedSpecSummary}`);
+    }
+    if (report.specSearch?.selectedSpecReason) {
+      lines.push(`- Spec selection reason: ${report.specSearch.selectedSpecReason}`);
+    }
+  }
+
+  if (report.specSearch && report.specSearch.rejectedSpecs.length > 0) {
+    lines.push(
+      "",
+      "## Spec Search",
+      ...report.specSearch.rejectedSpecs.map((spec) => `- ${spec.candidateId}: ${spec.reason}`),
     );
   }
 

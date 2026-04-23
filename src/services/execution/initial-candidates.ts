@@ -6,6 +6,7 @@ import {
   type CandidateScorecard,
   type ConsultationPlanArtifact,
   candidateManifestSchema,
+  candidateSpecArtifactSchema,
   type RunManifest,
 } from "../../domain/run.js";
 import { captureManagedProjectSnapshot } from "../base-snapshots.js";
@@ -35,6 +36,7 @@ export async function executeInitialCandidates(options: {
   projectConfig: ProjectConfig;
   projectRoot: string;
   store: RunStore;
+  candidateIdsToExecute?: string[];
 }): Promise<{
   candidateMap: Map<string, CandidateManifest>;
   executionRecords: CandidateExecutionRecord[];
@@ -45,9 +47,18 @@ export async function executeInitialCandidates(options: {
   const executionRecords: CandidateExecutionRecord[] = [];
   const selectionMetrics = new Map<string, CandidateSelectionMetrics>();
   const scorecardsByCandidate = new Map<string, CandidateScorecard>();
-  const candidateCount = options.manifest.candidates.length;
+  for (const candidate of options.manifest.candidates) {
+    candidateMap.set(candidate.id, candidate);
+  }
+  const candidateIdFilter = options.candidateIdsToExecute
+    ? new Set(options.candidateIdsToExecute)
+    : undefined;
+  const candidatesToExecute = candidateIdFilter
+    ? options.manifest.candidates.filter((candidate) => candidateIdFilter.has(candidate.id))
+    : options.manifest.candidates;
+  const candidateCount = candidatesToExecute.length;
 
-  for (const [candidateIndex, candidate] of options.manifest.candidates.entries()) {
+  for (const [candidateIndex, candidate] of candidatesToExecute.entries()) {
     const currentCandidateIndex = candidateIndex + 1;
     await options.onProgress?.(
       candidateRunningEvent(candidate.id, currentCandidateIndex, candidateCount),
@@ -100,6 +111,12 @@ export async function executeInitialCandidates(options: {
         }),
       );
 
+      const selectedSpec = runningCandidate.specSelected
+        ? await options.store.readOptionalParsedArtifact(
+            runningCandidate.specPath,
+            candidateSpecArtifactSchema,
+          )
+        : undefined;
       const result = await options.adapter.runCandidate({
         runId: options.manifest.id,
         candidateId: candidate.id,
@@ -108,6 +125,7 @@ export async function executeInitialCandidates(options: {
         workspaceDir: candidate.workspaceDir,
         logDir,
         taskPacket,
+        ...(selectedSpec ? { selectedSpec } : {}),
       });
 
       parsedResult = agentRunResultSchema.parse(result);

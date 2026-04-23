@@ -40,6 +40,13 @@ export async function buildConsultationSummaryDetailLines(
   lines.push(
     `Agent: ${manifest.agent}`,
     `Candidates: ${manifest.candidateCount}`,
+    ...(manifest.searchStrategy ? [`Search strategy: ${manifest.searchStrategy}`] : []),
+    ...(manifest.searchStrategy === "spec-first"
+      ? [
+          `Specs compared: ${manifest.candidates.filter((candidate) => candidate.specPath).length}`,
+          `Implementations executed: ${manifest.candidates.filter((candidate) => candidate.lastRunResultPath).length}`,
+        ]
+      : []),
     `Status: ${manifest.status}`,
     `Outcome: ${status.outcomeType}`,
     `Outcome detail: ${describeConsultationOutcomeSummary({
