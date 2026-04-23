@@ -255,7 +255,7 @@ export function extractClaudeSpecSelectionRecommendation(stdout: string) {
 }
 
 export function extractClaudePlanningDepthRecommendation(stdout: string) {
-  return extractClaudeNestedRecommendation(stdout, ["depth", "readiness"], (value) =>
+  return extractClaudeNestedRecommendation(stdout, ["readiness"], (value) =>
     agentPlanningDepthResultSchema.shape.recommendation.parse(value),
   );
 }
@@ -301,13 +301,10 @@ function firstString(value: unknown): string | undefined {
 }
 
 function looksLikeProfileRecommendation(value: Record<string, unknown>): boolean {
-  const hasProfileId = "profileId" in value || "validationProfileId" in value;
-  const hasSummary = "summary" in value || "validationSummary" in value;
-  const hasValidationGaps = "missingCapabilities" in value || "validationGaps" in value;
   return (
-    hasProfileId &&
-    hasSummary &&
-    hasValidationGaps &&
+    "validationProfileId" in value &&
+    "validationSummary" in value &&
+    "validationGaps" in value &&
     "confidence" in value &&
     "candidateCount" in value &&
     "strategyIds" in value &&

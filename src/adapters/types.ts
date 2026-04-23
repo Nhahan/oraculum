@@ -31,8 +31,9 @@ import {
   type PlanningSpecArtifact,
   planConsensusDraftSchema,
   planConsensusReviewSchema,
+  planningConsensusReviewIntensitySchema,
   planningContinuationClassificationSchema,
-  planningDepthArtifactSchema,
+  planningInterviewDepthSchema,
   planningInterviewRoundSchema,
   planningSpecArtifactSchema,
 } from "../domain/run.js";
@@ -115,51 +116,23 @@ export const finalistSummarySchema = z.object({
   plannedScorecard: candidateScorecardSchema.omit({ candidateId: true }).optional(),
 });
 
-export const agentJudgeRecommendationSchema = z.preprocess(
-  (value) => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      return value;
+export const agentJudgeRecommendationSchema = z
+  .object({
+    decision: z.enum(["select", "abstain"]),
+    candidateId: z.string().min(1).nullable().optional(),
+    confidence: decisionConfidenceSchema,
+    summary: z.string().min(1),
+    judgingCriteria: z.array(z.string().min(1)).min(1).max(5).nullable().optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.decision === "select" && !value.candidateId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["candidateId"],
+        message: "candidateId is required when decision is select.",
+      });
     }
-
-    const payload = { ...(value as Record<string, unknown>) };
-    if (payload.candidateId === null) {
-      delete payload.candidateId;
-    }
-    if (payload.judgingCriteria === null) {
-      delete payload.judgingCriteria;
-    }
-    if (
-      payload.decision === undefined &&
-      typeof payload.candidateId === "string" &&
-      typeof payload.confidence === "string" &&
-      typeof payload.summary === "string"
-    ) {
-      return {
-        ...payload,
-        decision: "select",
-      };
-    }
-
-    return payload;
-  },
-  z
-    .object({
-      decision: z.enum(["select", "abstain"]),
-      candidateId: z.string().min(1).optional(),
-      confidence: decisionConfidenceSchema,
-      summary: z.string().min(1),
-      judgingCriteria: z.array(z.string().min(1)).min(1).max(5).optional(),
-    })
-    .superRefine((value, context) => {
-      if (value.decision === "select" && !value.candidateId) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["candidateId"],
-          message: "candidateId is required when decision is select.",
-        });
-      }
-    }),
-);
+  });
 
 export const agentJudgeResultSchema = z.object({
   runId: z.string().min(1),
@@ -236,6 +209,16 @@ export const agentPlanReviewResultSchema = z.object({
   artifacts: z.array(agentArtifactSchema).default([]),
 });
 
+const agentPlanningDepthRecommendationSchema = z.object({
+  interviewDepth: planningInterviewDepthSchema,
+  readiness: z.enum(["ready", "needs-interview", "blocked"]),
+  confidence: decisionConfidenceSchema,
+  summary: z.string().min(1),
+  reasons: z.array(z.string().min(1)).default([]),
+  estimatedInterviewRounds: z.number().int().min(0).max(8),
+  consensusReviewIntensity: planningConsensusReviewIntensitySchema,
+});
+
 export const agentCandidateSpecResultSchema = z.object({
   runId: z.string().min(1),
   candidateId: z.string().min(1),
@@ -269,14 +252,7 @@ export const agentPlanningDepthResultSchema = z.object({
   completedAt: z.string().min(1),
   exitCode: z.number().int(),
   summary: z.string().min(1),
-  recommendation: planningDepthArtifactSchema
-    .omit({
-      runId: true,
-      createdAt: true,
-      maxInterviewRounds: true,
-      maxConsensusRevisions: true,
-    })
-    .optional(),
+  recommendation: agentPlanningDepthRecommendationSchema.optional(),
   artifacts: z.array(agentArtifactSchema).default([]),
 });
 export const agentPlanningContinuationResultSchema = z.object({
@@ -308,6 +284,9 @@ export const agentPlanningQuestionResultSchema = z.object({
     .pick({
       question: true,
       perspective: true,
+      expectedAnswerShape: true,
+    })
+    .required({
       expectedAnswerShape: true,
     })
     .optional(),
@@ -502,7 +481,7 @@ export interface AgentPlanningDepthRequest {
   logDir: string;
   taskPacket: MaterializedTaskPacket;
   maxInterviewRounds: number;
-  maxConsensusRevisions: number;
+  operatorMaxConsensusLoopRevisions: number;
 }
 
 export interface AgentPlanningContinuationRequest {
@@ -653,8 +632,12 @@ export function buildAgentPreflightJsonSchema(): Record<string, unknown> {
         type: "string",
         enum: ["repo-only", "repo-plus-external-docs", "external-research-required"],
       },
-      clarificationQuestion: { type: "string", minLength: 1 },
-      researchQuestion: { type: "string", minLength: 1 },
+      clarificationQuestion: {
+        anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
+      },
+      researchQuestion: {
+        anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
+      },
     },
     required: ["decision", "confidence", "summary", "researchPosture"],
   };
@@ -796,22 +779,22 @@ export function buildAgentPlanningDepthJsonSchema(): Record<string, unknown> {
     type: "object",
     additionalProperties: false,
     properties: {
-      depth: { type: "string", enum: ["skip-interview", "interview", "deep-interview"] },
+      interviewDepth: { type: "string", enum: ["skip-interview", "interview", "deep-interview"] },
       readiness: { type: "string", enum: ["ready", "needs-interview", "blocked"] },
       confidence: { type: "string", enum: [...decisionConfidenceSchema.options] },
       summary: { type: "string", minLength: 1 },
       reasons: { type: "array", items: { type: "string", minLength: 1 } },
       estimatedInterviewRounds: { type: "integer", minimum: 0, maximum: 8 },
-      consensusReviewDepth: { type: "string", enum: ["standard", "deep"] },
+      consensusReviewIntensity: { type: "string", enum: ["standard", "elevated", "high"] },
     },
     required: [
-      "depth",
+      "interviewDepth",
       "readiness",
       "confidence",
       "summary",
       "reasons",
       "estimatedInterviewRounds",
-      "consensusReviewDepth",
+      "consensusReviewIntensity",
     ],
   };
 }
@@ -838,7 +821,7 @@ export function buildAgentPlanningQuestionJsonSchema(): Record<string, unknown> 
       perspective: { type: "string", minLength: 1 },
       expectedAnswerShape: { type: "string", minLength: 1 },
     },
-    required: ["question", "perspective"],
+    required: ["question", "perspective", "expectedAnswerShape"],
   };
 }
 
@@ -967,6 +950,31 @@ export function buildAgentPlanConsensusDraftJsonSchema(): Record<string, unknown
       "exitCriteria",
     ],
   };
+  const scorecardDefinitionSchema = {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      dimensions: stringArraySchema,
+      abstentionTriggers: stringArraySchema,
+    },
+    required: ["dimensions", "abstentionTriggers"],
+  };
+  const repairPolicySchema = {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      maxAttemptsPerStage: { type: "integer", minimum: 0 },
+      immediateElimination: stringArraySchema,
+      repairable: stringArraySchema,
+      preferAbstainOverRetry: stringArraySchema,
+    },
+    required: [
+      "maxAttemptsPerStage",
+      "immediateElimination",
+      "repairable",
+      "preferAbstainOverRetry",
+    ],
+  };
 
   return {
     type: "object",
@@ -984,6 +992,8 @@ export function buildAgentPlanConsensusDraftJsonSchema(): Record<string, unknown
       protectedPaths: stringArraySchema,
       workstreams: { type: "array", items: workstreamSchema },
       stagePlan: { type: "array", items: stageSchema },
+      scorecardDefinition: scorecardDefinitionSchema,
+      repairPolicy: repairPolicySchema,
       assumptionLedger: stringArraySchema,
       premortem: stringArraySchema,
       expandedTestPlan: stringArraySchema,
@@ -1001,6 +1011,8 @@ export function buildAgentPlanConsensusDraftJsonSchema(): Record<string, unknown
       "protectedPaths",
       "workstreams",
       "stagePlan",
+      "scorecardDefinition",
+      "repairPolicy",
       "assumptionLedger",
       "premortem",
       "expandedTestPlan",

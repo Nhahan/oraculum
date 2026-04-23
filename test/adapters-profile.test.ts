@@ -17,7 +17,7 @@ import { EXECUTION_TEST_TIMEOUT_MS, FAKE_AGENT_TIMEOUT_MS } from "./helpers/inte
 registerAdaptersTempRootCleanup();
 
 describe("agent adapters profile selection", () => {
-  it("asks Codex to recommend a consultation profile with an output schema", async () => {
+  it("asks Codex to recommend a consultation profile with a canonical output schema", async () => {
     const root = await createTempRoot();
     const logDir = join(root, "profile-logs");
 
@@ -94,9 +94,7 @@ if (out) {
     });
 
     expect(result.status).toBe("completed");
-    expect(result.recommendation?.profileId).toBe("library");
     expect(result.recommendation?.validationProfileId).toBe("library");
-    expect(result.recommendation?.summary).toBe("Library signals are strongest.");
     expect(result.recommendation?.validationSummary).toBe("Library signals are strongest.");
     expect(result.recommendation?.candidateCount).toBe(12);
     expect(result.recommendation?.selectedCommandIds).toEqual(["lint-fast", "typecheck-fast"]);
@@ -104,13 +102,13 @@ if (out) {
       "Supported validation posture options:",
     );
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "Treat validationProfileId as the canonical validation posture field for default tournament settings, not as a claim about the whole repository.",
+      'Use validationProfileId "generic" when the repository has no strong command-grounded or repo-local profile evidence.',
+    );
+    await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.not.toContain(
+      "Detected dependencies:",
     );
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "Treat the supported validation posture options below as a compatibility layer for current default bundles, not as a complete repository taxonomy.",
-    );
-    await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "Legacy aliases profileId, summary, and missingCapabilities are accepted for compatibility, but prefer validationProfileId, validationSummary, and validationGaps.",
+      "witness-producing or falsification-producing checks",
     );
     await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Do not list theoretical profile-default checks when the repository provides no evidence for them.",
@@ -136,25 +134,14 @@ if (out) {
       ]),
     );
     expect(profileSchema.properties).toHaveProperty("validationProfileId");
-    expect(profileSchema.properties).toHaveProperty("profileId");
+    expect(profileSchema.properties).not.toHaveProperty("profileId");
     expect(profileSchema.properties?.validationProfileId).toEqual(
       expect.objectContaining({ type: "string" }),
     );
-    expect(profileSchema.properties?.profileId).toEqual(
-      expect.objectContaining({
-        anyOf: expect.arrayContaining([
-          expect.objectContaining({ type: "string" }),
-          expect.objectContaining({ type: "null" }),
-        ]),
-      }),
-    );
     expect(profileSchema.properties?.validationProfileId).not.toHaveProperty("enum");
-    expect(profileSchema.required).toEqual(
-      expect.arrayContaining(["profileId", "summary", "missingCapabilities"]),
-    );
   });
 
-  it("accepts null optional profile aliases from Codex structured output", async () => {
+  it("parses canonical Codex structured profile output", async () => {
     const root = await createTempRoot();
     const logDir = join(root, "profile-null-logs");
 
@@ -171,7 +158,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"profileId":null,"validationProfileId":"generic","confidence":"low","summary":null,"validationSummary":"Use the generic posture.","candidateCount":3,"strategyIds":["minimal-change","safety-first"],"selectedCommandIds":[],"missingCapabilities":null,"validationGaps":[]}',
+    '{"validationProfileId":"generic","confidence":"low","validationSummary":"Use the generic posture.","candidateCount":3,"strategyIds":["minimal-change","safety-first"],"selectedCommandIds":[],"validationGaps":[]}',
     "utf8",
   );
 }
@@ -198,9 +185,7 @@ if (out) {
     expect(result.status).toBe("completed");
     expect(result.recommendation).toEqual(
       expect.objectContaining({
-        profileId: "generic",
         validationProfileId: "generic",
-        summary: "Use the generic posture.",
         validationSummary: "Use the generic posture.",
       }),
     );
@@ -278,17 +263,12 @@ process.stdout.write(JSON.stringify({
       });
 
       expect(result.status).toBe("completed");
-      expect(result.recommendation?.profileId).toBe("frontend");
       expect(result.recommendation?.validationProfileId).toBe("frontend");
-      expect(result.recommendation?.summary).toBe("Frontend build and e2e signals are present.");
       expect(result.recommendation?.validationSummary).toBe(
         "Frontend build and e2e signals are present.",
       );
       await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
         "Command catalog:",
-      );
-      await expect(readFile(join(logDir, "profile-judge.prompt.txt"), "utf8")).resolves.toContain(
-        'Use validationProfileId "generic" when the repository has no strong command-grounded or repo-local profile evidence.',
       );
       await expect(readFile(join(logDir, "profile-judge.stderr.txt"), "utf8")).resolves.toContain(
         '"--permission-mode","plan"',
@@ -399,15 +379,11 @@ process.stdout.write(JSON.stringify({
 process.stdout.write(JSON.stringify({
   type: "result",
   metadata: {
-    profileId: "library",
     validationProfileId: "frontend",
     confidence: "medium",
-    summary: "conflicting alias payload",
-    validationSummary: "conflicting alias payload",
+    validationSummary: "incomplete metadata payload",
     candidateCount: 4,
-    strategyIds: ["minimal-change"],
-    selectedCommandIds: ["lint-fast"],
-    validationGaps: []
+    strategyIds: ["minimal-change"]
   },
   structured_output: {
     validationProfileId: "frontend",
@@ -474,9 +450,9 @@ process.stdout.write(JSON.stringify({
     EXECUTION_TEST_TIMEOUT_MS,
   );
 
-  it("rejects conflicting legacy and validation profile aliases", async () => {
+  it("rejects Codex profile output that omits canonical validation fields", async () => {
     const root = await createTempRoot();
-    const logDir = join(root, "profile-conflict-logs");
+    const logDir = join(root, "profile-invalid-logs");
 
     const binaryPath = await writeNodeBinary(
       root,
@@ -491,7 +467,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"profileId":"library","validationProfileId":"frontend","confidence":"high","summary":"Library signals are strongest.","validationSummary":"Frontend signals are strongest.","candidateCount":4,"strategyIds":["minimal-change"],"selectedCommandIds":[],"missingCapabilities":[],"validationGaps":[]}',
+    '{"confidence":"high","validationSummary":"Frontend signals are strongest.","candidateCount":4,"strategyIds":["minimal-change"],"selectedCommandIds":[],"validationGaps":[]}',
     "utf8",
   );
 }
@@ -531,9 +507,9 @@ if (out) {
     expect(result.recommendation).toBeUndefined();
   });
 
-  it("accepts matching validation gaps even when alias array order differs", async () => {
+  it("preserves canonical validation gap ordering", async () => {
     const root = await createTempRoot();
-    const logDir = join(root, "profile-alias-order-logs");
+    const logDir = join(root, "profile-gap-order-logs");
 
     const binaryPath = await writeNodeBinary(
       root,
@@ -548,7 +524,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"profileId":"frontend","validationProfileId":"frontend","confidence":"medium","summary":"Frontend build and e2e signals are present.","validationSummary":"Frontend build and e2e signals are present.","candidateCount":4,"strategyIds":["minimal-change"],"selectedCommandIds":[],"missingCapabilities":["No build validation command was selected.","No e2e or visual deep check was selected."],"validationGaps":["No e2e or visual deep check was selected.","No build validation command was selected."]}',
+    '{"validationProfileId":"frontend","confidence":"medium","validationSummary":"Frontend build and e2e signals are present.","candidateCount":4,"strategyIds":["minimal-change"],"selectedCommandIds":[],"validationGaps":["No e2e or visual deep check was selected.","No build validation command was selected."]}',
     "utf8",
   );
 }
@@ -585,7 +561,7 @@ if (out) {
     });
 
     expect(result.status).toBe("completed");
-    expect(result.recommendation?.profileId).toBe("frontend");
+    expect(result.recommendation?.validationProfileId).toBe("frontend");
     expect(result.recommendation?.validationGaps).toEqual([
       "No e2e or visual deep check was selected.",
       "No build validation command was selected.",

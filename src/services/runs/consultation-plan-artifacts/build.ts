@@ -379,10 +379,14 @@ function buildConsultationPlanOpenQuestions(options: {
     questions.add(options.clarifyFollowUp.keyQuestion);
   }
   if (options.clarifyFollowUp?.missingResultContract) {
-    questions.add(`Missing result contract: ${options.clarifyFollowUp.missingResultContract}`);
+    questions.add(
+      `What concrete result should the consultation produce? ${options.clarifyFollowUp.missingResultContract}`,
+    );
   }
   if (options.clarifyFollowUp?.missingJudgingBasis) {
-    questions.add(`Missing judging basis: ${options.clarifyFollowUp.missingJudgingBasis}`);
+    questions.add(
+      `How should Oraculum judge whether the result is acceptable? ${options.clarifyFollowUp.missingJudgingBasis}`,
+    );
   }
 
   return [...questions];

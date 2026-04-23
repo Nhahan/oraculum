@@ -69,13 +69,9 @@ describe("project flows planning", () => {
       finalistCount: 0,
       judgingBasisKind: "unknown",
       validationPosture: "unknown",
-      missingCapabilityCount: 0,
       validationGapCount: 0,
     });
-    expect(buildSavedConsultationStatus(saved).nextActions).toEqual([
-      "reopen-verdict",
-      "browse-archive",
-    ]);
+    expect(buildSavedConsultationStatus(saved).nextActions).toEqual(["reopen-verdict"]);
     expect(buildSavedConsultationStatus(saved).validationProfileId).toBeUndefined();
     expect(buildSavedConsultationStatus(saved).validationSummary).toBeUndefined();
     expect(buildSavedConsultationStatus(saved).validationSignals).toEqual([]);
@@ -261,14 +257,11 @@ if (out) {
         "Email/password login only; protect /dashboard; keep OAuth out of scope.",
       candidates: 1,
       requirePlanningClarification: true,
-      preflight: {
-        allowRuntime: false,
-      },
     });
 
     expect(manifest.status).toBe("planned");
     expect(manifest.candidateCount).toBe(1);
-    expect(manifest.preflight?.decision).toBe("proceed");
+    expect(manifest.preflight).toBeUndefined();
 
     const taskPacketPath = manifest.candidates[0]?.taskPacketPath;
     if (!taskPacketPath) {
@@ -295,9 +288,6 @@ if (out) {
       candidates: 1,
       requirePlanningClarification: true,
       writeConsultationPlanArtifacts: true,
-      preflight: {
-        allowRuntime: false,
-      },
     });
 
     const readiness = consultationPlanReadinessSchema.parse(
@@ -314,6 +304,9 @@ if (out) {
       reviewStatus: "not-run",
     });
     expect(readiness.nextAction).toContain("orc consult");
+    expect(summary).toContain(
+      `- consultation plan path: .oraculum/runs/${manifest.id}/reports/consultation-plan.json.`,
+    );
     expect(summary).toContain(
       `- execute the persisted consultation plan: \`orc consult .oraculum/runs/${manifest.id}/reports/consultation-plan.json\`.`,
     );
@@ -350,9 +343,12 @@ if (out) {
 
     expect(manifest.candidateCount).toBe(0);
     expect(depth).toMatchObject({
-      depth: "deep-interview",
+      interviewDepth: "deep-interview",
       readiness: "needs-interview",
       estimatedInterviewRounds: 1,
+      consensusReviewIntensity: "high",
+      operatorMaxConsensusRevisions: 10,
+      maxConsensusRevisions: 10,
     });
     expect(interview).toMatchObject({
       status: "needs-clarification",
@@ -421,6 +417,8 @@ if (out) {
     expect(depth).toMatchObject({
       readiness: "needs-interview",
       maxInterviewRounds: 0,
+      operatorMaxConsensusRevisions: 1,
+      maxConsensusRevisions: 1,
       estimatedInterviewRounds: 0,
     });
     await expect(
@@ -469,6 +467,9 @@ if (out) {
     const interview = planningInterviewArtifactSchema.parse(
       JSON.parse(await readFile(getPlanningInterviewPath(cwd, manifest.id), "utf8")) as unknown,
     );
+    const depth = planningDepthArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanningDepthPath(cwd, manifest.id), "utf8")) as unknown,
+    );
     const spec = planningSpecArtifactSchema.parse(
       JSON.parse(await readFile(getPlanningSpecPath(cwd, manifest.id), "utf8")) as unknown,
     );
@@ -485,9 +486,16 @@ if (out) {
       status: "ready-for-spec",
       sourceRunId: expect.any(String),
     });
+    expect(depth).toMatchObject({
+      interviewDepth: "skip-interview",
+      consensusReviewIntensity: "elevated",
+      operatorMaxConsensusRevisions: 10,
+      maxConsensusRevisions: 3,
+    });
     expect(spec.goal).toBe("Add email/password authentication and protect /dashboard.");
     expect(consensus).toMatchObject({
       approved: true,
+      maxRevisions: 3,
       selectedOption: {
         name: "auth-contract-first",
       },
@@ -541,6 +549,9 @@ if (out) {
     const consensus = planConsensusArtifactSchema.parse(
       JSON.parse(await readFile(getPlanConsensusPath(cwd, manifest.id), "utf8")) as unknown,
     );
+    const depth = planningDepthArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanningDepthPath(cwd, manifest.id), "utf8")) as unknown,
+    );
     const readiness = consultationPlanReadinessSchema.parse(
       JSON.parse(
         await readFile(getConsultationPlanReadinessPath(cwd, manifest.id), "utf8"),
@@ -555,12 +566,144 @@ if (out) {
         type: "needs-clarification",
       },
     });
+    expect(depth).toMatchObject({
+      consensusReviewIntensity: "elevated",
+      operatorMaxConsensusRevisions: 0,
+      maxConsensusRevisions: 0,
+    });
     expect(consensus.approved).toBe(false);
+    expect(consensus.maxRevisions).toBe(0);
     expect(readiness).toMatchObject({
       status: "needs-clarification",
       readyForConsult: false,
       unresolvedQuestions: [
         "Consensus review did not approve before the revision cap; revise the task contract or rerun planning.",
+      ],
+    });
+  });
+
+  it("treats Plan Conclave reviewer rejection as terminal without revision", async () => {
+    const cwd = await createInitializedProject();
+    const fakeCodex = await createDeepPlanningCodexBinary(cwd, {
+      criticVerdict: "reject",
+    });
+
+    const manifest = await planRun({
+      cwd,
+      taskInput: "Email/password login only; protect /dashboard; no OAuth.",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+
+    const consensus = planConsensusArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanConsensusPath(cwd, manifest.id), "utf8")) as unknown,
+    );
+    const readiness = consultationPlanReadinessSchema.parse(
+      JSON.parse(
+        await readFile(getConsultationPlanReadinessPath(cwd, manifest.id), "utf8"),
+      ) as unknown,
+    );
+
+    expect(manifest).toMatchObject({
+      status: "completed",
+      candidateCount: 0,
+      candidates: [],
+      outcome: {
+        type: "needs-clarification",
+      },
+      preflight: {
+        summary:
+          "Plan Conclave rejected the explicit consultation plan before candidate generation.",
+      },
+    });
+    expect(consensus).toMatchObject({
+      approved: false,
+      maxRevisions: 3,
+      revisionHistory: [
+        {
+          revision: 1,
+          summary: "Plan Conclave review rejected the draft.",
+          criticReview: {
+            verdict: "reject",
+          },
+        },
+      ],
+    });
+    expect(consensus.revisionHistory).toHaveLength(1);
+    expect(readiness).toMatchObject({
+      status: "needs-clarification",
+      readyForConsult: false,
+      unresolvedQuestions: [
+        "Plan Conclave rejected the draft; address the review finding and rerun planning.",
+      ],
+    });
+  });
+
+  it("blocks explicit planning when Plan Conclave review runtime is unavailable", async () => {
+    const cwd = await createInitializedProject();
+    const fakeCodex = await createDeepPlanningCodexBinary(cwd, {
+      reviewRuntimeUnavailable: true,
+    });
+
+    const manifest = await planRun({
+      cwd,
+      taskInput: "Email/password login only; protect /dashboard; no OAuth.",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+
+    const consensus = planConsensusArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanConsensusPath(cwd, manifest.id), "utf8")) as unknown,
+    );
+    const readiness = consultationPlanReadinessSchema.parse(
+      JSON.parse(
+        await readFile(getConsultationPlanReadinessPath(cwd, manifest.id), "utf8"),
+      ) as unknown,
+    );
+
+    expect(manifest).toMatchObject({
+      status: "completed",
+      candidateCount: 0,
+      candidates: [],
+      outcome: {
+        type: "needs-clarification",
+      },
+      preflight: {
+        summary:
+          "Plan Conclave review runtime unavailable. Rerun planning when architect/critic review can execute.",
+      },
+    });
+    expect(consensus).toMatchObject({
+      approved: false,
+      revisionHistory: [
+        {
+          revision: 1,
+          architectReview: {
+            verdict: "reject",
+            summary:
+              "Plan Conclave review runtime unavailable. Rerun planning when review can execute.",
+          },
+        },
+      ],
+    });
+    expect(consensus.revisionHistory).toHaveLength(1);
+    expect(readiness).toMatchObject({
+      status: "needs-clarification",
+      readyForConsult: false,
+      unresolvedQuestions: [
+        "Plan Conclave review runtime unavailable. Rerun planning when architect/critic review can execute.",
       ],
     });
   });
@@ -571,6 +714,7 @@ if (out) {
       cwd,
       "fake-codex-plan-review",
       `const fs = require("node:fs");
+const prompt = fs.readFileSync(0, "utf8");
 let out = "";
 for (let index = 0; index < process.argv.length; index += 1) {
   if (process.argv[index] === "-o") {
@@ -578,9 +722,16 @@ for (let index = 0; index < process.argv.length; index += 1) {
   }
 }
 if (out) {
-  fs.writeFileSync(
-    out,
-    JSON.stringify({
+  const body = prompt.includes("consultation is ready to proceed before any candidate is generated")
+    ? {
+      decision: "proceed",
+      confidence: "high",
+      summary: "The task can proceed to plan review.",
+      researchPosture: "repo-only",
+      clarificationQuestion: null,
+      researchQuestion: null
+    }
+    : {
       status: "blocked",
       summary: "The plan lacks a rollback crown gate.",
       blockers: ["Missing rollback crown gate."],
@@ -591,7 +742,10 @@ if (out) {
       repairPolicyFindings: [],
       scorecardFindings: [],
       nextAction: "Review plan findings before consult."
-    }),
+    };
+  fs.writeFileSync(
+    out,
+    JSON.stringify(body),
     "utf8",
   );
 }
@@ -606,7 +760,7 @@ if (out) {
       deliberate: true,
       writeConsultationPlanArtifacts: true,
       preflight: {
-        allowRuntime: false,
+        allowRuntime: true,
         codexBinaryPath: fakeCodex,
         timeoutMs: FAKE_AGENT_TIMEOUT_MS,
       },
@@ -641,10 +795,12 @@ if (out) {
     expect(summary).toContain("execute the persisted consultation plan");
   });
 
-  it("guides missing project config toward init after setup", async () => {
+  it("guides missing project config toward consult or plan auto-init", async () => {
     const cwd = await createTempProject();
 
-    await expect(loadProjectConfig(cwd)).rejects.toThrow('Run "orc init" after setup');
+    await expect(loadProjectConfig(cwd)).rejects.toThrow(
+      'Start with "orc consult <task>" or "orc plan <task>" from the project root first.',
+    );
   });
 
   it("rejects missing task paths instead of treating them as inline text", async () => {
@@ -722,10 +878,12 @@ if (out) {
 async function createDeepPlanningCodexBinary(
   cwd: string,
   options: {
-    criticVerdict?: "approve" | "revise";
+    criticVerdict?: "approve" | "revise" | "reject";
+    reviewRuntimeUnavailable?: boolean;
   } = {},
 ): Promise<string> {
   const criticVerdict = options.criticVerdict ?? "approve";
+  const reviewRuntimeUnavailable = options.reviewRuntimeUnavailable ?? false;
   return writeNodeBinary(
     cwd,
     "fake-codex-deep-planning",
@@ -784,6 +942,16 @@ const consensusDraft = {
       exitCriteria: ["/dashboard is protected."]
     }
   ],
+  scorecardDefinition: {
+    dimensions: ["auth contract fit", "route protection"],
+    abstentionTriggers: ["No candidate protects /dashboard."]
+  },
+  repairPolicy: {
+    maxAttemptsPerStage: 1,
+    immediateElimination: ["Leaves /dashboard public."],
+    repairable: ["Missing focused auth test."],
+    preferAbstainOverRetry: ["Auth scope cannot be verified."]
+  },
   assumptionLedger: ["Email/password is the only desired auth method."],
   premortem: ["Session or route guard can be incomplete."],
   expandedTestPlan: ["Verify /dashboard redirects when signed out."]
@@ -792,22 +960,22 @@ let body;
 if (prompt.includes("selecting the planning depth")) {
   body = prompt.includes("Email/password")
     ? {
-        depth: "skip-interview",
+        interviewDepth: "skip-interview",
         readiness: "ready",
         confidence: "high",
         summary: "The answer resolves the auth scope.",
         reasons: ["Auth method, route, and non-goal are explicit."],
         estimatedInterviewRounds: 0,
-        consensusReviewDepth: "standard"
+        consensusReviewIntensity: "elevated"
       }
     : {
-        depth: "deep-interview",
+        interviewDepth: "deep-interview",
         readiness: "needs-interview",
         confidence: "high",
         summary: "Auth is too broad without scope.",
         reasons: ["Missing auth method, protected route, and non-goals."],
         estimatedInterviewRounds: 1,
-        consensusReviewDepth: "deep"
+        consensusReviewIntensity: "high"
       };
 } else if (prompt.includes("answer or refinement for the active interview")) {
   body = {
@@ -815,13 +983,13 @@ if (prompt.includes("selecting the planning depth")) {
     confidence: "high",
     summary: "The input answers the active auth clarification."
   };
-} else if (prompt.includes("asking the next planning interview question")) {
+} else if (prompt.includes("asking the next Augury Interview question")) {
   body = {
     question: "Which auth method, protected route, and non-goals should define success?",
     perspective: "scope-and-success",
     expectedAnswerShape: "Name auth method, route, and excluded auth modes."
   };
-} else if (prompt.includes("scoring whether the latest planning interview answer")) {
+} else if (prompt.includes("scoring whether the latest Augury Interview answer")) {
   body = {
     clarityScore: 0.92,
     weakestDimension: "none",
@@ -835,7 +1003,7 @@ if (prompt.includes("selecting the planning depth")) {
       risks: ["Avoid broad auth provider scope."]
     }
   };
-} else if (prompt.includes("crystallizing an explicit Oraculum planning interview")) {
+} else if (prompt.includes("crystallizing an explicit Oraculum Augury Interview")) {
   body = {
     goal: "Add email/password authentication and protect /dashboard.",
     constraints: ["Email/password only."],
@@ -846,18 +1014,22 @@ if (prompt.includes("selecting the planning depth")) {
     repoEvidence: ["Operator clarified /dashboard as protected route."],
     openRisks: ["Route guard may be incomplete."]
   };
-} else if (prompt.includes("drafting a consensus-reviewed Oraculum consultation plan")) {
+} else if (prompt.includes("drafting a Plan Conclave-reviewed Oraculum consultation plan")) {
   body = consensusDraft;
 } else if (prompt.includes("architect reviewer") || prompt.includes("critic reviewer")) {
-  body = {
-    verdict: prompt.includes("critic reviewer") ? ${JSON.stringify(criticVerdict)} : "approve",
-    summary: prompt.includes("critic reviewer") && ${JSON.stringify(criticVerdict)} === "revise" ? "The plan needs one more pass." : "The plan is ready.",
-    requiredChanges: prompt.includes("critic reviewer") && ${JSON.stringify(criticVerdict)} === "revise" ? ["Tighten crown gates before consult."] : stringArray,
-    tradeoffs: stringArray,
-    risks: stringArray
-  };
+  if (${JSON.stringify(reviewRuntimeUnavailable)}) {
+    body = "review runtime unavailable";
+  } else {
+    body = {
+      verdict: prompt.includes("critic reviewer") ? ${JSON.stringify(criticVerdict)} : "approve",
+      summary: prompt.includes("critic reviewer") && ${JSON.stringify(criticVerdict)} !== "approve" ? "The plan cannot proceed as written." : "The plan is ready.",
+      requiredChanges: prompt.includes("critic reviewer") && ${JSON.stringify(criticVerdict)} !== "approve" ? ["Tighten crown gates before consult."] : stringArray,
+      tradeoffs: stringArray,
+      risks: stringArray
+    };
+  }
 } else {
-  body = { decision: "proceed", confidence: "high", summary: "Proceed.", researchPosture: "repo-only" };
+  body = { decision: "proceed", confidence: "high", summary: "Proceed.", researchPosture: "repo-only", clarificationQuestion: null, researchQuestion: null };
 }
 fs.writeFileSync(out, JSON.stringify(body), "utf8");
 `,

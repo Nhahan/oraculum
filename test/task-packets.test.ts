@@ -57,6 +57,11 @@ describe("task packet loading", () => {
               path: originalTaskPath,
             },
           },
+          repoBasis: {
+            projectRoot: root,
+            signalFingerprint: "sha256:standard",
+            availableOracleIds: ["lint-fast", "auth-integration"],
+          },
           preflight: {
             decision: "proceed",
             confidence: "medium",
@@ -92,6 +97,18 @@ describe("task packet loading", () => {
               label: "Impact",
             },
           ],
+          workstreams: [],
+          stagePlan: [],
+          scorecardDefinition: {
+            dimensions: [],
+            abstentionTriggers: [],
+          },
+          repairPolicy: {
+            maxAttemptsPerStage: 0,
+            immediateElimination: [],
+            repairable: [],
+            preferAbstainOverRetry: [],
+          },
         }),
         null,
         2,
@@ -269,37 +286,30 @@ describe("task packet loading", () => {
     expect(taskPacket.nonGoals).toContain("Do not modify src/logout.ts.");
   });
 
-  it("parses legacy consultation plans without execution-graph metadata", async () => {
+  it("rejects consultation plans that omit execution-graph metadata", async () => {
     const root = await createTempRoot();
-    const originalTaskPath = join(root, "tasks", "legacy-session.md");
-    const planPath = join(
-      root,
-      ".oraculum",
-      "runs",
-      "run_legacy_plan",
-      "reports",
-      "consultation-plan.json",
-    );
+    const originalTaskPath = join(root, "tasks", "session.md");
+    const planPath = join(root, ".oraculum", "runs", "run_incomplete_plan", "reports", "consultation-plan.json");
 
     await mkdir(join(root, "tasks"), { recursive: true });
-    await mkdir(join(root, ".oraculum", "runs", "run_legacy_plan", "reports"), {
+    await mkdir(join(root, ".oraculum", "runs", "run_incomplete_plan", "reports"), {
       recursive: true,
     });
     await writeFile(
       planPath,
       `${JSON.stringify(
         {
-          runId: "run_legacy_plan",
+          runId: "run_incomplete_plan",
           createdAt: "2026-04-15T00:00:00.000Z",
           readyForConsult: true,
           recommendedNextAction:
-            "Execute the planned consultation: `orc consult .oraculum/runs/run_legacy_plan/reports/consultation-plan.json`.",
+            "Execute the planned consultation: `orc consult .oraculum/runs/run_incomplete_plan/reports/consultation-plan.json`.",
           intendedResult: "recommended result for src/session.ts",
           decisionDrivers: ["Target artifact path: src/session.ts"],
           openQuestions: [],
           task: {
-            id: "legacy-session",
-            title: "Legacy session task",
+            id: "session",
+            title: "Session task",
             intent: "Preserve the session across refreshes.",
             artifactKind: "code patch",
             targetArtifactPath: "src/session.ts",
@@ -335,27 +345,7 @@ describe("task packet loading", () => {
       "utf8",
     );
 
-    const artifact = await readConsultationPlanArtifact(planPath);
-
-    expect(artifact).toBeDefined();
-    expect(artifact?.mode).toBe("standard");
-    expect(artifact?.repoBasis).toMatchObject({
-      projectRoot: "<unknown>",
-      signalFingerprint: "unknown",
-      availableOracleIds: [],
-    });
-    expect(artifact?.workstreams).toEqual([]);
-    expect(artifact?.stagePlan).toEqual([]);
-    expect(artifact?.scorecardDefinition).toEqual({
-      dimensions: [],
-      abstentionTriggers: [],
-    });
-    expect(artifact?.repairPolicy).toEqual({
-      maxAttemptsPerStage: 0,
-      immediateElimination: [],
-      repairable: [],
-      preferAbstainOverRetry: [],
-    });
+    await expect(readConsultationPlanArtifact(planPath)).resolves.toBeUndefined();
   });
 
   it("rejects consultation plans with unsafe project artifact paths", async () => {

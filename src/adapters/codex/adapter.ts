@@ -284,7 +284,7 @@ export class CodexAdapter implements AgentAdapter {
     request: AgentPlanningQuestionRequest,
   ): Promise<AgentPlanningQuestionResult> {
     return this.runRecommendation({
-      fallbackSummary: "Codex planning interview question finished.",
+      fallbackSummary: "Codex Augury Interview question finished.",
       filenames: {
         finalMessage: "planning-question.final-message.txt",
         prompt: "planning-question.prompt.txt",
@@ -304,7 +304,7 @@ export class CodexAdapter implements AgentAdapter {
     request: AgentPlanningScoreRequest,
   ): Promise<AgentPlanningScoreResult> {
     return this.runRecommendation({
-      fallbackSummary: "Codex planning interview scoring finished.",
+      fallbackSummary: "Codex Augury Interview scoring finished.",
       filenames: {
         finalMessage: "planning-score.final-message.txt",
         prompt: "planning-score.prompt.txt",
@@ -344,7 +344,7 @@ export class CodexAdapter implements AgentAdapter {
     request: AgentPlanConsensusDraftRequest,
   ): Promise<AgentPlanConsensusDraftResult> {
     return this.runRecommendation({
-      fallbackSummary: "Codex consensus plan draft finished.",
+      fallbackSummary: "Codex Plan Conclave draft finished.",
       filenames: {
         finalMessage: "plan-consensus-draft.final-message.txt",
         prompt: "plan-consensus-draft.prompt.txt",
@@ -364,7 +364,7 @@ export class CodexAdapter implements AgentAdapter {
     request: AgentPlanConsensusReviewRequest,
   ): Promise<AgentPlanConsensusReviewResult> {
     return this.runRecommendation({
-      fallbackSummary: "Codex consensus architect review finished.",
+      fallbackSummary: "Codex Plan Conclave architect review finished.",
       filenames: {
         finalMessage: "plan-architect-review.final-message.txt",
         prompt: "plan-architect-review.prompt.txt",
@@ -384,7 +384,7 @@ export class CodexAdapter implements AgentAdapter {
     request: AgentPlanConsensusReviewRequest,
   ): Promise<AgentPlanConsensusReviewResult> {
     return this.runRecommendation({
-      fallbackSummary: "Codex consensus critic review finished.",
+      fallbackSummary: "Codex Plan Conclave critic review finished.",
       filenames: {
         finalMessage: "plan-critic-review.final-message.txt",
         prompt: "plan-critic-review.prompt.txt",
@@ -404,7 +404,7 @@ export class CodexAdapter implements AgentAdapter {
     request: AgentPlanConsensusRevisionRequest,
   ): Promise<AgentPlanConsensusDraftResult> {
     return this.runRecommendation({
-      fallbackSummary: "Codex consensus plan revision finished.",
+      fallbackSummary: "Codex Plan Conclave revision finished.",
       filenames: {
         finalMessage: "plan-consensus-revision.final-message.txt",
         prompt: "plan-consensus-revision.prompt.txt",

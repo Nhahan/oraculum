@@ -9,14 +9,14 @@ import { writeNodeBinary } from "./plan-lift-evidence/helpers.mjs";
 import { scenarios } from "./plan-lift-evidence/scenarios.mjs";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
-const distMcpToolsPath = join(repoRoot, "dist", "services", "mcp-tools.js");
+const distOrcActionsPath = join(repoRoot, "dist", "services", "orc-actions.js");
 const distPlanLiftHarnessPath = join(repoRoot, "dist", "services", "plan-lift-harness.js");
 const distRunDomainPath = join(repoRoot, "dist", "domain", "run.js");
 const keepEvidence = process.env.ORACULUM_KEEP_EVIDENCE === "1";
 
 async function loadBuiltRuntime() {
-  if (!existsSync(distMcpToolsPath)) {
-    throw new Error("dist/services/mcp-tools.js is missing. Run `npm run build` first.");
+  if (!existsSync(distOrcActionsPath)) {
+    throw new Error("dist/services/orc-actions.js is missing. Run `npm run build` first.");
   }
   if (!existsSync(distPlanLiftHarnessPath)) {
     throw new Error("dist/services/plan-lift-harness.js is missing. Run `npm run build` first.");
@@ -25,13 +25,13 @@ async function loadBuiltRuntime() {
     throw new Error("dist/domain/run.js is missing. Run `npm run build` first.");
   }
 
-  const [mcpTools, planLiftHarness, runDomain] = await Promise.all([
-    import(pathToFileURL(distMcpToolsPath).href),
+  const [orcActions, planLiftHarness, runDomain] = await Promise.all([
+    import(pathToFileURL(distOrcActionsPath).href),
     import(pathToFileURL(distPlanLiftHarnessPath).href),
     import(pathToFileURL(distRunDomainPath).href),
   ]);
 
-  return { mcpTools, planLiftHarness, runDomain };
+  return { orcActions, planLiftHarness, runDomain };
 }
 
 async function writeJson(path, value) {
@@ -184,17 +184,17 @@ function summarizeAggregate(results) {
   );
 }
 
-async function runRoute(root, scenario, mode, mcpTools, runDomain) {
+async function runRoute(root, scenario, mode, orcActions, runDomain) {
   const taskPath = join(root, "tasks", "task.json");
   if (mode === "direct") {
-    const consult = await mcpTools.runConsultTool({
+    const consult = await orcActions.runConsultAction({
       cwd: root,
       taskInput: taskPath,
     });
     let crownVerified = false;
     let crownError;
     try {
-      const crown = await mcpTools.runCrownTool({
+      const crown = await orcActions.runCrownAction({
         cwd: root,
         materializationLabel: `${scenario.id}-${mode}`,
       });
@@ -218,19 +218,19 @@ async function runRoute(root, scenario, mode, mcpTools, runDomain) {
     };
   }
 
-  const plan = await mcpTools.runPlanTool({
+  const plan = await orcActions.runPlanAction({
     cwd: root,
     taskInput: taskPath,
   });
   await promoteScenarioPlanIfNeeded(scenario, plan.artifacts.consultationPlanPath, runDomain);
-  const consult = await mcpTools.runConsultTool({
+  const consult = await orcActions.runConsultAction({
     cwd: root,
     taskInput: plan.artifacts.consultationPlanPath,
   });
   let crownVerified = false;
   let crownError;
   try {
-    const crown = await mcpTools.runCrownTool({
+    const crown = await orcActions.runCrownAction({
       cwd: root,
       materializationLabel: `${scenario.id}-${mode}`,
     });
@@ -254,7 +254,7 @@ async function runRoute(root, scenario, mode, mcpTools, runDomain) {
   };
 }
 
-export async function runPlanLiftEvidence({ mcpTools, planLiftHarness, runDomain, scenarioIds }) {
+export async function runPlanLiftEvidence({ orcActions, planLiftHarness, runDomain, scenarioIds }) {
   const tempRoot = await mkdtemp(join(tmpdir(), "oraculum-plan-lift-"));
   const fakeCodex = await writeNodeBinary(
     tempRoot,
@@ -286,8 +286,8 @@ export async function runPlanLiftEvidence({ mcpTools, planLiftHarness, runDomain
       await cp(baseRoot, plannedRoot, { recursive: true });
 
       const [direct, planned] = await Promise.all([
-        runRoute(directRoot, scenario, "direct", mcpTools, runDomain),
-        runRoute(plannedRoot, scenario, "planned", mcpTools, runDomain),
+        runRoute(directRoot, scenario, "direct", orcActions, runDomain),
+        runRoute(plannedRoot, scenario, "planned", orcActions, runDomain),
       ]);
       results.push({
         id: scenario.id,

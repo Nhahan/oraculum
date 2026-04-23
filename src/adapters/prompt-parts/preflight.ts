@@ -12,10 +12,9 @@ export function buildPreflightPrompt(request: AgentPreflightRequest): string {
   const sections: string[] = [
     "You are deciding whether an Oraculum consultation is ready to proceed before any candidate is generated.",
     "Do not solve the task and do not propose implementations. Only decide readiness.",
-    'Return JSON only in this shape: {"decision":"proceed","confidence":"medium","summary":"short rationale","researchPosture":"repo-only"}',
-    'If the task is ambiguous, return {"decision":"needs-clarification",...,"clarificationQuestion":"one short question"} instead of guessing.',
-    'If safe execution depends on external official documentation or version-specific facts that are not present in the repository, return {"decision":"external-research-required",...,"researchQuestion":"one short research question","researchPosture":"external-research-required"} instead of guessing.',
-    'Use {"decision":"abstain",...} only when the consultation should not proceed even after clarification.',
+    'Return JSON only in this shape: {"decision":"proceed","confidence":"medium","summary":"short rationale","researchPosture":"repo-only","clarificationQuestion":null,"researchQuestion":null}',
+    "Branch rules: needs-clarification asks one short operator-answerable clarificationQuestion; external-research-required asks one short researchQuestion and sets researchPosture=external-research-required; abstain leaves both questions null and is only for consultations that should not proceed even after clarification.",
+    "Do not emit researchBasisDrift; Oraculum records research drift deterministically outside this recommendation.",
     "",
     `Task ID: ${request.taskPacket.id}`,
     `Task Title: ${request.taskPacket.title}`,
@@ -32,7 +31,8 @@ export function buildPreflightPrompt(request: AgentPreflightRequest): string {
       "- This readiness check is for `orc plan`, not direct candidate execution.",
       "- Decide semantically whether the request is clear enough to create a useful, executable consultation plan.",
       "- Prefer needs-clarification when the plan would lack a concrete result contract, scope boundary, or judging basis.",
-      "- Ask exactly one concise clarification question when one operator answer would make the plan more faithful to intent.",
+      "- Ask exactly one operator-answerable clarification question when one answer would make the plan more faithful to intent.",
+      "- Do not ask the operator for repository inspection, command flags, or implementation details.",
     );
   }
 
@@ -95,11 +95,12 @@ export function buildPreflightPrompt(request: AgentPreflightRequest): string {
     "",
     "Rules:",
     "- Prefer proceed when the repository and task already provide enough grounding for a safe tournament run.",
-    "- Prefer needs-clarification when one short missing answer would unlock safe execution.",
+    "- Prefer needs-clarification when one short operator answer would unlock safe execution.",
     "- Prefer external-research-required when correctness depends on official external docs or version facts that are not already grounded in the repository.",
-    "- When checking repository evidence, treat docs/ and internal/ as optional and inspect only paths that actually exist.",
+    "- When checking repository evidence, do not assume docs/ or internal/ exist; use those paths only when present or task-relevant.",
     "- Do not invent repository facts, target files, commands, or external citations.",
     "- Keep the summary and any question concise and concrete.",
+    "- Clarification questions must resolve a missing result contract, scope boundary, or judging basis.",
     "- Return JSON only.",
   );
 

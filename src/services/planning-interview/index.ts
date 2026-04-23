@@ -15,34 +15,71 @@ import type { ProjectConfigLayers } from "../project.js";
 import { pathExists, writeJsonFile, writeTextFileAtomically } from "../project.js";
 import { RunStore } from "../run-store.js";
 
-export interface PlanningCaps {
+export interface PlanningLoopCaps {
   explicitPlanMaxInterviewRounds: number;
   explicitPlanMaxConsensusRevisions: number;
   explicitPlanModelCallTimeoutMs: number;
   consultLiteMaxPlanningCalls: number;
 }
 
-export const DEFAULT_PLANNING_CAPS: PlanningCaps = {
+export const DEFAULT_PLANNING_LOOP_CAPS: PlanningLoopCaps = {
   explicitPlanMaxInterviewRounds: 8,
-  explicitPlanMaxConsensusRevisions: 3,
+  explicitPlanMaxConsensusRevisions: 10,
   explicitPlanModelCallTimeoutMs: 120_000,
   consultLiteMaxPlanningCalls: 1,
 };
 
-export function resolvePlanningCaps(configLayers: ProjectConfigLayers): PlanningCaps {
+export const HARD_MAX_CONSENSUS_LOOP_REVISIONS = 10;
+
+const CONSENSUS_LOOP_REVISION_BUDGET_BY_DEPTH: Record<
+  PlanningDepthArtifact["consensusReviewIntensity"],
+  Record<PlanningDepthArtifact["interviewDepth"], number>
+> = {
+  standard: {
+    "skip-interview": 1,
+    interview: 2,
+    "deep-interview": 3,
+  },
+  elevated: {
+    "skip-interview": 3,
+    interview: 4,
+    "deep-interview": 5,
+  },
+  high: {
+    "skip-interview": 6,
+    interview: 7,
+    "deep-interview": 10,
+  },
+};
+
+export function resolveConsensusLoopRevisionBudget(options: {
+  consensusReviewIntensity: PlanningDepthArtifact["consensusReviewIntensity"];
+  interviewDepth: PlanningDepthArtifact["interviewDepth"];
+  operatorMaxConsensusLoopRevisions: number;
+}): number {
+  return Math.min(
+    CONSENSUS_LOOP_REVISION_BUDGET_BY_DEPTH[options.consensusReviewIntensity][
+      options.interviewDepth
+    ],
+    Math.max(0, options.operatorMaxConsensusLoopRevisions),
+    HARD_MAX_CONSENSUS_LOOP_REVISIONS,
+  );
+}
+
+export function resolvePlanningLoopCaps(configLayers: ProjectConfigLayers): PlanningLoopCaps {
   return {
     explicitPlanMaxInterviewRounds:
       configLayers.advanced?.planning?.explicitPlanMaxInterviewRounds ??
-      DEFAULT_PLANNING_CAPS.explicitPlanMaxInterviewRounds,
+      DEFAULT_PLANNING_LOOP_CAPS.explicitPlanMaxInterviewRounds,
     explicitPlanMaxConsensusRevisions:
       configLayers.advanced?.planning?.explicitPlanMaxConsensusRevisions ??
-      DEFAULT_PLANNING_CAPS.explicitPlanMaxConsensusRevisions,
+      DEFAULT_PLANNING_LOOP_CAPS.explicitPlanMaxConsensusRevisions,
     explicitPlanModelCallTimeoutMs:
       configLayers.advanced?.planning?.explicitPlanModelCallTimeoutMs ??
-      DEFAULT_PLANNING_CAPS.explicitPlanModelCallTimeoutMs,
+      DEFAULT_PLANNING_LOOP_CAPS.explicitPlanModelCallTimeoutMs,
     consultLiteMaxPlanningCalls:
       configLayers.advanced?.planning?.consultLiteMaxPlanningCalls ??
-      DEFAULT_PLANNING_CAPS.consultLiteMaxPlanningCalls,
+      DEFAULT_PLANNING_LOOP_CAPS.consultLiteMaxPlanningCalls,
   };
 }
 
@@ -108,7 +145,7 @@ export async function classifyPlanningContinuation(options: {
 
 export async function recommendPlanningDepthArtifact(options: {
   adapter: AgentAdapter | undefined;
-  caps: PlanningCaps;
+  caps: PlanningLoopCaps;
   createdAt: string;
   projectRoot: string;
   reportsDir: string;
@@ -119,13 +156,14 @@ export async function recommendPlanningDepthArtifact(options: {
     try {
       const result = await options.adapter.recommendPlanningDepth({
         logDir: options.reportsDir,
-        maxConsensusRevisions: options.caps.explicitPlanMaxConsensusRevisions,
         maxInterviewRounds: options.caps.explicitPlanMaxInterviewRounds,
+        operatorMaxConsensusLoopRevisions: options.caps.explicitPlanMaxConsensusRevisions,
         projectRoot: options.projectRoot,
         runId: options.runId,
         taskPacket: options.taskPacket,
       });
       if (result.status === "completed" && result.recommendation) {
+        const operatorMaxConsensusLoopRevisions = options.caps.explicitPlanMaxConsensusRevisions;
         return planningDepthArtifactSchema.parse({
           runId: options.runId,
           createdAt: options.createdAt,
@@ -135,7 +173,12 @@ export async function recommendPlanningDepthArtifact(options: {
             options.caps.explicitPlanMaxInterviewRounds,
           ),
           maxInterviewRounds: options.caps.explicitPlanMaxInterviewRounds,
-          maxConsensusRevisions: options.caps.explicitPlanMaxConsensusRevisions,
+          operatorMaxConsensusRevisions: operatorMaxConsensusLoopRevisions,
+          maxConsensusRevisions: resolveConsensusLoopRevisionBudget({
+            consensusReviewIntensity: result.recommendation.consensusReviewIntensity,
+            interviewDepth: result.recommendation.interviewDepth,
+            operatorMaxConsensusLoopRevisions,
+          }),
         });
       }
     } catch {
@@ -146,15 +189,20 @@ export async function recommendPlanningDepthArtifact(options: {
   return planningDepthArtifactSchema.parse({
     runId: options.runId,
     createdAt: options.createdAt,
-    depth: "skip-interview",
+    interviewDepth: "skip-interview",
     readiness: "ready",
     confidence: "low",
     summary: "Planning depth runtime unavailable; proceeding with the existing task contract.",
     reasons: ["No structured planning depth recommendation was available."],
     estimatedInterviewRounds: 0,
-    consensusReviewDepth: "standard",
+    consensusReviewIntensity: "standard",
     maxInterviewRounds: options.caps.explicitPlanMaxInterviewRounds,
-    maxConsensusRevisions: options.caps.explicitPlanMaxConsensusRevisions,
+    operatorMaxConsensusRevisions: options.caps.explicitPlanMaxConsensusRevisions,
+    maxConsensusRevisions: resolveConsensusLoopRevisionBudget({
+      consensusReviewIntensity: "standard",
+      interviewDepth: "skip-interview",
+      operatorMaxConsensusLoopRevisions: options.caps.explicitPlanMaxConsensusRevisions,
+    }),
   });
 }
 
@@ -173,7 +221,7 @@ export async function buildPlanningInterviewNeedingAnswer(options: {
   let question: {
     question: string;
     perspective: string;
-    expectedAnswerShape?: string | undefined;
+    expectedAnswerShape: string;
   } = fallbackQuestion;
 
   if (options.adapter?.generatePlanningInterviewQuestion) {
@@ -201,7 +249,7 @@ export async function buildPlanningInterviewNeedingAnswer(options: {
     status: "needs-clarification",
     taskId: options.taskPacket.id,
     ...(options.priorInterview ? { sourceRunId: options.priorInterview.runId } : {}),
-    depth: options.depth.depth,
+    interviewDepth: options.depth.interviewDepth,
     rounds: [
       ...(options.priorInterview?.rounds ?? []),
       {
@@ -282,7 +330,7 @@ export async function scorePlanningInterviewAnswer(options: {
     status: readyForSpec ? "ready-for-spec" : "needs-clarification",
     taskId: options.taskPacket.id,
     sourceRunId: options.priorInterview.runId,
-    depth: options.depth.depth,
+    interviewDepth: options.depth.interviewDepth,
     rounds,
     clarityScore,
     weakestDimension: scoredRound.weakestDimension,
@@ -374,7 +422,7 @@ export async function writePlanningInterviewArtifacts(options: {
 function buildFallbackQuestion(taskPacket: MaterializedTaskPacket): {
   question: string;
   perspective: string;
-  expectedAnswerShape?: string | undefined;
+  expectedAnswerShape: string;
 } {
   return {
     question: `What concrete result, scope boundary, and success criteria should the plan preserve for "${taskPacket.title}"?`,

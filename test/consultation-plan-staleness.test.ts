@@ -55,6 +55,11 @@ async function writeMinimalConsultationPlan(options: {
           summary: "Proceed with the persisted contract.",
           researchPosture: "repo-only",
         },
+        repoBasis: {
+          projectRoot: options.cwd,
+          signalFingerprint: "sha256:minimal-plan",
+          availableOracleIds: [],
+        },
         candidateCount: 1,
         plannedStrategies: [
           {
@@ -69,6 +74,18 @@ async function writeMinimalConsultationPlan(options: {
             label: "Fast",
           },
         ],
+        workstreams: [],
+        stagePlan: [],
+        scorecardDefinition: {
+          dimensions: [],
+          abstentionTriggers: [],
+        },
+        repairPolicy: {
+          maxAttemptsPerStage: 0,
+          immediateElimination: [],
+          repairable: [],
+          preferAbstainOverRetry: [],
+        },
       }),
       null,
       2,
@@ -228,6 +245,11 @@ describe("consultation plan execution presets", () => {
             summary: "Proceed with the persisted contract.",
             researchPosture: "repo-only",
           },
+          repoBasis: {
+            projectRoot: cwd,
+            signalFingerprint: "sha256:run-stale",
+            availableOracleIds: ["missing-oracle"],
+          },
           candidateCount: 1,
           plannedStrategies: [
             {
@@ -242,6 +264,18 @@ describe("consultation plan execution presets", () => {
               label: "Fast",
             },
           ],
+          workstreams: [],
+          stagePlan: [],
+          scorecardDefinition: {
+            dimensions: [],
+            abstentionTriggers: [],
+          },
+          repairPolicy: {
+            maxAttemptsPerStage: 0,
+            immediateElimination: [],
+            repairable: [],
+            preferAbstainOverRetry: [],
+          },
         }),
         null,
         2,
@@ -311,6 +345,11 @@ describe("consultation plan execution presets", () => {
             summary: "Proceed with the persisted contract.",
             researchPosture: "repo-only",
           },
+          repoBasis: {
+            projectRoot: cwd,
+            signalFingerprint: "sha256:run-missing-plan-artifact",
+            availableOracleIds: [],
+          },
           candidateCount: 1,
           plannedStrategies: [
             {
@@ -325,6 +364,18 @@ describe("consultation plan execution presets", () => {
               label: "Fast",
             },
           ],
+          workstreams: [],
+          stagePlan: [],
+          scorecardDefinition: {
+            dimensions: [],
+            abstentionTriggers: [],
+          },
+          repairPolicy: {
+            maxAttemptsPerStage: 0,
+            immediateElimination: [],
+            repairable: [],
+            preferAbstainOverRetry: [],
+          },
         }),
         null,
         2,

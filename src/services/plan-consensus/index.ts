@@ -17,7 +17,7 @@ export async function buildPlanConsensus(options: {
   adapter: AgentAdapter | undefined;
   basePlan: ConsultationPlanArtifact;
   createdAt: string;
-  maxRevisions: number;
+  maxConsensusLoopRevisions: number;
   planningSpec: PlanningSpecArtifact;
   projectRoot: string;
   reportsDir: string;
@@ -30,7 +30,7 @@ export async function buildPlanConsensus(options: {
   const architectAntithesis = new Set<string>();
   let approved = false;
 
-  for (let revision = 0; revision <= options.maxRevisions; revision += 1) {
+  for (let revision = 0; revision <= options.maxConsensusLoopRevisions; revision += 1) {
     const architectReview = await reviewConsensus({
       ...options,
       draft,
@@ -47,10 +47,7 @@ export async function buildPlanConsensus(options: {
     }
     revisionHistory.push({
       revision: revision + 1,
-      summary:
-        architectReview.verdict === "approve" && criticReview.verdict === "approve"
-          ? "Architect and critic approved the draft."
-          : "Consensus review requested revision.",
+      summary: summarizeRevision(architectReview, criticReview),
       architectReview,
       criticReview,
     });
@@ -59,7 +56,10 @@ export async function buildPlanConsensus(options: {
       approved = true;
       break;
     }
-    if (revision >= options.maxRevisions) {
+    if (architectReview.verdict === "reject" || criticReview.verdict === "reject") {
+      break;
+    }
+    if (revision >= options.maxConsensusLoopRevisions) {
       break;
     }
 
@@ -77,7 +77,7 @@ export async function buildPlanConsensus(options: {
     createdAt: options.createdAt,
     updatedAt: options.createdAt,
     approved,
-    maxRevisions: options.maxRevisions,
+    maxRevisions: options.maxConsensusLoopRevisions,
     principles: draft.principles,
     decisionDrivers: draft.decisionDrivers,
     viableOptions: draft.viableOptions,
@@ -100,6 +100,7 @@ export function applyPlanConsensusToConsultationPlan(
   },
 ): ConsultationPlanArtifact {
   const draft = consensus.finalDraft;
+  const blocker = consensus.approved ? undefined : summarizePlanConsensusBlocker(consensus);
 
   return {
     ...plan,
@@ -132,14 +133,67 @@ export function applyPlanConsensusToConsultationPlan(
       status: consensus.approved ? "clear" : "blocked",
       summary: consensus.approved
         ? "Consensus review approved the plan."
-        : "Consensus review did not approve before the revision cap.",
+        : (blocker?.clarityGateSummary ??
+          "Consensus review did not approve before the revision cap."),
     },
     openQuestions: consensus.approved
       ? plan.openQuestions
       : [
           ...plan.openQuestions,
-          "Consensus review did not approve before the revision cap; revise the task contract or rerun planning.",
+          blocker?.openQuestion ??
+            "Consensus review did not approve before the revision cap; revise the task contract or rerun planning.",
         ],
+  };
+}
+
+export function summarizePlanConsensusBlocker(consensus: PlanConsensusArtifact): {
+  summary: string;
+  clarificationQuestion: string;
+  clarityGateSummary: string;
+  openQuestion: string;
+} {
+  const reviews = consensus.revisionHistory.flatMap((revision) =>
+    [revision.architectReview, revision.criticReview].filter(
+      (review): review is PlanConsensusReview => Boolean(review),
+    ),
+  );
+  const runtimeUnavailableReview = reviews.find((review) =>
+    [review.summary, ...review.requiredChanges].some((value) =>
+      value.toLowerCase().includes("runtime unavailable"),
+    ),
+  );
+  if (runtimeUnavailableReview) {
+    return {
+      summary:
+        "Plan Conclave review runtime unavailable. Rerun planning when architect/critic review can execute.",
+      clarificationQuestion:
+        "Plan Conclave review runtime unavailable. Rerun planning when architect/critic review can execute.",
+      clarityGateSummary: "Plan Conclave review runtime unavailable.",
+      openQuestion:
+        "Plan Conclave review runtime unavailable. Rerun planning when architect/critic review can execute.",
+    };
+  }
+
+  const rejectedReview = reviews.find((review) => review.verdict === "reject");
+  if (rejectedReview) {
+    return {
+      summary: "Plan Conclave rejected the explicit consultation plan before candidate generation.",
+      clarificationQuestion:
+        "Plan Conclave rejected the draft; address the review finding and rerun planning.",
+      clarityGateSummary: `Plan Conclave rejected the draft: ${rejectedReview.summary}`,
+      openQuestion:
+        "Plan Conclave rejected the draft; address the review finding and rerun planning.",
+    };
+  }
+
+  return {
+    summary:
+      "Consensus review did not approve the explicit consultation plan before the configured revision cap.",
+    clarificationQuestion:
+      "Consensus review did not approve before the revision cap; revise the task contract or rerun planning.",
+    clarityGateSummary: "Consensus review did not approve before the revision cap.",
+    openQuestion:
+      "Consensus review did not approve before the revision cap; revise the task contract or rerun planning.",
   };
 }
 
@@ -213,18 +267,33 @@ async function reviewConsensus(options: {
         });
       }
     } catch {
-      // Fall back to approval for runtime-unavailable review.
+      // Fall through to conservative rejection for runtime-unavailable review.
     }
   }
 
   return planConsensusReviewSchema.parse({
     reviewer: options.reviewer,
-    verdict: "approve",
-    summary: "Consensus review runtime unavailable; fallback accepted the draft.",
-    requiredChanges: [],
+    verdict: "reject",
+    summary: "Plan Conclave review runtime unavailable. Rerun planning when review can execute.",
+    requiredChanges: [
+      "Plan Conclave review runtime unavailable; rerun planning when review can execute.",
+    ],
     tradeoffs: [],
     risks: [],
   });
+}
+
+function summarizeRevision(
+  architectReview: PlanConsensusReview,
+  criticReview: PlanConsensusReview,
+): string {
+  if (architectReview.verdict === "approve" && criticReview.verdict === "approve") {
+    return "Architect and critic approved the draft.";
+  }
+  if (architectReview.verdict === "reject" || criticReview.verdict === "reject") {
+    return "Plan Conclave review rejected the draft.";
+  }
+  return "Consensus review requested revision.";
 }
 
 async function reviseConsensus(options: {

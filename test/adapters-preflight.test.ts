@@ -35,7 +35,7 @@ process.stdout.write(JSON.stringify({ argv: process.argv.slice(2) }) + "\\n");
 if (out) {
   fs.writeFileSync(
     out,
-    '{"decision":"needs-clarification","confidence":"medium","summary":"The target document and required sections are unclear.","researchPosture":"repo-only","clarificationQuestion":"Which file should Oraculum update, and what sections are required?"}',
+    '{"decision":"needs-clarification","confidence":"medium","summary":"The target document and required sections are unclear.","researchPosture":"repo-only","clarificationQuestion":"Which file should Oraculum update, and what sections are required?","researchQuestion":null}',
     "utf8",
   );
 }
@@ -62,6 +62,7 @@ if (out) {
       summary: "The target document and required sections are unclear.",
       researchPosture: "repo-only",
       clarificationQuestion: "Which file should Oraculum update, and what sections are required?",
+      researchQuestion: null,
     });
     await expect(readFile(join(logDir, "preflight-judge.prompt.txt"), "utf8")).resolves.toContain(
       "Only decide readiness.",
@@ -70,11 +71,12 @@ if (out) {
       "Detected capabilities:",
     );
     await expect(readFile(join(logDir, "preflight-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "treat docs/ and internal/ as optional",
+      "do not assume docs/ or internal/ exist",
     );
     const preflightSchema = JSON.parse(
       await readFile(join(logDir, "preflight-judge.schema.json"), "utf8"),
     ) as {
+      properties?: Record<string, { anyOf?: Array<{ type?: string }> }>;
       required?: string[];
     };
     expect(preflightSchema.required).toEqual(
@@ -85,6 +87,12 @@ if (out) {
         "researchPosture",
         "clarificationQuestion",
         "researchQuestion",
+      ]),
+    );
+    expect(preflightSchema.properties?.clarificationQuestion?.anyOf).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "string" }),
+        expect.objectContaining({ type: "null" }),
       ]),
     );
   });
@@ -133,6 +141,7 @@ if (out) {
       summary: "The document contract is still unresolved.",
       researchPosture: "repo-only",
       clarificationQuestion: "Which audience and required sections should this document target?",
+      researchQuestion: null,
     });
   });
 

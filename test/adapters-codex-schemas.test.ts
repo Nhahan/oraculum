@@ -46,4 +46,70 @@ describe("Codex structured output schemas", () => {
       expect(new Set(schema.required as string[] | undefined)).toEqual(new Set(properties));
     }
   });
+
+  it("requires the canonical planning consensus intensity levels", () => {
+    const schema = buildCodexPlanningDepthJsonSchema() as {
+      properties: Record<string, { enum?: string[] }>;
+    };
+
+    expect(schema.properties.consensusReviewIntensity?.enum).toEqual([
+      "standard",
+      "elevated",
+      "high",
+    ]);
+  });
+
+  it("requires Augury answer shape and Plan Conclave scoring policy fields", () => {
+    const questionSchema = buildCodexPlanningQuestionJsonSchema() as {
+      required?: string[];
+    };
+    const draftSchema = buildCodexPlanConsensusDraftJsonSchema() as {
+      properties?: Record<string, unknown>;
+      required?: string[];
+    };
+
+    expect(questionSchema.required).toContain("expectedAnswerShape");
+    expect(draftSchema.required).toContain("scorecardDefinition");
+    expect(draftSchema.required).toContain("repairPolicy");
+    expect(Object.keys(draftSchema.properties ?? {})).toContain("scorecardDefinition");
+    expect(Object.keys(draftSchema.properties ?? {})).toContain("repairPolicy");
+  });
+
+  it("keeps Codex nullable placeholders schema-complete for optional recommendation fields", () => {
+    const preflightSchema = buildCodexPreflightJsonSchema() as {
+      properties?: Record<string, { anyOf?: Array<{ type?: string }> }>;
+      required?: string[];
+    };
+    const profileSchema = buildCodexProfileRecommendationJsonSchema() as {
+      properties?: Record<string, { anyOf?: Array<{ type?: string }> }>;
+      required?: string[];
+    };
+    const winnerSchema = buildCodexWinnerRecommendationSchema() as {
+      properties?: Record<string, { anyOf?: Array<{ type?: string }> }>;
+      required?: string[];
+    };
+
+    expect(preflightSchema.required).toEqual(
+      expect.arrayContaining(["clarificationQuestion", "researchQuestion"]),
+    );
+    expect(preflightSchema.properties?.clarificationQuestion?.anyOf).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "string" }),
+        expect.objectContaining({ type: "null" }),
+      ]),
+    );
+    expect(profileSchema.required).not.toEqual(
+      expect.arrayContaining(["profileId", "summary", "missingCapabilities"]),
+    );
+    expect(profileSchema.properties).not.toHaveProperty("profileId");
+    expect(winnerSchema.required).toEqual(
+      expect.arrayContaining(["candidateId", "judgingCriteria"]),
+    );
+    expect(winnerSchema.properties?.candidateId?.anyOf).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "string" }),
+        expect.objectContaining({ type: "null" }),
+      ]),
+    );
+  });
 });

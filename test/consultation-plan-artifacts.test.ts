@@ -239,6 +239,11 @@ describe("consultation plan execution presets", () => {
             summary: "Proceed with the persisted contract.",
             researchPosture: "repo-only",
           },
+          repoBasis: {
+            projectRoot: cwd,
+            signalFingerprint: "sha256:run-seed",
+            availableOracleIds: ["lint-fast", "auth-impact"],
+          },
           profileSelection: {
             validationProfileId: "frontend",
             confidence: "high",
@@ -272,6 +277,18 @@ describe("consultation plan execution presets", () => {
               label: "Impact",
             },
           ],
+          workstreams: [],
+          stagePlan: [],
+          scorecardDefinition: {
+            dimensions: [],
+            abstentionTriggers: [],
+          },
+          repairPolicy: {
+            maxAttemptsPerStage: 0,
+            immediateElimination: [],
+            repairable: [],
+            preferAbstainOverRetry: [],
+          },
         }),
         null,
         2,
@@ -412,6 +429,11 @@ describe("consultation plan execution presets", () => {
             summary: "Proceed with the persisted contract.",
             researchPosture: "repo-only",
           },
+          repoBasis: {
+            projectRoot: cwd,
+            signalFingerprint: "sha256:run-profile-plan",
+            availableOracleIds: ["full-suite-deep"],
+          },
           profileSelection: {
             validationProfileId: "library",
             confidence: "high",
@@ -441,6 +463,18 @@ describe("consultation plan execution presets", () => {
               label: "Deep",
             },
           ],
+          workstreams: [],
+          stagePlan: [],
+          scorecardDefinition: {
+            dimensions: [],
+            abstentionTriggers: [],
+          },
+          repairPolicy: {
+            maxAttemptsPerStage: 0,
+            immediateElimination: [],
+            repairable: [],
+            preferAbstainOverRetry: [],
+          },
         }),
         null,
         2,

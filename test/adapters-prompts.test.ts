@@ -3,6 +3,16 @@ import { describe, expect, it } from "vitest";
 import {
   buildCandidatePrompt,
   buildCandidateSpecPrompt,
+  buildPlanArchitectureReviewPrompt,
+  buildPlanConsensusDraftPrompt,
+  buildPlanConsensusRevisionPrompt,
+  buildPlanCriticReviewPrompt,
+  buildPlanningContinuationPrompt,
+  buildPlanningDepthPrompt,
+  buildPlanningInterviewQuestionPrompt,
+  buildPlanningInterviewScorePrompt,
+  buildPlanningSpecPrompt,
+  buildPlanReviewPrompt,
   buildPreflightPrompt,
   buildProfileSelectionPrompt,
   buildSpecSelectionPrompt,
@@ -14,6 +24,241 @@ import { createRepoSignals, createTaskPacket } from "./helpers/adapters.js";
 import { createConsultationPlanArtifactFixture } from "./helpers/contract-fixtures.js";
 
 describe("adapter prompts", () => {
+  it("names Augury Interview and Plan Conclave planning methods", () => {
+    const taskPacket = createTaskPacket();
+    const depth = {
+      interviewDepth: "interview" as const,
+      readiness: "needs-interview" as const,
+      confidence: "high",
+      summary: "The task needs clarification.",
+      reasons: ["The judging basis is underspecified."],
+      estimatedInterviewRounds: 1,
+      consensusReviewIntensity: "elevated" as const,
+      maxInterviewRounds: 8,
+      operatorMaxConsensusRevisions: 10,
+      maxConsensusRevisions: 4,
+    };
+    const interview = {
+      runId: "run_augury_prompt",
+      createdAt: "2026-04-23T00:00:00.000Z",
+      updatedAt: "2026-04-23T00:00:00.000Z",
+      status: "needs-clarification" as const,
+      taskId: taskPacket.id,
+      interviewDepth: "interview" as const,
+      rounds: [
+        {
+          round: 1,
+          question: "Which result should future candidates preserve?",
+          perspective: "judging-basis",
+          clarityScore: 0.92,
+          weakestDimension: "risk",
+          readyForSpec: true,
+          assumptions: [],
+          ontologySnapshot: {
+            goals: ["Keep refresh session behavior stable."],
+            constraints: ["Do not rewrite legacy auth storage."],
+            nonGoals: ["No OAuth scope."],
+            acceptanceCriteria: ["Refresh keeps the active session."],
+            risks: ["Route guard ordering can regress."],
+          },
+        },
+      ],
+      assumptions: [],
+      ontologySnapshots: [
+        {
+          goals: ["Keep refresh session behavior stable."],
+          constraints: ["Do not rewrite legacy auth storage."],
+          nonGoals: ["No OAuth scope."],
+          acceptanceCriteria: ["Refresh keeps the active session."],
+          risks: ["Route guard ordering can regress."],
+        },
+      ],
+    };
+    const planningSpec = {
+      runId: "run_augury_prompt",
+      createdAt: "2026-04-23T00:00:00.000Z",
+      taskId: taskPacket.id,
+      goal: "Clarify the session behavior before execution.",
+      constraints: [],
+      nonGoals: [],
+      acceptanceCriteria: ["Refresh keeps the active session."],
+      assumptionsResolved: [],
+      assumptionLedger: [],
+      repoEvidence: ["Task packet supplied by prompt test."],
+      openRisks: [],
+    };
+    const consultationPlan = createConsultationPlanArtifactFixture(
+      "/repo",
+      "run_augury_prompt",
+      "/repo/.oraculum/runs/run_augury_prompt/reports",
+    );
+    const draft = {
+      summary: "Plan the session fix around a witnessable contract.",
+      principles: [],
+      decisionDrivers: [],
+      viableOptions: [{ name: "contract-first", rationale: "Preserve the clarified result." }],
+      selectedOption: { name: "contract-first", rationale: "Preserve the clarified result." },
+      rejectedAlternatives: [],
+      plannedJudgingCriteria: ["Refresh keeps the active session."],
+      crownGates: ["Do not crown candidates that lose the session on refresh."],
+      requiredChangedPaths: [],
+      protectedPaths: [],
+      workstreams: [],
+      stagePlan: [],
+      assumptionLedger: [],
+      premortem: [],
+      expandedTestPlan: [],
+    };
+
+    const auguryQuestionPrompt = buildPlanningInterviewQuestionPrompt({
+      runId: "run_augury_prompt",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_augury_prompt/reports",
+      taskPacket,
+      depth,
+    });
+    const depthPrompt = buildPlanningDepthPrompt({
+      runId: "run_augury_prompt",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_augury_prompt/reports",
+      taskPacket,
+      maxInterviewRounds: 8,
+      operatorMaxConsensusLoopRevisions: 10,
+    });
+    const continuationPrompt = buildPlanningContinuationPrompt({
+      runId: "run_augury_prompt",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_augury_prompt/reports",
+      taskPacket,
+      activeInterview: interview,
+    });
+    const auguryScorePrompt = buildPlanningInterviewScorePrompt({
+      runId: "run_augury_prompt",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_augury_prompt/reports",
+      taskPacket,
+      interview,
+      answer: "Refresh must preserve the active session.",
+    });
+    const specPrompt = buildPlanningSpecPrompt({
+      runId: "run_augury_prompt",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_augury_prompt/reports",
+      taskPacket,
+      depth: {
+        runId: "run_augury_prompt",
+        createdAt: "2026-04-23T00:00:00.000Z",
+        ...depth,
+      },
+      interview,
+    });
+    const conclaveDraftPrompt = buildPlanConsensusDraftPrompt({
+      runId: "run_augury_prompt",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_augury_prompt/reports",
+      taskPacket,
+      planningSpec,
+      consultationPlan,
+    });
+    const conclaveReviewPrompt = buildPlanArchitectureReviewPrompt({
+      runId: "run_augury_prompt",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_augury_prompt/reports",
+      taskPacket,
+      planningSpec,
+      draft,
+    });
+    const conclaveCriticPrompt = buildPlanCriticReviewPrompt({
+      runId: "run_augury_prompt",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_augury_prompt/reports",
+      taskPacket,
+      planningSpec,
+      draft,
+    });
+    const conclaveRevisionPrompt = buildPlanConsensusRevisionPrompt({
+      runId: "run_augury_prompt",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_augury_prompt/reports",
+      taskPacket,
+      planningSpec,
+      draft,
+      revision: 1,
+      architectReview: {
+        reviewer: "architect",
+        verdict: "revise",
+        summary: "Tighten the crown gate.",
+        requiredChanges: ["Add witnessable session-preservation evidence."],
+        tradeoffs: [],
+        risks: [],
+      },
+    });
+    const planReviewPrompt = buildPlanReviewPrompt({
+      runId: "run_augury_prompt",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_augury_prompt/reports",
+      consultationPlan,
+    });
+
+    expect(depthPrompt).toContain("Return interviewDepth as one of");
+    expect(depthPrompt).toContain("skip-interview, interview, deep-interview");
+    expect(depthPrompt).toContain("standard, elevated, high");
+    expect(depthPrompt).toContain("reasons and estimatedInterviewRounds are required");
+    expect(continuationPrompt).toContain("Return classification as one of");
+    expect(continuationPrompt).toContain("confidence and summary");
+    expect(continuationPrompt).toContain("result contract, scope boundary, or judging basis");
+    expect(auguryQuestionPrompt).toContain("Augury Interview");
+    expect(auguryQuestionPrompt).toContain("witnessable candidate evidence");
+    expect(auguryQuestionPrompt).toContain("single concrete decision");
+    expect(auguryQuestionPrompt).toContain("question, perspective, and expectedAnswerShape");
+    expect(auguryQuestionPrompt).toContain("artifact, oracle signal, acceptance signal");
+    expect(auguryQuestionPrompt).toContain("expectedAnswerShape is required");
+    expect(auguryQuestionPrompt).toContain("future candidate evidence");
+    expect(auguryQuestionPrompt).toContain("disqualifier");
+    expect(auguryQuestionPrompt).toContain("crown gate");
+    expect(auguryScorePrompt).toContain("latest Augury Interview answer");
+    expect(auguryScorePrompt).toContain("ontologySnapshot is the canonical Augury signs bundle");
+    expect(auguryScorePrompt).toContain(
+      "goals, constraints, nonGoals, acceptanceCriteria, and risks",
+    );
+    expect(auguryScorePrompt).toContain("Return empty arrays");
+    expect(auguryScorePrompt).toContain("readyForSpec=true only when");
+    expect(auguryScorePrompt).toContain("at least one witnessable acceptance signal");
+    expect(auguryScorePrompt).toContain("acceptance signals");
+    expect(specPrompt).toContain("Oraculum Augury Interview");
+    expect(specPrompt).toContain("use the latest snapshot as the primary source");
+    expect(specPrompt).toContain("acceptance signs go to acceptanceCriteria");
+    expect(specPrompt).toContain("protected-scope exclusions and disqualifiers go to nonGoals");
+    expect(specPrompt).toContain("risk signs go to openRisks");
+    expect(specPrompt).toContain("Preserve unresolved Augury assumptions");
+    expect(specPrompt).toContain("assumptionsResolved");
+    expect(specPrompt).toContain("repoEvidence");
+    expect(specPrompt).toContain("record the conflict in assumptionLedger or openRisks");
+    expect(conclaveDraftPrompt).toContain("Plan Conclave-reviewed");
+    expect(conclaveDraftPrompt).toContain(
+      "Carry Augury-derived acceptance, non-goal, and risk signs",
+    );
+    expect(conclaveDraftPrompt).toContain("Map acceptance signs to plannedJudgingCriteria");
+    expect(conclaveDraftPrompt).toContain("Map non-goals and disqualifiers");
+    expect(conclaveDraftPrompt).toContain("Map risks to premortem");
+    expect(conclaveDraftPrompt).toContain("expandedTestPlan");
+    expect(conclaveDraftPrompt).toContain("viableOptions, selectedOption, rejectedAlternatives");
+    expect(conclaveDraftPrompt).toContain("assumptionLedger, premortem, and expandedTestPlan");
+    expect(conclaveDraftPrompt).toContain("scorecardDefinition");
+    expect(conclaveDraftPrompt).toContain("repairPolicy");
+    expect(conclaveReviewPrompt).toContain("Oraculum Plan Conclave");
+    expect(conclaveReviewPrompt).toContain("reject only when no bounded revision");
+    expect(conclaveReviewPrompt).toContain("requiredChanges, tradeoffs, and risks");
+    expect(conclaveCriticPrompt).toContain("repair/eliminate policy gaps");
+    expect(conclaveRevisionPrompt).toContain("Plan Conclave consultation plan draft");
+    expect(conclaveRevisionPrompt).toContain("crownGates, repairPolicy, or scorecardDefinition");
+    expect(planReviewPrompt).toContain("review recommends blocking treatment");
+    expect(planReviewPrompt).toContain("Return nextAction");
+    expect(planReviewPrompt).toContain("deterministic readiness will decide");
+    expect(planReviewPrompt).toContain("repair policies that fail to distinguish repairable");
+    expect(planReviewPrompt).not.toContain("strategyHints");
+  });
+
   it("includes plan-derived judging presets in winner-selection prompts", () => {
     const winnerPrompt = buildWinnerSelectionPrompt({
       runId: "run_plan_judging_prompt",
@@ -45,8 +290,13 @@ describe("adapter prompts", () => {
       "If no finalist clearly satisfies these gates, abstain instead of forcing a recommendation.",
     );
     expect(winnerPrompt).toContain(
-      '"decision":"select","candidateId":"cand-01","confidence":"high","summary":"short rationale","judgingCriteria":["criterion"]}',
+      '"decision":"select","candidateId":"cand-01","confidence":"high","summary":"short evidence-grounded rationale","judgingCriteria":["task contract fit"]}',
     );
+    expect(winnerPrompt).toContain(
+      '"decision":"abstain","candidateId":null,"confidence":"low","summary":"why no finalist is safe to recommend","judgingCriteria":["task contract fit"]}',
+    );
+    expect(winnerPrompt).toContain("candidateId=null when abstaining");
+    expect(winnerPrompt).toContain("Agent summaries are context, not evidence.");
     expect(winnerPrompt).toContain(
       "Respect the planned crown gates; abstain if no finalist clearly satisfies them.",
     );
@@ -201,12 +451,17 @@ describe("adapter prompts", () => {
       expect(prompt).toContain("Do not rewrite legacy auth storage.");
     }
     expect(specPrompt).toContain("Do not edit files. Do not describe completed work.");
+    expect(specPrompt).toContain("expected changed paths only when grounded");
+    expect(specPrompt).toContain("what failure would eliminate it");
     expect(selectionPrompt).toContain("rankedCandidateIds must list every provided candidate id");
+    expect(selectionPrompt).toContain("Select only the top candidate by default.");
+    expect(selectionPrompt).toContain("materially justify extra exploration");
     expect(candidatePrompt).toContain("Selected implementation spec:");
     expect(candidatePrompt).toContain("Restore session state before route checks.");
     expect(candidatePrompt).toContain(
       "Treat this as the implementation contract for this candidate",
     );
+    expect(candidatePrompt).toContain("Materialize the strategy's task contract");
   });
 
   it("includes workspace command execution context in the profile selection prompt", () => {
@@ -427,12 +682,16 @@ describe("adapter prompts", () => {
 
     expect(candidatePrompt).toContain("You are generating one Oraculum candidate result.");
     expect(candidatePrompt).toContain(
-      "- Materialize the required result by editing files in the workspace. Do not only describe the intended changes.",
+      "- Materialize the required result by editing files in the workspace; do not only describe the intended changes.",
     );
     expect(candidatePrompt).toContain(
-      "- Candidates without a materialized result will be eliminated.",
+      "- Candidates without real edited files on disk will be eliminated.",
     );
-    expect(candidatePrompt).toContain("- Produce the strongest result you can for this strategy.");
+    expect(candidatePrompt).toContain("- Materialize the strategy's task contract.");
+    expect(candidatePrompt).toContain(
+      "- Narrow scope only when repository evidence makes the broader path unsafe or impossible.",
+    );
+    expect(candidatePrompt).toContain("stop cleanly and report the unsatisfied contract");
     expect(candidatePrompt).toContain(
       "- Keep the final response concise and focused on the materialized result.",
     );
@@ -443,7 +702,7 @@ describe("adapter prompts", () => {
       "Either select the single safest finalist as the recommended result or abstain if no finalist is safe enough.",
     );
     expect(winnerPrompt).toContain(
-      '"decision":"abstain","confidence":"low","summary":"why no finalist is safe to recommend"',
+      '"decision":"abstain","candidateId":null,"confidence":"low","summary":"why no finalist is safe to recommend"',
     );
     expect(preflightPrompt).toContain(
       "Do not solve the task and do not propose implementations. Only decide readiness.",

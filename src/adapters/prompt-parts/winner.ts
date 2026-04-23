@@ -10,16 +10,14 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
   const plannedDecisionDrivers = request.plannedJudgingPreset?.decisionDrivers ?? [];
   const plannedJudgingCriteria = request.plannedJudgingPreset?.plannedJudgingCriteria ?? [];
   const plannedCrownGates = request.plannedJudgingPreset?.crownGates ?? [];
-  const hasExplicitArtifactIntent = Boolean(
-    request.taskPacket.artifactKind || request.taskPacket.targetArtifactPath,
-  );
   const hasPlannedJudgingPreset = plannedJudgingCriteria.length > 0 || plannedCrownGates.length > 0;
-  const shouldReturnJudgingCriteria = hasExplicitArtifactIntent || hasPlannedJudgingPreset;
+  const shouldReturnJudgingCriteria = true;
   const sections: string[] = [
     "You are selecting the best Oraculum finalist.",
     "Either select the single safest finalist as the recommended result or abstain if no finalist is safe enough.",
     "Prefer the candidate that best satisfies the task while preserving repo rules and leaving the strongest reviewable evidence.",
-    `Return JSON only in one of these shapes: {"decision":"select","candidateId":"cand-01","confidence":"high","summary":"short rationale"${shouldReturnJudgingCriteria ? ',"judgingCriteria":["criterion"]' : ""}} or {"decision":"abstain","confidence":"low","summary":"why no finalist is safe to recommend"${shouldReturnJudgingCriteria ? ',"judgingCriteria":["criterion"]' : ""}}`,
+    'Return JSON only. Example shape only: {"decision":"select","candidateId":"cand-01","confidence":"high","summary":"short evidence-grounded rationale","judgingCriteria":["task contract fit"]} or {"decision":"abstain","candidateId":null,"confidence":"low","summary":"why no finalist is safe to recommend","judgingCriteria":["task contract fit"]}.',
+    "If your runtime schema requires nullable placeholders, use candidateId=null when abstaining and judgingCriteria=null only when no concrete criteria can be stated.",
     "",
     `Task ID: ${request.taskPacket.id}`,
     `Task Title: ${request.taskPacket.title}`,
@@ -34,15 +32,14 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
   appendTaskSourceContext(sections, request.taskPacket);
   appendStructuredResearchContext(sections, request.taskPacket);
 
-  if (hasExplicitArtifactIntent) {
-    sections.push(
-      "",
-      "Artifact-aware judging checklist:",
-      "- Derive 2-5 concrete judging criteria from the explicit target result before comparing finalists.",
-      '- Return those criteria in JSON as "judgingCriteria".',
-      "- Reuse the same criteria whether you select a finalist or abstain.",
-    );
-  }
+  sections.push(
+    "",
+    "Judging checklist:",
+    "- Derive 2-5 concrete judging criteria from the task contract before comparing finalists.",
+    '- Return those criteria in JSON as "judgingCriteria".',
+    "- Reuse the same criteria whether you select a finalist or abstain.",
+    "- Return confidence that reflects actual evidence strength, and explain uncertainty in the summary.",
+  );
 
   if (plannedDecisionDrivers.length > 0) {
     sections.push(
@@ -107,6 +104,7 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
     sections.push(
       "",
       "Planned scorecard rules:",
+      "- Treat planned scorecards as supporting evidence, not a second governing contract unless they directly enforce crown gates.",
       "- Prefer finalists with broader workstream coverage and cleaner staged execution.",
       "- Fewer scorecard violations and unresolved risks are stronger deterministic evidence.",
       "- If no finalist clearly clears the staged contract, abstain instead of forcing a recommendation.",
@@ -200,6 +198,8 @@ export function buildWinnerSelectionPrompt(request: AgentJudgeRequest): string {
   sections.push(
     "",
     "Rules:",
+    "- Evidence hierarchy: oracle verdicts, witnesses, planned scorecards, and crown gates outrank agent summaries.",
+    "- Agent summaries are context, not evidence.",
     "- If one finalist is safe and clearly best, return decision=select with one listed candidate ID.",
     "- If finalists are too weak, too close, or missing critical evidence, return decision=abstain.",
     "- Missing deep validation or profile gaps are valid reasons to abstain when the remaining evidence is not strong enough.",

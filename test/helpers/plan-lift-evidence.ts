@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error plan-lift evidence is authored as an ESM script.
 import { runPlanLiftEvidence } from "../../scripts/plan-lift-evidence.mjs";
 import * as runDomain from "../../src/domain/run.js";
-import * as mcpTools from "../../src/services/mcp-tools.js";
+import * as orcActions from "../../src/services/orc-actions.js";
 import * as planLiftHarness from "../../src/services/plan-lift-harness.js";
 import { PLAN_LIFT_EVIDENCE_HOOK_TIMEOUT_MS } from "./integration.js";
 
@@ -43,7 +43,7 @@ export function definePlanLiftEvidenceSuite(
 
     beforeAll(async () => {
       evidence = (await runPlanLiftEvidence({
-        mcpTools,
+        orcActions,
         planLiftHarness,
         runDomain,
         scenarioIds,

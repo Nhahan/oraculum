@@ -267,7 +267,7 @@ export class ClaudeAdapter implements AgentAdapter {
     request: AgentPlanningQuestionRequest,
   ): Promise<AgentPlanningQuestionResult> {
     return this.runRecommendation({
-      fallbackSummary: "Claude planning interview question finished.",
+      fallbackSummary: "Claude Augury Interview question finished.",
       filenames: {
         prompt: "planning-question.prompt.txt",
         stderr: "planning-question.stderr.txt",
@@ -285,7 +285,7 @@ export class ClaudeAdapter implements AgentAdapter {
     request: AgentPlanningScoreRequest,
   ): Promise<AgentPlanningScoreResult> {
     return this.runRecommendation({
-      fallbackSummary: "Claude planning interview scoring finished.",
+      fallbackSummary: "Claude Augury Interview scoring finished.",
       filenames: {
         prompt: "planning-score.prompt.txt",
         stderr: "planning-score.stderr.txt",
@@ -321,7 +321,7 @@ export class ClaudeAdapter implements AgentAdapter {
     request: AgentPlanConsensusDraftRequest,
   ): Promise<AgentPlanConsensusDraftResult> {
     return this.runRecommendation({
-      fallbackSummary: "Claude consensus plan draft finished.",
+      fallbackSummary: "Claude Plan Conclave draft finished.",
       filenames: {
         prompt: "plan-consensus-draft.prompt.txt",
         stderr: "plan-consensus-draft.stderr.txt",
@@ -339,7 +339,7 @@ export class ClaudeAdapter implements AgentAdapter {
     request: AgentPlanConsensusReviewRequest,
   ): Promise<AgentPlanConsensusReviewResult> {
     return this.runRecommendation({
-      fallbackSummary: "Claude consensus architect review finished.",
+      fallbackSummary: "Claude Plan Conclave architect review finished.",
       filenames: {
         prompt: "plan-architect-review.prompt.txt",
         stderr: "plan-architect-review.stderr.txt",
@@ -357,7 +357,7 @@ export class ClaudeAdapter implements AgentAdapter {
     request: AgentPlanConsensusReviewRequest,
   ): Promise<AgentPlanConsensusReviewResult> {
     return this.runRecommendation({
-      fallbackSummary: "Claude consensus critic review finished.",
+      fallbackSummary: "Claude Plan Conclave critic review finished.",
       filenames: {
         prompt: "plan-critic-review.prompt.txt",
         stderr: "plan-critic-review.stderr.txt",
@@ -375,7 +375,7 @@ export class ClaudeAdapter implements AgentAdapter {
     request: AgentPlanConsensusRevisionRequest,
   ): Promise<AgentPlanConsensusDraftResult> {
     return this.runRecommendation({
-      fallbackSummary: "Claude consensus plan revision finished.",
+      fallbackSummary: "Claude Plan Conclave revision finished.",
       filenames: {
         prompt: "plan-consensus-revision.prompt.txt",
         stderr: "plan-consensus-revision.stderr.txt",

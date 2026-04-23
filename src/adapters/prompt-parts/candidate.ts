@@ -122,10 +122,11 @@ export function buildCandidatePrompt(request: AgentRunRequest): string {
     "",
     "Instructions:",
     "- Work only inside the provided workspace.",
-    "- Materialize the required result by editing files in the workspace. Do not only describe the intended changes.",
-    "- Leave the workspace with the real edited files on disk before you finish.",
-    "- Candidates without a materialized result will be eliminated.",
-    "- Produce the strongest result you can for this strategy.",
+    "- Materialize the required result by editing files in the workspace; do not only describe the intended changes.",
+    "- Candidates without real edited files on disk will be eliminated.",
+    "- Materialize the strategy's task contract.",
+    "- Narrow scope only when repository evidence makes the broader path unsafe or impossible.",
+    "- If oracle evidence disproves the current approach, repair or narrow the implementation; if it cannot satisfy the contract, stop cleanly and report the unsatisfied contract instead of hiding the failure.",
     "- Keep the final response concise and focused on the materialized result.",
   );
 

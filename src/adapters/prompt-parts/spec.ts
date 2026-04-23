@@ -32,8 +32,9 @@ export function buildCandidateSpecPrompt(request: AgentCandidateSpecRequest): st
     "Spec requirements:",
     "- Propose a concrete implementation path for this candidate strategy.",
     "- Keep the spec narrow enough to implement directly in one candidate workspace.",
-    "- Include expected changed paths when you can infer them from the repo or plan contract.",
+    "- Include project-relative expected changed paths only when grounded by the task, plan, or observed repo evidence.",
     "- Include validation steps tied to repo-local or planned oracles when available.",
+    "- State what evidence would show this candidate satisfies the contract and what failure would eliminate it.",
     "- Call out material risks or uncertainty instead of hiding them.",
     "- Return JSON with summary, approach, keyChanges, expectedChangedPaths, acceptanceCriteria, validationPlan, and riskNotes.",
   );
@@ -102,7 +103,9 @@ export function buildSpecSelectionPrompt(request: AgentCandidateSpecSelectionReq
     "- rankedCandidateIds must list every provided candidate id exactly once, strongest first.",
     "- selectedCandidateIds should usually contain only the top-ranked candidate.",
     "- Use implementationVarianceRisk=high when plausible specs make materially different code changes, when the task has hidden-risk signals, or when planned/profiler validation has gaps.",
-    "- When implementationVarianceRisk=high or validationGaps is non-empty, selectedCandidateIds may include the top two candidates.",
+    "- Select only the top candidate by default.",
+    "- Select the top two candidates only when implementationVarianceRisk=high or validationGaps materially justify extra exploration.",
+    "- Crownable spec quality means the spec is falsifiable by repository evidence and likely to produce a reviewable patch, not just plausible prose.",
     "- Include one reason per candidate with its rank and whether it is selected.",
     "- Do not invent candidate ids.",
   );

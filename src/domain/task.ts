@@ -22,49 +22,30 @@ export const taskResearchClaimSchema = z.object({
   statement: z.string().min(1),
   sourceLocators: z.array(z.string().min(1)).default([]),
 });
-export const taskResearchContextSchema = z.preprocess(
-  (value) => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      return value;
+export const taskResearchContextSchema = z
+  .object({
+    question: z.string().min(1),
+    summary: z.string().min(1),
+    confidence: decisionConfidenceSchema.optional(),
+    signalSummary: z.array(z.string().min(1)).default([]),
+    signalFingerprint: z.string().min(1).optional(),
+    sources: z.array(taskResearchSourceSchema).default([]),
+    claims: z.array(taskResearchClaimSchema).default([]),
+    versionNotes: z.array(z.string().min(1)).default([]),
+    unresolvedConflicts: z.array(z.string().min(1)).default([]),
+    conflictHandling: taskResearchConflictHandlingSchema,
+  })
+  .superRefine((value, context) => {
+    const expectedHandling = deriveResearchConflictHandling(value.unresolvedConflicts);
+    if (value.conflictHandling !== expectedHandling) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["conflictHandling"],
+        message:
+          "conflictHandling must match unresolvedConflicts: use manual-review-required when conflicts exist, otherwise accepted.",
+      });
     }
-
-    const payload = value as Record<string, unknown>;
-    const unresolvedConflicts = Array.isArray(payload.unresolvedConflicts)
-      ? payload.unresolvedConflicts.filter((entry): entry is string => typeof entry === "string")
-      : [];
-
-    return {
-      ...payload,
-      ...(typeof payload.conflictHandling === "string"
-        ? {}
-        : { conflictHandling: deriveResearchConflictHandling(unresolvedConflicts) }),
-    };
-  },
-  z
-    .object({
-      question: z.string().min(1),
-      summary: z.string().min(1),
-      confidence: decisionConfidenceSchema.optional(),
-      signalSummary: z.array(z.string().min(1)).default([]),
-      signalFingerprint: z.string().min(1).optional(),
-      sources: z.array(taskResearchSourceSchema).default([]),
-      claims: z.array(taskResearchClaimSchema).default([]),
-      versionNotes: z.array(z.string().min(1)).default([]),
-      unresolvedConflicts: z.array(z.string().min(1)).default([]),
-      conflictHandling: taskResearchConflictHandlingSchema,
-    })
-    .superRefine((value, context) => {
-      const expectedHandling = deriveResearchConflictHandling(value.unresolvedConflicts);
-      if (value.conflictHandling !== expectedHandling) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["conflictHandling"],
-          message:
-            "conflictHandling must match unresolvedConflicts: use manual-review-required when conflicts exist, otherwise accepted.",
-        });
-      }
-    }),
-);
+  });
 
 export const taskPacketSourceSchema = z
   .object({

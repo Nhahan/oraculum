@@ -89,7 +89,7 @@ export const judgePolicySchema = z
 export const planningOperatorCapsSchema = z
   .object({
     explicitPlanMaxInterviewRounds: z.number().int().min(0).max(32).default(8),
-    explicitPlanMaxConsensusRevisions: z.number().int().min(0).max(16).default(3),
+    explicitPlanMaxConsensusRevisions: z.number().int().min(0).max(16).default(10),
     explicitPlanModelCallTimeoutMs: z
       .number()
       .int()

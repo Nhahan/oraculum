@@ -195,7 +195,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"decision":"abstain","confidence":"low","summary":"Deep validation is incomplete."}',
+    '{"decision":"abstain","candidateId":null,"confidence":"low","summary":"Deep validation is incomplete.","judgingCriteria":["Deep validation is complete enough to recommend."]}',
     "utf8",
   );
 }
@@ -277,10 +277,10 @@ if (out) {
       "No build validation command was selected.",
     );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
-      "Artifact-aware judging checklist:",
+      "Judging checklist:",
     );
     await expect(readFile(join(logDir, "winner-judge.prompt.txt"), "utf8")).resolves.toContain(
-      '"judgingCriteria":["criterion"]',
+      '"judgingCriteria":["task contract fit"]',
     );
   });
 
@@ -301,7 +301,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"decision":"abstain","confidence":"low","summary":"No finalist is clearly safest.","judgingCriteria":null}',
+    '{"decision":"abstain","candidateId":null,"confidence":"low","summary":"No finalist is clearly safest.","judgingCriteria":null}',
     "utf8",
   );
 }
@@ -354,8 +354,10 @@ if (out) {
     expect(result.status).toBe("completed");
     expect(result.recommendation).toEqual({
       decision: "abstain",
+      candidateId: null,
       confidence: "low",
       summary: "No finalist is clearly safest.",
+      judgingCriteria: null,
     });
   });
 
@@ -376,7 +378,7 @@ for (let index = 0; index < process.argv.length; index += 1) {
 if (out) {
   fs.writeFileSync(
     out,
-    '{"decision":"abstain","confidence":"low","summary":"The finalists are too weak to recommend safely."}',
+    '{"decision":"abstain","candidateId":null,"confidence":"low","summary":"The finalists are too weak to recommend safely.","judgingCriteria":["Finalist evidence is strong enough to support a safe recommendation."]}',
     "utf8",
   );
 }
@@ -399,14 +401,16 @@ if (out) {
     expect(result.status).toBe("completed");
     expect(result.recommendation).toEqual({
       decision: "abstain",
+      candidateId: null,
       confidence: "low",
+      judgingCriteria: ["Finalist evidence is strong enough to support a safe recommendation."],
       summary: "The finalists are too weak to recommend safely.",
     });
   });
 
-  it("accepts legacy winner output that omits an explicit decision", async () => {
+  it("rejects winner output that omits an explicit decision", async () => {
     const root = await createTempRoot();
-    const logDir = join(root, "judge-legacy-logs");
+    const logDir = join(root, "judge-missing-decision-logs");
 
     const binaryPath = await writeNodeBinary(
       root,
@@ -442,12 +446,7 @@ if (out) {
     });
 
     expect(result.status).toBe("completed");
-    expect(result.recommendation).toEqual({
-      decision: "select",
-      candidateId: "cand-01",
-      confidence: "high",
-      summary: "missing the explicit decision field",
-    });
+    expect(result.recommendation).toBeUndefined();
   });
 
   it("asks Claude to recommend a winner with plan-mode json-schema output", async () => {
@@ -463,6 +462,7 @@ process.stderr.write(JSON.stringify({ argv: process.argv.slice(2), schema }));
 process.stdout.write(JSON.stringify({
   type: "result",
   structured_output: {
+    decision: "select",
     candidateId: "cand-01",
     confidence: "medium",
     summary: "cand-01 is the safest finalist.",

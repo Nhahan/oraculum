@@ -71,20 +71,7 @@ export function buildCodexPlanReviewJsonSchema(): Record<string, unknown> {
 }
 
 export function buildCodexProfileRecommendationJsonSchema(): Record<string, unknown> {
-  const base = buildAgentProfileRecommendationJsonSchema() as {
-    properties: Record<string, Record<string, unknown>>;
-  };
-
-  return {
-    ...base,
-    properties: {
-      ...base.properties,
-      profileId: buildCodexNullableSchema(base.properties.profileId ?? {}),
-      summary: buildCodexNullableSchema(base.properties.summary ?? {}),
-      missingCapabilities: buildCodexNullableSchema(base.properties.missingCapabilities ?? {}),
-    },
-    required: Object.keys(base.properties),
-  };
+  return buildAgentProfileRecommendationJsonSchema();
 }
 
 export function buildCodexCandidateSpecJsonSchema(): Record<string, unknown> {
@@ -131,6 +118,17 @@ export function buildCodexPlanConsensusReviewJsonSchema(): Record<string, unknow
 }
 
 function buildCodexNullableSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  if (Array.isArray(schema.anyOf)) {
+    const variants = schema.anyOf.filter(
+      (variant): variant is Record<string, unknown> =>
+        Boolean(variant) && typeof variant === "object" && !Array.isArray(variant),
+    );
+    const hasNull = variants.some((variant) => variant.type === "null");
+    return {
+      anyOf: hasNull ? variants : [...variants, { type: "null" }],
+    };
+  }
+
   return {
     anyOf: [schema, { type: "null" }],
   };

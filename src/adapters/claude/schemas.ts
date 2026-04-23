@@ -17,13 +17,13 @@ export function buildClaudeWinnerRecommendationSchema(): Record<string, unknown>
         type: "string",
         enum: ["select", "abstain"],
       },
-      candidateId: { type: "string", minLength: 1 },
+      candidateId: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] },
       confidence: {
         type: "string",
         enum: ["low", "medium", "high"],
       },
       summary: { type: "string", minLength: 1 },
-      judgingCriteria: judgingCriteriaProperty,
+      judgingCriteria: { anyOf: [judgingCriteriaProperty, { type: "null" }] },
     },
     required: ["decision", "confidence", "summary"],
   };

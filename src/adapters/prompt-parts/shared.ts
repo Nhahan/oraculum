@@ -219,7 +219,7 @@ export function appendResearchSignalDriftContext(
   sections.push(
     "Research staleness rule:",
     driftDetected
-      ? "- The repository signal basis has changed since this research was captured. Reuse only the research still consistent with current repository evidence, and require fresh external research when the old basis may now be stale."
+      ? "- The repository signal basis has changed since this research was captured. If the drift affects the unresolved external dependency or cited research basis, require fresh external research; otherwise reuse the prior research conservatively."
       : "- The repository signal basis still matches the accepted research snapshot. Reuse that research conservatively, but continue treating repository evidence as the source of truth for execution and validation.",
   );
 }

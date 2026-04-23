@@ -20,14 +20,18 @@ import {
   recommendConsultationPreflight,
 } from "../consultation-preflight.js";
 import { recommendConsultationProfile } from "../consultation-profile.js";
-import { buildPlanConsensus, writePlanConsensusArtifact } from "../plan-consensus/index.js";
+import {
+  buildPlanConsensus,
+  summarizePlanConsensusBlocker,
+  writePlanConsensusArtifact,
+} from "../plan-consensus/index.js";
 import {
   buildPlanningInterviewNeedingAnswer,
   classifyPlanningContinuation,
   crystallizePlanningSpecArtifact,
   findActivePlanningInterview,
   recommendPlanningDepthArtifact,
-  resolvePlanningCaps,
+  resolvePlanningLoopCaps,
   scorePlanningInterviewAnswer,
   writePlanningInterviewArtifacts,
 } from "../planning-interview/index.js";
@@ -93,11 +97,11 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
   const runPaths = await store.ensureRunDirectories(runId);
   const reportsDir = runPaths.reportsDir;
   const planningLane = options.planningLane ?? "consult-lite";
-  const planningCaps = resolvePlanningCaps(configLayers);
+  const planningLoopCaps = resolvePlanningLoopCaps(configLayers);
   const adapterOptions = buildAdapterFactoryOptions(
     options.preflight,
     options.autoProfile,
-    planningLane === "explicit-plan" ? planningCaps.explicitPlanModelCallTimeoutMs : undefined,
+    planningLane === "explicit-plan" ? planningLoopCaps.explicitPlanModelCallTimeoutMs : undefined,
   );
 
   const adapter =
@@ -157,7 +161,7 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
     });
     planningDepth = await recommendPlanningDepthArtifact({
       adapter,
-      caps: planningCaps,
+      caps: planningLoopCaps,
       createdAt,
       projectRoot,
       reportsDir,
@@ -220,7 +224,14 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
       });
     }
 
-    if (activeInterview) {
+    const shouldContinueInterviewLoop = Boolean(activeInterview);
+    const shouldStartInterviewLoop =
+      planningDepth.maxInterviewRounds > 0 &&
+      (planningDepth.readiness === "needs-interview" ||
+        planningDepth.interviewDepth !== "skip-interview" ||
+        planningDepth.estimatedInterviewRounds > 0);
+
+    if (shouldContinueInterviewLoop && activeInterview) {
       planningInterview = await scorePlanningInterviewAnswer({
         adapter,
         answer: taskPacket.intent,
@@ -244,12 +255,7 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
           taskPacket,
         });
       }
-    } else if (
-      planningDepth.maxInterviewRounds > 0 &&
-      (planningDepth.readiness === "needs-interview" ||
-        planningDepth.depth !== "skip-interview" ||
-        planningDepth.estimatedInterviewRounds > 0)
-    ) {
+    } else if (shouldStartInterviewLoop) {
       planningInterview = await buildPlanningInterviewNeedingAnswer({
         adapter,
         createdAt,
@@ -438,7 +444,8 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
       : undefined;
   await writeJsonFile(configPath, config);
 
-  if (planningSpec && planningLane === "explicit-plan") {
+  const shouldRunConsensusLoop = Boolean(planningSpec && planningLane === "explicit-plan");
+  if (shouldRunConsensusLoop && planningSpec) {
     planConsensus = await buildPlanConsensus({
       adapter,
       basePlan: buildConsultationPlanArtifact({
@@ -461,7 +468,7 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
         planningSpec,
       }),
       createdAt,
-      maxRevisions: planningDepth?.maxConsensusRevisions ?? 0,
+      maxConsensusLoopRevisions: planningDepth?.maxConsensusRevisions ?? 0,
       planningSpec,
       projectRoot,
       reportsDir,
@@ -475,14 +482,13 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
     });
 
     if (!planConsensus.approved) {
+      const blocker = summarizePlanConsensusBlocker(planConsensus);
       const blockedPreflight = {
         decision: "needs-clarification" as const,
         confidence: "medium" as const,
-        summary:
-          "Consensus review did not approve the explicit consultation plan before the configured revision cap.",
+        summary: blocker.summary,
         researchPosture: "repo-only" as const,
-        clarificationQuestion:
-          "Consensus review did not approve before the revision cap; revise the task contract or rerun planning.",
+        clarificationQuestion: blocker.clarificationQuestion,
       };
       return await persistBlockedPlanningManifest({
         agent,

@@ -32,9 +32,15 @@ export const consultationPlanReadinessStatusSchema = z.enum([
 ]);
 export const consultationPlanReviewArtifactStatusSchema = z.enum(["clear", "issues", "blocked"]);
 export const consultationPlanReviewStatusSchema = z.enum(["not-run", "clear", "issues", "blocked"]);
-export const planningDepthSchema = z.enum(["skip-interview", "interview", "deep-interview"]);
+export const planningInterviewDepthSchema = z.enum([
+  "skip-interview",
+  "interview",
+  "deep-interview",
+]);
+export const planningDepthSchema = planningInterviewDepthSchema;
 export const planningReadinessSchema = z.enum(["ready", "needs-interview", "blocked"]);
-export const planningConsensusReviewDepthSchema = z.enum(["standard", "deep"]);
+export const planningConsensusReviewIntensitySchema = z.enum(["standard", "elevated", "high"]);
+export const planningConsensusReviewDepthSchema = planningConsensusReviewIntensitySchema;
 export const planningContinuationClassificationSchema = z.enum(["new-task", "continuation"]);
 export const planConsensusReviewVerdictSchema = z.enum(["approve", "revise", "reject"]);
 export const consultationPlanReadinessSchema = z.object({
@@ -104,14 +110,15 @@ export const planningOntologySnapshotSchema = z.object({
 export const planningDepthArtifactSchema = z.object({
   runId: artifactPathSegmentSchema,
   createdAt: z.string().min(1),
-  depth: planningDepthSchema,
+  interviewDepth: planningInterviewDepthSchema,
   readiness: planningReadinessSchema,
   confidence: z.string().min(1),
   summary: z.string().min(1),
   reasons: z.array(z.string().min(1)).default([]),
   estimatedInterviewRounds: z.number().int().min(0).max(8),
-  consensusReviewDepth: planningConsensusReviewDepthSchema,
+  consensusReviewIntensity: planningConsensusReviewIntensitySchema,
   maxInterviewRounds: z.number().int().min(0),
+  operatorMaxConsensusRevisions: z.number().int().min(0),
   maxConsensusRevisions: z.number().int().min(0),
 });
 export const planningInterviewRoundSchema = z.object({
@@ -133,7 +140,7 @@ export const planningInterviewArtifactSchema = z.object({
   status: z.enum(["needs-clarification", "ready-for-spec", "blocked"]),
   taskId: z.string().min(1),
   sourceRunId: artifactPathSegmentSchema.optional(),
-  depth: planningDepthSchema,
+  interviewDepth: planningInterviewDepthSchema,
   rounds: z.array(planningInterviewRoundSchema).default([]),
   clarityScore: z.number().min(0).max(1).optional(),
   weakestDimension: z.string().min(1).optional(),
@@ -255,29 +262,17 @@ export const consultationPlanArtifactSchema = z.object({
   task: materializedTaskPacketSchema,
   preflight: consultationPreflightSchema.optional(),
   profileSelection: consultationProfileSelectionSchema.optional(),
-  repoBasis: consultationPlanRepoBasisSchema.default({
-    projectRoot: "<unknown>",
-    signalFingerprint: "unknown",
-    availableOracleIds: [],
-  }),
+  repoBasis: consultationPlanRepoBasisSchema,
   candidateCount: z.number().int().min(0),
   plannedStrategies: z.array(consultationPlanStrategySchema).default([]),
   oracleIds: z.array(artifactPathSegmentSchema).default([]),
   requiredChangedPaths: z.array(projectRelativePathSchema).default([]),
   protectedPaths: z.array(projectRelativePathSchema).default([]),
   roundOrder: z.array(consultationPlanRoundSchema).default([]),
-  workstreams: z.array(consultationPlanWorkstreamSchema).default([]),
-  stagePlan: z.array(consultationPlanStageSchema).default([]),
-  scorecardDefinition: consultationPlanScorecardDefinitionSchema.default({
-    dimensions: [],
-    abstentionTriggers: [],
-  }),
-  repairPolicy: consultationPlanRepairPolicySchema.default({
-    maxAttemptsPerStage: 0,
-    immediateElimination: [],
-    repairable: [],
-    preferAbstainOverRetry: [],
-  }),
+  workstreams: z.array(consultationPlanWorkstreamSchema),
+  stagePlan: z.array(consultationPlanStageSchema),
+  scorecardDefinition: consultationPlanScorecardDefinitionSchema,
+  repairPolicy: consultationPlanRepairPolicySchema,
   planningSpecPath: projectRelativePathSchema.optional(),
   planningInterviewPath: projectRelativePathSchema.optional(),
   planConsensusPath: projectRelativePathSchema.optional(),
