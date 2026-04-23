@@ -83,7 +83,6 @@ describe("uninstall command", () => {
     mockedUninstallClaudeCodeHost.mockResolvedValue({
       installRoot: "/tmp/home/.oraculum/chat-native/claude-code",
       marketplaceRemoved: true,
-      mcpConfigPath: "/tmp/home/.claude/mcp.json",
       pluginRemoved: true,
     });
     mockedUninstallCodexHost.mockResolvedValue({
@@ -117,7 +116,7 @@ describe("uninstall command", () => {
     expect(mockedUninstallHostWrapperShellBindings).not.toHaveBeenCalled();
   });
 
-  it("removes legacy shell-wrapper bindings after scoped uninstall when no host integrations remain", async () => {
+  it("removes shell-wrapper bindings after scoped uninstall when no host integrations remain", async () => {
     mockedBuildSetupDiagnosticsResponse.mockResolvedValueOnce({
       mode: "setup-status",
       cwd: process.cwd(),

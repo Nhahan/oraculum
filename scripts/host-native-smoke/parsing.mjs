@@ -1,14 +1,10 @@
-export function countToolCalls(runtime, output, command) {
-  if (runtime === "claude-code") {
-    return countHostToolUses(output, `mcp__plugin_oraculum_oraculum__oraculum_${command}`);
+export function countToolCalls(_runtime, output, command) {
+  const directCliUses = countDirectCliRouteUses(output, command);
+  if (directCliUses > 0) {
+    return directCliUses;
   }
 
-  const parsed = countHostToolUses(output, `oraculum_${command}`);
-  if (parsed > 0) {
-    return parsed;
-  }
-
-  return countOccurrences(output, `mcp: oraculum/oraculum_${command} started`);
+  return countOccurrences(output, `oraculum orc ${command}`);
 }
 
 export function assertVerifiedCrownMaterialization(runtime, output) {
@@ -22,10 +18,62 @@ export function assertVerifiedCrownMaterialization(runtime, output) {
       entry.materialization.changedPathCount > 0,
   );
 
-  if (!verified) {
+  const verifiedText =
+    output.includes("Crowned ") &&
+    output.includes("Changed paths:") &&
+    output.includes("Post-checks:") &&
+    output.includes("passed");
+
+  if (!verified && !verifiedText) {
     throw new Error(
       `${runtime} crown did not return verified materialization evidence.\n${output}`,
     );
+  }
+}
+
+function countDirectCliRouteUses(output, command) {
+  const commands = new Set();
+  const needles = [
+    `oraculum orc ${command}`,
+    `dist/cli.js orc ${command}`,
+    `cli.js orc ${command}`,
+  ];
+
+  for (const line of output.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) {
+      continue;
+    }
+
+    try {
+      collectDirectCliCommands(JSON.parse(trimmed), needles, commands);
+    } catch {
+      // Host CLIs can mix JSONL with plain diagnostics; non-JSON lines are not route evidence.
+    }
+  }
+
+  return commands.size;
+}
+
+function collectDirectCliCommands(value, needles, commands) {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectDirectCliCommands(entry, needles, commands);
+    }
+    return;
+  }
+
+  if (!isObject(value)) {
+    return;
+  }
+
+  const command = typeof value.command === "string" ? value.command : undefined;
+  if (command && needles.some((needle) => command.includes(needle))) {
+    commands.add(command);
+  }
+
+  for (const child of Object.values(value)) {
+    collectDirectCliCommands(child, needles, commands);
   }
 }
 
@@ -91,71 +139,6 @@ function collectCrownMaterializations(value, matches) {
   for (const child of Object.values(value)) {
     collectCrownMaterializations(child, matches);
   }
-}
-
-function countHostToolUses(output, toolName) {
-  const toolUseIds = new Set();
-  let anonymousToolUses = 0;
-
-  for (const line of output.split(/\r?\n/u)) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("{")) {
-      continue;
-    }
-
-    try {
-      for (const toolUse of collectHostToolUses(JSON.parse(trimmed), toolName)) {
-        if (toolUse.id) {
-          toolUseIds.add(toolUse.id);
-        } else {
-          anonymousToolUses += 1;
-        }
-      }
-    } catch {
-      // Host CLIs can mix JSONL with plain diagnostics; non-JSON lines are not tool-use evidence.
-    }
-  }
-
-  return toolUseIds.size + anonymousToolUses;
-}
-
-function collectHostToolUses(value, toolName, inheritedId = undefined) {
-  if (Array.isArray(value)) {
-    return value.flatMap((entry) => collectHostToolUses(entry, toolName, inheritedId));
-  }
-
-  if (!isObject(value)) {
-    return [];
-  }
-
-  const localId = extractToolUseId(value) ?? inheritedId;
-  const name = typeof value.name === "string" ? value.name : undefined;
-  const tool = typeof value.tool === "string" ? value.tool : undefined;
-  const type = typeof value.type === "string" ? value.type : "";
-  const isClaudeToolUse = type === "tool_use" && name === toolName;
-  const isCodexMcpToolUse = tool === toolName && isLikelyCodexToolUseType(type);
-  const matches = isClaudeToolUse || isCodexMcpToolUse ? [{ id: localId }] : [];
-
-  for (const child of Object.values(value)) {
-    matches.push(...collectHostToolUses(child, toolName, localId));
-  }
-
-  return matches;
-}
-
-function extractToolUseId(value) {
-  for (const key of ["id", "call_id", "callId", "tool_call_id", "toolCallId"]) {
-    const candidate = value[key];
-    if (typeof candidate === "string" && candidate.length > 0) {
-      return candidate;
-    }
-  }
-
-  return undefined;
-}
-
-function isLikelyCodexToolUseType(type) {
-  return type.length === 0 || /call|item|mcp|tool/iu.test(type);
 }
 
 function isObject(value) {

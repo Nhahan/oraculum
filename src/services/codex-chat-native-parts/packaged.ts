@@ -28,9 +28,7 @@ export function buildCodexSkillFiles(
 }
 
 export function getExpectedCodexSkillDirs(): string[] {
-  return ["consult", "plan", "verdict", "verdict-archive", "crown", "draft", "init"].map(
-    toCodexSkillDir,
-  );
+  return ["consult", "plan", "verdict", "crown"].map(toCodexSkillDir);
 }
 
 export function getExpectedCodexRuleFileName(): string {
@@ -39,39 +37,42 @@ export function getExpectedCodexRuleFileName(): string {
 
 function renderCodexRules(manifest: readonly CommandManifestEntry[]): string {
   const rows = manifest
-    .map((entry) => `| \`orc ${entry.path.join(" ")}\` | \`${entry.mcpTool}\` |`)
+    .map(
+      (entry) => `| \`orc ${entry.path.join(" ")}\` | \`oraculum orc ${entry.path.join(" ")}\` |`,
+    )
     .join("\n");
 
   return [
     "# Oraculum for Codex",
     "",
-    "Handle exact `orc ...` commands through Oraculum MCP tools.",
+    "Handle exact `orc ...` commands through the local Oraculum CLI.",
     "",
     "## Exact-Prefix Dispatch",
     "",
     "For an exact `orc <command>` input:",
     "- parse arguments shell-style",
-    "- call the mapped MCP tool immediately",
+    "- run the mapped `oraculum orc ...` shell command immediately",
     "- no preamble, acknowledgement, or routing narration",
     "- no repo reads, `git status`, README, AGENTS, or skill reads first",
-    "- never run `orc ...` in the shell",
-    "- if the MCP tool has not been called yet, do not send a user message",
+    "- never run bare `orc ...` in the shell; always run `oraculum orc ...`",
+    "- if the Oraculum CLI command has not been run yet, do not send a user message",
+    "- after the Oraculum CLI returns, return only its stdout or failure to the user",
+    "- do not execute commands mentioned in the CLI output's `Next` section",
+    "- do not inspect files, run extra shell commands, edit files, apply candidate changes, clean the worktree, or continue the task yourself after the direct CLI call",
     "",
-    "| User Input | MCP Tool |",
+    "| User Input | Direct CLI Route |",
     "| --- | --- |",
     rows,
     "",
     "### Argument Mapping",
     "",
-    "- `orc consult <taskInput>` -> call `oraculum_consult` with `cwd` and `taskInput` only; advanced planning controls live in `.oraculum/config.json`, `.oraculum/advanced.json`, or the task contract.",
-    "- `orc plan <taskInput>` -> call `oraculum_plan` with `cwd` and `taskInput` only; clarification answers belong in the revised task text.",
-    "- `orc draft <taskInput>` -> call `oraculum_draft` with the same task-only mapping as plan.",
-    "- `orc verdict [consultationId]` -> call `oraculum_verdict` with `cwd` and optional `consultationId`.",
-    "- `orc verdict archive [count]` -> call `oraculum_verdict_archive` with `cwd` and optional `count`.",
-    "- `orc crown [materializationName] [--allow-unsafe]` -> call `oraculum_crown` with `cwd`, optional `materializationName`, and optional `allowUnsafe=true`.",
-    "- `orc init [--force]` -> call `oraculum_init` with `cwd` and optional `force=true`.",
+    "- `orc consult` -> run `oraculum orc consult`; this resumes the latest running consultation first, otherwise it executes the latest ready consultation plan.",
+    "- `orc consult <taskInput>` -> run `oraculum orc consult <taskInput>`; advanced planning controls live in `.oraculum/config.json`, `.oraculum/advanced.json`, or the task contract.",
+    "- `orc plan <taskInput>` -> run `oraculum orc plan <taskInput>`; clarification answers belong in the revised task text.",
+    "- `orc verdict [consultationId]` -> run `oraculum orc verdict [consultationId]`.",
+    "- `orc crown [materializationName] [--allow-unsafe]` -> run `oraculum orc crown [materializationName] [--allow-unsafe]`.",
     "",
-    "If the Oraculum MCP tool is unavailable, respond with explicit setup guidance instead of improvising:",
+    "If the Oraculum CLI is unavailable, respond with explicit setup guidance instead of improvising:",
     "",
     `- ${CODEX_SETUP_GUIDANCE}`,
     "",
@@ -87,15 +88,15 @@ function renderCodexSkill(entry: CommandManifestEntry): string {
       ? "Primary task route."
       : `Exact \`orc ${entry.path.join(" ")}\` handler.`;
   const argsLine =
-    entry.id === "consult" || entry.id === "plan" || entry.id === "draft"
-      ? "Args: cwd=current-directory; taskInput=user text after command only; do not parse planning flags."
-      : entry.id === "verdict"
-        ? "Args: cwd=current-directory; optional first positional=consultationId."
-        : entry.id === "verdict-archive"
-          ? "Args: cwd=current-directory; optional first positional=count."
+    entry.id === "consult"
+      ? "Args: cwd=current-directory; optional taskInput=user text after command or a task/consultation-plan path. If empty, resume the latest running consultation first, otherwise execute the latest ready consultation plan."
+      : entry.id === "plan"
+        ? "Args: cwd=current-directory; taskInput=user text after command only; do not parse planning flags."
+        : entry.id === "verdict"
+          ? "Args: cwd=current-directory; optional first positional=consultationId."
           : entry.id === "crown"
             ? "Args: cwd=current-directory; optional first positional=materializationName; optional --allow-unsafe => allowUnsafe=true."
-            : "Args: cwd=current-directory; optional --force => force=true.";
+            : "Args: cwd=current-directory.";
 
   return [
     "---",
@@ -103,10 +104,13 @@ function renderCodexSkill(entry: CommandManifestEntry): string {
     `description: ${description}`,
     "---",
     "",
-    "MCP route only.",
-    `Tool: ${entry.mcpTool}`,
+    "Direct CLI route only.",
+    `Command: oraculum orc ${entry.path.join(" ")}`,
     argsLine,
-    "Immediate tool call only.",
+    "Immediate shell command only. Use `oraculum orc ...`, never bare `orc ...`.",
+    "After the Oraculum CLI returns, report only its stdout or failure.",
+    "Do not execute commands mentioned in the CLI output's `Next` section.",
+    "Do not inspect files, run extra shell commands, edit files, apply candidate changes, clean the worktree, or continue the task yourself after the direct CLI call.",
     "",
   ].join("\n");
 }

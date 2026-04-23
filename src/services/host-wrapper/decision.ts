@@ -73,7 +73,6 @@ function findFirstPositionalIndex(args: string[], host: Adapter): number | undef
           "--input-format",
           "--json-schema",
           "--max-budget-usd",
-          "--mcp-config",
           "--model",
           "-n",
           "--name",

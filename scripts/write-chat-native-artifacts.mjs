@@ -7,13 +7,12 @@ const distRoot = join(repoRoot, "dist");
 
 async function main() {
   const [
-    { oraculumCommandManifest, oraculumMcpToolSurface },
+    { oraculumCommandManifest },
     { packagedHostArtifactLayout },
     {
       buildClaudeCommandFiles,
       buildClaudeMarketplaceManifest,
       buildClaudePluginManifest,
-      buildClaudePluginMcpConfig,
       buildClaudeSkillFiles,
     },
     { buildCodexRuleFiles, buildCodexSkillFiles },
@@ -27,10 +26,6 @@ async function main() {
   await writeJson(
     join(distRoot, packagedHostArtifactLayout.commandManifestPath),
     oraculumCommandManifest,
-  );
-  await writeJson(
-    join(distRoot, packagedHostArtifactLayout.mcpToolSurfacePath),
-    oraculumMcpToolSurface,
   );
   await writeJson(
     join(distRoot, packagedHostArtifactLayout.rootDir, "layout.json"),
@@ -67,17 +62,6 @@ async function main() {
     ),
     buildClaudePluginManifest(),
   );
-  await writeJson(
-    join(
-      distRoot,
-      packagedHostArtifactLayout.rootDir,
-      "claude-code",
-      ".claude-plugin",
-      ".mcp.json",
-    ),
-    buildClaudePluginMcpConfig(),
-  );
-
   for (const file of buildClaudeCommandFiles(oraculumCommandManifest)) {
     await writeText(
       join(distRoot, packagedHostArtifactLayout.rootDir, "claude-code", file.path),

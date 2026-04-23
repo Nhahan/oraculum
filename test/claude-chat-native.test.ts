@@ -9,7 +9,6 @@ import {
   buildClaudeCommandFiles,
   buildClaudeMarketplaceManifest,
   buildClaudePluginManifest,
-  buildClaudePluginMcpConfig,
   buildClaudeSkillFiles,
   getPackagedClaudeCodeRoot,
   setupClaudeCodeHost,
@@ -87,15 +86,17 @@ describe("Claude Code chat-native packaging", () => {
   it("generates marketplace, plugin, command, and skill artifacts from the shared manifest", () => {
     const marketplace = buildClaudeMarketplaceManifest();
     const plugin = buildClaudePluginManifest();
-    const mcp = buildClaudePluginMcpConfig();
     const commands = buildClaudeCommandFiles(oraculumCommandManifest);
     const skills = buildClaudeSkillFiles(oraculumCommandManifest);
 
     expect(marketplace.name).toBe("oraculum");
     expect(plugin.name).toBe("orc");
-    expect(mcp.mcpServers).toHaveProperty("orc");
+    expect(plugin).not.toHaveProperty("mcpServers");
     expect(commands.map((file) => file.path)).toContain("commands/consult.md");
     expect(skills.map((file) => file.path)).toContain(".claude-plugin/skills/consult/SKILL.md");
+    expect(skills.find((file) => file.path.endsWith("/consult/SKILL.md"))?.content).toContain(
+      "If empty, resume the latest running consultation first",
+    );
   });
 
   it("resolves the packaged Claude root inside dist", () => {
@@ -106,7 +107,7 @@ describe("Claude Code chat-native packaging", () => {
 });
 
 describe("Claude Code setup", () => {
-  it("installs packaged plugin artifacts and registers MCP wiring through Claude CLI", async () => {
+  it("installs packaged plugin artifacts for direct CLI routing through Claude CLI", async () => {
     const fixture = await createFakeClaudeSetupFixture();
     const result = await setupClaudeCodeHost({
       claudeBinaryPath: process.execPath,
@@ -117,25 +118,17 @@ describe("Claude Code setup", () => {
       },
       homeDir: fixture.homeDir,
       packagedRoot: fixture.packagedRoot,
-      mcpInvocation: {
-        command: process.execPath,
-        args: ["/tmp/oraculum-cli.js"],
-      },
     });
 
     await expect(readFile(join(result.pluginRoot, "plugin.json"), "utf8")).resolves.toContain(
       '"name": "orc"',
     );
-    await expect(readFile(result.mcpConfigPath, "utf8")).resolves.toContain('"orc"');
-    expect(
-      (await readdir(dirname(result.mcpConfigPath))).filter((entry) => entry.endsWith(".tmp")),
-    ).toEqual([]);
     expect((await readdir(result.pluginRoot)).filter((entry) => entry.endsWith(".tmp"))).toEqual(
       [],
     );
   });
 
-  it("uninstalls Claude plugin marketplace and MCP wiring", async () => {
+  it("uninstalls Claude plugin marketplace", async () => {
     const fixture = await createFakeClaudeSetupFixture();
     await setupClaudeCodeHost({
       claudeBinaryPath: process.execPath,
@@ -146,10 +139,6 @@ describe("Claude Code setup", () => {
       },
       homeDir: fixture.homeDir,
       packagedRoot: fixture.packagedRoot,
-      mcpInvocation: {
-        command: process.execPath,
-        args: ["/tmp/oraculum-cli.js"],
-      },
     });
 
     const result = await uninstallClaudeCodeHost({
@@ -162,9 +151,6 @@ describe("Claude Code setup", () => {
       homeDir: fixture.homeDir,
     });
 
-    await expect(readFile(result.mcpConfigPath, "utf8")).resolves.not.toContain('"orc"');
-    expect(
-      (await readdir(dirname(result.mcpConfigPath))).filter((entry) => entry.endsWith(".tmp")),
-    ).toEqual([]);
+    expect(result.pluginRemoved).toBe(true);
   });
 });

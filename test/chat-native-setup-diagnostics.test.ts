@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { APP_VERSION } from "../src/core/constants.js";
-import { setupStatusToolResponseSchema } from "../src/domain/chat-native.js";
+import { setupStatusActionResponseSchema } from "../src/domain/chat-native.js";
 import {
   buildSetupDiagnosticsResponse,
   filterSetupDiagnosticsResponse,
@@ -22,7 +22,7 @@ registerChatNativeTempRootCleanup();
 
 describe("chat-native setup diagnostics", () => {
   it("describes interactive orc readiness with actionable host setup states", () => {
-    const diagnostics = setupStatusToolResponseSchema.parse(
+    const diagnostics = setupStatusActionResponseSchema.parse(
       buildSetupDiagnosticsResponse(process.cwd()),
     );
 
@@ -43,7 +43,7 @@ describe("chat-native setup diagnostics", () => {
   it("omits project config paths from setup diagnostics when the project is not initialized", async () => {
     const projectRoot = await createChatNativeTempRoot("oraculum-setup-diagnostics-");
 
-    const diagnostics = setupStatusToolResponseSchema.parse(
+    const diagnostics = setupStatusActionResponseSchema.parse(
       buildSetupDiagnosticsResponse(projectRoot),
     );
 
@@ -53,7 +53,7 @@ describe("chat-native setup diagnostics", () => {
   });
 
   it("filters setup diagnostics by host and recomputes the summary", () => {
-    const diagnostics = setupStatusToolResponseSchema.parse(
+    const diagnostics = setupStatusActionResponseSchema.parse(
       buildSetupDiagnosticsResponse(process.cwd()),
     );
 
@@ -84,18 +84,13 @@ describe("chat-native setup diagnostics", () => {
       `${JSON.stringify({ name: "orc", version: APP_VERSION }, null, 2)}\n`,
       "utf8",
     );
-    await writeFile(join(installPath, ".mcp.json"), "{}\n", "utf8");
-    for (const dirName of [
-      "consult",
-      "plan",
-      "verdict",
-      "verdict-archive",
-      "crown",
-      "draft",
-      "init",
-    ]) {
+    for (const dirName of ["consult", "plan", "verdict", "crown"]) {
       await mkdir(join(installPath, "skills", dirName), { recursive: true });
-      await writeFile(join(installPath, "skills", dirName, "SKILL.md"), `${dirName}\n`, "utf8");
+      await writeFile(
+        join(installPath, "skills", dirName, "SKILL.md"),
+        `---\nname: ${dirName}\n---\n\nDirect CLI only.\n`,
+        "utf8",
+      );
     }
     await writeFile(
       join(pluginsDir, "installed_plugins.json"),
@@ -128,29 +123,13 @@ describe("chat-native setup diagnostics", () => {
     await mkdir(rulesDir, { recursive: true });
     await writeFile(join(rulesDir, "oraculum.md"), "# Oraculum\n", "utf8");
 
-    for (const dirName of [
-      "route-consult",
-      "route-plan",
-      "route-verdict",
-      "route-verdict-archive",
-      "route-crown",
-      "route-draft",
-      "route-init",
-    ]) {
+    for (const dirName of ["route-consult", "route-plan", "route-verdict", "route-crown"]) {
       await mkdir(join(skillsDir, dirName), { recursive: true });
     }
 
     expect(hasCodexArtifactsInstalled(skillsDir, rulesDir)).toBe(false);
 
-    for (const dirName of [
-      "route-consult",
-      "route-plan",
-      "route-verdict",
-      "route-verdict-archive",
-      "route-crown",
-      "route-draft",
-      "route-init",
-    ]) {
+    for (const dirName of ["route-consult", "route-plan", "route-verdict", "route-crown"]) {
       await writeFile(join(skillsDir, dirName, "SKILL.md"), `${dirName}\n`, "utf8");
     }
 
@@ -161,13 +140,9 @@ describe("chat-native setup diagnostics", () => {
     const root = await createChatNativeTempRoot("oraculum-claude-command-files-");
     const installRoot = join(root, "install-root");
     await mkdir(join(installRoot, "commands"), { recursive: true });
-    for (const name of ["consult", "verdict", "verdict-archive", "crown", "plan", "draft"]) {
+    for (const name of ["consult", "plan", "verdict", "crown"]) {
       await writeFile(join(installRoot, "commands", `${name}.md`), `${name}\n`, "utf8");
     }
-
-    expect(hasClaudeCommandArtifactsInstalled(installRoot)).toBe(false);
-
-    await writeFile(join(installRoot, "commands", "init.md"), "init\n", "utf8");
 
     expect(hasClaudeCommandArtifactsInstalled(installRoot)).toBe(true);
   });

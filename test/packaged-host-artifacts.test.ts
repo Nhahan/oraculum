@@ -14,7 +14,6 @@ describe("packaged host artifact layout", () => {
     expect(packagedHostArtifactLayout.commandManifestPath).toBe(
       "chat-native/command-manifest.json",
     );
-    expect(packagedHostArtifactLayout.mcpToolSurfacePath).toBe("chat-native/mcp-tool-surface.json");
 
     for (const host of packagedHostArtifactLayout.hosts) {
       expect(host.rootDir.startsWith(`${packagedHostArtifactLayout.rootDir}/`)).toBe(true);
@@ -27,7 +26,6 @@ describe("packaged host artifact layout", () => {
   it("keeps packaged host artifact paths unique", () => {
     const paths = [
       packagedHostArtifactLayout.commandManifestPath,
-      packagedHostArtifactLayout.mcpToolSurfacePath,
       ...packagedHostArtifactLayout.hosts.flatMap((host) => host.files.map((file) => file.path)),
     ];
 

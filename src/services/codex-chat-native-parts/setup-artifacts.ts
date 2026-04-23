@@ -6,9 +6,7 @@ import { OraculumError } from "../../core/errors.js";
 import { getExpectedCodexSkillDirs } from "./packaged.js";
 import {
   CODEX_INSTALL_VERSION,
-  CODEX_MCP_SERVER_NAME,
   CODEX_RULE_FILENAME,
-  CODEX_SKILL_PREFIX,
 } from "./shared.js";
 
 export async function prepareCodexSetupRoot(options: {
@@ -108,12 +106,9 @@ export async function pruneManagedCodexSkills(
     return;
   }
 
-  const managedPrefixes = new Set([CODEX_SKILL_PREFIX, "oraculum-"]);
+  const managedSkillDirs = new Set(getExpectedCodexSkillDirs());
   for (const entry of await readdir(skillsRoot, { withFileTypes: true })) {
-    if (
-      ![...managedPrefixes].some((prefix) => entry.name.startsWith(prefix)) ||
-      desired.has(entry.name)
-    ) {
+    if (!managedSkillDirs.has(entry.name) || desired.has(entry.name)) {
       continue;
     }
 
@@ -134,12 +129,9 @@ export async function pruneManagedCodexRules(
     return;
   }
 
+  const managedRuleFiles = new Set([CODEX_RULE_FILENAME]);
   for (const entry of await readdir(rulesRoot, { withFileTypes: true })) {
-    if (
-      !entry.isFile() ||
-      (!entry.name.startsWith(CODEX_MCP_SERVER_NAME) && entry.name !== CODEX_RULE_FILENAME) ||
-      desired.has(entry.name)
-    ) {
+    if (!entry.isFile() || !managedRuleFiles.has(entry.name) || desired.has(entry.name)) {
       continue;
     }
 

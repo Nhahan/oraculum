@@ -4,8 +4,8 @@ import { delimiter, join } from "node:path";
 
 import { APP_VERSION } from "../../core/constants.js";
 import { getAdvancedConfigPath, getConfigPath, resolveProjectRoot } from "../../core/paths.js";
-import type { SetupStatusToolResponse } from "../../domain/chat-native.js";
-import { setupStatusToolResponseSchema } from "../../domain/chat-native.js";
+import type { SetupStatusActionResponse } from "../../domain/chat-native.js";
+import { setupStatusActionResponseSchema } from "../../domain/chat-native.js";
 import {
   getExpectedClaudeCommandFiles,
   getExpectedClaudeSkillDirs,
@@ -14,33 +14,28 @@ import { getExpectedCodexRuleFileName, getExpectedCodexSkillDirs } from "../code
 
 const MANAGED_CLAUDE_PLUGIN_KEYS = ["orc@oraculum", "oraculum@oraculum"] as const;
 const MANAGED_CLAUDE_PLUGIN_DIRS = ["orc", "@orc", "oraculum", "@oraculum"] as const;
-const MANAGED_MCP_SERVER_IDS = ["orc", "oraculum"] as const;
 
-export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusToolResponse {
+export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusActionResponse {
   const projectRoot = resolveProjectRoot(cwd);
   const configPath = getConfigPath(projectRoot);
   const advancedConfigPath = getAdvancedConfigPath(projectRoot);
-  const claudeMcpPath = join(homedir(), ".claude", "mcp.json");
   const claudePluginsDir = join(homedir(), ".claude", "plugins");
   const claudeInstallRoot = join(homedir(), ".oraculum", "chat-native", "claude-code", APP_VERSION);
-  const codexConfigPath = join(homedir(), ".codex", "config.toml");
   const codexSkillsDir = join(homedir(), ".codex", "skills");
   const codexRulesDir = join(homedir(), ".codex", "rules");
   const projectInitialized = existsSync(configPath);
   const advancedConfigPresent = existsSync(advancedConfigPath);
 
-  const claudeRegistered = MANAGED_MCP_SERVER_IDS.some((serverId) =>
-    hasMcpServer(claudeMcpPath, serverId),
-  );
   const claudeArtifactsInstalled = hasClaudePluginInstalled(claudeInstallRoot);
+  const claudeRegistered = claudeArtifactsInstalled;
   const claudeLaunchTransport = computeLaunchTransportMode(
     "claude-code",
     claudeRegistered,
     claudeArtifactsInstalled,
   );
 
-  const codexRegistered = hasCodexMcpServer(codexConfigPath);
   const codexArtifactsInstalled = hasCodexArtifactsInstalled(codexSkillsDir, codexRulesDir);
+  const codexRegistered = codexArtifactsInstalled;
   const codexLaunchTransport = computeLaunchTransportMode(
     "codex",
     codexRegistered,
@@ -53,12 +48,11 @@ export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusToolRespo
       host: "claude-code",
       launchTransport: claudeLaunchTransport,
       notes: [
-        `Expected MCP config path: ${toPortableDisplayPath(claudeMcpPath)}`,
         `Expected Claude plugin cache root: ${toPortableDisplayPath(claudePluginsDir)}`,
         `Expected Claude install root: ${toPortableDisplayPath(claudeInstallRoot)}`,
         "Primary surface: use `orc ...` directly inside Claude Code after setup.",
-        "Under the hood, Oraculum uses Claude Code's official stream-json transport.",
-        "Run `oraculum setup --runtime claude-code` to register the MCP server and install the Oraculum plugin.",
+        "Under the hood, Oraculum routes exact prefixes to `oraculum orc ...` direct CLI commands.",
+        "Run `oraculum setup --runtime claude-code` to install the Oraculum plugin.",
       ],
       registered: claudeRegistered,
     }),
@@ -67,18 +61,17 @@ export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusToolRespo
       host: "codex",
       launchTransport: codexLaunchTransport,
       notes: [
-        `Expected MCP config path: ${toPortableDisplayPath(codexConfigPath)}`,
         `Expected skill install root: ${toPortableDisplayPath(codexSkillsDir)}`,
         `Expected rule install root: ${toPortableDisplayPath(codexRulesDir)}`,
         "Primary surface: use `orc ...` directly inside Codex after setup.",
-        "Under the hood, Oraculum uses Codex skills/rules plus the official app-server transport.",
-        "Run `oraculum setup --runtime codex` to register the MCP server and install the Oraculum skills and rules.",
+        "Under the hood, Oraculum routes exact prefixes to `oraculum orc ...` direct CLI commands.",
+        "Run `oraculum setup --runtime codex` to install the Oraculum skills and rules.",
       ],
       registered: codexRegistered,
     }),
   ];
 
-  return setupStatusToolResponseSchema.parse({
+  return setupStatusActionResponseSchema.parse({
     mode: "setup-status",
     cwd: projectRoot,
     projectInitialized,
@@ -91,12 +84,12 @@ export function buildSetupDiagnosticsResponse(cwd: string): SetupStatusToolRespo
 }
 
 export function filterSetupDiagnosticsResponse(
-  diagnostics: SetupStatusToolResponse,
-  host?: SetupStatusToolResponse["hosts"][number]["host"],
-): SetupStatusToolResponse {
+  diagnostics: SetupStatusActionResponse,
+  host?: SetupStatusActionResponse["hosts"][number]["host"],
+): SetupStatusActionResponse {
   const hosts = host ? diagnostics.hosts.filter((entry) => entry.host === host) : diagnostics.hosts;
 
-  return setupStatusToolResponseSchema.parse({
+  return setupStatusActionResponseSchema.parse({
     ...diagnostics,
     hosts,
     summary: summarizeSetupDiagnosticsHosts(hosts),
@@ -106,10 +99,10 @@ export function filterSetupDiagnosticsResponse(
 export function summarizeSetupDiagnosticsHosts(
   hosts: Array<{
     artifactsInstalled: boolean;
-    host: SetupStatusToolResponse["hosts"][number]["host"];
-    launchTransport: SetupStatusToolResponse["hosts"][number]["launchTransport"];
+    host: SetupStatusActionResponse["hosts"][number]["host"];
+    launchTransport: SetupStatusActionResponse["hosts"][number]["launchTransport"];
     registered: boolean;
-    status: SetupStatusToolResponse["hosts"][number]["status"];
+    status: SetupStatusActionResponse["hosts"][number]["status"];
   }>,
 ): string {
   if (hosts.length === 0) {
@@ -193,11 +186,11 @@ export function hasCodexArtifactsInstalled(skillsDir: string, rulesDir: string):
 
 function buildHostDiagnostics(options: {
   artifactsInstalled: boolean;
-  host: SetupStatusToolResponse["hosts"][number]["host"];
-  launchTransport: SetupStatusToolResponse["hosts"][number]["launchTransport"];
+  host: SetupStatusActionResponse["hosts"][number]["host"];
+  launchTransport: SetupStatusActionResponse["hosts"][number]["launchTransport"];
   notes: string[];
   registered: boolean;
-}): SetupStatusToolResponse["hosts"][number] {
+}): SetupStatusActionResponse["hosts"][number] {
   const status = computeHostSetupStatus(
     options.registered,
     options.artifactsInstalled,
@@ -221,7 +214,7 @@ function buildHostDiagnostics(options: {
 function computeHostSetupStatus(
   registered: boolean,
   artifactsInstalled: boolean,
-  launchTransport: SetupStatusToolResponse["hosts"][number]["launchTransport"],
+  launchTransport: SetupStatusActionResponse["hosts"][number]["launchTransport"],
 ): "ready" | "partial" | "needs-setup" {
   if (registered && artifactsInstalled && launchTransport === "official") {
     return "ready";
@@ -235,10 +228,10 @@ function computeHostSetupStatus(
 }
 
 function computeLaunchTransportMode(
-  host: SetupStatusToolResponse["hosts"][number]["host"],
+  host: SetupStatusActionResponse["hosts"][number]["host"],
   registered: boolean,
   artifactsInstalled: boolean,
-): SetupStatusToolResponse["hosts"][number]["launchTransport"] {
+): SetupStatusActionResponse["hosts"][number]["launchTransport"] {
   if (!registered || !artifactsInstalled) {
     return "unavailable";
   }
@@ -252,8 +245,7 @@ function hasCurrentClaudePluginDir(path: string): boolean {
 
 function hasCurrentClaudePluginArtifacts(path: string): boolean {
   const pluginJsonPath = join(path, "plugin.json");
-  const mcpConfigPath = join(path, ".mcp.json");
-  if (!existsSync(pluginJsonPath) || !existsSync(mcpConfigPath)) {
+  if (!existsSync(pluginJsonPath)) {
     return false;
   }
 
@@ -265,24 +257,10 @@ function hasCurrentClaudePluginArtifacts(path: string): boolean {
       return false;
     }
 
-    return getExpectedClaudeSkillDirs().every((dirName) =>
-      existsSync(join(path, "skills", dirName, "SKILL.md")),
-    );
-  } catch {
-    return false;
-  }
-}
-
-function hasMcpServer(path: string, serverId: string): boolean {
-  if (!existsSync(path)) {
-    return false;
-  }
-
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as {
-      mcpServers?: Record<string, unknown>;
-    };
-    return Boolean(parsed.mcpServers?.[serverId]);
+    return getExpectedClaudeSkillDirs().every((dirName) => {
+      const skillPath = join(path, "skills", dirName, "SKILL.md");
+      return existsSync(skillPath) && readFileSync(skillPath, "utf8").includes("Direct CLI only.");
+    });
   } catch {
     return false;
   }
@@ -293,21 +271,6 @@ function hasClaudePluginInstalled(installRoot: string): boolean {
     hasClaudePluginArtifactsInstalled(join(homedir(), ".claude", "plugins")) &&
     hasClaudeCommandArtifactsInstalled(installRoot)
   );
-}
-
-function hasCodexMcpServer(path: string): boolean {
-  if (!existsSync(path)) {
-    return false;
-  }
-
-  try {
-    const raw = readFileSync(path, "utf8");
-    return MANAGED_MCP_SERVER_IDS.some((serverId) =>
-      new RegExp(`\\[mcp_servers\\.${serverId}\\]`, "u").test(raw),
-    );
-  } catch {
-    return false;
-  }
 }
 
 function hasCommandOnPath(command: string): boolean {

@@ -26,7 +26,7 @@ interface UninstallOptions {
 export function registerSetupCommand(program: Command): void {
   const setup = program
     .command("setup")
-    .description("Register chat-native host integration and MCP wiring.")
+    .description("Register chat-native host integration.")
     .option("-r, --runtime <runtime>", "target host runtime", parseRuntime)
     .action(async (options: SetupOptions, command: Command) => {
       const runtime = options.runtime ?? (command.optsWithGlobals().runtime as Adapter | undefined);
@@ -44,7 +44,6 @@ export function registerSetupCommand(program: Command): void {
         process.stdout.write(`Packaged root: ${result.packagedRoot}\n`);
         process.stdout.write(`Plugin root: ${result.pluginRoot}\n`);
         process.stdout.write(`Marketplace: ${result.marketplacePath}\n`);
-        process.stdout.write(`MCP config: ${result.mcpConfigPath}\n`);
         process.stdout.write("Interactive path: use `orc ...` directly inside Claude Code.\n");
         return;
       }
@@ -57,7 +56,6 @@ export function registerSetupCommand(program: Command): void {
         process.stdout.write(`Install root: ${result.installRoot}\n`);
         process.stdout.write(`Skills root: ${result.skillsRoot}\n`);
         process.stdout.write(`Rules root: ${result.rulesRoot}\n`);
-        process.stdout.write(`Codex config: ${result.configPath}\n`);
         process.stdout.write("Interactive path: use `orc ...` directly inside Codex.\n");
         return;
       }
@@ -110,7 +108,6 @@ export function registerSetupCommand(program: Command): void {
           const result = await uninstallClaudeCodeHost();
           process.stdout.write("Removed Claude Code chat-native integration.\n");
           process.stdout.write(`Install root: ${result.installRoot}\n`);
-          process.stdout.write(`MCP config: ${result.mcpConfigPath}\n`);
           continue;
         }
 

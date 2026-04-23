@@ -53,12 +53,9 @@ describe("setup command", () => {
       skillsRoot: "/tmp/home/.codex/skills",
     });
     mockedSetupClaudeCodeHost.mockResolvedValue({
-      effectiveMcpConfigPath:
-        "/tmp/home/.oraculum/chat-native/claude-code/.claude-plugin/.mcp.json",
       installRoot: "/tmp/home/.oraculum/chat-native/claude-code",
       marketplacePath:
         "/tmp/home/.oraculum/chat-native/claude-code/.claude-plugin/marketplace.json",
-      mcpConfigPath: "/tmp/home/.claude/mcp.json",
       packagedRoot: "/tmp/repo/dist/chat-native/claude-code",
       pluginInstalled: true,
       pluginRoot: "/tmp/home/.oraculum/chat-native/claude-code/.claude-plugin",
@@ -78,7 +75,7 @@ describe("setup command", () => {
           artifactsInstalled: false,
           launchTransport: "unavailable",
           nextAction: "Run `oraculum setup --runtime claude-code`.",
-          notes: ["Expected MCP config path: /tmp/home/.claude/mcp.json"],
+          notes: ["Expected Claude install root: /tmp/home/.oraculum/chat-native/claude-code"],
         },
         {
           host: "codex",
@@ -87,7 +84,7 @@ describe("setup command", () => {
           artifactsInstalled: true,
           launchTransport: "official",
           nextAction: "Use `orc ...` directly in Codex.",
-          notes: ["Expected MCP config path: /tmp/home/.codex/config.toml"],
+          notes: ["Expected skill install root: /tmp/home/.codex/skills"],
         },
       ],
       summary: "Claude Code and Codex are ready for interactive `orc ...` commands.",

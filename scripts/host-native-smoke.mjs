@@ -135,16 +135,16 @@ async function runRuntimeSmoke(tempRoot, runtime, scenario) {
   const consult = await runHost(runtime, projectRoot, consultPrompt);
   const consultLogPath = join(evidenceRoot, `${runtime}-consult.jsonl`);
   await writeFile(consultLogPath, consult.stdout + consult.stderr, "utf8");
-  const consultToolCalls = countToolCalls(runtime, consult.stdout + consult.stderr, "consult");
-  if (consultToolCalls < 1) {
+  const consultActionCalls = countToolCalls(runtime, consult.stdout + consult.stderr, "consult");
+  if (consultActionCalls < 1) {
     throw new Error(
-      `${runtime} consult did not call the Oraculum MCP consult tool.\n${consult.stdout}\n${consult.stderr}`,
+      `${runtime} consult did not run the Oraculum direct consult route.\n${consult.stdout}\n${consult.stderr}`,
     );
   }
   const unexpectedConsultCrowns = countToolCalls(runtime, consult.stdout + consult.stderr, "crown");
   if (unexpectedConsultCrowns > 0) {
     throw new Error(
-      `${runtime} consult unexpectedly called the Oraculum MCP crown tool ${unexpectedConsultCrowns} time(s).\n${consult.stdout}\n${consult.stderr}`,
+      `${runtime} consult unexpectedly ran the Oraculum crown route ${unexpectedConsultCrowns} time(s).\n${consult.stdout}\n${consult.stderr}`,
     );
   }
 
@@ -157,10 +157,10 @@ async function runRuntimeSmoke(tempRoot, runtime, scenario) {
   const crown = await runHost(runtime, projectRoot, crownPrompt);
   const crownLogPath = join(evidenceRoot, `${runtime}-crown.jsonl`);
   await writeFile(crownLogPath, crown.stdout + crown.stderr, "utf8");
-  const crownToolCalls = countToolCalls(runtime, crown.stdout + crown.stderr, "crown");
-  if (crownToolCalls < 1) {
+  const crownActionCalls = countToolCalls(runtime, crown.stdout + crown.stderr, "crown");
+  if (crownActionCalls < 1) {
     throw new Error(
-      `${runtime} crown did not call the Oraculum MCP crown tool.\n${crown.stdout}\n${crown.stderr}`,
+      `${runtime} crown did not run the Oraculum direct crown route.\n${crown.stdout}\n${crown.stderr}`,
     );
   }
   assertVerifiedCrownMaterialization(runtime, crown.stdout + crown.stderr);
@@ -257,8 +257,8 @@ async function runRuntimeSmoke(tempRoot, runtime, scenario) {
     candidateAgent,
     candidateCount: hostNativeCandidateCount,
     toolCalls: {
-      consult: consultToolCalls,
-      crown: crownToolCalls,
+      consult: consultActionCalls,
+      crown: crownActionCalls,
     },
   };
 }

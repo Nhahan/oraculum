@@ -16,7 +16,6 @@ export const packagedHostArtifactHostLayoutSchema = z.object({
 export const packagedHostArtifactLayoutSchema = z.object({
   rootDir: z.string().min(1),
   commandManifestPath: z.string().min(1),
-  mcpToolSurfacePath: z.string().min(1),
   hosts: z.array(packagedHostArtifactHostLayoutSchema).min(1),
 });
 

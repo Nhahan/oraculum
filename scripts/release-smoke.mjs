@@ -23,7 +23,6 @@ async function main() {
     const homeDir = join(tempRoot, "home");
     const hostBinDir = join(tempRoot, "host-bin");
     const fakeClaudeStatePath = join(tempRoot, "fake-claude-state.json");
-    const fakeCodexStatePath = join(tempRoot, "fake-codex-state.json");
     const installSpec = resolvePackedInstallSpec(repoRoot, tempRoot, explicitSpec);
 
     await mkdir(prefix, { recursive: true });
@@ -45,7 +44,6 @@ async function main() {
       ...process.env,
       HOME: homeDir,
       ORACULUM_FAKE_CLAUDE_STATE: fakeClaudeStatePath,
-      ORACULUM_FAKE_CODEX_STATE: fakeCodexStatePath,
       PATH: joinPathEntries([
         hostBinDir,
         process.platform === "win32" ? prefix : join(prefix, "bin"),
@@ -80,9 +78,7 @@ async function main() {
     assertHostStatus(after, "claude-code", "ready");
     assertHostStatus(after, "codex", "ready");
 
-    await assertPathExists(join(homeDir, ".claude", "mcp.json"));
     await assertPathExists(join(homeDir, ".claude", "plugins", "oraculum"));
-    await assertPathExists(join(homeDir, ".codex", "config.toml"));
     await assertPathExists(join(homeDir, ".codex", "skills", "route-consult", "SKILL.md"));
     await assertPathExists(join(homeDir, ".codex", "rules", "oraculum.md"));
 
@@ -141,57 +137,7 @@ async function writeFakeClaudeHost(hostBinDir) {
 }
 
 async function writeFakeCodexHost(hostBinDir) {
-  const cliPath = join(hostBinDir, "fake-codex-host.mjs");
-  await writeFile(
-    cliPath,
-    [
-      "import { mkdirSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';",
-      "import { dirname, join } from 'node:path';",
-      "const statePath = process.env.ORACULUM_FAKE_CODEX_STATE;",
-      "const homeDir = process.env.HOME;",
-      "if (!statePath || !homeDir) process.exit(11);",
-      "const args = process.argv.slice(2);",
-      "const configPath = join(homeDir, '.codex', 'config.toml');",
-      "const readState = () => existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) : null;",
-      "const writeState = (value) => { mkdirSync(dirname(statePath), { recursive: true }); writeFileSync(statePath, JSON.stringify(value)); };",
-      "if (args[0] === 'mcp' && args[1] === 'remove') { rmSync(statePath, { force: true }); process.exit(0); }",
-      "if (args[0] === 'mcp' && args[1] === 'add') {",
-      "  const sep = args.indexOf('--');",
-      "  const command = sep >= 0 ? args[sep + 1] : null;",
-      "  const commandArgs = sep >= 0 ? args.slice(sep + 2) : [];",
-      "  const env = [];",
-      "  for (let index = 3; index < (sep >= 0 ? sep : args.length); index += 1) {",
-      "    if (args[index] === '--env') env.push(args[index + 1]);",
-      "  }",
-      "  const state = { name: 'orc', transport: { type: 'stdio', command, args: commandArgs, env } };",
-      "  writeState(state);",
-      "  mkdirSync(dirname(configPath), { recursive: true });",
-      "  const envLines = env.map((entry) => { const [key, value] = entry.split('='); return key + ' = \"' + value + '\"'; });",
-      "  const argsLine = 'args = [' + commandArgs.map((value) => '\"' + value + '\"').join(', ') + ']';",
-      "  const lines = ['[mcp_servers.orc]', 'command = \"' + command + '\"', argsLine, '', '[mcp_servers.orc.env]', ...envLines];",
-      "  writeFileSync(configPath, lines.join('\\n') + '\\n');",
-      "  process.exit(0);",
-      "}",
-      "if (args[0] === 'mcp' && args[1] === 'get' && args[2] === 'orc' && args[3] === '--json') {",
-      "  const state = readState();",
-      "  if (!state) process.exit(1);",
-      "  process.stdout.write(JSON.stringify({ ...state, enabled: true, disabled_reason: null, enabled_tools: null, disabled_tools: null, startup_timeout_sec: null, tool_timeout_sec: null }));",
-      "  process.exit(0);",
-      "}",
-      "process.stderr.write('unexpected args: ' + args.join(' ')); process.exit(9);",
-    ].join("\n"),
-    "utf8",
-  );
-
-  await writeNodeBinary(
-    hostBinDir,
-    "codex",
-    [
-      'const { spawnSync } = require("node:child_process");',
-      `const result = spawnSync(process.execPath, [${JSON.stringify(cliPath)}, ...process.argv.slice(2)], { stdio: "inherit", env: process.env });`,
-      "process.exit(result.status ?? 1);",
-    ].join("\n"),
-  );
+  await writeNodeBinary(hostBinDir, "codex", "process.stdout.write('codex fake host\\n');");
 }
 
 function assertHostStatus(diagnostics, hostId, expectedStatus) {

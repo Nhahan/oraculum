@@ -1,24 +1,20 @@
 import { APP_VERSION } from "../../core/constants.js";
+import type { DirectCliInvocation } from "../chat-native/direct-route.js";
 
 export interface ClaudeSetupOptions {
   claudeArgs?: string[];
   claudeBinaryPath?: string;
+  directCliInvocation?: DirectCliInvocation;
   env?: NodeJS.ProcessEnv;
   homeDir?: string;
-  mcpInvocation?: {
-    args: string[];
-    command: string;
-  };
   packagedRoot?: string;
 }
 
 export interface ClaudeSetupResult {
-  effectiveMcpConfigPath: string;
   installRoot: string;
   packagedRoot: string;
   pluginRoot: string;
   marketplacePath: string;
-  mcpConfigPath: string;
   pluginInstalled: boolean;
 }
 
@@ -32,7 +28,6 @@ export interface ClaudeUninstallOptions {
 export interface ClaudeUninstallResult {
   installRoot: string;
   marketplaceRemoved: boolean;
-  mcpConfigPath: string;
   pluginRemoved: boolean;
 }
 
@@ -54,10 +49,7 @@ export interface ClaudePluginEntry {
 
 export const CLAUDE_MARKETPLACE_NAME = "oraculum";
 export const CLAUDE_PLUGIN_NAME = "orc";
-export const CLAUDE_LEGACY_PLUGIN_NAMES = ["oraculum"] as const;
-export const CLAUDE_MCP_SERVER_NAME = CLAUDE_PLUGIN_NAME;
 export const CLAUDE_PLUGIN_VERSION = APP_VERSION;
-export const CLAUDE_MCP_TIMEOUT_SECONDS = 1800;
 
 export function normalizePortablePath(value: string): string {
   return value.replaceAll("\\", "/");

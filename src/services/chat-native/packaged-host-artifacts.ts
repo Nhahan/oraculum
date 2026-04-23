@@ -9,7 +9,6 @@ export const packagedHostArtifactLayout: PackagedHostArtifactLayout =
   packagedHostArtifactLayoutSchema.parse({
     rootDir: PACKAGED_HOST_ARTIFACTS_ROOT,
     commandManifestPath: `${PACKAGED_HOST_ARTIFACTS_ROOT}/command-manifest.json`,
-    mcpToolSurfacePath: `${PACKAGED_HOST_ARTIFACTS_ROOT}/mcp-tool-surface.json`,
     hosts: [
       {
         host: "claude-code",
@@ -36,28 +35,12 @@ export const packagedHostArtifactLayout: PackagedHostArtifactLayout =
             purpose: "Generated Claude command entry for verdict.",
           },
           {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/commands/verdict-archive.md`,
-            purpose: "Generated Claude command entry for verdict archive.",
-          },
-          {
             path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/commands/crown.md`,
             purpose: "Generated Claude command entry for crown.",
           },
           {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/commands/draft.md`,
-            purpose: "Generated Claude command entry for draft.",
-          },
-          {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/commands/init.md`,
-            purpose: "Generated Claude command entry for init.",
-          },
-          {
             path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/.claude-plugin/plugin.json`,
             purpose: "Generated Claude plugin manifest.",
-          },
-          {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/.claude-plugin/.mcp.json`,
-            purpose: "Generated Claude plugin MCP registration manifest.",
           },
           {
             path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/.claude-plugin/skills/consult/SKILL.md`,
@@ -72,20 +55,8 @@ export const packagedHostArtifactLayout: PackagedHostArtifactLayout =
             purpose: "Generated Claude exact-prefix verdict skill.",
           },
           {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/.claude-plugin/skills/verdict-archive/SKILL.md`,
-            purpose: "Generated Claude exact-prefix verdict archive skill.",
-          },
-          {
             path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/.claude-plugin/skills/crown/SKILL.md`,
             purpose: "Generated Claude exact-prefix crown skill.",
-          },
-          {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/.claude-plugin/skills/draft/SKILL.md`,
-            purpose: "Generated Claude exact-prefix draft skill.",
-          },
-          {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/claude-code/.claude-plugin/skills/init/SKILL.md`,
-            purpose: "Generated Claude exact-prefix init skill.",
           },
         ],
       },
@@ -114,20 +85,8 @@ export const packagedHostArtifactLayout: PackagedHostArtifactLayout =
             purpose: "Generated Codex exact-prefix verdict skill.",
           },
           {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/route-verdict-archive/SKILL.md`,
-            purpose: "Generated Codex exact-prefix verdict archive skill.",
-          },
-          {
             path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/route-crown/SKILL.md`,
             purpose: "Generated Codex exact-prefix crown skill.",
-          },
-          {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/route-draft/SKILL.md`,
-            purpose: "Generated Codex exact-prefix draft skill.",
-          },
-          {
-            path: `${PACKAGED_HOST_ARTIFACTS_ROOT}/codex/skills/route-init/SKILL.md`,
-            purpose: "Generated Codex exact-prefix init skill.",
           },
         ],
       },

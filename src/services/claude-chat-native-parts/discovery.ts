@@ -1,6 +1,5 @@
 import { runSubprocess } from "../../core/subprocess.js";
 import {
-  CLAUDE_PLUGIN_VERSION,
   type ClaudeMarketplaceEntry,
   type ClaudePluginEntry,
   normalizePortablePath,
@@ -24,7 +23,7 @@ export async function listClaudePlugins(
     return [];
   }
 
-  return normalizeClaudePluginEntries(result.stdout);
+  return parseClaudePluginEntries(result.stdout);
 }
 
 export async function listClaudeMarketplaces(
@@ -43,10 +42,10 @@ export async function listClaudeMarketplaces(
     return [];
   }
 
-  return normalizeClaudeMarketplaceEntries(result.stdout);
+  return parseClaudeMarketplaceEntries(result.stdout);
 }
 
-export function normalizeClaudeMarketplaceEntries(stdout: string): ClaudeMarketplaceEntry[] {
+function parseClaudeMarketplaceEntries(stdout: string): ClaudeMarketplaceEntry[] {
   try {
     const parsed = JSON.parse(stdout) as unknown;
     if (!Array.isArray(parsed)) {
@@ -87,7 +86,7 @@ export function normalizeClaudeMarketplaceEntries(stdout: string): ClaudeMarketp
   }
 }
 
-export function normalizeClaudePluginEntries(stdout: string): ClaudePluginEntry[] {
+function parseClaudePluginEntries(stdout: string): ClaudePluginEntry[] {
   try {
     const parsed = JSON.parse(stdout) as unknown;
     if (!Array.isArray(parsed)) {
@@ -155,16 +154,4 @@ export function isClaudeMarketplaceAligned(
   }
 
   return normalizePortablePath(marketplacePath) === normalizePortablePath(installRoot);
-}
-
-export function isClaudePluginAligned(entry: ClaudePluginEntry | undefined): boolean {
-  if (!entry || entry.version !== CLAUDE_PLUGIN_VERSION) {
-    return false;
-  }
-
-  if (!entry.installPath) {
-    return true;
-  }
-
-  return normalizePortablePath(entry.installPath).endsWith(`/${CLAUDE_PLUGIN_VERSION}`);
 }

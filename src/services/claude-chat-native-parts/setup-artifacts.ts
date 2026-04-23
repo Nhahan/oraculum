@@ -4,19 +4,11 @@ import { join } from "node:path";
 
 import { APP_VERSION } from "../../core/constants.js";
 import { OraculumError } from "../../core/errors.js";
-import { writeTextFileAtomically } from "../project.js";
-import { buildClaudePluginMcpConfigFromInvocation } from "./mcp-config.js";
 import { getExpectedClaudeCommandFiles, getExpectedClaudeSkillDirs } from "./packaged.js";
-import {
-  CLAUDE_LEGACY_PLUGIN_NAMES,
-  CLAUDE_MARKETPLACE_NAME,
-  CLAUDE_PLUGIN_NAME,
-  CLAUDE_PLUGIN_VERSION,
-} from "./shared.js";
+import { CLAUDE_MARKETPLACE_NAME, CLAUDE_PLUGIN_NAME, CLAUDE_PLUGIN_VERSION } from "./shared.js";
 
 export async function prepareClaudeSetupRoot(options: {
   homeDir: string;
-  mcpInvocation: { args: string[]; command: string };
   packagedRoot: string;
 }): Promise<string> {
   const installRoot = join(options.homeDir, ".oraculum", "chat-native", "claude-code", APP_VERSION);
@@ -25,10 +17,6 @@ export async function prepareClaudeSetupRoot(options: {
     force: true,
     recursive: true,
   });
-  await writeTextFileAtomically(
-    join(installRoot, ".claude-plugin", ".mcp.json"),
-    `${JSON.stringify(buildClaudePluginMcpConfigFromInvocation(options.mcpInvocation), null, 2)}\n`,
-  );
   return installRoot;
 }
 
@@ -55,10 +43,7 @@ export function assertPackagedClaudeArtifacts(packagedRoot: string): void {
 }
 
 export async function pruneClaudePluginArtifacts(homeDir: string): Promise<void> {
-  await pruneSelectedClaudePluginArtifacts(homeDir, [
-    CLAUDE_PLUGIN_NAME,
-    ...CLAUDE_LEGACY_PLUGIN_NAMES,
-  ]);
+  await pruneSelectedClaudePluginArtifacts(homeDir, [CLAUDE_PLUGIN_NAME]);
 }
 
 export async function pruneSelectedClaudePluginArtifacts(
@@ -75,25 +60,5 @@ export async function pruneSelectedClaudePluginArtifacts(
         recursive: true,
       }),
     ]),
-  );
-}
-
-export function hasClaudePluginInstallArtifacts(
-  entry: { installPath?: string } | undefined,
-): boolean {
-  const installPath = entry?.installPath;
-  if (!installPath) {
-    return true;
-  }
-
-  if (
-    !existsSync(join(installPath, "plugin.json")) ||
-    !existsSync(join(installPath, ".mcp.json"))
-  ) {
-    return false;
-  }
-
-  return getExpectedClaudeSkillDirs().every((dirName) =>
-    existsSync(join(installPath, "skills", dirName, "SKILL.md")),
   );
 }

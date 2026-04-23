@@ -6,17 +6,14 @@ import { join } from "node:path";
 import { OraculumError } from "../../core/errors.js";
 import { runSubprocess } from "../../core/subprocess.js";
 import {
+  resolveDirectCliInvocation,
+  rewriteDirectRouteInvocation,
+} from "../chat-native/direct-route.js";
+import {
   isClaudeMarketplaceAligned,
-  isClaudePluginAligned,
   listClaudeMarketplaces,
   listClaudePlugins,
 } from "./discovery.js";
-import {
-  assertClaudeHomeConfigFilesReadable,
-  buildClaudePluginMcpConfigFromInvocation,
-  mergeClaudeMcpConfig,
-  removeClaudeMcpConfigEntry,
-} from "./mcp-config.js";
 import { getPackagedClaudeCodeRoot } from "./packaged.js";
 import {
   addClaudeMarketplace,
@@ -26,13 +23,11 @@ import {
 } from "./plugin-commands.js";
 import {
   assertPackagedClaudeArtifacts,
-  hasClaudePluginInstallArtifacts,
   prepareClaudeSetupRoot,
   pruneClaudePluginArtifacts,
   pruneSelectedClaudePluginArtifacts,
 } from "./setup-artifacts.js";
 import {
-  CLAUDE_LEGACY_PLUGIN_NAMES,
   CLAUDE_MARKETPLACE_NAME,
   CLAUDE_PLUGIN_NAME,
   type ClaudeSetupOptions,
@@ -58,14 +53,15 @@ export async function setupClaudeCodeHost(
   assertPackagedClaudeArtifacts(packagedRoot);
   const installRoot = await prepareClaudeSetupRoot({
     homeDir,
-    mcpInvocation: options.mcpInvocation ?? resolveNodeCliInvocation(),
     packagedRoot,
   });
   const pluginRoot = join(installRoot, ".claude-plugin");
   const marketplacePath = join(pluginRoot, "marketplace.json");
-  const mcpConfigPath = join(homeDir, ".claude", "mcp.json");
 
-  await assertClaudeHomeConfigFilesReadable(mcpConfigPath);
+  await rewriteDirectRouteInvocation({
+    invocation: options.directCliInvocation ?? resolveDirectCliInvocation(),
+    root: installRoot,
+  });
 
   if (!existsSync(pluginRoot) || !existsSync(marketplacePath)) {
     throw new OraculumError(
@@ -74,9 +70,6 @@ export async function setupClaudeCodeHost(
   }
 
   await mkdir(join(homeDir, ".claude"), { recursive: true });
-  const effectiveMcpConfig = buildClaudePluginMcpConfigFromInvocation(
-    options.mcpInvocation ?? resolveNodeCliInvocation(),
-  );
 
   const validate = await runSubprocess({
     command: claudeBinaryPath,
@@ -99,31 +92,18 @@ export async function setupClaudeCodeHost(
   }
 
   const installedPlugins = await listClaudePlugins(claudeBinaryPath, claudeArgs, env);
-  for (const legacyName of CLAUDE_LEGACY_PLUGIN_NAMES) {
-    const legacyPlugin = installedPlugins.find((entry) => entry.name === legacyName);
-    if (legacyPlugin) {
-      await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env, legacyName);
-    }
-  }
-  await pruneSelectedClaudePluginArtifacts(homeDir, CLAUDE_LEGACY_PLUGIN_NAMES);
   const targetPlugin = installedPlugins.find((entry) => entry.name === CLAUDE_PLUGIN_NAME);
-  if (!isClaudePluginAligned(targetPlugin) || !hasClaudePluginInstallArtifacts(targetPlugin)) {
-    if (targetPlugin) {
-      await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env, CLAUDE_PLUGIN_NAME);
-    }
-    await pruneSelectedClaudePluginArtifacts(homeDir, [CLAUDE_PLUGIN_NAME]);
-    await installClaudePlugin(claudeBinaryPath, claudeArgs, env);
+  if (targetPlugin) {
+    await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env, CLAUDE_PLUGIN_NAME);
   }
-
-  await mergeClaudeMcpConfig(mcpConfigPath, effectiveMcpConfig);
+  await pruneSelectedClaudePluginArtifacts(homeDir, [CLAUDE_PLUGIN_NAME]);
+  await installClaudePlugin(claudeBinaryPath, claudeArgs, env);
 
   return {
-    effectiveMcpConfigPath: join(pluginRoot, ".mcp.json"),
     installRoot,
     packagedRoot,
     pluginRoot,
     marketplacePath,
-    mcpConfigPath,
     pluginInstalled: true,
   };
 }
@@ -140,7 +120,6 @@ export async function uninstallClaudeCodeHost(
     HOME: homeDir,
   };
   const installRoot = join(homeDir, ".oraculum", "chat-native", "claude-code");
-  const mcpConfigPath = join(homeDir, ".claude", "mcp.json");
 
   let marketplaceRemoved = false;
   const marketList = await listClaudeMarketplaces(claudeBinaryPath, claudeArgs, env).catch(
@@ -160,44 +139,22 @@ export async function uninstallClaudeCodeHost(
   const installedPlugins = await listClaudePlugins(claudeBinaryPath, claudeArgs, env).catch(
     () => [],
   );
-  const targetPluginNames = [CLAUDE_PLUGIN_NAME, ...CLAUDE_LEGACY_PLUGIN_NAMES];
-  const targetPlugins = installedPlugins.filter((entry) => targetPluginNames.includes(entry.name));
-  if (targetPlugins.length > 0) {
-    let removedCount = 0;
-    for (const targetPlugin of targetPlugins) {
-      if (!targetPlugin.name) {
-        continue;
-      }
-      try {
-        await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env, targetPlugin.name);
-        removedCount += 1;
-      } catch {
-        // Best-effort uninstall should continue pruning the remaining Oraculum plugin variants.
-      }
+  const targetPlugin = installedPlugins.find((entry) => entry.name === CLAUDE_PLUGIN_NAME);
+  if (targetPlugin?.name) {
+    try {
+      await uninstallClaudePlugin(claudeBinaryPath, claudeArgs, env, targetPlugin.name);
+      pluginRemoved = true;
+    } catch {
+      pluginRemoved = false;
     }
-    pluginRemoved = removedCount > 0;
   }
 
-  await removeClaudeMcpConfigEntry(mcpConfigPath);
   await pruneClaudePluginArtifacts(homeDir);
   await rm(installRoot, { force: true, recursive: true });
 
   return {
     installRoot,
     marketplaceRemoved,
-    mcpConfigPath,
     pluginRemoved,
-  };
-}
-
-function resolveNodeCliInvocation(): { args: string[]; command: string } {
-  const cliEntry = process.argv[1];
-  if (!cliEntry) {
-    throw new OraculumError("Cannot determine the current Oraculum CLI entry for Claude setup.");
-  }
-
-  return {
-    command: process.execPath,
-    args: [cliEntry],
   };
 }

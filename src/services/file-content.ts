@@ -1,1 +1,1 @@
-export { fileContentsEqual, hashFileContent } from "./project/file-content.js";
+export { fileContentsEqual } from "./project/file-content.js";

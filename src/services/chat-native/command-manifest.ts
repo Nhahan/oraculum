@@ -1,8 +1,4 @@
-import { type CommandManifestEntry, commandManifestEntrySchema } from "../../domain/chat-native.js";
-
-export function getOrcRouteAlias(commandId: string): string {
-  return commandId;
-}
+import { commandManifestEntrySchema } from "../../domain/chat-native.js";
 
 const planningArguments = [
   {
@@ -15,27 +11,55 @@ const planningArguments = [
   },
 ] as const;
 
+const consultArguments = [
+  {
+    name: "taskInput",
+    kind: "string",
+    description:
+      "Optional inline task text or task/consultation-plan path. When omitted, resume the latest running consultation or execute the latest ready consultation plan.",
+    required: false,
+    positional: true,
+    variadic: true,
+  },
+] as const;
+
 export const oraculumCommandManifest = [
   {
     id: "consult",
+    actionId: "consult",
     prefix: "orc",
     path: ["consult"],
     summary: "Run the full consultation tournament and return the completed verdict state.",
-    mcpTool: "oraculum_consult",
-    requestShape: "consultToolRequestSchema",
-    responseShape: "consultToolResponseSchema",
+    requestShape: "consultActionRequestSchema",
+    responseShape: "consultActionResponseSchema",
+    arguments: consultArguments,
+    examples: [
+      "orc consult",
+      'orc consult "fix session loss on refresh"',
+      "orc consult .oraculum/runs/run_20260404_xxxx/reports/consultation-plan.json",
+    ],
+    hostAdditions: {},
+  },
+  {
+    id: "plan",
+    actionId: "plan",
+    prefix: "orc",
+    path: ["plan"],
+    summary: "Shape a consultation first and persist reusable planning artifacts.",
+    requestShape: "planActionRequestSchema",
+    responseShape: "planActionResponseSchema",
     arguments: planningArguments,
-    examples: ['orc consult "fix session loss on refresh"'],
+    examples: ['orc plan "fix session loss on refresh"'],
     hostAdditions: {},
   },
   {
     id: "verdict",
+    actionId: "verdict",
     prefix: "orc",
     path: ["verdict"],
     summary: "Reopen the latest verdict or inspect a specific consultation.",
-    mcpTool: "oraculum_verdict",
-    requestShape: "verdictToolRequestSchema",
-    responseShape: "verdictToolResponseSchema",
+    requestShape: "verdictActionRequestSchema",
+    responseShape: "verdictActionResponseSchema",
     arguments: [
       {
         name: "consultationId",
@@ -48,32 +72,13 @@ export const oraculumCommandManifest = [
     hostAdditions: {},
   },
   {
-    id: "verdict-archive",
-    prefix: "orc",
-    path: ["verdict", "archive"],
-    summary: "Browse recent consultations without reopening one immediately.",
-    mcpTool: "oraculum_verdict_archive",
-    requestShape: "verdictArchiveToolRequestSchema",
-    responseShape: "verdictArchiveToolResponseSchema",
-    arguments: [
-      {
-        name: "count",
-        kind: "integer",
-        description: "Maximum number of recent consultations to show.",
-        positional: true,
-      },
-    ],
-    examples: ["orc verdict archive", "orc verdict archive 20"],
-    hostAdditions: {},
-  },
-  {
     id: "crown",
+    actionId: "crown",
     prefix: "orc",
     path: ["crown"],
     summary: "Crown the recommended result and materialize it in the project.",
-    mcpTool: "oraculum_crown",
-    requestShape: "crownToolRequestInputSchema",
-    responseShape: "crownToolResponseSchema",
+    requestShape: "crownActionRequestInputSchema",
+    responseShape: "crownActionResponseSchema",
     arguments: [
       {
         name: "materializationName",
@@ -94,49 +99,4 @@ export const oraculumCommandManifest = [
     examples: ["orc crown fix/session-loss", "orc crown", "orc crown --allow-unsafe"],
     hostAdditions: {},
   },
-  {
-    id: "plan",
-    prefix: "orc",
-    path: ["plan"],
-    summary: "Shape a consultation first and persist reusable planning artifacts.",
-    mcpTool: "oraculum_plan",
-    requestShape: "planToolRequestSchema",
-    responseShape: "planToolResponseSchema",
-    arguments: planningArguments,
-    examples: ['orc plan "fix session loss on refresh"'],
-    hostAdditions: {},
-  },
-  {
-    id: "draft",
-    prefix: "orc",
-    path: ["draft"],
-    summary: "Compatibility alias for `orc plan`.",
-    mcpTool: "oraculum_draft",
-    requestShape: "draftToolRequestSchema",
-    responseShape: "draftToolResponseSchema",
-    arguments: planningArguments,
-    examples: ['orc draft "fix session loss on refresh"'],
-    hostAdditions: {},
-  },
-  {
-    id: "init",
-    prefix: "orc",
-    path: ["init"],
-    summary: "Initialize the quick-start scaffold explicitly.",
-    mcpTool: "oraculum_init",
-    requestShape: "initToolRequestSchema",
-    responseShape: "initToolResponseSchema",
-    arguments: [
-      {
-        name: "force",
-        kind: "boolean",
-        description: "Reset quick-start config and remove advanced overrides.",
-        option: "--force",
-      },
-    ],
-    examples: ["orc init", "orc init --force"],
-    hostAdditions: {},
-  },
 ].map((entry) => commandManifestEntrySchema.parse(entry));
-
-export const typedOraculumCommandManifest: CommandManifestEntry[] = oraculumCommandManifest;
