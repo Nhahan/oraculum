@@ -31,6 +31,13 @@ export function classifyPublishedSmokePrompt(prompt) {
     return "winner";
   }
 
+  if (
+    prompt.includes("You are proposing one Oraculum implementation spec.") ||
+    prompt.includes("You are selecting Oraculum implementation specs")
+  ) {
+    return "read-only";
+  }
+
   return /^Candidate ID: (.+)$/m.test(prompt) ? "candidate" : "read-only";
 }
 
@@ -65,13 +72,16 @@ const shouldPublishedSmokeMutateWorkspace = ${shouldPublishedSmokeMutateWorkspac
 
 	function profilePayload() {
 	  return {
-	    profileId: "library",
+	    profileId: null,
+	    validationProfileId: "library",
     confidence: "high",
-    summary: "library profile fits the repository signals.",
+    summary: null,
+    validationSummary: "library profile fits the repository signals.",
     candidateCount: 2,
     strategyIds: ["minimal-change", "test-amplified"],
     selectedCommandIds: ["lint-fast", "typecheck-fast", "unit-impact", "full-suite-deep"],
-    missingCapabilities: [],
+    missingCapabilities: null,
+    validationGaps: [],
   };
 }
 
@@ -182,6 +192,7 @@ async function main() {
           name: "published-smoke",
           version: "0.0.0",
           type: "module",
+          packageManager: "npm@10.9.3",
           main: "./src/index.js",
           exports: {
             ".": "./src/index.js",
@@ -219,6 +230,7 @@ async function main() {
 
     const env = {
       ...process.env,
+      ORACULUM_AGENT_RUNTIME: "codex",
       ORACULUM_CODEX_BIN: fakeBinaryPath,
     };
 
@@ -228,9 +240,6 @@ async function main() {
       const response = await runConsultTool({
         cwd: projectRoot,
         taskInput: "Update src/index.js so greet() returns a winner-specific hello string.",
-        agent: "codex",
-        candidates: 2,
-        timeoutMs: 20000,
       });
       return `Consultation complete.\n${response.summary}`;
     });
