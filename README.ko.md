@@ -103,9 +103,9 @@ Git 프로젝트에서는 `crown`이 지정한 브랜치를 만들고 추천된 
 
 채팅 네이티브 planning 명령은 입력 표면을 task 전용으로 유지합니다. 빠른 시작 기본값은 `.oraculum/config.json`에, 고급 프로젝트 정책은 `.oraculum/advanced.json`에 두고, 작업별 요구사항은 task 문장에 포함하세요. 레포지토리 로컬 oracle 명령은 `.oraculum/advanced.json` 안에서 자체 `timeoutMs`를 계속 가질 수 있습니다.
 
-더 넓거나 위험한 작업을 먼저 shape하고 싶다면 `orc plan "<task>"`를 사용하세요. plan 요청이 아직 불명확하면 Oraculum은 실행 가능한 plan을 만들기 전에 하나의 구체적인 clarification을 묻습니다. 답변은 task 문장에 포함해서 `orc plan`을 다시 실행하세요. 준비되면 재사용 가능한 `consultation-plan.json`, `plan-readiness.json`, 사람이 읽기 쉬운 `consultation-plan.md`를 저장하고, 나중에 `orc consult <plan-artifact>`로 다시 실행할 수 있습니다. `orc draft`는 같은 planning lane에 대한 호환 alias로 남아 있습니다.
+더 넓거나 위험한 작업을 먼저 shape하고 싶다면 `orc plan "<task>"`를 사용하세요. plan 요청이 아직 불명확하면 Oraculum은 실행 가능한 plan을 만들기 전에 하나의 구체적인 clarification을 묻습니다. 답변은 task 문장에 포함해서 `orc plan`을 다시 실행하세요. 준비되면 재사용 가능한 `consultation-plan.json`, `plan-readiness.json`, 사람이 읽기 쉬운 `consultation-plan.md`를 저장하고, 나중에 `orc consult <plan-artifact>`로 다시 실행할 수 있습니다.
 
-가장 최근 실행 결과를 나중에 다시 열어보거나, 예전 실행을 조회하거나, 기록 보관함을 살펴보거나, 셸 전용 setup, uninstall, diagnostics, MCP 명령이 필요하다면 [고급 사용법](./docs/advanced-usage.md)을 참고하세요.
+가장 최근 실행 결과를 나중에 다시 열어보거나, 예전 실행을 조회하거나, 기록 보관함을 살펴보거나, 셸 전용 setup, uninstall, diagnostics, direct host diagnostics이 필요하다면 [고급 사용법](./docs/advanced-usage.md)을 참고하세요.
 
 ## 동작 방식
 

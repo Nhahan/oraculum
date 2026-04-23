@@ -8,9 +8,9 @@ After running setup in your terminal, open Claude Code or Codex and use:
 orc consult "fix session loss on refresh"
 ```
 
-`consult` already prints the latest summary. Everything below is for reopening a consultation later, shaping the tournament more explicitly, or using shell-only setup, uninstall, diagnostics, and MCP commands.
+`consult` already prints the latest summary. Everything below is for reopening a consultation later, shaping the tournament more explicitly, or using shell-only setup, uninstall, diagnostics, and direct CLI commands.
 
-The primary product surface is interactive `orc ...` commands inside Claude Code and Codex after setup. The shell binary remains for setup, uninstall, diagnostics, and MCP serving only. Run `oraculum setup ...` in your terminal first. Current setup is host-level and global for your local Claude Code or Codex installation, not directory-scoped.
+The primary product surface is interactive `orc ...` commands inside Claude Code and Codex after setup. The shell binary remains for setup, uninstall, diagnostics, and the direct host route used by installed artifacts. Run `oraculum setup ...` in your terminal first. Current setup is host-level and global for your local Claude Code or Codex installation, not directory-scoped.
 
 If you want to inspect whether the interactive `orc ...` surface is ready, run:
 
@@ -65,7 +65,7 @@ The default `consult` and `plan` product path does not expose a consultation-wid
 
 Internal validation harnesses may still apply their own process bounds. They are not part of the chat-native product input.
 
-Shell setup and diagnostics commands still keep their explicit safety and installation flags. The task-only rule applies to `orc consult`, `orc plan`, and `orc draft`.
+Shell setup and diagnostics commands still keep their explicit safety and installation flags. The task-only rule applies to `orc consult` and `orc plan`.
 
 ## Automatic Validation Posture Selection
 
@@ -77,7 +77,7 @@ Each consultation now writes a validation-posture selection artifact under:
 
 That artifact records the repo signals, the command catalog offered to the runtime, skipped command candidates, the selected validation posture, and any missing capabilities.
 
-Today the built-in compatibility posture ids are:
+Today the built-in validation posture ids are:
 
 - `generic`
 - `library`
@@ -90,7 +90,9 @@ The selected validation posture is consultation-scoped. It does not rewrite your
 
 The runtime does not invent executable commands. It selects from the command ids Oraculum already provided in the consultation-scoped catalog.
 
-Unknown strategy ids and command ids are filtered out or replaced by safe fallbacks before the recommendation is applied. Unsupported validation posture ids from runtime output are normalized through deterministic fallback before they become current state. If a plausible command is not safe to generate, Oraculum records it under `skippedCommandCandidates` instead of running it. If runtime validation-posture selection fails or is disabled, fallback behavior stays conservative: zero-signal repositories use `generic`, ambiguous package managers do not silently become npm, and missing validation is recorded as `missingCapabilities`.
+Unknown strategy ids and command ids are filtered out or replaced by safe fallbacks before the recommendation is applied. Unsupported validation posture ids from runtime output are normalized through deterministic fallback before they become current state. If a plausible command is not safe to generate, Oraculum records it under `skippedCommandCandidates` instead of running it. If runtime validation-posture selection fails or is disabled, fallback behavior stays conservative: zero-signal repositories use `generic`, ambiguous package managers do not silently become npm, and missing proof obligations are recorded in `validationGaps`.
+
+If consultation preflight runtime is unavailable, times out, or does not return a structured readiness recommendation, Oraculum fails closed with `needs-clarification` and one bounded task-contract question. It does not proceed to candidate generation from a preflight guess.
 
 Repo-local scripts and explicit `.oraculum/advanced.json` oracles are strongest. Oraculum prefers repository-owned commands and configuration over built-in ecosystem-specific guesses.
 
@@ -107,15 +109,6 @@ orc verdict run_20260404_xxxx
 ```
 
 Without a consultation id, `verdict` uses the latest consultation automatically.
-
-## Browse Recent Consultations
-
-```text
-orc verdict archive
-orc verdict archive 20
-```
-
-Use this when you want to reopen an older consultation without remembering the exact id first.
 
 ## Crown The Recommended Result
 
@@ -187,15 +180,6 @@ Common examples include:
 
 Use these when you want to inspect why a consultation stopped, why a winner was recommended, or what to rerun next.
 
-## Explicit Init
-
-```text
-orc init
-```
-
-You usually do not need this because `consult` auto-initializes the project on first use.
-If you run `orc init --force`, Oraculum resets the quick-start config and removes any existing `.oraculum/advanced.json`.
-
 ## Plan First
 
 ```text
@@ -207,7 +191,7 @@ Use this when the task is broad, risky, or still needs a stronger execution cont
 - `.oraculum/runs/<consultation-id>/reports/planning-depth.json`
 - `.oraculum/runs/<consultation-id>/reports/planning-interview.json` when clarification is needed
 - `.oraculum/runs/<consultation-id>/reports/planning-spec.json` when the interview/spec gate is ready
-- `.oraculum/runs/<consultation-id>/reports/plan-consensus.json` when consensus review completes
+- `.oraculum/runs/<consultation-id>/reports/plan-consensus.json` when Plan Conclave completes
 - `.oraculum/runs/<consultation-id>/reports/consultation-plan.json`
 - `.oraculum/runs/<consultation-id>/reports/plan-readiness.json`
 - `.oraculum/runs/<consultation-id>/reports/consultation-plan.md`
@@ -224,7 +208,12 @@ The JSON artifact is rerunnable:
 orc consult .oraculum/runs/<consultation-id>/reports/consultation-plan.json
 ```
 
-Explicit planning uses model judgment for planning depth, interview questions, readiness scoring, planning-spec crystallization, architect review, critic review, and bounded revision. Deterministic code only validates schemas, writes artifacts, checks path safety through the plan schema, and enforces runaway caps.
+Explicit planning uses model judgment for Augury Interview depth, Plan Conclave intensity, interview questions, readiness scoring, planning-spec crystallization, architect review, critic review, and bounded revision. Deterministic code only validates schemas, derives the effective Plan Conclave revision budget from the selected intensity within the operator cap, writes artifacts, checks path safety through the plan schema, and enforces runaway caps.
+
+The planning lane has two named loops:
+
+- Augury Interview: runs before `planning-spec.json` when the task still needs operator clarification. It extracts the signs future candidates must satisfy or violate as the `ontologySnapshot` sign bundle: goals, constraints, non-goals, acceptance criteria, and risks. The runtime must leave sign arrays empty when the answer provides no evidence, and it should mark spec readiness only when a witnessable goal/scope boundary or acceptance/judging basis is visible enough for future candidate evidence. `interviewDepth`, `estimatedInterviewRounds`, and `explicitPlanMaxInterviewRounds` bound this loop.
+- Plan Conclave: runs after `planning-spec.json` and revises the consultation-plan draft when architect/critic review asks for changes. `consensusReviewIntensity` is the primary signal for this loop; `interviewDepth` is only a bounded budget modifier, not extra interview work. `revise` means bounded required changes can still make the plan safe. `reject` is terminal and is reserved for task contracts that cannot be made safe within bounded revision. Runtime-unavailable review also rejects conservatively instead of approving by fallback.
 
 The default safety caps live in the advanced project layer:
 
@@ -233,24 +222,30 @@ The default safety caps live in the advanced project layer:
   "version": 1,
   "planning": {
     "explicitPlanMaxInterviewRounds": 8,
-    "explicitPlanMaxConsensusRevisions": 3,
+    "explicitPlanMaxConsensusRevisions": 10,
     "explicitPlanModelCallTimeoutMs": 120000,
     "consultLiteMaxPlanningCalls": 1
   }
 }
 ```
 
-These caps are operator safety boundaries, not semantic heuristics. `orc consult` stays on the lighter path: it can block on one high-value clarification, but it does not run the full multi-round interview and consensus pipeline unless you explicitly use `orc plan` or `orc draft`.
+These caps are operator safety boundaries, not exact semantic budgets. For Plan Conclave, `explicitPlanMaxConsensusRevisions` is a maximum cap. `planning-depth.json` records that configured cap as `operatorMaxConsensusRevisions` and records the effective Plan Conclave budget as `maxConsensusRevisions`; the effective value comes from the runtime-selected `consensusReviewIntensity` plus `interviewDepth`, clamped by the operator cap and the hard safety ceiling. Continuation answers run depth/intensity selection again before scoring the active Augury answer, so the final budget reflects the clarified task contract. `consultLiteMaxPlanningCalls` is the consult-lite preflight cap for the lighter `orc consult` path. `orc consult` can block on one high-value clarification, but it does not run the full multi-round Augury Interview and Plan Conclave pipeline unless you explicitly use `orc plan`.
+
+Plan Conclave blocked summaries distinguish three cases:
+
+- reviewer rejection: `plan-consensus.json` is terminal with `approved=false`, no revision is attempted, and `plan-readiness.json` asks for the rejection to be addressed.
+- review runtime unavailable: `plan-consensus.json` is terminal with `approved=false`, and readiness asks for planning to be rerun when review can execute.
+- revision cap miss: `plan-consensus.json` is terminal with `approved=false` after exhausting `maxConsensusRevisions`, and readiness reports the cap miss separately from rejection.
 
 `orc consult <consultation-plan.json>` checks `plan-readiness.json` before creating candidates. If the plan still lacks information, Oraculum asks for clarification instead of treating that as an execution block. It fails fast only for hard readiness problems such as invalid artifacts, stale plan basis, or planned oracle ids that no longer exist in the execution contract.
 
-Plan review findings, when present, are advisory unless deterministic readiness finds a hard execution blocker. `orc verdict` shows review and readiness artifacts that were produced by the planning lane.
+Plan review findings, when present, are advisory unless deterministic readiness finds a hard execution blocker such as stale plan basis, unresolved questions, or missing planned oracles. Plan Conclave review is different: its `reject` verdict is terminal for the current planning run. `orc verdict` shows review and readiness artifacts that were produced by the planning lane.
 
-`orc draft ...` remains available as a compatibility alias for the same planning lane.
+Codex structured-output schemas require every top-level field to be present, so prompts may mention nullable placeholders such as `candidateId: null` or `clarificationQuestion: null`. These placeholders are normalized away at Oraculum's schema boundary when the canonical artifact treats the field as optional.
 
-## Shell Setup And MCP Commands
+## Shell Setup And Direct Commands
 
-Use the shell binary for installation, uninstall, diagnostics, and MCP serving only.
+Use the shell binary for installation, uninstall, diagnostics, and the direct host route.
 
 ### Setup Host Integration
 
@@ -287,8 +282,8 @@ Oraculum keeps the `orc ...` language shared across Claude Code and Codex. The s
 
 Interpretation:
 
-- Oraculum installs the host-specific plugin, skills, rules, and MCP wiring needed for `orc ...`.
-- Under the hood, Oraculum still uses the host's official lower-level transport where available.
+- Oraculum installs the host-specific plugin, skills, and rules needed for `orc ...`.
+- Under the hood, Oraculum routes exact prefixes to the local `oraculum orc ...` direct CLI path.
 
 Use `oraculum setup status --json` when you want the current host setup state as machine-readable diagnostics.
 
@@ -304,13 +299,15 @@ oraculum uninstall --runtime codex
 
 This removes host registration and installed host artifacts. If you also want to remove the globally installed npm package itself, run `npm uninstall -g oraculum` separately.
 
-### Run The MCP Server Directly
+### Run The Direct Route Explicitly
 
 ```bash
-oraculum mcp serve
+oraculum orc consult "fix session loss on refresh"
+oraculum orc verdict
+oraculum orc crown fix/session-loss
 ```
 
-Use this only if you are integrating Oraculum with another MCP-capable client. Normal Claude Code and Codex usage should go through `orc ...` after setup.
+Normal Claude Code and Codex usage should go through `orc ...` after setup; those installed host artifacts call this direct route for you.
 
 ## Repo-Local Oracles
 
