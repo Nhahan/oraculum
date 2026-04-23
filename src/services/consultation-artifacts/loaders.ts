@@ -13,6 +13,10 @@ import {
   consultationPreflightReadinessArtifactSchema,
   consultationResearchBriefSchema,
   exportPlanSchema,
+  planConsensusArtifactSchema,
+  planningDepthArtifactSchema,
+  planningInterviewArtifactSchema,
+  planningSpecArtifactSchema,
 } from "../../domain/run.js";
 import { failureAnalysisSchema } from "../failure-analysis.js";
 import { secondOpinionWinnerSelectionArtifactSchema } from "../finalist-judge.js";
@@ -38,6 +42,11 @@ export async function loadConsultationArtifacts(
     consultationPlanMarkdownAvailable,
     consultationPlanReadiness,
     consultationPlanReview,
+    planningDepth,
+    planningInterview,
+    planningSpec,
+    planningSpecMarkdownAvailable,
+    planConsensus,
     preflightReadiness,
     clarifyFollowUp,
     researchBrief,
@@ -66,6 +75,29 @@ export async function loadConsultationArtifacts(
       paths.consultationPlanReviewPath,
       "plan-review",
       consultationPlanReviewSchema,
+    ),
+    readOptionalParsedArtifactWithDiagnostics(
+      paths.planningDepthPath,
+      "planning-depth",
+      planningDepthArtifactSchema,
+    ),
+    readOptionalParsedArtifactWithDiagnostics(
+      paths.planningInterviewPath,
+      "planning-interview",
+      planningInterviewArtifactSchema,
+    ),
+    readOptionalParsedArtifactWithDiagnostics(
+      paths.planningSpecPath,
+      "planning-spec",
+      planningSpecArtifactSchema,
+    ),
+    paths.planningSpecMarkdownPath
+      ? hasNonEmptyTextArtifact(paths.planningSpecMarkdownPath)
+      : Promise.resolve(false),
+    readOptionalParsedArtifactWithDiagnostics(
+      paths.planConsensusPath,
+      "plan-consensus",
+      planConsensusArtifactSchema,
     ),
     readOptionalParsedArtifactWithDiagnostics(
       paths.preflightReadinessPath,
@@ -120,6 +152,10 @@ export async function loadConsultationArtifacts(
     consultationPlan,
     consultationPlanReadiness,
     consultationPlanReview,
+    planningDepth,
+    planningInterview,
+    planningSpec,
+    planConsensus,
     preflightReadiness,
     clarifyFollowUp,
     researchBrief,
@@ -136,6 +172,11 @@ export async function loadConsultationArtifacts(
     consultationPlanMarkdownAvailable,
     consultationPlanReadiness: consultationPlanReadiness.artifact,
     consultationPlanReview: consultationPlanReview.artifact,
+    planningDepth: planningDepth.artifact,
+    planningInterview: planningInterview.artifact,
+    planningSpec: planningSpec.artifact,
+    planningSpecMarkdownAvailable,
+    planConsensus: planConsensus.artifact,
     preflightReadiness: preflightReadiness.artifact,
     clarifyFollowUp: clarifyFollowUp.artifact,
     researchBrief: researchBrief.artifact,
@@ -170,6 +211,26 @@ export function loadConsultationArtifactsSync(
     paths.consultationPlanReviewPath,
     "plan-review",
     consultationPlanReviewSchema,
+  );
+  const planningDepth = readOptionalParsedArtifactWithDiagnosticsSync(
+    paths.planningDepthPath,
+    "planning-depth",
+    planningDepthArtifactSchema,
+  );
+  const planningInterview = readOptionalParsedArtifactWithDiagnosticsSync(
+    paths.planningInterviewPath,
+    "planning-interview",
+    planningInterviewArtifactSchema,
+  );
+  const planningSpec = readOptionalParsedArtifactWithDiagnosticsSync(
+    paths.planningSpecPath,
+    "planning-spec",
+    planningSpecArtifactSchema,
+  );
+  const planConsensus = readOptionalParsedArtifactWithDiagnosticsSync(
+    paths.planConsensusPath,
+    "plan-consensus",
+    planConsensusArtifactSchema,
   );
   const preflightReadiness = readOptionalParsedArtifactWithDiagnosticsSync(
     paths.preflightReadinessPath,
@@ -220,6 +281,10 @@ export function loadConsultationArtifactsSync(
     consultationPlan,
     consultationPlanReadiness,
     consultationPlanReview,
+    planningDepth,
+    planningInterview,
+    planningSpec,
+    planConsensus,
     preflightReadiness,
     clarifyFollowUp,
     researchBrief,
@@ -238,6 +303,13 @@ export function loadConsultationArtifactsSync(
       : false,
     consultationPlanReadiness: consultationPlanReadiness.artifact,
     consultationPlanReview: consultationPlanReview.artifact,
+    planningDepth: planningDepth.artifact,
+    planningInterview: planningInterview.artifact,
+    planningSpec: planningSpec.artifact,
+    planningSpecMarkdownAvailable: paths.planningSpecMarkdownPath
+      ? hasNonEmptyTextArtifactSync(paths.planningSpecMarkdownPath)
+      : false,
+    planConsensus: planConsensus.artifact,
     preflightReadiness: preflightReadiness.artifact,
     clarifyFollowUp: clarifyFollowUp.artifact,
     researchBrief: researchBrief.artifact,

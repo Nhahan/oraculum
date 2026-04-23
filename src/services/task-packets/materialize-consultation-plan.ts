@@ -41,6 +41,27 @@ export function materializeConsultationPlanTaskPacket(
     );
   }
 
+  if (consultationPlan.decisionDrivers.length > 0) {
+    planningContext.push(
+      "Decision drivers:",
+      ...consultationPlan.decisionDrivers.map((item) => `- ${item}`),
+    );
+  }
+
+  if (consultationPlan.plannedJudgingCriteria.length > 0) {
+    planningContext.push(
+      "Planned judging criteria:",
+      ...consultationPlan.plannedJudgingCriteria.map((item) => `- ${item}`),
+    );
+  }
+
+  if (consultationPlan.crownGates.length > 0) {
+    planningContext.push(
+      "Planned crown gates:",
+      ...consultationPlan.crownGates.map((item) => `- ${item}`),
+    );
+  }
+
   if (consultationPlan.requiredChangedPaths.length > 0) {
     planningContext.push(
       "Required changed paths:",
@@ -63,6 +84,7 @@ export function materializeConsultationPlanTaskPacket(
   }
 
   appendConsultationPlanExecutionGraphContext(planningContext, consultationPlan);
+  appendConsultationPlanConsensusContext(planningContext, consultationPlan);
 
   return materializedTaskPacketSchema.parse({
     ...consultationPlan.task,
@@ -93,6 +115,43 @@ export function materializeConsultationPlanTaskPacket(
       originPath: originSourcePath,
     },
   });
+}
+
+function appendConsultationPlanConsensusContext(
+  planningContext: string[],
+  consultationPlan: ConsultationPlanArtifact,
+): void {
+  if (consultationPlan.selectedApproach) {
+    planningContext.push("Selected approach:", consultationPlan.selectedApproach);
+  }
+
+  if (consultationPlan.rejectedApproaches.length > 0) {
+    planningContext.push(
+      "Rejected approaches:",
+      ...consultationPlan.rejectedApproaches.map((item) => `- ${item}`),
+    );
+  }
+
+  if (consultationPlan.assumptionLedger.length > 0) {
+    planningContext.push(
+      "Assumption ledger:",
+      ...consultationPlan.assumptionLedger.map((item) => `- ${item}`),
+    );
+  }
+
+  if (consultationPlan.premortem.length > 0) {
+    planningContext.push(
+      "Premortem risks:",
+      ...consultationPlan.premortem.map((item) => `- ${item}`),
+    );
+  }
+
+  if (consultationPlan.expandedTestPlan.length > 0) {
+    planningContext.push(
+      "Expanded test plan:",
+      ...consultationPlan.expandedTestPlan.map((item) => `- ${item}`),
+    );
+  }
 }
 
 function appendConsultationPlanExecutionGraphContext(

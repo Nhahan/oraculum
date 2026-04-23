@@ -37,6 +37,8 @@ describe("task packet loading", () => {
             "Execute the planned consultation: `orc consult .oraculum/runs/run_plan/reports/consultation-plan.json`.",
           intendedResult: "recommended result for src/session.ts",
           decisionDrivers: ["Target artifact path: src/session.ts"],
+          plannedJudgingCriteria: ["Session survives normal browser refresh."],
+          crownGates: ["Do not crown a patch that weakens logout semantics."],
           openQuestions: ["Should the refresh token rotation stay backward compatible?"],
           task: {
             id: "fix-session",
@@ -75,6 +77,11 @@ describe("task packet loading", () => {
           oracleIds: ["lint-fast", "auth-integration"],
           requiredChangedPaths: ["src/session.ts", "src/session.test.ts"],
           protectedPaths: ["docs/KEEP.md"],
+          selectedApproach: "Patch session hydration without rewriting auth storage.",
+          rejectedApproaches: ["Replace the entire auth module."],
+          assumptionLedger: ["Refresh token format remains unchanged."],
+          premortem: ["Logout could keep stale session state."],
+          expandedTestPlan: ["Run the auth refresh regression test."],
           roundOrder: [
             {
               id: "fast",
@@ -100,8 +107,24 @@ describe("task packet loading", () => {
     expect(taskPacket.source.originPath).toBe(originalTaskPath);
     expect(taskPacket.intent).toContain("Execute the persisted consultation plan contract.");
     expect(taskPacket.intent).toContain("Planned strategies:");
+    expect(taskPacket.intent).toContain("Decision drivers:");
+    expect(taskPacket.intent).toContain("Target artifact path: src/session.ts");
+    expect(taskPacket.intent).toContain("Planned judging criteria:");
+    expect(taskPacket.intent).toContain("Session survives normal browser refresh.");
+    expect(taskPacket.intent).toContain("Planned crown gates:");
+    expect(taskPacket.intent).toContain("Do not crown a patch that weakens logout semantics.");
     expect(taskPacket.intent).toContain("Required changed paths:");
     expect(taskPacket.intent).toContain("Protected paths:");
+    expect(taskPacket.intent).toContain("Selected approach:");
+    expect(taskPacket.intent).toContain("Patch session hydration without rewriting auth storage.");
+    expect(taskPacket.intent).toContain("Rejected approaches:");
+    expect(taskPacket.intent).toContain("Replace the entire auth module.");
+    expect(taskPacket.intent).toContain("Assumption ledger:");
+    expect(taskPacket.intent).toContain("Refresh token format remains unchanged.");
+    expect(taskPacket.intent).toContain("Premortem risks:");
+    expect(taskPacket.intent).toContain("Logout could keep stale session state.");
+    expect(taskPacket.intent).toContain("Expanded test plan:");
+    expect(taskPacket.intent).toContain("Run the auth refresh regression test.");
     expect(taskPacket.intent).not.toContain("Recommended next action:");
     expect(taskPacket.intent).not.toContain("Planned workstreams:");
     expect(taskPacket.intent).not.toContain("Planned stage order:");

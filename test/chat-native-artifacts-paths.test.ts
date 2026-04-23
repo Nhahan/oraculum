@@ -9,6 +9,11 @@ import {
   getFailureAnalysisPath,
   getFinalistComparisonJsonPath,
   getFinalistComparisonMarkdownPath,
+  getPlanConsensusPath,
+  getPlanningDepthPath,
+  getPlanningInterviewPath,
+  getPlanningSpecMarkdownPath,
+  getPlanningSpecPath,
   getPreflightReadinessPath,
   getProfileSelectionPath,
   getResearchBriefPath,
@@ -52,6 +57,15 @@ describe("chat-native consultation artifacts", () => {
 
     expect(parsed.consultationRoot).toBe(getRunDir(projectRoot, consultationId));
     expect(parsed.configPath).toBe(getRunConfigPath(projectRoot, consultationId));
+    expect(parsed.planningDepthPath).toBe(getPlanningDepthPath(projectRoot, consultationId));
+    expect(parsed.planningInterviewPath).toBe(
+      getPlanningInterviewPath(projectRoot, consultationId),
+    );
+    expect(parsed.planningSpecPath).toBe(getPlanningSpecPath(projectRoot, consultationId));
+    expect(parsed.planningSpecMarkdownPath).toBe(
+      getPlanningSpecMarkdownPath(projectRoot, consultationId),
+    );
+    expect(parsed.planConsensusPath).toBe(getPlanConsensusPath(projectRoot, consultationId));
     expect(parsed.preflightReadinessPath).toBe(
       getPreflightReadinessPath(projectRoot, consultationId),
     );

@@ -17,6 +17,11 @@ export function buildConsultationArtifacts(
   consultationPlanMarkdownPath?: string;
   consultationPlanReadinessPath?: string;
   consultationPlanReviewPath?: string;
+  planningDepthPath?: string;
+  planningInterviewPath?: string;
+  planningSpecPath?: string;
+  planningSpecMarkdownPath?: string;
+  planConsensusPath?: string;
   preflightReadinessPath?: string;
   clarifyFollowUpPath?: string;
   researchBriefPath?: string;

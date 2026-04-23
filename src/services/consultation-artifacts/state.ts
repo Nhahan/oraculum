@@ -31,6 +31,12 @@ export function buildConsultationArtifactState(
   const consultationPlanReview = filterArtifactForConsultationRun(loaded.consultationPlanReview, {
     expectedRunId,
   });
+  const planningDepth = filterArtifactForConsultationRun(loaded.planningDepth, { expectedRunId });
+  const planningInterview = filterArtifactForConsultationRun(loaded.planningInterview, {
+    expectedRunId,
+  });
+  const planningSpec = filterArtifactForConsultationRun(loaded.planningSpec, { expectedRunId });
+  const planConsensus = filterArtifactForConsultationRun(loaded.planConsensus, { expectedRunId });
   const preflightReadiness = filterArtifactForConsultationRun(loaded.preflightReadiness, {
     expectedRunId,
   });
@@ -81,6 +87,21 @@ export function buildConsultationArtifactState(
       : {}),
     ...(consultationPlanReview && paths.consultationPlanReviewPath
       ? { consultationPlanReviewPath: paths.consultationPlanReviewPath, consultationPlanReview }
+      : {}),
+    ...(planningDepth && paths.planningDepthPath
+      ? { planningDepthPath: paths.planningDepthPath, planningDepth }
+      : {}),
+    ...(planningInterview && paths.planningInterviewPath
+      ? { planningInterviewPath: paths.planningInterviewPath, planningInterview }
+      : {}),
+    ...(planningSpec && paths.planningSpecPath
+      ? { planningSpecPath: paths.planningSpecPath, planningSpec }
+      : {}),
+    ...(loaded.planningSpecMarkdownAvailable && paths.planningSpecMarkdownPath
+      ? { planningSpecMarkdownPath: paths.planningSpecMarkdownPath }
+      : {}),
+    ...(planConsensus && paths.planConsensusPath
+      ? { planConsensusPath: paths.planConsensusPath, planConsensus }
       : {}),
     ...(preflightReadiness && paths.preflightReadinessPath
       ? { preflightReadinessPath: paths.preflightReadinessPath, preflightReadiness }
@@ -139,6 +160,13 @@ export function toAvailableConsultationArtifactPaths(
     ...(state.consultationPlanReviewPath
       ? { consultationPlanReviewPath: state.consultationPlanReviewPath }
       : {}),
+    ...(state.planningDepthPath ? { planningDepthPath: state.planningDepthPath } : {}),
+    ...(state.planningInterviewPath ? { planningInterviewPath: state.planningInterviewPath } : {}),
+    ...(state.planningSpecPath ? { planningSpecPath: state.planningSpecPath } : {}),
+    ...(state.planningSpecMarkdownPath
+      ? { planningSpecMarkdownPath: state.planningSpecMarkdownPath }
+      : {}),
+    ...(state.planConsensusPath ? { planConsensusPath: state.planConsensusPath } : {}),
     ...(state.preflightReadinessPath
       ? { preflightReadinessPath: state.preflightReadinessPath }
       : {}),

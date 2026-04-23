@@ -29,6 +29,11 @@ export interface ConsultationArtifactPaths {
   consultationPlanMarkdownPath?: string;
   consultationPlanReadinessPath?: string;
   consultationPlanReviewPath?: string;
+  planningDepthPath?: string;
+  planningInterviewPath?: string;
+  planningSpecPath?: string;
+  planningSpecMarkdownPath?: string;
+  planConsensusPath?: string;
   preflightReadinessPath?: string;
   clarifyFollowUpPath?: string;
   researchBriefPath?: string;
@@ -45,6 +50,10 @@ export interface ConsultationArtifactState extends ConsultationArtifactPaths {
   consultationPlan?: z.infer<typeof consultationPlanArtifactSchema>;
   consultationPlanReadiness?: z.infer<typeof consultationPlanReadinessSchema>;
   consultationPlanReview?: z.infer<typeof consultationPlanReviewSchema>;
+  planningDepth?: z.infer<typeof import("../../domain/run.js").planningDepthArtifactSchema>;
+  planningInterview?: z.infer<typeof import("../../domain/run.js").planningInterviewArtifactSchema>;
+  planningSpec?: z.infer<typeof import("../../domain/run.js").planningSpecArtifactSchema>;
+  planConsensus?: z.infer<typeof import("../../domain/run.js").planConsensusArtifactSchema>;
   preflightReadiness?: z.infer<typeof consultationPreflightReadinessArtifactSchema>;
   clarifyFollowUp?: z.infer<typeof consultationClarifyFollowUpSchema>;
   researchBrief?: z.infer<typeof consultationResearchBriefSchema>;
@@ -66,6 +75,19 @@ export interface LoadedConsultationArtifacts {
   consultationPlanMarkdownAvailable: boolean;
   consultationPlanReadiness: z.infer<typeof consultationPlanReadinessSchema> | undefined;
   consultationPlanReview: z.infer<typeof consultationPlanReviewSchema> | undefined;
+  planningDepth:
+    | z.infer<typeof import("../../domain/run.js").planningDepthArtifactSchema>
+    | undefined;
+  planningInterview:
+    | z.infer<typeof import("../../domain/run.js").planningInterviewArtifactSchema>
+    | undefined;
+  planningSpec:
+    | z.infer<typeof import("../../domain/run.js").planningSpecArtifactSchema>
+    | undefined;
+  planningSpecMarkdownAvailable: boolean;
+  planConsensus:
+    | z.infer<typeof import("../../domain/run.js").planConsensusArtifactSchema>
+    | undefined;
   preflightReadiness: z.infer<typeof consultationPreflightReadinessArtifactSchema> | undefined;
   clarifyFollowUp: z.infer<typeof consultationClarifyFollowUpSchema> | undefined;
   researchBrief: z.infer<typeof consultationResearchBriefSchema> | undefined;
