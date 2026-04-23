@@ -98,6 +98,14 @@ export function getCandidateTaskPacketPath(
   return join(getCandidateDir(projectRoot, runId, candidateId), "task-packet.json");
 }
 
+export function getCandidateSpecPath(
+  projectRoot: string,
+  runId: string,
+  candidateId: string,
+): string {
+  return join(getCandidateDir(projectRoot, runId, candidateId), "spec.json");
+}
+
 export function getCandidateBaseSnapshotPath(
   projectRoot: string,
   runId: string,
@@ -235,6 +243,30 @@ export function getConsultationPlanReadinessPath(projectRoot: string, runId: str
 
 export function getConsultationPlanReviewPath(projectRoot: string, runId: string): string {
   return join(getReportsDir(projectRoot, runId), "plan-review.json");
+}
+
+export function getPlanningDepthPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "planning-depth.json");
+}
+
+export function getPlanningInterviewPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "planning-interview.json");
+}
+
+export function getPlanningSpecPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "planning-spec.json");
+}
+
+export function getPlanningSpecMarkdownPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "planning-spec.md");
+}
+
+export function getPlanConsensusPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "plan-consensus.json");
+}
+
+export function getCandidateSpecSelectionPath(projectRoot: string, runId: string): string {
+  return join(getReportsDir(projectRoot, runId), "spec-selection.json");
 }
 
 export function getExportPlanPath(projectRoot: string, runId: string): string {

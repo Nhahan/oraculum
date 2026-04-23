@@ -44,6 +44,12 @@ export function createJudgeOnlyAdapter(
     recommendProfile: async () => {
       throw new Error("not used");
     },
+    proposeCandidateSpec: async () => {
+      throw new Error("not used");
+    },
+    selectCandidateSpec: async () => {
+      throw new Error("not used");
+    },
     recommendClarifyFollowUp: recommendUnusedClarifyFollowUp,
     recommendWinner,
   };

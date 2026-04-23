@@ -57,6 +57,12 @@ export function createCapturingClarifyPreflightAdapter(options: {
     async recommendProfile() {
       throw new Error("not used");
     },
+    async proposeCandidateSpec() {
+      throw new Error("not used");
+    },
+    async selectCandidateSpec() {
+      throw new Error("not used");
+    },
     async recommendPreflight(request) {
       return {
         runId: request.runId,
@@ -118,6 +124,12 @@ export function createTimedOutPreflightAdapter(): AgentAdapter {
       throw new Error("not used");
     },
     async recommendProfile() {
+      throw new Error("not used");
+    },
+    async proposeCandidateSpec() {
+      throw new Error("not used");
+    },
+    async selectCandidateSpec() {
       throw new Error("not used");
     },
     async recommendPreflight(request) {

@@ -25,6 +25,15 @@ export async function writeConsultationPlanArtifacts(
   if (options.planReview) {
     await writeJsonFile(reviewPath, options.planReview);
   }
+  if (options.planningInterview) {
+    await writeJsonFile(runPaths.planningInterviewPath, options.planningInterview);
+  }
+  if (options.planningSpec) {
+    await writeJsonFile(runPaths.planningSpecPath, options.planningSpec);
+  }
+  if (options.planConsensus) {
+    await writeJsonFile(runPaths.planConsensusPath, options.planConsensus);
+  }
   await writeTextFileAtomically(
     markdownPath,
     `${renderConsultationPlanMarkdown(planArtifact, options.projectRoot)}\n`,

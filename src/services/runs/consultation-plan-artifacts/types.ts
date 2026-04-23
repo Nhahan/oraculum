@@ -3,6 +3,9 @@ import type { ConsultationProfileSelection } from "../../../domain/profile.js";
 import type {
   ConsultationClarifyFollowUp,
   ConsultationPlanReview,
+  PlanConsensusArtifact,
+  PlanningInterviewArtifact,
+  PlanningSpecArtifact,
   RunManifest,
 } from "../../../domain/run.js";
 import type { MaterializedTaskPacket } from "../../../domain/task.js";
@@ -20,4 +23,7 @@ export interface ConsultationPlanArtifactWriterOptions {
   clarifyFollowUp?: ConsultationClarifyFollowUp;
   planReview?: ConsultationPlanReview;
   profileSelection?: ConsultationProfileSelection;
+  planningInterview?: PlanningInterviewArtifact;
+  planningSpec?: PlanningSpecArtifact;
+  planConsensus?: PlanConsensusArtifact;
 }

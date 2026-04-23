@@ -31,6 +31,7 @@ export async function ensureProjectInitializedForTool(cwd: string) {
 export function buildPlanRunRequest(
   request: InlinePlanningToolRequest,
   options?: {
+    planningLane?: "explicit-plan" | "consult-lite";
     writeConsultationPlanArtifacts?: boolean;
   },
 ): Parameters<typeof planRun>[0] {
@@ -41,6 +42,7 @@ export function buildPlanRunRequest(
     ...(request.candidates !== undefined ? { candidates: request.candidates } : {}),
     ...(request.clarificationAnswer ? { clarificationAnswer: request.clarificationAnswer } : {}),
     ...(request.deliberate ? { deliberate: true } : {}),
+    ...(options?.planningLane ? { planningLane: options.planningLane } : {}),
     ...(options?.writeConsultationPlanArtifacts ? { writeConsultationPlanArtifacts: true } : {}),
     ...(options?.writeConsultationPlanArtifacts ? { requirePlanningClarification: true } : {}),
     preflight: {

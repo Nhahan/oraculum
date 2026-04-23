@@ -143,6 +143,35 @@ export function renderConsultationPlanMarkdown(
         )
       : ["- Prefer abstain over retry: none"]),
     "",
+    "## Deep Planning",
+    "",
+    ...(plan.planningSpecPath ? [`- Planning spec: ${plan.planningSpecPath}`] : []),
+    ...(plan.planningInterviewPath ? [`- Planning interview: ${plan.planningInterviewPath}`] : []),
+    ...(plan.planConsensusPath ? [`- Plan consensus: ${plan.planConsensusPath}`] : []),
+    ...(plan.clarityGate
+      ? [
+          `- Clarity gate: ${plan.clarityGate.status}`,
+          `- Clarity summary: ${plan.clarityGate.summary}`,
+          ...(plan.clarityGate.score !== undefined
+            ? [`- Clarity score: ${plan.clarityGate.score}`]
+            : []),
+          ...(plan.clarityGate.weakestDimension
+            ? [`- Weakest dimension: ${plan.clarityGate.weakestDimension}`]
+            : []),
+        ]
+      : ["- No deep planning gate was recorded."]),
+    ...(plan.selectedApproach ? [`- Selected approach: ${plan.selectedApproach}`] : []),
+    ...(plan.rejectedApproaches.length > 0
+      ? plan.rejectedApproaches.map((item) => `- Rejected approach: ${item}`)
+      : []),
+    ...(plan.assumptionLedger.length > 0
+      ? plan.assumptionLedger.map((item) => `- Assumption: ${item}`)
+      : []),
+    ...(plan.premortem.length > 0 ? plan.premortem.map((item) => `- Premortem: ${item}`) : []),
+    ...(plan.expandedTestPlan.length > 0
+      ? plan.expandedTestPlan.map((item) => `- Expanded test: ${item}`)
+      : []),
+    "",
     "## Round Order",
     "",
     ...(plan.roundOrder.length > 0

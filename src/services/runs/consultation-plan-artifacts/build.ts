@@ -12,13 +12,14 @@ import {
   describeRecommendedTaskResultLabel,
   type MaterializedTaskPacket,
 } from "../../../domain/task.js";
+import { applyPlanConsensusToConsultationPlan } from "../../plan-consensus/index.js";
 
 import type { ConsultationPlanArtifactWriterOptions } from "./types.js";
 
 export function buildConsultationPlanArtifact(
   options: ConsultationPlanArtifactWriterOptions,
 ): ConsultationPlanArtifact {
-  return consultationPlanArtifactSchema.parse({
+  const plan = consultationPlanArtifactSchema.parse({
     runId: options.runId,
     createdAt: options.createdAt,
     mode: options.deliberate ? "deliberate" : "standard",
@@ -54,7 +55,61 @@ export function buildConsultationPlanArtifact(
     stagePlan: buildConsultationPlanStagePlan(options),
     scorecardDefinition: buildConsultationPlanScorecardDefinition(options),
     repairPolicy: buildConsultationPlanRepairPolicy(options),
+    ...(options.planningInterview
+      ? { planningInterviewPath: `.oraculum/runs/${options.runId}/reports/planning-interview.json` }
+      : {}),
+    ...(options.planningSpec
+      ? { planningSpecPath: `.oraculum/runs/${options.runId}/reports/planning-spec.json` }
+      : {}),
+    ...(options.planConsensus
+      ? { planConsensusPath: `.oraculum/runs/${options.runId}/reports/plan-consensus.json` }
+      : {}),
+    ...(options.planningInterview
+      ? {
+          clarityGate: {
+            status:
+              options.planningInterview.status === "ready-for-spec"
+                ? "clear"
+                : options.planningInterview.status === "blocked"
+                  ? "blocked"
+                  : "needs-clarification",
+            ...(options.planningInterview.clarityScore !== undefined
+              ? { score: options.planningInterview.clarityScore }
+              : {}),
+            ...(options.planningInterview.weakestDimension
+              ? { weakestDimension: options.planningInterview.weakestDimension }
+              : {}),
+            summary:
+              options.planningInterview.status === "ready-for-spec"
+                ? "Planning interview reached spec readiness."
+                : "Planning interview requires clarification.",
+          },
+        }
+      : {}),
+    ...(options.planningSpec
+      ? {
+          assumptionLedger: options.planningSpec.assumptionLedger,
+          expandedTestPlan: options.planningSpec.acceptanceCriteria,
+          premortem: options.planningSpec.openRisks,
+        }
+      : {}),
   });
+
+  if (!options.planConsensus) {
+    return plan;
+  }
+
+  return consultationPlanArtifactSchema.parse(
+    applyPlanConsensusToConsultationPlan(plan, options.planConsensus, {
+      ...(options.planningInterview
+        ? {
+            planningInterviewPath: `.oraculum/runs/${options.runId}/reports/planning-interview.json`,
+          }
+        : {}),
+      planningSpecPath: `.oraculum/runs/${options.runId}/reports/planning-spec.json`,
+      planConsensusPath: `.oraculum/runs/${options.runId}/reports/plan-consensus.json`,
+    }),
+  );
 }
 
 function buildConsultationPlanRepoBasis(options: {

@@ -189,6 +189,7 @@ describe("chat-native MCP tools: planning", () => {
     expect(mockedPlanRun).toHaveBeenCalledWith({
       cwd: "/tmp/project",
       taskInput: "remove the old --agent and --answer docs",
+      planningLane: "explicit-plan",
       writeConsultationPlanArtifacts: true,
       requirePlanningClarification: true,
       preflight: {
@@ -229,6 +230,7 @@ describe("chat-native MCP tools: planning", () => {
     expect(mockedPlanRun).toHaveBeenCalledWith({
       cwd: "/tmp/project",
       taskInput: "fix session loss on refresh",
+      planningLane: "explicit-plan",
       writeConsultationPlanArtifacts: true,
       requirePlanningClarification: true,
       preflight: {
@@ -239,6 +241,7 @@ describe("chat-native MCP tools: planning", () => {
       },
     });
     expect(mockedExecuteRun).not.toHaveBeenCalled();
+    expect(mockedWriteLatestRunState).toHaveBeenCalledWith("/tmp/project", "run_1");
     expect(response.mode).toBe("draft");
   });
   it("runs plan without executing candidates", async () => {
@@ -250,6 +253,7 @@ describe("chat-native MCP tools: planning", () => {
     expect(mockedPlanRun).toHaveBeenCalledWith({
       cwd: "/tmp/project",
       taskInput: "fix session loss on refresh",
+      planningLane: "explicit-plan",
       writeConsultationPlanArtifacts: true,
       requirePlanningClarification: true,
       preflight: {
@@ -260,6 +264,7 @@ describe("chat-native MCP tools: planning", () => {
       },
     });
     expect(mockedExecuteRun).not.toHaveBeenCalled();
+    expect(mockedWriteLatestRunState).toHaveBeenCalledWith("/tmp/project", "run_1");
     expect(response.mode).toBe("plan");
   });
   it("returns blocked preflight consultations without executing candidates", async () => {

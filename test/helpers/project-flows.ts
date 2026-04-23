@@ -85,10 +85,41 @@ for (let index = 0; index < process.argv.length; index += 1) {
   }
 }
 if (out) {
-  const body = prompt.includes("You are selecting the best Oraculum finalist.")
-    ? '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}'
-    : "Codex finished candidate patch";
-  if (!prompt.includes("You are selecting the best Oraculum finalist.")) {
+  const candidate = /Candidate ID: (cand-[0-9]+)/.exec(prompt)?.[1] ?? "cand-01";
+  const specCandidateIds = [...prompt.matchAll(/- (cand-[0-9]+)/g)].map((match) => match[1]);
+  const uniqueSpecCandidateIds = [...new Set(specCandidateIds)];
+  const body = prompt.includes("You are proposing one Oraculum implementation spec.")
+    ? JSON.stringify({
+        summary: "Spec for " + candidate,
+        approach: "Make a direct project-flow patch for " + candidate + ".",
+        keyChanges: ["Write candidate-change.txt in the implementation workspace."],
+        expectedChangedPaths: ["candidate-change.txt"],
+        acceptanceCriteria: ["A materialized patch exists."],
+        validationPlan: ["Use built-in materialized patch checks."],
+        riskNotes: []
+      })
+    : prompt.includes("You are selecting Oraculum implementation specs")
+      ? JSON.stringify({
+          rankedCandidateIds: uniqueSpecCandidateIds,
+          selectedCandidateIds: uniqueSpecCandidateIds.slice(0, 1),
+          implementationVarianceRisk: "low",
+          validationGaps: [],
+          summary: "Select cand-01 for the project-flow fixture.",
+          reasons: uniqueSpecCandidateIds.map((candidateId, index) => ({
+            candidateId,
+            rank: index + 1,
+            selected: index === 0,
+            reason: index === 0 ? "Primary fixture candidate." : "Lower-ranked fixture candidate."
+          }))
+        })
+      : prompt.includes("You are selecting the best Oraculum finalist.")
+        ? '{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 is the recommended promotion."}'
+        : "Codex finished candidate patch";
+  if (
+    !prompt.includes("You are selecting the best Oraculum finalist.") &&
+    !prompt.includes("You are proposing one Oraculum implementation spec.") &&
+    !prompt.includes("You are selecting Oraculum implementation specs")
+  ) {
     fs.writeFileSync(path.join(process.cwd(), "candidate-change.txt"), "patched\\n", "utf8");
   }
   fs.writeFileSync(out, body, "utf8");

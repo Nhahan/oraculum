@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCandidatePrompt,
+  buildCandidateSpecPrompt,
   buildPreflightPrompt,
   buildProfileSelectionPrompt,
+  buildSpecSelectionPrompt,
   buildWinnerSelectionPrompt,
 } from "../src/adapters/prompt.js";
+import { candidateSpecArtifactSchema } from "../src/domain/run.js";
 import { deriveResearchSignalFingerprint } from "../src/domain/task.js";
 import { createRepoSignals, createTaskPacket } from "./helpers/adapters.js";
+import { createConsultationPlanArtifactFixture } from "./helpers/contract-fixtures.js";
 
 describe("adapter prompts", () => {
   it("includes plan-derived judging presets in winner-selection prompts", () => {
@@ -112,6 +116,97 @@ describe("adapter prompts", () => {
     expect(winnerPrompt).toContain("contract-fit: pass");
     expect(winnerPrompt).toContain("Violations:");
     expect(winnerPrompt).toContain("Unresolved risks:");
+  });
+
+  it("builds spec-first prompts with plan contracts and selected spec context", () => {
+    const taskPacket = createTaskPacket({
+      acceptanceCriteria: ["Refresh keeps the active session."],
+    });
+    const consultationPlan = createConsultationPlanArtifactFixture(
+      "/repo",
+      "run_spec_prompt",
+      "/repo/.oraculum/runs/run_spec_prompt/reports",
+      {
+        requiredChangedPaths: ["src/session.ts"],
+        protectedPaths: ["src/legacy-auth.ts"],
+        workstreams: [
+          {
+            id: "session-restore",
+            label: "Session restore",
+            goal: "Restore auth state before route guards run.",
+            targetArtifacts: ["src/session.ts"],
+            requiredChangedPaths: ["src/session.ts"],
+            protectedPaths: ["src/legacy-auth.ts"],
+            oracleIds: ["materialized-patch"],
+            dependencies: [],
+            risks: ["Refresh ordering is timing-sensitive."],
+            disqualifiers: ["Do not rewrite legacy auth storage."],
+          },
+        ],
+      },
+    );
+    const selectedSpec = candidateSpecArtifactSchema.parse({
+      runId: "run_spec_prompt",
+      candidateId: "cand-02",
+      strategyId: "minimal-change",
+      strategyLabel: "Minimal Change",
+      adapter: "codex",
+      createdAt: "2026-04-22T00:00:00.000Z",
+      summary: "Restore session state before route checks.",
+      approach: "Move refresh hydration before protected-route evaluation.",
+      keyChanges: ["Update session restore ordering."],
+      expectedChangedPaths: ["src/session.ts"],
+      acceptanceCriteria: ["Refresh keeps the active session."],
+      validationPlan: ["Run materialized patch checks."],
+      riskNotes: ["Ordering changes can affect startup."],
+    });
+
+    const specPrompt = buildCandidateSpecPrompt({
+      runId: "run_spec_prompt",
+      candidateId: "cand-02",
+      strategyId: "minimal-change",
+      strategyLabel: "Minimal Change",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_spec_prompt/candidates/cand-02/logs",
+      taskPacket,
+      consultationPlan,
+    });
+    const selectionPrompt = buildSpecSelectionPrompt({
+      runId: "run_spec_prompt",
+      projectRoot: "/repo",
+      logDir: "/repo/.oraculum/runs/run_spec_prompt/reports",
+      taskPacket,
+      specs: [selectedSpec],
+      consultationPlan,
+    });
+    const candidatePrompt = buildCandidatePrompt({
+      runId: "run_spec_prompt",
+      candidateId: "cand-02",
+      strategyId: "minimal-change",
+      strategyLabel: "Minimal Change",
+      workspaceDir: "/repo/.oraculum/workspaces/run_spec_prompt/cand-02",
+      logDir: "/repo/.oraculum/runs/run_spec_prompt/candidates/cand-02/logs",
+      taskPacket,
+      selectedSpec,
+    });
+
+    for (const prompt of [specPrompt, selectionPrompt]) {
+      expect(prompt).toContain("Consultation plan contract:");
+      expect(prompt).toContain("Required changed paths:");
+      expect(prompt).toContain("src/session.ts");
+      expect(prompt).toContain("Protected paths:");
+      expect(prompt).toContain("src/legacy-auth.ts");
+      expect(prompt).toContain("Workstreams:");
+      expect(prompt).toContain("Session restore (session-restore)");
+      expect(prompt).toContain("Do not rewrite legacy auth storage.");
+    }
+    expect(specPrompt).toContain("Do not edit files. Do not describe completed work.");
+    expect(selectionPrompt).toContain("rankedCandidateIds must list every provided candidate id");
+    expect(candidatePrompt).toContain("Selected implementation spec:");
+    expect(candidatePrompt).toContain("Restore session state before route checks.");
+    expect(candidatePrompt).toContain(
+      "Treat this as the implementation contract for this candidate",
+    );
   });
 
   it("includes workspace command execution context in the profile selection prompt", () => {

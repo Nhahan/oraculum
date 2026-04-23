@@ -37,6 +37,17 @@ export {
   consultationPlanWorkstreamSchema,
   finalistScorecardBundleSchema,
   finalistScorecardSchema,
+  planConsensusArtifactSchema,
+  planConsensusDraftSchema,
+  planConsensusReviewSchema,
+  planningContinuationClassificationSchema,
+  planningDepthArtifactSchema,
+  planningDepthSchema,
+  planningInterviewArtifactSchema,
+  planningInterviewRoundSchema,
+  planningOntologySnapshotSchema,
+  planningReadinessSchema,
+  planningSpecArtifactSchema,
 } from "./schema-parts/plan.js";
 export { savedConsultationStatusSchema } from "./schema-parts/saved-status.js";
 export {
@@ -58,6 +69,14 @@ export {
   runStatusSchema,
   workspaceModeSchema,
 } from "./schema-parts/shared.js";
+export {
+  candidateSpecArtifactSchema,
+  candidateSpecContentSchema,
+  candidateSpecSelectionArtifactSchema,
+  candidateSpecSelectionReasonSchema,
+  candidateSpecSelectionRecommendationSchema,
+  implementationVarianceRiskSchema,
+} from "./schema-parts/spec-search.js";
 
 export type CandidateManifest = z.infer<
   typeof import("./schema-parts/execution.js").candidateManifestSchema
@@ -85,6 +104,24 @@ export type ConsultationResearchBrief = z.infer<
 export type ConsultationPlanArtifact = z.infer<
   typeof import("./schema-parts/plan.js").consultationPlanArtifactSchema
 >;
+export type PlanningDepthArtifact = z.infer<
+  typeof import("./schema-parts/plan.js").planningDepthArtifactSchema
+>;
+export type PlanningInterviewArtifact = z.infer<
+  typeof import("./schema-parts/plan.js").planningInterviewArtifactSchema
+>;
+export type PlanningSpecArtifact = z.infer<
+  typeof import("./schema-parts/plan.js").planningSpecArtifactSchema
+>;
+export type PlanConsensusArtifact = z.infer<
+  typeof import("./schema-parts/plan.js").planConsensusArtifactSchema
+>;
+export type PlanConsensusDraft = z.infer<
+  typeof import("./schema-parts/plan.js").planConsensusDraftSchema
+>;
+export type PlanConsensusReview = z.infer<
+  typeof import("./schema-parts/plan.js").planConsensusReviewSchema
+>;
 export type ConsultationPlanReadiness = z.infer<
   typeof import("./schema-parts/plan.js").consultationPlanReadinessSchema
 >;
@@ -102,6 +139,18 @@ export type CandidateScorecardStageResult = z.infer<
 >;
 export type CandidateScorecard = z.infer<
   typeof import("./schema-parts/plan.js").candidateScorecardSchema
+>;
+export type CandidateSpecArtifact = z.infer<
+  typeof import("./schema-parts/spec-search.js").candidateSpecArtifactSchema
+>;
+export type CandidateSpecContent = z.infer<
+  typeof import("./schema-parts/spec-search.js").candidateSpecContentSchema
+>;
+export type CandidateSpecSelectionArtifact = z.infer<
+  typeof import("./schema-parts/spec-search.js").candidateSpecSelectionArtifactSchema
+>;
+export type CandidateSpecSelectionRecommendation = z.infer<
+  typeof import("./schema-parts/spec-search.js").candidateSpecSelectionRecommendationSchema
 >;
 export type FinalistScorecard = z.infer<
   typeof import("./schema-parts/plan.js").finalistScorecardSchema

@@ -1,7 +1,16 @@
 import { buildAgentProfileRecommendationJsonSchema } from "../../domain/profile.js";
 
 import {
+  buildAgentCandidateSpecJsonSchema,
+  buildAgentCandidateSpecSelectionJsonSchema,
   buildAgentClarifyFollowUpJsonSchema,
+  buildAgentPlanConsensusDraftJsonSchema,
+  buildAgentPlanConsensusReviewJsonSchema,
+  buildAgentPlanningContinuationJsonSchema,
+  buildAgentPlanningDepthJsonSchema,
+  buildAgentPlanningQuestionJsonSchema,
+  buildAgentPlanningScoreJsonSchema,
+  buildAgentPlanningSpecJsonSchema,
   buildAgentPlanReviewJsonSchema,
   buildAgentPreflightJsonSchema,
 } from "../types.js";
@@ -76,6 +85,49 @@ export function buildCodexProfileRecommendationJsonSchema(): Record<string, unkn
     },
     required: Object.keys(base.properties),
   };
+}
+
+export function buildCodexCandidateSpecJsonSchema(): Record<string, unknown> {
+  return buildAgentCandidateSpecJsonSchema();
+}
+
+export function buildCodexSpecSelectionJsonSchema(): Record<string, unknown> {
+  return buildAgentCandidateSpecSelectionJsonSchema();
+}
+
+export function buildCodexPlanningDepthJsonSchema(): Record<string, unknown> {
+  return buildAgentPlanningDepthJsonSchema();
+}
+
+export function buildCodexPlanningContinuationJsonSchema(): Record<string, unknown> {
+  return buildAgentPlanningContinuationJsonSchema();
+}
+
+export function buildCodexPlanningQuestionJsonSchema(): Record<string, unknown> {
+  const base = buildAgentPlanningQuestionJsonSchema() as {
+    properties: Record<string, Record<string, unknown>>;
+  };
+
+  return {
+    ...base,
+    required: Object.keys(base.properties),
+  };
+}
+
+export function buildCodexPlanningScoreJsonSchema(): Record<string, unknown> {
+  return buildAgentPlanningScoreJsonSchema();
+}
+
+export function buildCodexPlanningSpecJsonSchema(): Record<string, unknown> {
+  return buildAgentPlanningSpecJsonSchema();
+}
+
+export function buildCodexPlanConsensusDraftJsonSchema(): Record<string, unknown> {
+  return buildAgentPlanConsensusDraftJsonSchema();
+}
+
+export function buildCodexPlanConsensusReviewJsonSchema(): Record<string, unknown> {
+  return buildAgentPlanConsensusReviewJsonSchema();
 }
 
 function buildCodexNullableSchema(schema: Record<string, unknown>): Record<string, unknown> {

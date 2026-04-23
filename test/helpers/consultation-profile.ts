@@ -194,6 +194,12 @@ export function createNoopProfileAdapter(
     async recommendWinner() {
       throw new Error("not used");
     },
+    async proposeCandidateSpec() {
+      throw new Error("not used");
+    },
+    async selectCandidateSpec() {
+      throw new Error("not used");
+    },
     async recommendProfile(request) {
       onRecommendProfile?.();
       return {

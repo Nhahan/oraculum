@@ -8,6 +8,12 @@ export interface RunArtifactPaths {
   consultationPlanMarkdownPath: string;
   consultationPlanReadinessPath: string;
   consultationPlanReviewPath: string;
+  planningDepthPath: string;
+  planningInterviewPath: string;
+  planningSpecPath: string;
+  planningSpecMarkdownPath: string;
+  planConsensusPath: string;
+  specSelectionPath: string;
   exportPlanPath: string;
   exportPatchPath: string;
   exportSyncSummaryPath: string;
@@ -30,6 +36,7 @@ export interface CandidateArtifactPaths {
   manifestPath: string;
   agentResultPath: string;
   taskPacketPath: string;
+  specPath: string;
   baseSnapshotPath: string;
   verdictsDir: string;
   witnessesDir: string;

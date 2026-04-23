@@ -2,18 +2,48 @@ import { buildAgentProfileRecommendationJsonSchema } from "../../domain/profile.
 import { buildAdapterResultBase } from "../execution.js";
 import {
   buildCandidatePrompt,
+  buildCandidateSpecPrompt,
   buildClarifyFollowUpPrompt,
+  buildPlanArchitectureReviewPrompt,
+  buildPlanConsensusDraftPrompt,
+  buildPlanConsensusRevisionPrompt,
+  buildPlanCriticReviewPrompt,
+  buildPlanningContinuationPrompt,
+  buildPlanningDepthPrompt,
+  buildPlanningInterviewQuestionPrompt,
+  buildPlanningInterviewScorePrompt,
+  buildPlanningSpecPrompt,
   buildPlanReviewPrompt,
   buildPreflightPrompt,
   buildProfileSelectionPrompt,
+  buildSpecSelectionPrompt,
   buildWinnerSelectionPrompt,
 } from "../prompt.js";
 import {
   type AgentAdapter,
+  type AgentCandidateSpecRequest,
+  type AgentCandidateSpecResult,
+  type AgentCandidateSpecSelectionRequest,
+  type AgentCandidateSpecSelectionResult,
   type AgentClarifyFollowUpRequest,
   type AgentClarifyFollowUpResult,
   type AgentJudgeRequest,
   type AgentJudgeResult,
+  type AgentPlanConsensusDraftRequest,
+  type AgentPlanConsensusDraftResult,
+  type AgentPlanConsensusReviewRequest,
+  type AgentPlanConsensusReviewResult,
+  type AgentPlanConsensusRevisionRequest,
+  type AgentPlanningContinuationRequest,
+  type AgentPlanningContinuationResult,
+  type AgentPlanningDepthRequest,
+  type AgentPlanningDepthResult,
+  type AgentPlanningQuestionRequest,
+  type AgentPlanningQuestionResult,
+  type AgentPlanningScoreRequest,
+  type AgentPlanningScoreResult,
+  type AgentPlanningSpecRequest,
+  type AgentPlanningSpecResult,
   type AgentPlanReviewRequest,
   type AgentPlanReviewResult,
   type AgentPreflightRequest,
@@ -22,22 +52,49 @@ import {
   type AgentProfileResult,
   type AgentRunRequest,
   type AgentRunResult,
+  agentCandidateSpecResultSchema,
+  agentCandidateSpecSelectionResultSchema,
   agentClarifyFollowUpResultSchema,
   agentJudgeResultSchema,
+  agentPlanConsensusDraftResultSchema,
+  agentPlanConsensusReviewResultSchema,
+  agentPlanningContinuationResultSchema,
+  agentPlanningDepthResultSchema,
+  agentPlanningQuestionResultSchema,
+  agentPlanningScoreResultSchema,
+  agentPlanningSpecResultSchema,
   agentPlanReviewResultSchema,
   agentPreflightResultSchema,
   agentProfileResultSchema,
   agentRunResultSchema,
+  buildAgentCandidateSpecJsonSchema,
+  buildAgentCandidateSpecSelectionJsonSchema,
   buildAgentClarifyFollowUpJsonSchema,
+  buildAgentPlanConsensusDraftJsonSchema,
+  buildAgentPlanConsensusReviewJsonSchema,
+  buildAgentPlanningContinuationJsonSchema,
+  buildAgentPlanningDepthJsonSchema,
+  buildAgentPlanningQuestionJsonSchema,
+  buildAgentPlanningScoreJsonSchema,
+  buildAgentPlanningSpecJsonSchema,
   buildAgentPlanReviewJsonSchema,
   buildAgentPreflightJsonSchema,
 } from "../types.js";
 import {
+  extractClaudeCandidateSpecRecommendation,
   extractClaudeClarifyFollowUpRecommendation,
+  extractClaudePlanConsensusDraftRecommendation,
+  extractClaudePlanConsensusReviewRecommendation,
+  extractClaudePlanningContinuationRecommendation,
+  extractClaudePlanningDepthRecommendation,
+  extractClaudePlanningQuestionRecommendation,
+  extractClaudePlanningScoreRecommendation,
+  extractClaudePlanningSpecRecommendation,
   extractClaudePlanReviewRecommendation,
   extractClaudePreflightRecommendation,
   extractClaudeProfileRecommendation,
   extractClaudeRecommendation,
+  extractClaudeSpecSelectionRecommendation,
   summarizeClaudeOutput,
 } from "./parsing.js";
 import { executeClaudeInteraction } from "./runtime.js";
@@ -170,6 +227,204 @@ export class ClaudeAdapter implements AgentAdapter {
     });
   }
 
+  async recommendPlanningDepth(
+    request: AgentPlanningDepthRequest,
+  ): Promise<AgentPlanningDepthResult> {
+    return this.runRecommendation({
+      fallbackSummary: "Claude planning depth selection finished.",
+      filenames: {
+        prompt: "planning-depth.prompt.txt",
+        stderr: "planning-depth.stderr.txt",
+        stdout: "planning-depth.stdout.txt",
+      },
+      jsonSchema: buildAgentPlanningDepthJsonSchema(),
+      outputParser: extractClaudePlanningDepthRecommendation,
+      prompt: buildPlanningDepthPrompt(request),
+      request,
+      resultSchema: agentPlanningDepthResultSchema,
+    });
+  }
+
+  async classifyPlanningContinuation(
+    request: AgentPlanningContinuationRequest,
+  ): Promise<AgentPlanningContinuationResult> {
+    return this.runRecommendation({
+      fallbackSummary: "Claude planning continuation classification finished.",
+      filenames: {
+        prompt: "planning-continuation.prompt.txt",
+        stderr: "planning-continuation.stderr.txt",
+        stdout: "planning-continuation.stdout.txt",
+      },
+      jsonSchema: buildAgentPlanningContinuationJsonSchema(),
+      outputParser: extractClaudePlanningContinuationRecommendation,
+      prompt: buildPlanningContinuationPrompt(request),
+      request,
+      resultSchema: agentPlanningContinuationResultSchema,
+    });
+  }
+
+  async generatePlanningInterviewQuestion(
+    request: AgentPlanningQuestionRequest,
+  ): Promise<AgentPlanningQuestionResult> {
+    return this.runRecommendation({
+      fallbackSummary: "Claude planning interview question finished.",
+      filenames: {
+        prompt: "planning-question.prompt.txt",
+        stderr: "planning-question.stderr.txt",
+        stdout: "planning-question.stdout.txt",
+      },
+      jsonSchema: buildAgentPlanningQuestionJsonSchema(),
+      outputParser: extractClaudePlanningQuestionRecommendation,
+      prompt: buildPlanningInterviewQuestionPrompt(request),
+      request,
+      resultSchema: agentPlanningQuestionResultSchema,
+    });
+  }
+
+  async scorePlanningInterviewRound(
+    request: AgentPlanningScoreRequest,
+  ): Promise<AgentPlanningScoreResult> {
+    return this.runRecommendation({
+      fallbackSummary: "Claude planning interview scoring finished.",
+      filenames: {
+        prompt: "planning-score.prompt.txt",
+        stderr: "planning-score.stderr.txt",
+        stdout: "planning-score.stdout.txt",
+      },
+      jsonSchema: buildAgentPlanningScoreJsonSchema(),
+      outputParser: extractClaudePlanningScoreRecommendation,
+      prompt: buildPlanningInterviewScorePrompt(request),
+      request,
+      resultSchema: agentPlanningScoreResultSchema,
+    });
+  }
+
+  async crystallizePlanningSpec(
+    request: AgentPlanningSpecRequest,
+  ): Promise<AgentPlanningSpecResult> {
+    return this.runRecommendation({
+      fallbackSummary: "Claude planning spec crystallization finished.",
+      filenames: {
+        prompt: "planning-spec.prompt.txt",
+        stderr: "planning-spec.stderr.txt",
+        stdout: "planning-spec.stdout.txt",
+      },
+      jsonSchema: buildAgentPlanningSpecJsonSchema(),
+      outputParser: extractClaudePlanningSpecRecommendation,
+      prompt: buildPlanningSpecPrompt(request),
+      request,
+      resultSchema: agentPlanningSpecResultSchema,
+    });
+  }
+
+  async draftConsensusConsultationPlan(
+    request: AgentPlanConsensusDraftRequest,
+  ): Promise<AgentPlanConsensusDraftResult> {
+    return this.runRecommendation({
+      fallbackSummary: "Claude consensus plan draft finished.",
+      filenames: {
+        prompt: "plan-consensus-draft.prompt.txt",
+        stderr: "plan-consensus-draft.stderr.txt",
+        stdout: "plan-consensus-draft.stdout.txt",
+      },
+      jsonSchema: buildAgentPlanConsensusDraftJsonSchema(),
+      outputParser: extractClaudePlanConsensusDraftRecommendation,
+      prompt: buildPlanConsensusDraftPrompt(request),
+      request,
+      resultSchema: agentPlanConsensusDraftResultSchema,
+    });
+  }
+
+  async reviewPlanArchitecture(
+    request: AgentPlanConsensusReviewRequest,
+  ): Promise<AgentPlanConsensusReviewResult> {
+    return this.runRecommendation({
+      fallbackSummary: "Claude consensus architect review finished.",
+      filenames: {
+        prompt: "plan-architect-review.prompt.txt",
+        stderr: "plan-architect-review.stderr.txt",
+        stdout: "plan-architect-review.stdout.txt",
+      },
+      jsonSchema: buildAgentPlanConsensusReviewJsonSchema(),
+      outputParser: extractClaudePlanConsensusReviewRecommendation,
+      prompt: buildPlanArchitectureReviewPrompt(request),
+      request,
+      resultSchema: agentPlanConsensusReviewResultSchema,
+    });
+  }
+
+  async reviewPlanCritic(
+    request: AgentPlanConsensusReviewRequest,
+  ): Promise<AgentPlanConsensusReviewResult> {
+    return this.runRecommendation({
+      fallbackSummary: "Claude consensus critic review finished.",
+      filenames: {
+        prompt: "plan-critic-review.prompt.txt",
+        stderr: "plan-critic-review.stderr.txt",
+        stdout: "plan-critic-review.stdout.txt",
+      },
+      jsonSchema: buildAgentPlanConsensusReviewJsonSchema(),
+      outputParser: extractClaudePlanConsensusReviewRecommendation,
+      prompt: buildPlanCriticReviewPrompt(request),
+      request,
+      resultSchema: agentPlanConsensusReviewResultSchema,
+    });
+  }
+
+  async reviseConsensusConsultationPlan(
+    request: AgentPlanConsensusRevisionRequest,
+  ): Promise<AgentPlanConsensusDraftResult> {
+    return this.runRecommendation({
+      fallbackSummary: "Claude consensus plan revision finished.",
+      filenames: {
+        prompt: "plan-consensus-revision.prompt.txt",
+        stderr: "plan-consensus-revision.stderr.txt",
+        stdout: "plan-consensus-revision.stdout.txt",
+      },
+      jsonSchema: buildAgentPlanConsensusDraftJsonSchema(),
+      outputParser: extractClaudePlanConsensusDraftRecommendation,
+      prompt: buildPlanConsensusRevisionPrompt(request),
+      request,
+      resultSchema: agentPlanConsensusDraftResultSchema,
+    });
+  }
+
+  async proposeCandidateSpec(
+    request: AgentCandidateSpecRequest,
+  ): Promise<AgentCandidateSpecResult> {
+    return this.runRecommendation({
+      fallbackSummary: "Claude candidate spec proposal finished.",
+      filenames: {
+        prompt: "candidate-spec.prompt.txt",
+        stderr: "candidate-spec.stderr.txt",
+        stdout: "candidate-spec.stdout.txt",
+      },
+      jsonSchema: buildAgentCandidateSpecJsonSchema(),
+      outputParser: extractClaudeCandidateSpecRecommendation,
+      prompt: buildCandidateSpecPrompt(request),
+      request,
+      resultSchema: agentCandidateSpecResultSchema,
+    });
+  }
+
+  async selectCandidateSpec(
+    request: AgentCandidateSpecSelectionRequest,
+  ): Promise<AgentCandidateSpecSelectionResult> {
+    return this.runRecommendation({
+      fallbackSummary: "Claude candidate spec selection finished.",
+      filenames: {
+        prompt: "spec-selection.prompt.txt",
+        stderr: "spec-selection.stderr.txt",
+        stdout: "spec-selection.stdout.txt",
+      },
+      jsonSchema: buildAgentCandidateSpecSelectionJsonSchema(),
+      outputParser: extractClaudeSpecSelectionRecommendation,
+      prompt: buildSpecSelectionPrompt(request),
+      request,
+      resultSchema: agentCandidateSpecSelectionResultSchema,
+    });
+  }
+
   private async runRecommendation<
     Request extends { logDir: string; projectRoot: string; runId: string },
     Recommendation,
@@ -203,6 +458,9 @@ export class ClaudeAdapter implements AgentAdapter {
 
     return options.resultSchema.parse({
       runId: options.request.runId,
+      ...("candidateId" in options.request && typeof options.request.candidateId === "string"
+        ? { candidateId: options.request.candidateId }
+        : {}),
       adapter: this.name,
       ...buildAdapterResultBase(execution),
       summary: summarizeClaudeOutput(output, options.fallbackSummary),

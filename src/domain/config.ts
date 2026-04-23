@@ -86,6 +86,19 @@ export const judgePolicySchema = z
     }),
   })
   .strict();
+export const planningOperatorCapsSchema = z
+  .object({
+    explicitPlanMaxInterviewRounds: z.number().int().min(0).max(32).default(8),
+    explicitPlanMaxConsensusRevisions: z.number().int().min(0).max(16).default(3),
+    explicitPlanModelCallTimeoutMs: z
+      .number()
+      .int()
+      .min(1)
+      .max(60 * 60 * 1000)
+      .default(120_000),
+    consultLiteMaxPlanningCalls: z.number().int().min(0).max(8).default(1),
+  })
+  .strict();
 
 export const strategySchema = z.object({
   id: z.string().min(1),
@@ -208,6 +221,7 @@ export const projectAdvancedConfigSchema = z
     repair: repairPolicySchema.optional(),
     judge: judgePolicySchema.optional(),
     managedTree: managedTreeRulesSchema.optional(),
+    planning: planningOperatorCapsSchema.optional(),
   })
   .strict();
 
@@ -222,6 +236,7 @@ export type RepairPolicy = z.infer<typeof repairPolicySchema>;
 export type ManagedTreeRules = z.infer<typeof managedTreeRulesSchema>;
 export type SecondOpinionJudgeConfig = z.infer<typeof secondOpinionJudgeConfigSchema>;
 export type JudgePolicy = z.infer<typeof judgePolicySchema>;
+export type PlanningOperatorCaps = z.infer<typeof planningOperatorCapsSchema>;
 export type Strategy = z.infer<typeof strategySchema>;
 export type Round = z.infer<typeof roundSchema>;
 export type RepoOracle = z.infer<typeof repoOracleSchema>;

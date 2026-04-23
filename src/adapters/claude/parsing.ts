@@ -2,12 +2,23 @@ import {
   type AgentProfileRecommendation,
   agentProfileRecommendationSchema,
 } from "../../domain/profile.js";
-import { consultationPreflightSchema } from "../../domain/run.js";
+import {
+  candidateSpecContentSchema,
+  candidateSpecSelectionRecommendationSchema,
+  consultationPreflightSchema,
+} from "../../domain/run.js";
 
 import {
   type AgentJudgeRecommendation,
   agentClarifyFollowUpResultSchema,
   agentJudgeRecommendationSchema,
+  agentPlanConsensusDraftResultSchema,
+  agentPlanConsensusReviewResultSchema,
+  agentPlanningContinuationResultSchema,
+  agentPlanningDepthResultSchema,
+  agentPlanningQuestionResultSchema,
+  agentPlanningScoreResultSchema,
+  agentPlanningSpecResultSchema,
   agentPlanReviewResultSchema,
 } from "../types.js";
 
@@ -189,6 +200,102 @@ export function extractClaudePlanReviewRecommendation(stdout: string) {
   return undefined;
 }
 
+export function extractClaudeCandidateSpecRecommendation(stdout: string) {
+  const trimmed = stdout.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    if ("summary" in parsed && "approach" in parsed && "keyChanges" in parsed) {
+      return candidateSpecContentSchema.parse(parsed);
+    }
+
+    for (const value of nestedObjects(parsed)) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const nested = value as Record<string, unknown>;
+        if ("summary" in nested && "approach" in nested && "keyChanges" in nested) {
+          return candidateSpecContentSchema.parse(nested);
+        }
+      }
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
+export function extractClaudeSpecSelectionRecommendation(stdout: string) {
+  const trimmed = stdout.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    if ("rankedCandidateIds" in parsed && "summary" in parsed) {
+      return candidateSpecSelectionRecommendationSchema.parse(parsed);
+    }
+
+    for (const value of nestedObjects(parsed)) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const nested = value as Record<string, unknown>;
+        if ("rankedCandidateIds" in nested && "summary" in nested) {
+          return candidateSpecSelectionRecommendationSchema.parse(nested);
+        }
+      }
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
+export function extractClaudePlanningDepthRecommendation(stdout: string) {
+  return extractClaudeNestedRecommendation(stdout, ["depth", "readiness"], (value) =>
+    agentPlanningDepthResultSchema.shape.recommendation.parse(value),
+  );
+}
+
+export function extractClaudePlanningContinuationRecommendation(stdout: string) {
+  return extractClaudeNestedRecommendation(stdout, ["classification", "confidence"], (value) =>
+    agentPlanningContinuationResultSchema.shape.recommendation.parse(value),
+  );
+}
+
+export function extractClaudePlanningQuestionRecommendation(stdout: string) {
+  return extractClaudeNestedRecommendation(stdout, ["question", "perspective"], (value) =>
+    agentPlanningQuestionResultSchema.shape.recommendation.parse(value),
+  );
+}
+
+export function extractClaudePlanningScoreRecommendation(stdout: string) {
+  return extractClaudeNestedRecommendation(stdout, ["clarityScore", "readyForSpec"], (value) =>
+    agentPlanningScoreResultSchema.shape.recommendation.parse(value),
+  );
+}
+
+export function extractClaudePlanningSpecRecommendation(stdout: string) {
+  return extractClaudeNestedRecommendation(stdout, ["goal", "acceptanceCriteria"], (value) =>
+    agentPlanningSpecResultSchema.shape.recommendation.parse(value),
+  );
+}
+
+export function extractClaudePlanConsensusDraftRecommendation(stdout: string) {
+  return extractClaudeNestedRecommendation(stdout, ["summary", "selectedOption"], (value) =>
+    agentPlanConsensusDraftResultSchema.shape.recommendation.parse(value),
+  );
+}
+
+export function extractClaudePlanConsensusReviewRecommendation(stdout: string) {
+  return extractClaudeNestedRecommendation(stdout, ["verdict", "summary"], (value) =>
+    agentPlanConsensusReviewResultSchema.shape.recommendation.parse(value),
+  );
+}
+
 function firstString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -235,4 +342,35 @@ function pickObject(parsed: Record<string, unknown>): Record<string, unknown> | 
 
 function nestedObjects(parsed: Record<string, unknown>): unknown[] {
   return [parsed.structured_output, parsed.result, parsed.content, parsed.message];
+}
+
+function extractClaudeNestedRecommendation<T>(
+  stdout: string,
+  keys: string[],
+  parse: (value: Record<string, unknown>) => T,
+): T | undefined {
+  const trimmed = stdout.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    if (keys.every((key) => key in parsed)) {
+      return parse(parsed);
+    }
+
+    for (const value of nestedObjects(parsed)) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const nested = value as Record<string, unknown>;
+        if (keys.every((key) => key in nested)) {
+          return parse(nested);
+        }
+      }
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
 }

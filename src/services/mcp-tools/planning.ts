@@ -126,9 +126,11 @@ async function runPlanningTool(
   const initialized = await ensureProjectInitializedForTool(request.cwd);
   const manifest = await planRun(
     buildPlanRunRequest(request, {
+      planningLane: "explicit-plan",
       writeConsultationPlanArtifacts: true,
     }),
   );
+  await writeLatestRunState(request.cwd, manifest.id);
 
   return {
     mode,

@@ -21,6 +21,7 @@ export const runManifestSchema = z
     agent: adapterSchema,
     configPath: z.string().min(1).optional(),
     candidateCount: z.number().int().min(0),
+    searchStrategy: z.enum(["spec-first", "patch-tournament"]).optional(),
     createdAt: z.string().min(1),
     updatedAt: z.string().min(1).optional(),
     rounds: z.array(roundManifestSchema),

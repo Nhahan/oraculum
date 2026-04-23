@@ -204,14 +204,18 @@ orc plan tasks/fix-session-loss.md
 
 Use this when the task is broad, risky, or still needs a stronger execution contract before candidate generation. Oraculum persists:
 
+- `.oraculum/runs/<consultation-id>/reports/planning-depth.json`
+- `.oraculum/runs/<consultation-id>/reports/planning-interview.json` when clarification is needed
+- `.oraculum/runs/<consultation-id>/reports/planning-spec.json` when the interview/spec gate is ready
+- `.oraculum/runs/<consultation-id>/reports/plan-consensus.json` when consensus review completes
 - `.oraculum/runs/<consultation-id>/reports/consultation-plan.json`
 - `.oraculum/runs/<consultation-id>/reports/plan-readiness.json`
 - `.oraculum/runs/<consultation-id>/reports/consultation-plan.md`
 
-If the requested plan lacks a concrete result contract or judging basis, `orc plan` stops before candidate planning and asks one clarification question. Answer it by revising the task input and rerunning:
+If the requested plan lacks a concrete result contract or judging basis, `orc plan` stops before candidate planning and asks one clarification question. Answer it with another `orc plan` call. Oraculum asks the runtime to classify whether the new input is a continuation of the active interview rather than relying on a hardcoded answer prefix:
 
 ```text
-orc plan "add authentication. Email/password login only, protect /dashboard, no OAuth."
+orc plan "Email/password login only, protect /dashboard, no OAuth."
 ```
 
 The JSON artifact is rerunnable:
@@ -219,6 +223,24 @@ The JSON artifact is rerunnable:
 ```text
 orc consult .oraculum/runs/<consultation-id>/reports/consultation-plan.json
 ```
+
+Explicit planning uses model judgment for planning depth, interview questions, readiness scoring, planning-spec crystallization, architect review, critic review, and bounded revision. Deterministic code only validates schemas, writes artifacts, checks path safety through the plan schema, and enforces runaway caps.
+
+The default safety caps live in the advanced project layer:
+
+```json
+{
+  "version": 1,
+  "planning": {
+    "explicitPlanMaxInterviewRounds": 8,
+    "explicitPlanMaxConsensusRevisions": 3,
+    "explicitPlanModelCallTimeoutMs": 120000,
+    "consultLiteMaxPlanningCalls": 1
+  }
+}
+```
+
+These caps are operator safety boundaries, not semantic heuristics. `orc consult` stays on the lighter path: it can block on one high-value clarification, but it does not run the full multi-round interview and consensus pipeline unless you explicitly use `orc plan` or `orc draft`.
 
 `orc consult <consultation-plan.json>` checks `plan-readiness.json` before creating candidates. If the plan still lacks information, Oraculum asks for clarification instead of treating that as an execution block. It fails fast only for hard readiness problems such as invalid artifacts, stale plan basis, or planned oracle ids that no longer exist in the execution contract.
 

@@ -688,6 +688,12 @@ describe("oracle and adapter contracts", () => {
           artifacts: [],
         });
       },
+      async proposeCandidateSpec() {
+        throw new Error("not used");
+      },
+      async selectCandidateSpec() {
+        throw new Error("not used");
+      },
     };
 
     const result = await adapter.runCandidate({

@@ -2,6 +2,11 @@ import { mkdir } from "node:fs/promises";
 import {
   getConsultationPlanMarkdownPath,
   getConsultationPlanPath,
+  getPlanConsensusPath,
+  getPlanningDepthPath,
+  getPlanningInterviewPath,
+  getPlanningSpecMarkdownPath,
+  getPlanningSpecPath,
   getResearchBriefPath,
   getRunConfigPath,
   getRunDir,
@@ -10,6 +15,10 @@ import { crownToolResponseSchema } from "../../src/domain/chat-native.js";
 import {
   consultationPlanArtifactSchema,
   consultationResearchBriefSchema,
+  planConsensusArtifactSchema,
+  planningDepthArtifactSchema,
+  planningInterviewArtifactSchema,
+  planningSpecArtifactSchema,
 } from "../../src/domain/run.js";
 import { createTempRootHarness, writeJsonArtifact, writeTextArtifact } from "./fs.js";
 import {
@@ -211,6 +220,89 @@ export async function writeCompleteConsultationArtifacts(
   await writeTextArtifact(
     getConsultationPlanMarkdownPath(projectRoot, consultationId),
     "# Consultation Plan\n\n- Run: run_20260409_demo\n",
+  );
+  await writeJsonArtifact(
+    getPlanningDepthPath(projectRoot, consultationId),
+    planningDepthArtifactSchema.parse({
+      runId: consultationId,
+      createdAt: "2026-04-14T00:00:00.000Z",
+      depth: "skip-interview",
+      readiness: "ready",
+      confidence: "high",
+      summary: "The task is ready for planning.",
+      reasons: [],
+      estimatedInterviewRounds: 0,
+      consensusReviewDepth: "standard",
+      maxInterviewRounds: 8,
+      maxConsensusRevisions: 3,
+    }),
+  );
+  await writeJsonArtifact(
+    getPlanningInterviewPath(projectRoot, consultationId),
+    planningInterviewArtifactSchema.parse({
+      runId: consultationId,
+      createdAt: "2026-04-14T00:00:00.000Z",
+      updatedAt: "2026-04-14T00:00:00.000Z",
+      status: "ready-for-spec",
+      taskId: "task",
+      depth: "skip-interview",
+      rounds: [],
+    }),
+  );
+  await writeJsonArtifact(
+    getPlanningSpecPath(projectRoot, consultationId),
+    planningSpecArtifactSchema.parse({
+      runId: consultationId,
+      createdAt: "2026-04-14T00:00:00.000Z",
+      taskId: "task",
+      goal: "Fix the session flow.",
+      constraints: [],
+      nonGoals: [],
+      acceptanceCriteria: [],
+      assumptionsResolved: [],
+      assumptionLedger: [],
+      repoEvidence: [],
+      openRisks: [],
+    }),
+  );
+  await writeTextArtifact(
+    getPlanningSpecMarkdownPath(projectRoot, consultationId),
+    "# Planning Spec\n\n- Run: run_20260409_demo\n",
+  );
+  await writeJsonArtifact(
+    getPlanConsensusPath(projectRoot, consultationId),
+    planConsensusArtifactSchema.parse({
+      runId: consultationId,
+      createdAt: "2026-04-14T00:00:00.000Z",
+      updatedAt: "2026-04-14T00:00:00.000Z",
+      approved: true,
+      maxRevisions: 1,
+      principles: [],
+      decisionDrivers: [],
+      viableOptions: [{ name: "minimal", rationale: "Use the smallest safe change." }],
+      selectedOption: { name: "minimal", rationale: "Use the smallest safe change." },
+      rejectedAlternatives: [],
+      architectAntithesis: [],
+      criticVerdicts: [],
+      revisionHistory: [],
+      finalDraft: {
+        summary: "Use the smallest safe change.",
+        principles: [],
+        decisionDrivers: [],
+        viableOptions: [{ name: "minimal", rationale: "Use the smallest safe change." }],
+        selectedOption: { name: "minimal", rationale: "Use the smallest safe change." },
+        rejectedAlternatives: [],
+        plannedJudgingCriteria: [],
+        crownGates: [],
+        requiredChangedPaths: [],
+        protectedPaths: [],
+        workstreams: [],
+        stagePlan: [],
+        assumptionLedger: [],
+        premortem: [],
+        expandedTestPlan: [],
+      },
+    }),
   );
   await writePreflightReadinessArtifact(projectRoot, consultationId);
   await writeComparisonArtifacts(projectRoot, consultationId, {

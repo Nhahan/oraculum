@@ -2,12 +2,23 @@ import {
   type AgentProfileRecommendation,
   agentProfileRecommendationSchema,
 } from "../../domain/profile.js";
-import { consultationPreflightSchema } from "../../domain/run.js";
+import {
+  candidateSpecContentSchema,
+  candidateSpecSelectionRecommendationSchema,
+  consultationPreflightSchema,
+} from "../../domain/run.js";
 
 import {
   type AgentJudgeRecommendation,
   agentClarifyFollowUpResultSchema,
   agentJudgeRecommendationSchema,
+  agentPlanConsensusDraftResultSchema,
+  agentPlanConsensusReviewResultSchema,
+  agentPlanningContinuationResultSchema,
+  agentPlanningDepthResultSchema,
+  agentPlanningQuestionResultSchema,
+  agentPlanningScoreResultSchema,
+  agentPlanningSpecResultSchema,
   agentPlanReviewResultSchema,
 } from "../types.js";
 
@@ -78,6 +89,123 @@ export function extractCodexPlanReviewRecommendation(output: string) {
 
   try {
     return agentPlanReviewResultSchema.shape.recommendation.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractCodexCandidateSpecRecommendation(output: string) {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return candidateSpecContentSchema.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractCodexSpecSelectionRecommendation(output: string) {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return candidateSpecSelectionRecommendationSchema.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractCodexPlanningDepthRecommendation(output: string) {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return agentPlanningDepthResultSchema.shape.recommendation.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractCodexPlanningContinuationRecommendation(output: string) {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return agentPlanningContinuationResultSchema.shape.recommendation.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractCodexPlanningQuestionRecommendation(output: string) {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return agentPlanningQuestionResultSchema.shape.recommendation.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractCodexPlanningScoreRecommendation(output: string) {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return agentPlanningScoreResultSchema.shape.recommendation.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractCodexPlanningSpecRecommendation(output: string) {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return agentPlanningSpecResultSchema.shape.recommendation.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractCodexPlanConsensusDraftRecommendation(output: string) {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return agentPlanConsensusDraftResultSchema.shape.recommendation.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractCodexPlanConsensusReviewRecommendation(output: string) {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return agentPlanConsensusReviewResultSchema.shape.recommendation.parse(parsed);
   } catch {
     return undefined;
   }

@@ -56,6 +56,44 @@ export function buildCandidatePrompt(request: AgentRunRequest): string {
     );
   }
 
+  if (request.selectedSpec) {
+    sections.push(
+      "",
+      "Selected implementation spec:",
+      `- Summary: ${request.selectedSpec.summary}`,
+      `- Approach: ${request.selectedSpec.approach}`,
+      "- Key changes:",
+      ...request.selectedSpec.keyChanges.map((item) => `  - ${item}`),
+    );
+    if (request.selectedSpec.expectedChangedPaths.length > 0) {
+      sections.push(
+        "- Expected changed paths:",
+        ...request.selectedSpec.expectedChangedPaths.map((item) => `  - ${item}`),
+      );
+    }
+    if (request.selectedSpec.acceptanceCriteria.length > 0) {
+      sections.push(
+        "- Spec acceptance criteria:",
+        ...request.selectedSpec.acceptanceCriteria.map((item) => `  - ${item}`),
+      );
+    }
+    if (request.selectedSpec.validationPlan.length > 0) {
+      sections.push(
+        "- Spec validation plan:",
+        ...request.selectedSpec.validationPlan.map((item) => `  - ${item}`),
+      );
+    }
+    if (request.selectedSpec.riskNotes.length > 0) {
+      sections.push(
+        "- Spec risk notes:",
+        ...request.selectedSpec.riskNotes.map((item) => `  - ${item}`),
+      );
+    }
+    sections.push(
+      "- Treat this as the implementation contract for this candidate unless the repository state proves a narrower safe adjustment is required.",
+    );
+  }
+
   if (request.repairContext) {
     sections.push(
       "",
