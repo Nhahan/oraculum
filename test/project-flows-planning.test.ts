@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -27,7 +27,7 @@ import {
   runManifestSchema,
 } from "../src/domain/run.js";
 import { materializedTaskPacketSchema } from "../src/domain/task.js";
-import { renderConsultationSummary } from "../src/services/consultations.js";
+import { buildVerdictReview, renderConsultationSummary } from "../src/services/consultations.js";
 import { loadProjectConfig } from "../src/services/project.js";
 import { planRun, readLatestExportableRunId, readLatestRunId } from "../src/services/runs.js";
 import { writeNodeBinary } from "./helpers/fake-binary.js";
@@ -405,7 +405,6 @@ if (out) {
         await readFile(getConsultationPlanReadinessPath(cwd, manifest.id), "utf8"),
       ) as unknown,
     );
-
     expect(manifest).toMatchObject({
       status: "completed",
       candidateCount: 0,
@@ -557,7 +556,6 @@ if (out) {
         await readFile(getConsultationPlanReadinessPath(cwd, manifest.id), "utf8"),
       ) as unknown,
     );
-
     expect(manifest).toMatchObject({
       status: "completed",
       candidateCount: 0,
@@ -609,6 +607,13 @@ if (out) {
         await readFile(getConsultationPlanReadinessPath(cwd, manifest.id), "utf8"),
       ) as unknown,
     );
+    const summary = await renderConsultationSummary(manifest, cwd);
+    const review = await buildVerdictReview(manifest, {
+      planConsensusPath: getPlanConsensusPath(cwd, manifest.id),
+    });
+    const status = buildSavedConsultationStatus(manifest, {
+      planConclaveRemediationRecommended: true,
+    });
 
     expect(manifest).toMatchObject({
       status: "completed",
@@ -643,6 +648,351 @@ if (out) {
         "Plan Conclave rejected the draft; address the review finding and rerun planning.",
       ],
     });
+    expect(status.nextActions).toEqual([
+      "reopen-verdict",
+      "review-preflight-readiness",
+      "answer-plan-conclave-and-rerun",
+    ]);
+    expect(summary).toContain("Plan Conclave remediation needed:");
+    expect(summary).toContain("Plan Conclave blocker: rejected");
+    expect(summary).toContain("Tighten crown gates before consult.");
+    expect(review.recommendationAbsenceReason).toContain("Plan Conclave remediation is required");
+    expect(review.artifactAvailability.planConsensus).toBe(true);
+  });
+
+  it("continues a rejected Plan Conclave with a remediation answer in a new run", async () => {
+    const cwd = await createInitializedProject();
+    const fakeCodex = await createDeepPlanningCodexBinary(cwd, {
+      criticVerdict: "reject",
+      approveRemediation: true,
+    });
+
+    const blocked = await planRun({
+      cwd,
+      taskInput: "Email/password login only; protect /dashboard; no OAuth.",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+    const originalConsensus = planConsensusArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanConsensusPath(cwd, blocked.id), "utf8")) as unknown,
+    );
+
+    const continued = await planRun({
+      cwd,
+      taskInput:
+        "Tighten crown gates by requiring candidate evidence that /dashboard redirects when signed out.",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+
+    const continuedConsensus = planConsensusArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanConsensusPath(cwd, continued.id), "utf8")) as unknown,
+    );
+    const continuedSpec = planningSpecArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanningSpecPath(cwd, continued.id), "utf8")) as unknown,
+    );
+    const rereadOriginalConsensus = planConsensusArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanConsensusPath(cwd, blocked.id), "utf8")) as unknown,
+    );
+
+    expect(blocked.id).not.toBe(continued.id);
+    expect(originalConsensus.continuation).toBeUndefined();
+    expect(rereadOriginalConsensus.continuation).toBeUndefined();
+    expect(continued.status).toBe("planned");
+    expect(continued.candidates).toHaveLength(4);
+    expect(continued.taskPath).toBe(blocked.taskPath);
+    expect(continued.taskPacket.sourcePath).toBe(blocked.taskPacket.sourcePath);
+    expect(continued.taskPacket.title).toBe(blocked.taskPacket.title);
+    expect(continued.taskPacket.id).toBe(blocked.taskPacket.id);
+    expect(continued.taskPacket.targetArtifactPath).toBe(blocked.taskPacket.targetArtifactPath);
+    expect(continued.taskPacket.artifactKind).toBe(blocked.taskPacket.artifactKind);
+    expect(continuedConsensus).toMatchObject({
+      approved: true,
+      continuation: {
+        sourceRunId: blocked.id,
+        sourceConsensusRunId: blocked.id,
+        blockerKind: "rejected",
+        requiredChanges: ["Tighten crown gates before consult."],
+      },
+    });
+    expect(continuedConsensus.continuation?.answer).toContain("Tighten crown gates");
+    expect(continuedSpec.assumptionsResolved).toContainEqual(
+      expect.stringContaining("Plan Conclave remediation answer"),
+    );
+  });
+
+  it("continues Plan Conclave remediation from the persisted source task if the task file changes", async () => {
+    const cwd = await createInitializedProject();
+    const fakeCodex = await createDeepPlanningCodexBinary(cwd, {
+      criticVerdict: "reject",
+      approveRemediation: true,
+    });
+    await writeProjectFlowFile(
+      cwd,
+      "tasks/auth.md",
+      "# Auth plan\nEmail/password login only; protect /dashboard; no OAuth.\n",
+    );
+
+    const blocked = await planRun({
+      cwd,
+      taskInput: "tasks/auth.md",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+    await writeProjectFlowFile(
+      cwd,
+      "tasks/auth.md",
+      "# Reporting dashboard\nBuild a reporting dashboard for weekly metrics.\n",
+    );
+
+    const continued = await planRun({
+      cwd,
+      taskInput:
+        "Tighten crown gates by requiring candidate evidence that /dashboard redirects when signed out.",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+
+    const blockedPlan = consultationPlanArtifactSchema.parse(
+      JSON.parse(await readFile(getConsultationPlanPath(cwd, blocked.id), "utf8")) as unknown,
+    );
+    const continuedPlan = consultationPlanArtifactSchema.parse(
+      JSON.parse(await readFile(getConsultationPlanPath(cwd, continued.id), "utf8")) as unknown,
+    );
+    const continuedConsensus = planConsensusArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanConsensusPath(cwd, continued.id), "utf8")) as unknown,
+    );
+
+    expect(blockedPlan.task.title).toBe("Auth plan");
+    expect(continued.status).toBe("planned");
+    expect(continued.taskPath).toBe(blocked.taskPath);
+    expect(continued.taskPacket.title).toBe("Auth plan");
+    expect(continuedPlan.task.title).toBe("Auth plan");
+    expect(continuedPlan.task.intent).toContain("Email/password");
+    expect(continuedPlan.task.intent).toContain("Plan Conclave remediation answer");
+    expect(continuedPlan.task.intent).not.toContain("weekly metrics");
+    expect(continuedConsensus.continuation?.sourceRunId).toBe(blocked.id);
+  });
+
+  it("starts a normal planning run when a stale Plan Conclave target cannot load its source task", async () => {
+    const cwd = await createInitializedProject();
+    const fakeCodex = await createDeepPlanningCodexBinary(cwd, {
+      criticVerdict: "reject",
+      approveRemediation: true,
+    });
+    await writeProjectFlowFile(
+      cwd,
+      "tasks/auth.md",
+      "# Auth plan\nEmail/password login only; protect /dashboard; no OAuth.\n",
+    );
+
+    const blocked = await planRun({
+      cwd,
+      taskInput: "tasks/auth.md",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+    await unlink(getConsultationPlanPath(cwd, blocked.id));
+    await unlink(blocked.taskPath);
+    const blockedSummary = await renderConsultationSummary(blocked, cwd);
+
+    const newTask = await planRun({
+      cwd,
+      taskInput: "Build a reporting dashboard for weekly metrics.",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+
+    const consensus = planConsensusArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanConsensusPath(cwd, newTask.id), "utf8")) as unknown,
+    );
+
+    expect(blockedSummary).toContain("Plan Conclave remediation needed:");
+    expect(blockedSummary).toContain("Tighten crown gates before consult.");
+    expect(newTask.status).toBe("planned");
+    expect(newTask.taskPacket.title).toBe("Build a reporting dashboard for weekly metrics");
+    expect(consensus.continuation).toBeUndefined();
+  });
+
+  it("ignores stale Plan Conclave artifacts whose runId does not match the run directory", async () => {
+    const cwd = await createInitializedProject();
+    const fakeCodex = await createDeepPlanningCodexBinary(cwd, {
+      criticVerdict: "reject",
+      approveRemediation: true,
+    });
+
+    const blocked = await planRun({
+      cwd,
+      taskInput: "Email/password login only; protect /dashboard; no OAuth.",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+    const staleConsensus = planConsensusArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanConsensusPath(cwd, blocked.id), "utf8")) as unknown,
+    );
+    await writeFile(
+      getPlanConsensusPath(cwd, blocked.id),
+      `${JSON.stringify({ ...staleConsensus, runId: "run_stale_consensus" })}\n`,
+      "utf8",
+    );
+
+    const newTask = await planRun({
+      cwd,
+      taskInput: "Build a reporting dashboard for weekly metrics.",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+
+    const consensus = planConsensusArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanConsensusPath(cwd, newTask.id), "utf8")) as unknown,
+    );
+
+    expect(newTask.status).toBe("planned");
+    expect(newTask.taskPacket.title).toBe("Build a reporting dashboard for weekly metrics");
+    expect(consensus.continuation).toBeUndefined();
+  });
+
+  it("keeps failed Plan Conclave remediation as a new blocked run with source metadata", async () => {
+    const cwd = await createInitializedProject();
+    const fakeCodex = await createDeepPlanningCodexBinary(cwd, {
+      criticVerdict: "reject",
+      approveRemediation: false,
+    });
+
+    const blocked = await planRun({
+      cwd,
+      taskInput: "Email/password login only; protect /dashboard; no OAuth.",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+    const continued = await planRun({
+      cwd,
+      taskInput: "Tighten crown gates but leave the blocker unresolved.",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+
+    const continuedConsensus = planConsensusArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanConsensusPath(cwd, continued.id), "utf8")) as unknown,
+    );
+
+    expect(continued).toMatchObject({
+      status: "completed",
+      candidateCount: 0,
+      candidates: [],
+      outcome: {
+        type: "needs-clarification",
+      },
+    });
+    expect(continuedConsensus).toMatchObject({
+      approved: false,
+      continuation: {
+        sourceRunId: blocked.id,
+        blockerKind: "rejected",
+      },
+    });
+  });
+
+  it("starts a normal planning run when input is a new task instead of Plan Conclave remediation", async () => {
+    const cwd = await createInitializedProject();
+    const fakeCodex = await createDeepPlanningCodexBinary(cwd, {
+      criticVerdict: "reject",
+    });
+
+    await planRun({
+      cwd,
+      taskInput: "Email/password login only; protect /dashboard; no OAuth.",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+
+    const newTask = await planRun({
+      cwd,
+      taskInput: "Build a reporting dashboard for weekly metrics.",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+
+    const consensus = planConsensusArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanConsensusPath(cwd, newTask.id), "utf8")) as unknown,
+    );
+
+    expect(newTask.status).toBe("planned");
+    expect(consensus.approved).toBe(true);
+    expect(consensus.continuation).toBeUndefined();
+    expect(newTask.taskPacket.title).toBe("Build a reporting dashboard for weekly metrics");
   });
 
   it("blocks explicit planning when Plan Conclave review runtime is unavailable", async () => {
@@ -706,6 +1056,45 @@ if (out) {
         "Plan Conclave review runtime unavailable. Rerun planning when architect/critic review can execute.",
       ],
     });
+  });
+
+  it("does not treat runtime-unavailable Plan Conclave blockers as remediation targets", async () => {
+    const cwd = await createInitializedProject();
+    const fakeCodex = await createDeepPlanningCodexBinary(cwd, {
+      reviewRuntimeUnavailable: true,
+    });
+
+    await planRun({
+      cwd,
+      taskInput: "Email/password login only; protect /dashboard; no OAuth.",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+    const rerun = await planRun({
+      cwd,
+      taskInput:
+        "Email/password login only; protect /dashboard; no OAuth. Rerun once review is available.",
+      agent: "codex",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      preflight: {
+        allowRuntime: true,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      },
+    });
+
+    const consensus = planConsensusArtifactSchema.parse(
+      JSON.parse(await readFile(getPlanConsensusPath(cwd, rerun.id), "utf8")) as unknown,
+    );
+
+    expect(consensus.continuation).toBeUndefined();
   });
 
   it("treats deliberate plan review blockers as advisory unless readiness has hard blockers", async () => {
@@ -878,10 +1267,12 @@ if (out) {
 async function createDeepPlanningCodexBinary(
   cwd: string,
   options: {
+    approveRemediation?: boolean;
     criticVerdict?: "approve" | "revise" | "reject";
     reviewRuntimeUnavailable?: boolean;
   } = {},
 ): Promise<string> {
+  const approveRemediation = options.approveRemediation ?? true;
   const criticVerdict = options.criticVerdict ?? "approve";
   const reviewRuntimeUnavailable = options.reviewRuntimeUnavailable ?? false;
   return writeNodeBinary(
@@ -956,9 +1347,11 @@ const consensusDraft = {
   premortem: ["Session or route guard can be incomplete."],
   expandedTestPlan: ["Verify /dashboard redirects when signed out."]
 };
+const isRemediationPrompt = prompt.includes("Plan Conclave remediation answer");
+const isReportingPrompt = prompt.includes("reporting dashboard");
 let body;
 if (prompt.includes("selecting the planning depth")) {
-  body = prompt.includes("Email/password")
+  body = prompt.includes("Email/password") || isReportingPrompt
     ? {
         interviewDepth: "skip-interview",
         readiness: "ready",
@@ -977,6 +1370,14 @@ if (prompt.includes("selecting the planning depth")) {
         estimatedInterviewRounds: 1,
         consensusReviewIntensity: "high"
       };
+} else if (prompt.includes("remediation answer for a blocked Oraculum Plan Conclave")) {
+  body = {
+    classification: isReportingPrompt ? "new-task" : "consensus-remediation",
+    confidence: "high",
+    summary: isReportingPrompt
+      ? "The input starts a new reporting task."
+      : "The input directly answers the Plan Conclave required changes."
+  };
 } else if (prompt.includes("answer or refinement for the active interview")) {
   body = {
     classification: "continuation",
@@ -1004,16 +1405,27 @@ if (prompt.includes("selecting the planning depth")) {
     }
   };
 } else if (prompt.includes("crystallizing an explicit Oraculum Augury Interview")) {
-  body = {
-    goal: "Add email/password authentication and protect /dashboard.",
-    constraints: ["Email/password only."],
-    nonGoals: ["No OAuth."],
-    acceptanceCriteria: ["/dashboard requires authentication."],
-    assumptionsResolved: ["Auth method and route are explicit."],
-    assumptionLedger: ["Email/password is the only desired auth method."],
-    repoEvidence: ["Operator clarified /dashboard as protected route."],
-    openRisks: ["Route guard may be incomplete."]
-  };
+  body = isReportingPrompt
+    ? {
+        goal: "Build a reporting dashboard.",
+        constraints: [],
+        nonGoals: [],
+        acceptanceCriteria: ["Dashboard renders report data."],
+        assumptionsResolved: [],
+        assumptionLedger: [],
+        repoEvidence: ["Operator requested a reporting dashboard."],
+        openRisks: []
+      }
+    : {
+        goal: "Add email/password authentication and protect /dashboard.",
+        constraints: ["Email/password only."],
+        nonGoals: ["No OAuth."],
+        acceptanceCriteria: ["/dashboard requires authentication."],
+        assumptionsResolved: ["Auth method and route are explicit."],
+        assumptionLedger: ["Email/password is the only desired auth method."],
+        repoEvidence: ["Operator clarified /dashboard as protected route."],
+        openRisks: ["Route guard may be incomplete."]
+      };
 } else if (prompt.includes("drafting a Plan Conclave-reviewed Oraculum consultation plan")) {
   body = consensusDraft;
 } else if (prompt.includes("architect reviewer") || prompt.includes("critic reviewer")) {
@@ -1021,9 +1433,13 @@ if (prompt.includes("selecting the planning depth")) {
     body = "review runtime unavailable";
   } else {
     body = {
-      verdict: prompt.includes("critic reviewer") ? ${JSON.stringify(criticVerdict)} : "approve",
-      summary: prompt.includes("critic reviewer") && ${JSON.stringify(criticVerdict)} !== "approve" ? "The plan cannot proceed as written." : "The plan is ready.",
-      requiredChanges: prompt.includes("critic reviewer") && ${JSON.stringify(criticVerdict)} !== "approve" ? ["Tighten crown gates before consult."] : stringArray,
+      verdict: isReportingPrompt || (isRemediationPrompt && ${JSON.stringify(approveRemediation)})
+        ? "approve"
+        : prompt.includes("critic reviewer")
+          ? ${JSON.stringify(criticVerdict)}
+          : "approve",
+      summary: !isReportingPrompt && !isRemediationPrompt && prompt.includes("critic reviewer") && ${JSON.stringify(criticVerdict)} !== "approve" ? "The plan cannot proceed as written." : "The plan is ready.",
+      requiredChanges: !isReportingPrompt && !isRemediationPrompt && prompt.includes("critic reviewer") && ${JSON.stringify(criticVerdict)} !== "approve" ? ["Tighten crown gates before consult."] : stringArray,
       tradeoffs: stringArray,
       risks: stringArray
     };

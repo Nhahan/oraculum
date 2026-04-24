@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-
+import { extractCodexPlanConsensusContinuationRecommendation } from "../src/adapters/codex/parsing.js";
 import {
   buildCodexCandidateSpecJsonSchema,
   buildCodexClarifyFollowUpJsonSchema,
+  buildCodexPlanConsensusContinuationJsonSchema,
   buildCodexPlanConsensusDraftJsonSchema,
   buildCodexPlanConsensusReviewJsonSchema,
   buildCodexPlanningContinuationJsonSchema,
@@ -23,6 +24,7 @@ describe("Codex structured output schemas", () => {
       buildCodexCandidateSpecJsonSchema(),
       buildCodexClarifyFollowUpJsonSchema(),
       buildCodexPlanConsensusDraftJsonSchema(),
+      buildCodexPlanConsensusContinuationJsonSchema(),
       buildCodexPlanConsensusReviewJsonSchema(),
       buildCodexPlanReviewJsonSchema(),
       buildCodexPlanningContinuationJsonSchema(),
@@ -57,6 +59,23 @@ describe("Codex structured output schemas", () => {
       "elevated",
       "high",
     ]);
+  });
+
+  it("classifies Plan Conclave continuation as remediation or new task", () => {
+    const schema = buildCodexPlanConsensusContinuationJsonSchema() as {
+      properties: Record<string, { enum?: string[] }>;
+    };
+
+    expect(schema.properties.classification?.enum).toEqual(["consensus-remediation", "new-task"]);
+    expect(
+      extractCodexPlanConsensusContinuationRecommendation(
+        JSON.stringify({
+          classification: "continuation",
+          confidence: "high",
+          summary: "Wrong classifier family.",
+        }),
+      ),
+    ).toBeUndefined();
   });
 
   it("requires Augury answer shape and Plan Conclave scoring policy fields", () => {

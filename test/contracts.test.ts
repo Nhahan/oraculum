@@ -25,13 +25,18 @@ import {
 } from "../src/domain/config.js";
 import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
 import { profileRepoSignalsSchema } from "../src/domain/profile.js";
-import { planningDepthArtifactSchema } from "../src/domain/run.js";
+import {
+  consultationNextActionSchema,
+  planConsensusArtifactSchema,
+  planningDepthArtifactSchema,
+} from "../src/domain/run.js";
 import {
   deriveResearchSignalFingerprint,
   deriveTaskPacketId,
   materializedTaskPacketSchema,
   taskPacketSchema,
 } from "../src/domain/task.js";
+import { summarizePlanConsensusBlocker } from "../src/services/plan-consensus/index.js";
 import { resolveConsensusLoopRevisionBudget } from "../src/services/planning-interview/index.js";
 import { initializeProject } from "../src/services/project.js";
 import { planRun } from "../src/services/runs.js";
@@ -382,7 +387,166 @@ describe("planning artifact contracts", () => {
       }),
     ).toBe(4);
   });
+
+  it("accepts Plan Conclave continuation metadata and rejects malformed source ids", () => {
+    const consensus = planConsensusArtifactSchema.parse({
+      ...createPlanConsensusContractFixture(),
+      continuation: {
+        sourceRunId: "run_source",
+        sourceConsensusRunId: "run_source",
+        answer: "Make the crown gate witnessable with refresh-preservation evidence.",
+        blockerKind: "rejected",
+        blockerSummary: "Plan Conclave rejected the explicit consultation plan.",
+        requiredChanges: ["Add a witnessable crown gate."],
+        createdAt: "2026-04-24T00:00:00.000Z",
+      },
+    });
+
+    expect(consensus.continuation?.blockerKind).toBe("rejected");
+    expect(() =>
+      planConsensusArtifactSchema.parse({
+        ...createPlanConsensusContractFixture(),
+        continuation: {
+          sourceRunId: "../run_source",
+          sourceConsensusRunId: "run_source",
+          answer: "Make the crown gate witnessable.",
+          blockerKind: "rejected",
+          blockerSummary: "Plan Conclave rejected the explicit consultation plan.",
+          requiredChanges: [],
+          createdAt: "2026-04-24T00:00:00.000Z",
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      planConsensusArtifactSchema.parse({
+        ...createPlanConsensusContractFixture(),
+        continuation: {
+          sourceRunId: "run_source",
+          sourceConsensusRunId: "run_source",
+          answer: "",
+          blockerKind: "rejected",
+          blockerSummary: "Plan Conclave rejected the explicit consultation plan.",
+          requiredChanges: [],
+          createdAt: "2026-04-24T00:00:00.000Z",
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("summarizes Plan Conclave blockers by kind with required changes", () => {
+    const rejected = summarizePlanConsensusBlocker(
+      planConsensusArtifactSchema.parse({
+        ...createPlanConsensusContractFixture(),
+        revisionHistory: [
+          {
+            revision: 1,
+            summary: "Plan Conclave review rejected the draft.",
+            criticReview: {
+              reviewer: "critic",
+              verdict: "reject",
+              summary: "The crown gate is vague.",
+              requiredChanges: ["Add a witnessable crown gate."],
+              tradeoffs: [],
+              risks: [],
+            },
+          },
+        ],
+      }),
+    );
+    const capMiss = summarizePlanConsensusBlocker(
+      planConsensusArtifactSchema.parse({
+        ...createPlanConsensusContractFixture(),
+        revisionHistory: [
+          {
+            revision: 1,
+            summary: "Consensus review requested revision.",
+            criticReview: {
+              reviewer: "critic",
+              verdict: "revise",
+              summary: "The repair policy is vague.",
+              requiredChanges: ["Separate repairable gaps from elimination gates."],
+              tradeoffs: [],
+              risks: [],
+            },
+          },
+        ],
+      }),
+    );
+    const runtimeUnavailable = summarizePlanConsensusBlocker(
+      planConsensusArtifactSchema.parse({
+        ...createPlanConsensusContractFixture(),
+        revisionHistory: [
+          {
+            revision: 1,
+            summary: "Plan Conclave review rejected the draft.",
+            architectReview: {
+              reviewer: "architect",
+              verdict: "reject",
+              summary:
+                "Plan Conclave review runtime unavailable. Rerun planning when review can execute.",
+              requiredChanges: [
+                "Plan Conclave review runtime unavailable; rerun planning when review can execute.",
+              ],
+              tradeoffs: [],
+              risks: [],
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(rejected).toMatchObject({
+      blockerKind: "rejected",
+      requiredChanges: ["Add a witnessable crown gate."],
+    });
+    expect(capMiss).toMatchObject({
+      blockerKind: "revision-cap",
+      requiredChanges: ["Separate repairable gaps from elimination gates."],
+    });
+    expect(runtimeUnavailable.blockerKind).toBe("runtime-unavailable");
+  });
+
+  it("accepts the Plan Conclave remediation next action", () => {
+    expect(consultationNextActionSchema.parse("answer-plan-conclave-and-rerun")).toBe(
+      "answer-plan-conclave-and-rerun",
+    );
+  });
 });
+
+function createPlanConsensusContractFixture() {
+  return {
+    runId: "run_contract_consensus",
+    createdAt: "2026-04-24T00:00:00.000Z",
+    updatedAt: "2026-04-24T00:00:00.000Z",
+    approved: false,
+    maxRevisions: 1,
+    principles: [],
+    decisionDrivers: [],
+    viableOptions: [{ name: "contract-first", rationale: "Use the task contract." }],
+    selectedOption: { name: "contract-first", rationale: "Use the task contract." },
+    rejectedAlternatives: [],
+    architectAntithesis: [],
+    criticVerdicts: [],
+    revisionHistory: [],
+    finalDraft: {
+      summary: "Use the task contract.",
+      principles: [],
+      decisionDrivers: [],
+      viableOptions: [{ name: "contract-first", rationale: "Use the task contract." }],
+      selectedOption: { name: "contract-first", rationale: "Use the task contract." },
+      rejectedAlternatives: [],
+      plannedJudgingCriteria: [],
+      crownGates: [],
+      requiredChangedPaths: [],
+      protectedPaths: [],
+      workstreams: [],
+      stagePlan: [],
+      assumptionLedger: [],
+      premortem: [],
+      expandedTestPlan: [],
+    },
+  };
+}
 
 describe("oracle and adapter contracts", () => {
   it("keeps quick-start config minimal", () => {
