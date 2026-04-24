@@ -38,6 +38,9 @@ export {
   finalistScorecardBundleSchema,
   finalistScorecardSchema,
   planConsensusArtifactSchema,
+  planConsensusBlockerKindSchema,
+  planConsensusContinuationClassificationSchema,
+  planConsensusContinuationSchema,
   planConsensusDraftSchema,
   planConsensusReviewSchema,
   planningConsensusReviewDepthSchema,
@@ -118,6 +121,9 @@ export type PlanningSpecArtifact = z.infer<
 >;
 export type PlanConsensusArtifact = z.infer<
   typeof import("./schema-parts/plan.js").planConsensusArtifactSchema
+>;
+export type PlanConsensusContinuation = z.infer<
+  typeof import("./schema-parts/plan.js").planConsensusContinuationSchema
 >;
 export type PlanConsensusDraft = z.infer<
   typeof import("./schema-parts/plan.js").planConsensusDraftSchema

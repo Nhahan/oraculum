@@ -24,11 +24,14 @@ import {
   consultationClarifyFollowUpSchema,
   consultationPlanReviewSchema,
   consultationPreflightSchema,
+  type PlanConsensusArtifact,
+  type PlanConsensusContinuation,
   type PlanConsensusDraft,
   type PlanConsensusReview,
   type PlanningDepthArtifact,
   type PlanningInterviewArtifact,
   type PlanningSpecArtifact,
+  planConsensusContinuationClassificationSchema,
   planConsensusDraftSchema,
   planConsensusReviewSchema,
   planningConsensusReviewIntensitySchema,
@@ -272,6 +275,23 @@ export const agentPlanningContinuationResultSchema = z.object({
     .optional(),
   artifacts: z.array(agentArtifactSchema).default([]),
 });
+export const agentPlanConsensusContinuationResultSchema = z.object({
+  runId: z.string().min(1),
+  adapter: adapterSchema,
+  status: agentRunStatusSchema,
+  startedAt: z.string().min(1),
+  completedAt: z.string().min(1),
+  exitCode: z.number().int(),
+  summary: z.string().min(1),
+  recommendation: z
+    .object({
+      classification: planConsensusContinuationClassificationSchema,
+      confidence: decisionConfidenceSchema,
+      summary: z.string().min(1),
+    })
+    .optional(),
+  artifacts: z.array(agentArtifactSchema).default([]),
+});
 export const agentPlanningQuestionResultSchema = z.object({
   runId: z.string().min(1),
   adapter: adapterSchema,
@@ -383,6 +403,9 @@ export interface AgentAdapter {
   classifyPlanningContinuation?(
     request: AgentPlanningContinuationRequest,
   ): Promise<AgentPlanningContinuationResult>;
+  classifyPlanConsensusContinuation?(
+    request: AgentPlanConsensusContinuationRequest,
+  ): Promise<AgentPlanConsensusContinuationResult>;
   generatePlanningInterviewQuestion?(
     request: AgentPlanningQuestionRequest,
   ): Promise<AgentPlanningQuestionResult>;
@@ -492,6 +515,20 @@ export interface AgentPlanningContinuationRequest {
   activeInterview: PlanningInterviewArtifact;
 }
 
+export interface AgentPlanConsensusContinuationRequest {
+  runId: string;
+  projectRoot: string;
+  logDir: string;
+  taskPacket: MaterializedTaskPacket;
+  activeConsensus: PlanConsensusArtifact;
+  planningSpec: PlanningSpecArtifact;
+  blocker: {
+    blockerKind: PlanConsensusContinuation["blockerKind"];
+    summary: string;
+    requiredChanges: string[];
+  };
+}
+
 export interface AgentPlanningQuestionRequest {
   runId: string;
   projectRoot: string;
@@ -526,6 +563,7 @@ export interface AgentPlanConsensusDraftRequest {
   taskPacket: MaterializedTaskPacket;
   planningSpec: PlanningSpecArtifact;
   consultationPlan: ConsultationPlanArtifact;
+  planConsensusRemediation?: AgentPlanConsensusRemediationContext;
 }
 
 export interface AgentPlanConsensusReviewRequest {
@@ -535,6 +573,7 @@ export interface AgentPlanConsensusReviewRequest {
   taskPacket: MaterializedTaskPacket;
   planningSpec: PlanningSpecArtifact;
   draft: PlanConsensusDraft;
+  planConsensusRemediation?: AgentPlanConsensusRemediationContext;
 }
 
 export interface AgentPlanConsensusRevisionRequest extends AgentPlanConsensusReviewRequest {
@@ -587,6 +626,12 @@ export interface AgentRepairContext {
   }>;
 }
 
+export interface AgentPlanConsensusRemediationContext {
+  continuation: PlanConsensusContinuation;
+  sourceFinalDraft: PlanConsensusDraft;
+  sourceRevisionHistory: PlanConsensusArtifact["revisionHistory"];
+}
+
 export type AgentArtifact = z.infer<typeof agentArtifactSchema>;
 export type AgentRunResult = z.infer<typeof agentRunResultSchema>;
 export type FinalistSummary = z.infer<typeof finalistSummarySchema>;
@@ -602,6 +647,9 @@ export type AgentCandidateSpecSelectionResult = z.infer<
 >;
 export type AgentPlanningDepthResult = z.infer<typeof agentPlanningDepthResultSchema>;
 export type AgentPlanningContinuationResult = z.infer<typeof agentPlanningContinuationResultSchema>;
+export type AgentPlanConsensusContinuationResult = z.infer<
+  typeof agentPlanConsensusContinuationResultSchema
+>;
 export type AgentPlanningQuestionResult = z.infer<typeof agentPlanningQuestionResultSchema>;
 export type AgentPlanningScoreResult = z.infer<typeof agentPlanningScoreResultSchema>;
 export type AgentPlanningSpecResult = z.infer<typeof agentPlanningSpecResultSchema>;
@@ -805,6 +853,19 @@ export function buildAgentPlanningContinuationJsonSchema(): Record<string, unkno
     additionalProperties: false,
     properties: {
       classification: { type: "string", enum: ["new-task", "continuation"] },
+      confidence: { type: "string", enum: [...decisionConfidenceSchema.options] },
+      summary: { type: "string", minLength: 1 },
+    },
+    required: ["classification", "confidence", "summary"],
+  };
+}
+
+export function buildAgentPlanConsensusContinuationJsonSchema(): Record<string, unknown> {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      classification: { type: "string", enum: ["consensus-remediation", "new-task"] },
       confidence: { type: "string", enum: [...decisionConfidenceSchema.options] },
       summary: { type: "string", minLength: 1 },
     },

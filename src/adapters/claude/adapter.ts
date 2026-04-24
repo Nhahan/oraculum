@@ -5,6 +5,7 @@ import {
   buildCandidateSpecPrompt,
   buildClarifyFollowUpPrompt,
   buildPlanArchitectureReviewPrompt,
+  buildPlanConsensusContinuationPrompt,
   buildPlanConsensusDraftPrompt,
   buildPlanConsensusRevisionPrompt,
   buildPlanCriticReviewPrompt,
@@ -29,6 +30,8 @@ import {
   type AgentClarifyFollowUpResult,
   type AgentJudgeRequest,
   type AgentJudgeResult,
+  type AgentPlanConsensusContinuationRequest,
+  type AgentPlanConsensusContinuationResult,
   type AgentPlanConsensusDraftRequest,
   type AgentPlanConsensusDraftResult,
   type AgentPlanConsensusReviewRequest,
@@ -56,6 +59,7 @@ import {
   agentCandidateSpecSelectionResultSchema,
   agentClarifyFollowUpResultSchema,
   agentJudgeResultSchema,
+  agentPlanConsensusContinuationResultSchema,
   agentPlanConsensusDraftResultSchema,
   agentPlanConsensusReviewResultSchema,
   agentPlanningContinuationResultSchema,
@@ -70,6 +74,7 @@ import {
   buildAgentCandidateSpecJsonSchema,
   buildAgentCandidateSpecSelectionJsonSchema,
   buildAgentClarifyFollowUpJsonSchema,
+  buildAgentPlanConsensusContinuationJsonSchema,
   buildAgentPlanConsensusDraftJsonSchema,
   buildAgentPlanConsensusReviewJsonSchema,
   buildAgentPlanningContinuationJsonSchema,
@@ -83,6 +88,7 @@ import {
 import {
   extractClaudeCandidateSpecRecommendation,
   extractClaudeClarifyFollowUpRecommendation,
+  extractClaudePlanConsensusContinuationRecommendation,
   extractClaudePlanConsensusDraftRecommendation,
   extractClaudePlanConsensusReviewRecommendation,
   extractClaudePlanningContinuationRecommendation,
@@ -260,6 +266,24 @@ export class ClaudeAdapter implements AgentAdapter {
       prompt: buildPlanningContinuationPrompt(request),
       request,
       resultSchema: agentPlanningContinuationResultSchema,
+    });
+  }
+
+  async classifyPlanConsensusContinuation(
+    request: AgentPlanConsensusContinuationRequest,
+  ): Promise<AgentPlanConsensusContinuationResult> {
+    return this.runRecommendation({
+      fallbackSummary: "Claude Plan Conclave continuation classification finished.",
+      filenames: {
+        prompt: "plan-consensus-continuation.prompt.txt",
+        stderr: "plan-consensus-continuation.stderr.txt",
+        stdout: "plan-consensus-continuation.stdout.txt",
+      },
+      jsonSchema: buildAgentPlanConsensusContinuationJsonSchema(),
+      outputParser: extractClaudePlanConsensusContinuationRecommendation,
+      prompt: buildPlanConsensusContinuationPrompt(request),
+      request,
+      resultSchema: agentPlanConsensusContinuationResultSchema,
     });
   }
 

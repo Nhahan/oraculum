@@ -12,6 +12,7 @@ import {
   type AgentJudgeRecommendation,
   agentClarifyFollowUpResultSchema,
   agentJudgeRecommendationSchema,
+  agentPlanConsensusContinuationResultSchema,
   agentPlanConsensusDraftResultSchema,
   agentPlanConsensusReviewResultSchema,
   agentPlanningContinuationResultSchema,
@@ -141,6 +142,19 @@ export function extractCodexPlanningContinuationRecommendation(output: string) {
 
   try {
     return agentPlanningContinuationResultSchema.shape.recommendation.parse(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+export function extractCodexPlanConsensusContinuationRecommendation(output: string) {
+  const parsed = extractJsonObject(output);
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return agentPlanConsensusContinuationResultSchema.shape.recommendation.parse(parsed);
   } catch {
     return undefined;
   }

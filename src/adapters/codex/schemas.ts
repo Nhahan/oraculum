@@ -4,6 +4,7 @@ import {
   buildAgentCandidateSpecJsonSchema,
   buildAgentCandidateSpecSelectionJsonSchema,
   buildAgentClarifyFollowUpJsonSchema,
+  buildAgentPlanConsensusContinuationJsonSchema,
   buildAgentPlanConsensusDraftJsonSchema,
   buildAgentPlanConsensusReviewJsonSchema,
   buildAgentPlanningContinuationJsonSchema,
@@ -88,6 +89,10 @@ export function buildCodexPlanningDepthJsonSchema(): Record<string, unknown> {
 
 export function buildCodexPlanningContinuationJsonSchema(): Record<string, unknown> {
   return buildAgentPlanningContinuationJsonSchema();
+}
+
+export function buildCodexPlanConsensusContinuationJsonSchema(): Record<string, unknown> {
+  return buildAgentPlanConsensusContinuationJsonSchema();
 }
 
 export function buildCodexPlanningQuestionJsonSchema(): Record<string, unknown> {

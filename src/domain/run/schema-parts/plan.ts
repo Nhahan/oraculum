@@ -42,6 +42,15 @@ export const planningReadinessSchema = z.enum(["ready", "needs-interview", "bloc
 export const planningConsensusReviewIntensitySchema = z.enum(["standard", "elevated", "high"]);
 export const planningConsensusReviewDepthSchema = planningConsensusReviewIntensitySchema;
 export const planningContinuationClassificationSchema = z.enum(["new-task", "continuation"]);
+export const planConsensusContinuationClassificationSchema = z.enum([
+  "consensus-remediation",
+  "new-task",
+]);
+export const planConsensusBlockerKindSchema = z.enum([
+  "rejected",
+  "revision-cap",
+  "runtime-unavailable",
+]);
 export const planConsensusReviewVerdictSchema = z.enum(["approve", "revise", "reject"]);
 export const consultationPlanReadinessSchema = z.object({
   runId: artifactPathSegmentSchema,
@@ -198,6 +207,15 @@ export const planConsensusRevisionSchema = z.object({
   architectReview: planConsensusReviewSchema.optional(),
   criticReview: planConsensusReviewSchema.optional(),
 });
+export const planConsensusContinuationSchema = z.object({
+  sourceRunId: artifactPathSegmentSchema,
+  sourceConsensusRunId: artifactPathSegmentSchema,
+  answer: z.string().min(1),
+  blockerKind: planConsensusBlockerKindSchema,
+  blockerSummary: z.string().min(1),
+  requiredChanges: z.array(z.string().min(1)).default([]),
+  createdAt: z.string().min(1),
+});
 export const planConsensusArtifactSchema = z.object({
   runId: artifactPathSegmentSchema,
   createdAt: z.string().min(1),
@@ -213,6 +231,7 @@ export const planConsensusArtifactSchema = z.object({
   criticVerdicts: z.array(planConsensusReviewSchema).default([]),
   revisionHistory: z.array(planConsensusRevisionSchema).default([]),
   finalDraft: planConsensusDraftSchema,
+  continuation: planConsensusContinuationSchema.optional(),
 });
 export const candidateScorecardWorkstreamCoverageStatusSchema = z.enum([
   "covered",

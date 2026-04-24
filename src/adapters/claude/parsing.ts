@@ -12,6 +12,7 @@ import {
   type AgentJudgeRecommendation,
   agentClarifyFollowUpResultSchema,
   agentJudgeRecommendationSchema,
+  agentPlanConsensusContinuationResultSchema,
   agentPlanConsensusDraftResultSchema,
   agentPlanConsensusReviewResultSchema,
   agentPlanningContinuationResultSchema,
@@ -263,6 +264,12 @@ export function extractClaudePlanningDepthRecommendation(stdout: string) {
 export function extractClaudePlanningContinuationRecommendation(stdout: string) {
   return extractClaudeNestedRecommendation(stdout, ["classification", "confidence"], (value) =>
     agentPlanningContinuationResultSchema.shape.recommendation.parse(value),
+  );
+}
+
+export function extractClaudePlanConsensusContinuationRecommendation(stdout: string) {
+  return extractClaudeNestedRecommendation(stdout, ["classification", "confidence"], (value) =>
+    agentPlanConsensusContinuationResultSchema.shape.recommendation.parse(value),
   );
 }
 
