@@ -133,7 +133,7 @@ describe("workspace backup cleanup", () => {
         cwd,
         runId,
         winnerId: "cand-01",
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: false,
       }),
     ).rejects.toThrow("copy failed");

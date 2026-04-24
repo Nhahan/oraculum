@@ -289,7 +289,14 @@ describe("task packet loading", () => {
   it("rejects consultation plans that omit execution-graph metadata", async () => {
     const root = await createTempRoot();
     const originalTaskPath = join(root, "tasks", "session.md");
-    const planPath = join(root, ".oraculum", "runs", "run_incomplete_plan", "reports", "consultation-plan.json");
+    const planPath = join(
+      root,
+      ".oraculum",
+      "runs",
+      "run_incomplete_plan",
+      "reports",
+      "consultation-plan.json",
+    );
 
     await mkdir(join(root, "tasks"), { recursive: true });
     await mkdir(join(root, ".oraculum", "runs", "run_incomplete_plan", "reports"), {

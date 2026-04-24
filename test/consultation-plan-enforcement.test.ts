@@ -17,6 +17,29 @@ import {
 import { writeNodeBinary } from "./helpers/fake-binary.js";
 import { EXECUTION_TEST_TIMEOUT_MS, FAKE_AGENT_TIMEOUT_MS } from "./helpers/integration.js";
 
+function parseCurrentConsultationPlan(projectRoot: string, input: Record<string, unknown>) {
+  return consultationPlanArtifactSchema.parse({
+    repoBasis: {
+      projectRoot,
+      signalFingerprint: "sha256:test",
+      availableOracleIds: [],
+    },
+    workstreams: [],
+    stagePlan: [],
+    scorecardDefinition: {
+      dimensions: [],
+      abstentionTriggers: [],
+    },
+    repairPolicy: {
+      maxAttemptsPerStage: 0,
+      immediateElimination: [],
+      repairable: [],
+      preferAbstainOverRetry: [],
+    },
+    ...input,
+  });
+}
+
 describe("consultation plan execution presets", () => {
   it(
     "executes only the planned rounds and repo-local oracles",
@@ -57,7 +80,7 @@ describe("consultation plan execution presets", () => {
       await writeFile(
         planPath,
         `${JSON.stringify(
-          consultationPlanArtifactSchema.parse({
+          parseCurrentConsultationPlan(cwd, {
             runId: "run_exec",
             createdAt: "2026-04-15T00:00:00.000Z",
             readyForConsult: true,
@@ -222,7 +245,7 @@ if (out) {
       await writeFile(
         planPath,
         `${JSON.stringify(
-          consultationPlanArtifactSchema.parse({
+          parseCurrentConsultationPlan(cwd, {
             runId: "run_target_guard",
             createdAt: "2026-04-15T00:00:00.000Z",
             readyForConsult: true,
@@ -364,7 +387,7 @@ if (out) {
       await writeFile(
         planPath,
         `${JSON.stringify(
-          consultationPlanArtifactSchema.parse({
+          parseCurrentConsultationPlan(cwd, {
             runId: "run_required_paths",
             createdAt: "2026-04-15T00:00:00.000Z",
             readyForConsult: true,
@@ -513,7 +536,7 @@ if (out) {
       await writeFile(
         planPath,
         `${JSON.stringify(
-          consultationPlanArtifactSchema.parse({
+          parseCurrentConsultationPlan(cwd, {
             runId: "run_protected_paths",
             createdAt: "2026-04-15T00:00:00.000Z",
             readyForConsult: true,

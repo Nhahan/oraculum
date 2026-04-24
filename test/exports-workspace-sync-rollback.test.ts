@@ -41,7 +41,7 @@ describe("materialized exports", () => {
 
       await materializeExport({
         cwd,
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: false,
       });
 
@@ -81,7 +81,7 @@ fs.writeFileSync(path.join(process.cwd(), "packages", "app"), "file replacement\
       await expect(
         materializeExport({
           cwd,
-          branchName: "fix/session-loss",
+          materializationName: "fix/session-loss",
           withReport: false,
         }),
       ).rejects.toThrow("still contains unmanaged files or directories");

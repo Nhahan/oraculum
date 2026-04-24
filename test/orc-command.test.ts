@@ -86,7 +86,6 @@ describe("orc command", () => {
       code: "commander.unknownCommand",
     });
   });
-
 });
 
 function createProgram() {

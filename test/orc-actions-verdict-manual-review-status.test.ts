@@ -35,10 +35,7 @@ describe("chat-native Orc actions: verdict manual review status", () => {
       consultationId: "run_9",
     });
 
-    expect(verdict.status.nextActions).toEqual([
-      "reopen-verdict",
-      "perform-manual-review",
-    ]);
+    expect(verdict.status.nextActions).toEqual(["reopen-verdict", "perform-manual-review"]);
   });
 
   it("omits direct crown from verdict status when second-opinion is unavailable", async () => {
@@ -60,10 +57,7 @@ describe("chat-native Orc actions: verdict manual review status", () => {
       consultationId: "run_9",
     });
 
-    expect(verdict.status.nextActions).toEqual([
-      "reopen-verdict",
-      "perform-manual-review",
-    ]);
+    expect(verdict.status.nextActions).toEqual(["reopen-verdict", "perform-manual-review"]);
   });
 
   it("omits direct crown from verdict status when a crowning record already exists", async () => {
@@ -118,9 +112,6 @@ describe("chat-native Orc actions: verdict manual review status", () => {
       consultationId: "run_9",
     });
 
-    expect(verdict.status.nextActions).toEqual([
-      "reopen-verdict",
-      "perform-manual-review",
-    ]);
+    expect(verdict.status.nextActions).toEqual(["reopen-verdict", "perform-manual-review"]);
   });
 });

@@ -53,7 +53,7 @@ describe("materialized exports", () => {
 
       const result = await materializeExport({
         cwd,
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: true,
       });
 
@@ -170,7 +170,7 @@ if (out) {
 
       await materializeExport({
         cwd,
-        branchName: "fix/rename-file",
+        materializationName: "fix/rename-file",
         withReport: false,
       });
 
@@ -211,7 +211,7 @@ if (out) {
       await expect(
         materializeExport({
           cwd,
-          branchName: "fix/session-loss",
+          materializationName: "fix/session-loss",
           withReport: false,
         }),
       ).rejects.toThrow("tracked local changes");
@@ -250,7 +250,7 @@ if (out) {
       await expect(
         materializeExport({
           cwd,
-          branchName: "fix/session-loss",
+          materializationName: "fix/session-loss",
           withReport: false,
         }),
       ).rejects.toThrow("recorded base revision");
@@ -309,7 +309,7 @@ if (out) {
     const result = await materializeExport({
       cwd,
       winnerId: "cand-01",
-      branchName: "fix/manual-choice",
+      materializationName: "fix/manual-choice",
       withReport: false,
     });
 
@@ -373,7 +373,7 @@ if (out) fs.writeFileSync(out, "patched", "utf8");
 
       await materializeExport({
         cwd,
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: false,
       });
 
@@ -446,7 +446,7 @@ if (out) {
 
       await materializeExport({
         cwd,
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: false,
       });
 
@@ -491,7 +491,7 @@ if (out) {
       await expect(
         materializeExport({
           cwd,
-          branchName: "fix/session-loss",
+          materializationName: "fix/session-loss",
           withReport: false,
         }),
       ).rejects.toThrow(

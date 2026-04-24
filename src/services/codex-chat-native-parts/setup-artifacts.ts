@@ -4,10 +4,7 @@ import { join } from "node:path";
 
 import { OraculumError } from "../../core/errors.js";
 import { getExpectedCodexSkillDirs } from "./packaged.js";
-import {
-  CODEX_INSTALL_VERSION,
-  CODEX_RULE_FILENAME,
-} from "./shared.js";
+import { CODEX_INSTALL_VERSION, CODEX_RULE_FILENAME } from "./shared.js";
 
 export async function prepareCodexSetupRoot(options: {
   homeDir: string;

@@ -97,10 +97,7 @@ describe("chat-native Orc actions: verdict manual review response", () => {
 
     expect(verdict.artifacts.crowningRecordPath).toBeDefined();
     expect(verdict.artifacts.secondOpinionWinnerSelectionPath).toBeDefined();
-    expect(verdict.status.nextActions).toEqual([
-      "reopen-verdict",
-      "perform-manual-review",
-    ]);
+    expect(verdict.status.nextActions).toEqual(["reopen-verdict", "perform-manual-review"]);
     expect(verdict.review.manualReviewRecommended).toBe(true);
     expect(verdict.review.artifactAvailability.crowningRecord).toBe(true);
     expect(verdict.review.secondOpinionAgreement).toBe("unavailable");
@@ -187,10 +184,7 @@ describe("chat-native Orc actions: verdict manual review response", () => {
 
     expect(verdict.artifacts.crowningRecordPath).toBeUndefined();
     expect(verdict.artifacts.secondOpinionWinnerSelectionPath).toBeDefined();
-    expect(verdict.status.nextActions).toEqual([
-      "reopen-verdict",
-      "perform-manual-review",
-    ]);
+    expect(verdict.status.nextActions).toEqual(["reopen-verdict", "perform-manual-review"]);
     expect(verdict.review.manualReviewRecommended).toBe(true);
     expect(verdict.review.artifactAvailability.comparisonReport).toBe(false);
     expect(verdict.review.artifactAvailability.crowningRecord).toBe(false);
@@ -249,10 +243,7 @@ describe("chat-native Orc actions: verdict manual review response", () => {
       consultationId: "run_9",
     });
 
-    expect(verdict.status.nextActions).toEqual([
-      "reopen-verdict",
-      "perform-manual-review",
-    ]);
+    expect(verdict.status.nextActions).toEqual(["reopen-verdict", "perform-manual-review"]);
     expect(getFinalistComparisonJsonPath(root, "run_1")).toBeDefined();
   });
 });

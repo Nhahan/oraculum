@@ -199,6 +199,7 @@ describe("consultation artifact second-opinion handling", () => {
         mode: "git-branch",
         materializationMode: "branch",
         workspaceDir: "/tmp/workspace",
+        patchPath: `/tmp/${runId}-cand-01.patch`,
         withReport: true,
         createdAt: "2026-04-15T00:00:00.000Z",
       }),

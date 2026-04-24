@@ -217,8 +217,7 @@ export function createBlockedPreflightManifest() {
         researchPosture: "repo-only",
         clarificationQuestion: "Which file should Oraculum update?",
       },
-      outcome: createBlockedPreflightOutcomeFixture({
-      }),
+      outcome: createBlockedPreflightOutcomeFixture({}),
     },
   });
 }

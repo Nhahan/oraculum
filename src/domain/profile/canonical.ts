@@ -1,7 +1,4 @@
-import {
-  getValidationGaps,
-  getValidationSignals,
-} from "./accessors.js";
+import { getValidationGaps, getValidationSignals } from "./accessors.js";
 import type {
   AgentProfileRecommendation,
   ConsultationProfileId,

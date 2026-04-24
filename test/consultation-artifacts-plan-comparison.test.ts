@@ -15,6 +15,7 @@ import {
   writeJsonArtifact,
   writeTextArtifact,
 } from "./helpers/consultation-artifacts.js";
+import { createConsultationPlanArtifactFixture } from "./helpers/contract-fixtures.js";
 
 registerConsultationArtifactsTempRootCleanup();
 
@@ -25,35 +26,35 @@ describe("consultation artifact plan and comparison resolution", () => {
     await ensureReportsDir(cwd, runId);
     await writeJsonArtifact(
       getConsultationPlanPath(cwd, runId),
-      consultationPlanArtifactSchema.parse({
-        runId,
-        createdAt: "2026-04-14T00:00:00.000Z",
-        readyForConsult: true,
-        recommendedNextAction:
-          "Execute the planned consultation: `orc consult .oraculum/runs/run-plan-artifacts/reports/consultation-plan.json`.",
-        intendedResult: "recommended result",
-        decisionDrivers: ["Target artifact path: src/index.ts"],
-        openQuestions: [],
-        task: {
-          id: "task",
-          title: "Task",
-          intent: "Fix the issue.",
-          nonGoals: [],
-          acceptanceCriteria: [],
-          risks: [],
-          oracleHints: [],
-          strategyHints: [],
-          contextFiles: [],
-          source: {
-            kind: "task-note",
-            path: "/tmp/task.md",
+      consultationPlanArtifactSchema.parse(
+        createConsultationPlanArtifactFixture(cwd, runId, getConsultationPlanPath(cwd, runId), {
+          createdAt: "2026-04-14T00:00:00.000Z",
+          recommendedNextAction:
+            "Execute the planned consultation: `orc consult .oraculum/runs/run-plan-artifacts/reports/consultation-plan.json`.",
+          intendedResult: "recommended result",
+          decisionDrivers: ["Target artifact path: src/index.ts"],
+          openQuestions: [],
+          task: {
+            id: "task",
+            title: "Task",
+            intent: "Fix the issue.",
+            nonGoals: [],
+            acceptanceCriteria: [],
+            risks: [],
+            oracleHints: [],
+            strategyHints: [],
+            contextFiles: [],
+            source: {
+              kind: "task-note",
+              path: "/tmp/task.md",
+            },
           },
-        },
-        candidateCount: 2,
-        plannedStrategies: [{ id: "minimal-change", label: "Minimal Change" }],
-        oracleIds: ["lint-fast"],
-        roundOrder: [{ id: "fast", label: "Fast" }],
-      }),
+          candidateCount: 2,
+          plannedStrategies: [{ id: "minimal-change", label: "Minimal Change" }],
+          oracleIds: ["lint-fast"],
+          roundOrder: [{ id: "fast", label: "Fast" }],
+        }),
+      ),
     );
     await writeTextArtifact(
       getConsultationPlanMarkdownPath(cwd, runId),

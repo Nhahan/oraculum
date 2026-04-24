@@ -27,6 +27,7 @@ describe("consultation artifact crowning visibility", () => {
         mode: "git-branch",
         materializationMode: "branch",
         workspaceDir: "/tmp/workspace",
+        patchPath: `/tmp/${runId}-cand-01.patch`,
         withReport: true,
         createdAt: "2026-04-14T00:00:00.000Z",
       }),

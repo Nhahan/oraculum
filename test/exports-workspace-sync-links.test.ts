@@ -79,7 +79,7 @@ describe("materialized exports", () => {
           cwd,
           runId,
           winnerId: "cand-01",
-          branchName: "fix/session-loss",
+          materializationName: "fix/session-loss",
           withReport: false,
         });
 
@@ -127,7 +127,7 @@ describe("materialized exports", () => {
           cwd,
           runId,
           winnerId: "cand-01",
-          branchName: "fix/session-loss",
+          materializationName: "fix/session-loss",
           withReport: false,
         });
 

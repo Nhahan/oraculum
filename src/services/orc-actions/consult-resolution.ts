@@ -2,15 +2,15 @@ import { readdir, readFile } from "node:fs/promises";
 
 import { OraculumError } from "../../core/errors.js";
 import {
-  consultationPlanReadinessSchema,
   type ConsultationPlanReadiness,
+  consultationPlanReadinessSchema,
   type RunManifest,
 } from "../../domain/run.js";
+import { pathExists } from "../project.js";
 import { parseRunManifestArtifact } from "../run-manifest-artifact.js";
 import { RunStore } from "../run-store.js";
 import { getConsultationPlanReadinessPathForPlan } from "../runs/consultation-plan-artifacts/readiness.js";
 import { readConsultationPlanArtifact } from "../task-packets.js";
-import { pathExists } from "../project.js";
 
 export type ConsultExecutionTarget =
   | {
@@ -88,7 +88,9 @@ async function findLatestReadyConsultationPlanPath(
   store: RunStore,
   manifests: RunManifest[],
 ): Promise<string | undefined> {
-  const planned = sortRecentManifests(manifests).filter((manifest) => manifest.status === "planned");
+  const planned = sortRecentManifests(manifests).filter(
+    (manifest) => manifest.status === "planned",
+  );
   for (const manifest of planned) {
     const planPath = store.getRunPaths(manifest.id).consultationPlanPath;
     if (await isReadyConsultationPlan(planPath, manifest.id)) {

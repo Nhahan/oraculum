@@ -9,10 +9,7 @@ import {
   getWinnerSelectionPath,
 } from "../src/core/paths.js";
 import { verdictReviewSchema } from "../src/domain/chat-native.js";
-import {
-  buildVerdictReview,
-  renderConsultationSummary,
-} from "../src/services/consultations.js";
+import { buildVerdictReview, renderConsultationSummary } from "../src/services/consultations.js";
 import {
   createClarificationManifest,
   createInitializedProject,

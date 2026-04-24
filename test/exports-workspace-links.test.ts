@@ -72,7 +72,7 @@ if (out) {
 
       await materializeExport({
         cwd,
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: false,
       });
 
@@ -144,7 +144,7 @@ if (out) {
 
       await materializeExport({
         cwd,
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: false,
       });
 

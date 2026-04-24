@@ -2,10 +2,10 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { createAgentAdapter } from "../../adapters/index.js";
-import { agentRunResultSchema, type AgentRunResult } from "../../adapters/types.js";
+import { type AgentRunResult, agentRunResultSchema } from "../../adapters/types.js";
 import { OraculumError } from "../../core/errors.js";
 import { projectConfigSchema } from "../../domain/config.js";
-import { oracleVerdictSchema, type OracleVerdict } from "../../domain/oracle.js";
+import { type OracleVerdict, oracleVerdictSchema } from "../../domain/oracle.js";
 import {
   candidateManifestSchema,
   isPreflightBlockedConsultation,
@@ -39,9 +39,9 @@ import { runExecutionRounds } from "./rounds.js";
 import { isExecutionGraphEnabled } from "./scorecards.js";
 import { chooseFallbackWinner, resolveSecondOpinionAdapterName } from "./selection.js";
 import {
-  createCandidateSelectionMetrics,
   type CandidateExecutionRecord,
   type CandidateSelectionMetrics,
+  createCandidateSelectionMetrics,
 } from "./shared.js";
 
 interface ExecuteRunOptions {
@@ -113,13 +113,14 @@ export async function executeRun(options: ExecuteRunOptions): Promise<ExecuteRun
     store,
   });
 
-  let verdictsByCandidate = resumedState?.verdictsByCandidate ?? new Map<string, OracleVerdict[]>();
+  const verdictsByCandidate =
+    resumedState?.verdictsByCandidate ?? new Map<string, OracleVerdict[]>();
   let candidateMap =
     resumedState?.candidateMap ??
     new Map(manifest.candidates.map((candidate) => [candidate.id, candidate]));
   let executionRecords = resumedState?.executionRecords ?? [];
-  let scorecardsByCandidate = resumedState?.scorecardsByCandidate ?? new Map();
-  let selectionMetrics = resumedState?.selectionMetrics ?? new Map();
+  const scorecardsByCandidate = resumedState?.scorecardsByCandidate ?? new Map();
+  const selectionMetrics = resumedState?.selectionMetrics ?? new Map();
   let backupCandidateIds = resumedState?.backupCandidateIds ?? [];
   let implementationCandidateIds = resumedState?.implementationCandidateIds ?? [];
 
@@ -382,7 +383,11 @@ async function restoreRunningExecutionState(options: {
   const verdictsByCandidate = new Map<string, OracleVerdict[]>();
 
   for (const candidate of hydratedCandidates) {
-    const restoredRecord = await restoreCandidateExecutionRecord(options.store, manifest.id, candidate);
+    const restoredRecord = await restoreCandidateExecutionRecord(
+      options.store,
+      manifest.id,
+      candidate,
+    );
     if (restoredRecord) {
       executionRecords.push(restoredRecord.executionRecord);
       selectionMetrics.set(candidate.id, restoredRecord.metrics);
@@ -418,7 +423,10 @@ async function hydratePersistedCandidates(
   const candidates = await Promise.all(
     manifest.candidates.map(async (candidate) => {
       const candidatePath = store.getCandidatePaths(manifest.id, candidate.id).manifestPath;
-      return (await store.readOptionalParsedArtifact(candidatePath, candidateManifestSchema)) ?? candidate;
+      return (
+        (await store.readOptionalParsedArtifact(candidatePath, candidateManifestSchema)) ??
+        candidate
+      );
     }),
   );
 

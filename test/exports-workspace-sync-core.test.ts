@@ -154,7 +154,7 @@ fs.writeFileSync(path.join(process.cwd(), "asset.bin"), binary);`,
       await expect(
         materializeExport({
           cwd,
-          branchName: "fix/session-loss",
+          materializationName: "fix/session-loss",
           withReport: false,
         }),
       ).rejects.toThrow("managed project paths changed since the run started");
@@ -199,7 +199,7 @@ fs.writeFileSync(path.join(process.cwd(), "asset.bin"), binary);`,
 
       await materializeExport({
         cwd,
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: false,
       });
 
@@ -333,7 +333,7 @@ fs.mkdirSync(path.join(process.cwd(), "created-empty"), { recursive: true });`,
 
       await materializeExport({
         cwd,
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: false,
       });
 

@@ -9,15 +9,12 @@ import {
   getCandidateManifestPath,
   getRunManifestPath,
 } from "../src/core/paths.js";
-import {
-  candidateManifestSchema,
-  runManifestSchema,
-} from "../src/domain/run.js";
+import { candidateManifestSchema, runManifestSchema } from "../src/domain/run.js";
 import { executeRun } from "../src/services/execution.js";
 import { initializeProject } from "../src/services/project.js";
 import { planRun, readRunManifest } from "../src/services/runs.js";
-import { writeNodeBinary } from "./helpers/fake-binary.js";
 import { createTempRoot, registerExecutionTempRootCleanup } from "./helpers/execution.js";
+import { writeNodeBinary } from "./helpers/fake-binary.js";
 import { EXECUTION_TEST_TIMEOUT_MS, FAKE_AGENT_TIMEOUT_MS } from "./helpers/integration.js";
 
 registerExecutionTempRootCleanup();
@@ -49,7 +46,7 @@ describe("run execution resume", () => {
           '  fs.writeFileSync(executionCountPath, String(current + 1), "utf8");',
           "}",
           "if (out) {",
-          '  const body = isWinner',
+          "  const body = isWinner",
           '    ? \'{"decision":"select","candidateId":"cand-01","confidence":"high","summary":"cand-01 remains the recommended finalist."}\'',
           '    : "Codex resumed candidate patch";',
           '  fs.writeFileSync(out, body, "utf8");',

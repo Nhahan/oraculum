@@ -57,216 +57,215 @@ export const savedConsultationStatusSchema = z
     updatedAt: z.string().min(1),
   })
   .superRefine((value, context) => {
-      const expectedFlags = getExpectedOutcomeFlags(value.outcomeType);
-      if (value.terminal !== expectedFlags.terminal) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["terminal"],
-          message: `terminal must be ${expectedFlags.terminal} when outcomeType is ${value.outcomeType}.`,
-        });
-      }
+    const expectedFlags = getExpectedOutcomeFlags(value.outcomeType);
+    if (value.terminal !== expectedFlags.terminal) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["terminal"],
+        message: `terminal must be ${expectedFlags.terminal} when outcomeType is ${value.outcomeType}.`,
+      });
+    }
 
-      if (value.crownable !== expectedFlags.crownable) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["crownable"],
-          message: `crownable must be ${expectedFlags.crownable} when outcomeType is ${value.outcomeType}.`,
-        });
-      }
+    if (value.crownable !== expectedFlags.crownable) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["crownable"],
+        message: `crownable must be ${expectedFlags.crownable} when outcomeType is ${value.outcomeType}.`,
+      });
+    }
 
-      if (value.validationGaps.length > 0 && !value.validationGapsPresent) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["validationGapsPresent"],
-          message: "validationGapsPresent must be true when detailed validationGaps are present.",
-        });
-      }
+    if (value.validationGaps.length > 0 && !value.validationGapsPresent) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["validationGapsPresent"],
+        message: "validationGapsPresent must be true when detailed validationGaps are present.",
+      });
+    }
 
-      if (value.researchBasisStatus === "stale" && value.researchBasisDrift !== true) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["researchBasisStatus"],
-          message: "researchBasisStatus stale requires researchBasisDrift to be true.",
-        });
-      }
+    if (value.researchBasisStatus === "stale" && value.researchBasisDrift !== true) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["researchBasisStatus"],
+        message: "researchBasisStatus stale requires researchBasisDrift to be true.",
+      });
+    }
 
-      if (
-        value.researchConflictHandling === "manual-review-required" &&
-        !value.researchConflictsPresent
-      ) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["researchConflictHandling"],
-          message:
-            "researchConflictHandling manual-review-required requires researchConflictsPresent to be true.",
-        });
-      }
+    if (
+      value.researchConflictHandling === "manual-review-required" &&
+      !value.researchConflictsPresent
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["researchConflictHandling"],
+        message:
+          "researchConflictHandling manual-review-required requires researchConflictsPresent to be true.",
+      });
+    }
 
-      if (
-        value.researchConflictsPresent &&
-        value.researchConflictHandling &&
-        value.researchConflictHandling !== "manual-review-required"
-      ) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["researchConflictHandling"],
-          message:
-            "researchConflictHandling must be manual-review-required when researchConflictsPresent is true.",
-        });
-      }
+    if (
+      value.researchConflictsPresent &&
+      value.researchConflictHandling &&
+      value.researchConflictHandling !== "manual-review-required"
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["researchConflictHandling"],
+        message:
+          "researchConflictHandling must be manual-review-required when researchConflictsPresent is true.",
+      });
+    }
 
-      if (value.outcomeType === "recommended-survivor" && !value.recommendedCandidateId) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["recommendedCandidateId"],
-          message: "recommendedCandidateId is required when outcomeType is recommended-survivor.",
-        });
-      }
+    if (value.outcomeType === "recommended-survivor" && !value.recommendedCandidateId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["recommendedCandidateId"],
+        message: "recommendedCandidateId is required when outcomeType is recommended-survivor.",
+      });
+    }
 
-      if (value.outcomeType !== "recommended-survivor" && value.recommendedCandidateId) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["recommendedCandidateId"],
-          message:
-            "recommendedCandidateId is only allowed when outcomeType is recommended-survivor.",
-        });
-      }
+    if (value.outcomeType !== "recommended-survivor" && value.recommendedCandidateId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["recommendedCandidateId"],
+        message: "recommendedCandidateId is only allowed when outcomeType is recommended-survivor.",
+      });
+    }
 
-      if (
-        (value.outcomeType === "recommended-survivor" ||
-          value.outcomeType === "finalists-without-recommendation") &&
-        value.finalistCount < 1
-      ) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["finalistCount"],
-          message:
-            "recommended-survivor and finalists-without-recommendation statuses require finalistCount to be at least 1.",
-        });
-      }
+    if (
+      (value.outcomeType === "recommended-survivor" ||
+        value.outcomeType === "finalists-without-recommendation") &&
+      value.finalistCount < 1
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["finalistCount"],
+        message:
+          "recommended-survivor and finalists-without-recommendation statuses require finalistCount to be at least 1.",
+      });
+    }
 
-      if (
-        value.outcomeType !== "recommended-survivor" &&
-        value.outcomeType !== "finalists-without-recommendation" &&
-        value.finalistCount !== 0
-      ) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["finalistCount"],
-          message: `${value.outcomeType} statuses require finalistCount to be 0.`,
-        });
-      }
+    if (
+      value.outcomeType !== "recommended-survivor" &&
+      value.outcomeType !== "finalists-without-recommendation" &&
+      value.finalistCount !== 0
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["finalistCount"],
+        message: `${value.outcomeType} statuses require finalistCount to be 0.`,
+      });
+    }
 
-      if (value.outcomeType === "completed-with-validation-gaps" && !value.validationGapsPresent) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["validationGapsPresent"],
-          message:
-            "completed-with-validation-gaps statuses require validationGapsPresent to be true.",
-        });
-      }
+    if (value.outcomeType === "completed-with-validation-gaps" && !value.validationGapsPresent) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["validationGapsPresent"],
+        message:
+          "completed-with-validation-gaps statuses require validationGapsPresent to be true.",
+      });
+    }
 
-      if (
-        value.outcomeType === "completed-with-validation-gaps" &&
-        value.validationPosture !== "validation-gaps"
-      ) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["validationPosture"],
-          message:
-            "completed-with-validation-gaps statuses require validationPosture to be validation-gaps.",
-        });
-      }
+    if (
+      value.outcomeType === "completed-with-validation-gaps" &&
+      value.validationPosture !== "validation-gaps"
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["validationPosture"],
+        message:
+          "completed-with-validation-gaps statuses require validationPosture to be validation-gaps.",
+      });
+    }
 
-      if (value.outcomeType === "no-survivors" && value.validationGapsPresent) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["validationGapsPresent"],
-          message: "no-survivors statuses require validationGapsPresent to be false.",
-        });
-      }
+    if (value.outcomeType === "no-survivors" && value.validationGapsPresent) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["validationGapsPresent"],
+        message: "no-survivors statuses require validationGapsPresent to be false.",
+      });
+    }
 
-      if (value.outcomeType === "no-survivors" && value.validationPosture === "validation-gaps") {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["validationPosture"],
-          message: "no-survivors statuses cannot use validation-gaps validationPosture.",
-        });
-      }
+    if (value.outcomeType === "no-survivors" && value.validationPosture === "validation-gaps") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["validationPosture"],
+        message: "no-survivors statuses cannot use validation-gaps validationPosture.",
+      });
+    }
 
-      if (
-        value.outcomeType === "external-research-required" &&
-        value.validationPosture !== "validation-gaps"
-      ) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["validationPosture"],
-          message:
-            "external-research-required statuses require validationPosture to be validation-gaps.",
-        });
-      }
+    if (
+      value.outcomeType === "external-research-required" &&
+      value.validationPosture !== "validation-gaps"
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["validationPosture"],
+        message:
+          "external-research-required statuses require validationPosture to be validation-gaps.",
+      });
+    }
 
-      if (
-        (value.outcomeType === "needs-clarification" ||
-          value.outcomeType === "abstained-before-execution") &&
-        value.validationPosture !== "unknown"
-      ) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["validationPosture"],
-          message: `${value.outcomeType} statuses require validationPosture to be unknown.`,
-        });
-      }
+    if (
+      (value.outcomeType === "needs-clarification" ||
+        value.outcomeType === "abstained-before-execution") &&
+      value.validationPosture !== "unknown"
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["validationPosture"],
+        message: `${value.outcomeType} statuses require validationPosture to be unknown.`,
+      });
+    }
 
-      const expectedBlockedOutcomeType = value.preflightDecision
-        ? getBlockedOutcomeType(value.preflightDecision)
-        : undefined;
-      if (expectedBlockedOutcomeType && value.outcomeType !== expectedBlockedOutcomeType) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["outcomeType"],
-          message: `preflightDecision ${value.preflightDecision} requires outcomeType ${expectedBlockedOutcomeType}.`,
-        });
-      }
+    const expectedBlockedOutcomeType = value.preflightDecision
+      ? getBlockedOutcomeType(value.preflightDecision)
+      : undefined;
+    if (expectedBlockedOutcomeType && value.outcomeType !== expectedBlockedOutcomeType) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["outcomeType"],
+        message: `preflightDecision ${value.preflightDecision} requires outcomeType ${expectedBlockedOutcomeType}.`,
+      });
+    }
 
-      if (
-        value.preflightDecision === "proceed" &&
-        (value.outcomeType === "needs-clarification" ||
-          value.outcomeType === "external-research-required" ||
-          value.outcomeType === "abstained-before-execution")
-      ) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["outcomeType"],
-          message: "preflightDecision proceed cannot use a blocked preflight outcomeType.",
-        });
-      }
+    if (
+      value.preflightDecision === "proceed" &&
+      (value.outcomeType === "needs-clarification" ||
+        value.outcomeType === "external-research-required" ||
+        value.outcomeType === "abstained-before-execution")
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["outcomeType"],
+        message: "preflightDecision proceed cannot use a blocked preflight outcomeType.",
+      });
+    }
 
-      if (value.consultationState === "planned" && value.outcomeType !== "pending-execution") {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["outcomeType"],
-          message: "planned consultation statuses must use outcomeType pending-execution.",
-        });
-      }
+    if (value.consultationState === "planned" && value.outcomeType !== "pending-execution") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["outcomeType"],
+        message: "planned consultation statuses must use outcomeType pending-execution.",
+      });
+    }
 
-      if (value.consultationState === "running" && value.outcomeType !== "running") {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["outcomeType"],
-          message: "running consultation statuses must use outcomeType running.",
-        });
-      }
+    if (value.consultationState === "running" && value.outcomeType !== "running") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["outcomeType"],
+        message: "running consultation statuses must use outcomeType running.",
+      });
+    }
 
-      if (
-        value.consultationState === "completed" &&
-        (value.outcomeType === "pending-execution" || value.outcomeType === "running")
-      ) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["outcomeType"],
-          message:
-            "completed consultation statuses cannot use outcomeType pending-execution or running.",
-        });
-      }
+    if (
+      value.consultationState === "completed" &&
+      (value.outcomeType === "pending-execution" || value.outcomeType === "running")
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["outcomeType"],
+        message:
+          "completed consultation statuses cannot use outcomeType pending-execution or running.",
+      });
+    }
   });

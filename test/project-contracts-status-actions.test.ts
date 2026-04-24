@@ -59,10 +59,7 @@ describe("project contracts", () => {
       },
     );
 
-    expect(status.nextActions).toEqual([
-      "reopen-verdict",
-      "rerun-with-different-candidate-count",
-    ]);
+    expect(status.nextActions).toEqual(["reopen-verdict", "rerun-with-different-candidate-count"]);
   });
 
   it("omits direct crown when saved status is built with required manual review", () => {
@@ -111,10 +108,7 @@ describe("project contracts", () => {
       },
     );
 
-    expect(status.nextActions).toEqual([
-      "reopen-verdict",
-      "perform-manual-review",
-    ]);
+    expect(status.nextActions).toEqual(["reopen-verdict", "perform-manual-review"]);
   });
 
   it("omits direct crown when a crowning record already exists", () => {
@@ -213,9 +207,6 @@ describe("project contracts", () => {
       },
     );
 
-    expect(status.nextActions).toEqual([
-      "reopen-verdict",
-      "perform-manual-review",
-    ]);
+    expect(status.nextActions).toEqual(["reopen-verdict", "perform-manual-review"]);
   });
 });

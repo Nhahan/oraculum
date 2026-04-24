@@ -2,9 +2,7 @@ export {
   buildConsultationArtifacts,
   buildProjectInitializationResult,
 } from "./chat-native/artifacts.js";
-export {
-  oraculumCommandManifest,
-} from "./chat-native/command-manifest.js";
+export { oraculumCommandManifest } from "./chat-native/command-manifest.js";
 export {
   buildSetupDiagnosticsResponse,
   filterSetupDiagnosticsResponse,

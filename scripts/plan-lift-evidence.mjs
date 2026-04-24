@@ -196,7 +196,7 @@ async function runRoute(root, scenario, mode, orcActions, runDomain) {
     try {
       const crown = await orcActions.runCrownAction({
         cwd: root,
-        materializationLabel: `${scenario.id}-${mode}`,
+        materializationName: `${scenario.id}-${mode}`,
       });
       crownVerified = crown.materialization.verified;
     } catch (error) {
@@ -232,7 +232,7 @@ async function runRoute(root, scenario, mode, orcActions, runDomain) {
   try {
     const crown = await orcActions.runCrownAction({
       cwd: root,
-      materializationLabel: `${scenario.id}-${mode}`,
+      materializationName: `${scenario.id}-${mode}`,
     });
     crownVerified = crown.materialization.verified;
   } catch (error) {

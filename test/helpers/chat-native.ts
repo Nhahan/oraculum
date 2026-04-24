@@ -200,6 +200,11 @@ export async function writeCompleteConsultationArtifacts(
         summary: "Proceed conservatively.",
         researchPosture: "repo-only",
       },
+      repoBasis: {
+        projectRoot,
+        signalFingerprint: "sha256:test",
+        availableOracleIds: [],
+      },
       candidateCount: 2,
       plannedStrategies: [
         {
@@ -214,6 +219,18 @@ export async function writeCompleteConsultationArtifacts(
           label: "Fast",
         },
       ],
+      workstreams: [],
+      stagePlan: [],
+      scorecardDefinition: {
+        dimensions: [],
+        abstentionTriggers: [],
+      },
+      repairPolicy: {
+        maxAttemptsPerStage: 0,
+        immediateElimination: [],
+        repairable: [],
+        preferAbstainOverRetry: [],
+      },
     }),
   );
   await writeTextArtifact(
@@ -333,6 +350,7 @@ export async function writeCompleteConsultationArtifacts(
       question: "What does the official API documentation say?",
       researchPosture: "external-research-required",
       summary: "Official documentation is still required.",
+      conflictHandling: "accepted",
       task: {
         id: "task",
         title: "Task",

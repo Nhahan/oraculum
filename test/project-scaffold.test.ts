@@ -4,10 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { getAdvancedConfigPath, getConfigPath } from "../src/core/paths.js";
-import {
-  projectAdvancedConfigSchema,
-  projectQuickConfigSchema,
-} from "../src/domain/config.js";
+import { projectAdvancedConfigSchema, projectQuickConfigSchema } from "../src/domain/config.js";
 import {
   ensureProjectInitialized,
   initializeProject,

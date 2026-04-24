@@ -16,6 +16,29 @@ import {
 import { writeNodeBinary } from "./helpers/fake-binary.js";
 import { EXECUTION_TEST_TIMEOUT_MS, FAKE_AGENT_TIMEOUT_MS } from "./helpers/integration.js";
 
+function parseCurrentConsultationPlan(projectRoot: string, input: Record<string, unknown>) {
+  return consultationPlanArtifactSchema.parse({
+    repoBasis: {
+      projectRoot,
+      signalFingerprint: "sha256:test",
+      availableOracleIds: [],
+    },
+    workstreams: [],
+    stagePlan: [],
+    scorecardDefinition: {
+      dimensions: [],
+      abstentionTriggers: [],
+    },
+    repairPolicy: {
+      maxAttemptsPerStage: 0,
+      immediateElimination: [],
+      repairable: [],
+      preferAbstainOverRetry: [],
+    },
+    ...input,
+  });
+}
+
 describe("consultation plan execution presets", () => {
   it(
     "persists candidate scorecards for complex consultation plans",
@@ -46,7 +69,7 @@ describe("consultation plan execution presets", () => {
       await writeFile(
         planPath,
         `${JSON.stringify(
-          consultationPlanArtifactSchema.parse({
+          parseCurrentConsultationPlan(cwd, {
             runId: "run_complex_scorecard",
             createdAt: "2026-04-15T00:00:00.000Z",
             mode: "complex",
@@ -243,7 +266,7 @@ if (out) {
       await writeFile(
         planPath,
         `${JSON.stringify(
-          consultationPlanArtifactSchema.parse({
+          parseCurrentConsultationPlan(cwd, {
             runId: "run_complex_miss",
             createdAt: "2026-04-15T00:00:00.000Z",
             mode: "complex",
@@ -434,7 +457,7 @@ if (out) {
     await writeFile(
       planPath,
       `${JSON.stringify(
-        consultationPlanArtifactSchema.parse({
+        parseCurrentConsultationPlan(cwd, {
           runId: "run_complex_invalid",
           createdAt: "2026-04-15T00:00:00.000Z",
           mode: "complex",
@@ -548,7 +571,7 @@ if (out) {
     await writeFile(
       planPath,
       `${JSON.stringify(
-        consultationPlanArtifactSchema.parse({
+        parseCurrentConsultationPlan(cwd, {
           runId: "run_complex_cycle",
           createdAt: "2026-04-15T00:00:00.000Z",
           mode: "complex",

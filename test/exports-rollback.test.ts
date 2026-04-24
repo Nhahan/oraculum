@@ -192,7 +192,7 @@ describe("git export rollback", () => {
       materializeExport({
         cwd,
         winnerId: candidateId,
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: false,
       }),
     ).rejects.toThrow('Failed to materialize candidate "cand-01" onto branch "fix/session-loss".');
@@ -511,7 +511,7 @@ describe("git export rollback", () => {
       await expect(
         materializeExport({
           cwd,
-          branchName: "fix/session-loss",
+          materializationName: "fix/session-loss",
           withReport: false,
         }),
       ).rejects.toThrow(
@@ -664,7 +664,7 @@ describe("git export rollback", () => {
     await expect(
       materializeExport({
         cwd,
-        branchName: "fix/session-loss",
+        materializationName: "fix/session-loss",
         withReport: false,
       }),
     ).rejects.toThrow('Failed to inspect whether branch "fix/session-loss" already exists.');

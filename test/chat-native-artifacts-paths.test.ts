@@ -120,6 +120,7 @@ describe("chat-native consultation artifacts", () => {
         question: "What does the vendor documentation say?",
         researchPosture: "external-research-required",
         summary: "Vendor documentation is still required.",
+        conflictHandling: "accepted",
         task: {
           id: "task",
           title: "Task",
@@ -175,6 +176,7 @@ describe("chat-native consultation artifacts", () => {
         mode: "git-branch",
         materializationMode: "branch",
         workspaceDir: "/tmp/workspace",
+        patchPath: `/tmp/${consultationId}-cand-01.patch`,
         withReport: true,
         createdAt: "2026-04-14T00:00:00.000Z",
       }),

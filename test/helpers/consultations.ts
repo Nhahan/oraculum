@@ -144,9 +144,7 @@ export function createRecommendedManifest(
   const candidateId = options.candidateId ?? "cand-01";
   const { profileSelection, ...restManifestOverrides } = options.manifestOverrides ?? {};
   const inferredValidationGapCount =
-    options.outcomeOverrides?.validationGapCount ??
-    profileSelection?.validationGaps?.length ??
-    0;
+    options.outcomeOverrides?.validationGapCount ?? profileSelection?.validationGaps?.length ?? 0;
   const inferredValidationPosture =
     options.outcomeOverrides?.validationPosture ??
     (inferredValidationGapCount > 0 ? "validation-gaps" : "sufficient");
