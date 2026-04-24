@@ -30,6 +30,7 @@ export const verdictSecondOpinionAgreementSchema = z.enum([
 export const verdictArtifactAvailabilitySchema = z.object({
   planReadiness: z.boolean().optional(),
   planReview: z.boolean().optional(),
+  planConsensus: z.boolean().optional(),
   preflightReadiness: z.boolean(),
   clarifyFollowUp: z.boolean().default(false),
   researchBrief: z.boolean(),

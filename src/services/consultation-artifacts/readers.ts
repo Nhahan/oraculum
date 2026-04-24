@@ -10,6 +10,7 @@ import {
   consultationPreflightReadinessArtifactSchema,
   consultationResearchBriefSchema,
   exportPlanSchema,
+  planConsensusArtifactSchema,
 } from "../../domain/run.js";
 import { failureAnalysisSchema } from "../failure-analysis.js";
 import { secondOpinionWinnerSelectionArtifactSchema } from "../finalist-judge.js";
@@ -119,6 +120,12 @@ export async function readConsultationPlanReviewArtifact(
   path: string | undefined,
 ): Promise<z.infer<typeof consultationPlanReviewSchema> | undefined> {
   return readOptionalArtifact(path, consultationPlanReviewSchema);
+}
+
+export async function readPlanConsensusArtifact(
+  path: string | undefined,
+): Promise<z.infer<typeof planConsensusArtifactSchema> | undefined> {
+  return readOptionalArtifact(path, planConsensusArtifactSchema);
 }
 
 export function readClarifyFollowUpArtifactSync(

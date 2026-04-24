@@ -9,6 +9,7 @@ import {
   describeConsultationOutcomeSummary,
   isPreflightBlockedConsultation,
 } from "../../../domain/run.js";
+import { summarizePlanConsensusBlocker } from "../../plan-consensus/index.js";
 import { readSkippedProfileCommands, toDisplayPath } from "../shared.js";
 import type { ConsultationSummaryContext } from "./types.js";
 
@@ -122,6 +123,23 @@ export async function buildConsultationSummaryDetailLines(
       lines.push(
         `Plan review: ${resolvedArtifacts.consultationPlanReview.status}`,
         resolvedArtifacts.consultationPlanReview.summary,
+      );
+    }
+  }
+
+  if (resolvedArtifacts.planConsensus && !resolvedArtifacts.planConsensus.approved) {
+    const blocker = summarizePlanConsensusBlocker(resolvedArtifacts.planConsensus);
+    lines.push(
+      blocker.blockerKind === "runtime-unavailable"
+        ? "Plan Conclave blocked:"
+        : "Plan Conclave remediation needed:",
+      blocker.summary,
+      `Plan Conclave blocker: ${blocker.blockerKind}`,
+    );
+    if (blocker.requiredChanges.length > 0) {
+      lines.push(
+        "Plan Conclave required changes:",
+        ...blocker.requiredChanges.map((change) => `- ${change}`),
       );
     }
   }

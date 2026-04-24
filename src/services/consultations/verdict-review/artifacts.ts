@@ -8,6 +8,7 @@ import {
   readConsultationPlanReviewArtifact,
   readExportPlanArtifact,
   readFailureAnalysisArtifact,
+  readPlanConsensusArtifact,
   readPreflightReadinessArtifact,
   readProfileSelectionArtifact,
   readResearchBriefArtifact,
@@ -37,6 +38,10 @@ export async function loadVerdictReviewArtifacts(
   );
   const consultationPlanReview = filterArtifactForConsultationRun(
     await readConsultationPlanReviewArtifact(artifacts.consultationPlanReviewPath),
+    { expectedRunId: manifest.id },
+  );
+  const planConsensus = filterArtifactForConsultationRun(
+    await readPlanConsensusArtifact(artifacts.planConsensusPath),
     { expectedRunId: manifest.id },
   );
   const winnerSelection = filterArtifactForConsultationRun(
@@ -73,6 +78,7 @@ export async function loadVerdictReviewArtifacts(
     hasExportedCandidate: manifest.candidates.some((candidate) => candidate.status === "exported"),
     ...(consultationPlanReadiness ? { consultationPlanReadiness } : {}),
     ...(consultationPlanReview ? { consultationPlanReview } : {}),
+    ...(planConsensus ? { planConsensus } : {}),
     ...(preflightReadiness ? { preflightReadiness } : {}),
     ...(winnerSelection ? { winnerSelection } : {}),
     ...(clarifyFollowUp ? { clarifyFollowUp } : {}),

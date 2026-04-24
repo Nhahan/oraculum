@@ -2,6 +2,7 @@ import { buildSavedConsultationStatus, type RunManifest } from "../../domain/run
 import { describeRecommendedTaskResultLabel, describeTaskResultLabel } from "../../domain/task.js";
 
 import { resolveConsultationArtifacts } from "../consultation-artifacts.js";
+import { isPlanConsensusRemediationEligible } from "../plan-consensus/index.js";
 import { RunStore } from "../run-store.js";
 
 import { type ConsultationSurface, getSurfaceCommand, toDisplayPath } from "./shared.js";
@@ -38,6 +39,9 @@ export async function renderConsultationSummary(
     comparisonReportAvailable: resolvedArtifacts.comparisonReportAvailable,
     crowningRecordAvailable: resolvedArtifacts.crowningRecordAvailable,
     ...(resolvedArtifacts.manualReviewRequired ? { manualReviewRequired: true } : {}),
+    planConclaveRemediationRecommended: resolvedArtifacts.planConsensus
+      ? isPlanConsensusRemediationEligible(resolvedArtifacts.planConsensus)
+      : false,
   });
   const recommendedCandidateId = status.recommendedCandidateId;
   const recommendedResultLabel = describeTaskResultLabel({

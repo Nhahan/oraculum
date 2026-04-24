@@ -1,4 +1,5 @@
 import type { RunManifest } from "../../../domain/run.js";
+import { summarizePlanConsensusBlocker } from "../../plan-consensus/index.js";
 import { toDisplayPath } from "../shared.js";
 import type { ConsultationSummaryContext, ConsultationSummaryPathState } from "./types.js";
 
@@ -88,22 +89,35 @@ export function buildConsultationSummaryNextStepLines(
       );
     }
   } else if (status.outcomeType === "needs-clarification") {
-    const rerunCommand = pathState.consultationPlanSummaryPath
-      ? 'orc plan "<task plus the answer>"'
-      : 'orc consult "<task plus the answer>"';
-    if (resolvedArtifacts.clarifyFollowUp && pathState.clarifyFollowUpSummaryPath) {
-      lines.push(
-        `- inspect the persisted clarify follow-up: ${toDisplayPath(projectRoot, pathState.clarifyFollowUpSummaryPath)}.`,
-      );
-      lines.push(
-        `- answer the key clarify question: ${resolvedArtifacts.clarifyFollowUp.keyQuestion}`,
-      );
+    if (resolvedArtifacts.planConsensus && !resolvedArtifacts.planConsensus.approved) {
+      const blocker = summarizePlanConsensusBlocker(resolvedArtifacts.planConsensus);
+      if (blocker.blockerKind === "runtime-unavailable") {
+        lines.push(`- ${blocker.clarificationQuestion}`);
+      } else {
+        lines.push(`- answer the Plan Conclave blocker: ${blocker.summary}`);
+        for (const change of blocker.requiredChanges) {
+          lines.push(`- required change: ${change}`);
+        }
+        lines.push('- rerun `orc plan "<answer>"` with the remediation answer.');
+      }
     } else {
-      lines.push("- answer the preflight clarification question.");
+      const rerunCommand = pathState.consultationPlanSummaryPath
+        ? 'orc plan "<task plus the answer>"'
+        : 'orc consult "<task plus the answer>"';
+      if (resolvedArtifacts.clarifyFollowUp && pathState.clarifyFollowUpSummaryPath) {
+        lines.push(
+          `- inspect the persisted clarify follow-up: ${toDisplayPath(projectRoot, pathState.clarifyFollowUpSummaryPath)}.`,
+        );
+        lines.push(
+          `- answer the key clarify question: ${resolvedArtifacts.clarifyFollowUp.keyQuestion}`,
+        );
+      } else {
+        lines.push("- answer the preflight clarification question.");
+      }
+      lines.push(
+        `- rerun \`${rerunCommand}\` once the missing result contract and judging basis are explicit.`,
+      );
     }
-    lines.push(
-      `- rerun \`${rerunCommand}\` once the missing result contract and judging basis are explicit.`,
-    );
   } else if (status.outcomeType === "external-research-required") {
     const researchBriefInput = researchBriefInputPath
       ? `orc consult ${researchBriefInputPath}`

@@ -13,6 +13,7 @@ export {
   readConsultationPlanReviewArtifact,
   readExportPlanArtifact,
   readFailureAnalysisArtifact,
+  readPlanConsensusArtifact,
   readPreflightReadinessArtifact,
   readPreflightReadinessArtifactSync,
   readProfileSelectionArtifact,

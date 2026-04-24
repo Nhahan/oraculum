@@ -5,6 +5,10 @@ import {
   getValidationSummary,
 } from "../../../domain/profile.js";
 import { buildSavedConsultationStatus, type RunManifest } from "../../../domain/run.js";
+import {
+  isPlanConsensusRemediationEligible,
+  summarizePlanConsensusBlocker,
+} from "../../plan-consensus/index.js";
 import type {
   LoadedVerdictReviewArtifacts,
   VerdictReviewArtifactPaths,
@@ -25,6 +29,9 @@ export function buildVerdictReviewDerivedState(
     loaded.secondOpinionWinnerSelection.agreement !== "agrees-select"
       ? { manualReviewRequired: true }
       : {}),
+    planConclaveRemediationRecommended: loaded.planConsensus
+      ? isPlanConsensusRemediationEligible(loaded.planConsensus)
+      : false,
   });
   const researchRerunInputPath =
     manifest.taskPacket.sourceKind === "research-brief"
@@ -59,6 +66,7 @@ export function buildVerdictReviewDerivedState(
       : undefined;
   const judgingCriteria = loaded.winnerSelection?.recommendation?.judgingCriteria;
   const recommendationAbsenceReason = buildRecommendationAbsenceReason({
+    planConsensus: loaded.planConsensus,
     status,
     validationGaps,
     winnerSelection: loaded.winnerSelection,
@@ -100,6 +108,7 @@ export function buildVerdictReviewDerivedState(
 }
 
 function buildRecommendationAbsenceReason(options: {
+  planConsensus: LoadedVerdictReviewArtifacts["planConsensus"];
   status: ReturnType<typeof buildSavedConsultationStatus>;
   validationGaps: string[];
   winnerSelection: LoadedVerdictReviewArtifacts["winnerSelection"];
@@ -119,6 +128,13 @@ function buildRecommendationAbsenceReason(options: {
     case "no-survivors":
       return "No finalists survived the oracle rounds.";
     case "needs-clarification":
+      if (options.planConsensus && !options.planConsensus.approved) {
+        const blocker = summarizePlanConsensusBlocker(options.planConsensus);
+        const prefix = isPlanConsensusRemediationEligible(options.planConsensus)
+          ? "Plan Conclave remediation is required"
+          : "Plan Conclave did not approve";
+        return `${prefix} (${blocker.blockerKind}): ${blocker.summary}`;
+      }
       return "Execution stopped because operator clarification is still required.";
     case "external-research-required":
       return "Execution stopped because bounded external research is still required.";

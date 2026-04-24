@@ -198,6 +198,7 @@ export async function buildVerdictReview(
     artifactAvailability: {
       ...(loaded.consultationPlanReadiness ? { planReadiness: true } : {}),
       ...(loaded.consultationPlanReview ? { planReview: true } : {}),
+      ...(loaded.planConsensus ? { planConsensus: true } : {}),
       preflightReadiness: Boolean(loaded.preflightReadiness),
       clarifyFollowUp: Boolean(loaded.clarifyFollowUp),
       researchBrief: Boolean(loaded.researchBrief),

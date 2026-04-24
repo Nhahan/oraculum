@@ -5,6 +5,7 @@ import type {
   consultationClarifyFollowUpSchema,
   consultationPlanReadinessSchema,
   consultationPlanReviewSchema,
+  planConsensusArtifactSchema,
   RunManifest,
 } from "../../../domain/run.js";
 import type { secondOpinionWinnerSelectionArtifactSchema } from "../../finalist-judge.js";
@@ -15,6 +16,7 @@ export interface VerdictReviewArtifactPaths {
   configPath?: string;
   consultationPlanReadinessPath?: string;
   consultationPlanReviewPath?: string;
+  planConsensusPath?: string;
   preflightReadinessPath?: string;
   clarifyFollowUpPath?: string;
   researchBriefPath?: string;
@@ -36,6 +38,7 @@ export interface LoadedVerdictReviewArtifacts {
   exportPlan?: unknown;
   failureAnalysis?: unknown;
   hasExportedCandidate: boolean;
+  planConsensus?: z.infer<typeof planConsensusArtifactSchema>;
   preflightReadiness?: unknown;
   profileSelectionArtifact?: unknown;
   researchBrief?: unknown;

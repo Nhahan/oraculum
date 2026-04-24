@@ -59,6 +59,7 @@ export const consultationNextActionSchema = z.enum([
   "perform-manual-review",
   "review-preflight-readiness",
   "answer-clarification-and-rerun",
+  "answer-plan-conclave-and-rerun",
   "gather-external-research-and-rerun",
   "rerun-with-research-brief",
   "refresh-stale-research-and-rerun",

@@ -8,6 +8,7 @@ import {
   toAvailableConsultationArtifactPaths,
 } from "../consultation-artifacts.js";
 import { renderConsultationSummary } from "../consultations.js";
+import { isPlanConsensusRemediationEligible } from "../plan-consensus/index.js";
 import { ensureProjectInitialized } from "../project.js";
 import type { planRun, readRunManifest } from "../runs.js";
 
@@ -86,6 +87,9 @@ export async function buildArtifactAwareConsultationStatus(
     comparisonReportAvailable: artifacts.comparisonReportAvailable,
     crowningRecordAvailable: artifacts.crowningRecordAvailable,
     ...(artifacts.manualReviewRequired ? { manualReviewRequired: true } : {}),
+    planConclaveRemediationRecommended: artifacts.planConsensus
+      ? isPlanConsensusRemediationEligible(artifacts.planConsensus)
+      : false,
   });
 }
 

@@ -25,6 +25,7 @@ export function buildSavedConsultationStatus(
     comparisonReportAvailable?: boolean;
     crowningRecordAvailable?: boolean;
     manualReviewRequired?: boolean;
+    planConclaveRemediationRecommended?: boolean;
   },
 ): SavedConsultationStatus {
   const outcome = manifest.outcome ?? deriveConsultationOutcomeForManifest(manifest);
@@ -37,6 +38,9 @@ export function buildSavedConsultationStatus(
       : {}),
     ...(options?.manualReviewRequired !== undefined
       ? { manualReviewRequired: options.manualReviewRequired }
+      : {}),
+    ...(options?.planConclaveRemediationRecommended !== undefined
+      ? { planConclaveRemediationRecommended: options.planConclaveRemediationRecommended }
       : {}),
     researchBasisDrift: manifest.preflight?.researchBasisDrift === true,
   });
@@ -174,6 +178,7 @@ function buildConsultationNextActions(
     comparisonReportAvailable?: boolean;
     crowningRecordAvailable?: boolean;
     manualReviewRequired?: boolean;
+    planConclaveRemediationRecommended?: boolean;
     researchBasisDrift?: boolean;
   },
 ): ConsultationNextAction[] {
@@ -186,7 +191,11 @@ function buildConsultationNextActions(
   switch (outcome.type) {
     case "needs-clarification":
       actions.add("review-preflight-readiness");
-      actions.add("answer-clarification-and-rerun");
+      actions.add(
+        options?.planConclaveRemediationRecommended === true
+          ? "answer-plan-conclave-and-rerun"
+          : "answer-clarification-and-rerun",
+      );
       break;
     case "external-research-required":
       actions.add("review-preflight-readiness");
