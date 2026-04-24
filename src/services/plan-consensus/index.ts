@@ -2,10 +2,12 @@ import type { AgentAdapter } from "../../adapters/types.js";
 import {
   type ConsultationPlanArtifact,
   type PlanConsensusArtifact,
+  type PlanConsensusContinuation,
   type PlanConsensusDraft,
   type PlanConsensusReview,
   type PlanningSpecArtifact,
   planConsensusArtifactSchema,
+  planConsensusContinuationSchema,
   planConsensusDraftSchema,
   planConsensusReviewSchema,
 } from "../../domain/run.js";
@@ -18,6 +20,7 @@ export async function buildPlanConsensus(options: {
   basePlan: ConsultationPlanArtifact;
   createdAt: string;
   maxConsensusLoopRevisions: number;
+  remediationContext?: PlanConsensusRemediationContext;
   planningSpec: PlanningSpecArtifact;
   projectRoot: string;
   reportsDir: string;
@@ -87,7 +90,55 @@ export async function buildPlanConsensus(options: {
     criticVerdicts,
     revisionHistory,
     finalDraft: draft,
+    ...(options.remediationContext
+      ? { continuation: options.remediationContext.continuation }
+      : {}),
   });
+}
+
+export interface PlanConsensusBlockerSummary {
+  blockerKind: PlanConsensusContinuation["blockerKind"];
+  summary: string;
+  clarificationQuestion: string;
+  clarityGateSummary: string;
+  openQuestion: string;
+  requiredChanges: string[];
+}
+
+export interface PlanConsensusRemediationContext {
+  continuation: PlanConsensusContinuation;
+  sourceFinalDraft: PlanConsensusDraft;
+  sourceRevisionHistory: PlanConsensusArtifact["revisionHistory"];
+}
+
+export function buildPlanConsensusRemediationContext(options: {
+  answer: string;
+  blocker: PlanConsensusBlockerSummary;
+  createdAt: string;
+  sourceConsensus: PlanConsensusArtifact;
+  sourceRunId: string;
+}): PlanConsensusRemediationContext {
+  return {
+    continuation: planConsensusContinuationSchema.parse({
+      sourceRunId: options.sourceRunId,
+      sourceConsensusRunId: options.sourceConsensus.runId,
+      answer: options.answer,
+      blockerKind: options.blocker.blockerKind,
+      blockerSummary: options.blocker.summary,
+      requiredChanges: options.blocker.requiredChanges,
+      createdAt: options.createdAt,
+    }),
+    sourceFinalDraft: options.sourceConsensus.finalDraft,
+    sourceRevisionHistory: options.sourceConsensus.revisionHistory,
+  };
+}
+
+export function isPlanConsensusRemediationEligible(consensus: PlanConsensusArtifact): boolean {
+  if (consensus.approved) {
+    return false;
+  }
+
+  return summarizePlanConsensusBlocker(consensus).blockerKind !== "runtime-unavailable";
 }
 
 export function applyPlanConsensusToConsultationPlan(
@@ -147,10 +198,12 @@ export function applyPlanConsensusToConsultationPlan(
 }
 
 export function summarizePlanConsensusBlocker(consensus: PlanConsensusArtifact): {
+  blockerKind: PlanConsensusContinuation["blockerKind"];
   summary: string;
   clarificationQuestion: string;
   clarityGateSummary: string;
   openQuestion: string;
+  requiredChanges: string[];
 } {
   const reviews = consensus.revisionHistory.flatMap((revision) =>
     [revision.architectReview, revision.criticReview].filter(
@@ -164,6 +217,7 @@ export function summarizePlanConsensusBlocker(consensus: PlanConsensusArtifact):
   );
   if (runtimeUnavailableReview) {
     return {
+      blockerKind: "runtime-unavailable",
       summary:
         "Plan Conclave review runtime unavailable. Rerun planning when architect/critic review can execute.",
       clarificationQuestion:
@@ -171,22 +225,28 @@ export function summarizePlanConsensusBlocker(consensus: PlanConsensusArtifact):
       clarityGateSummary: "Plan Conclave review runtime unavailable.",
       openQuestion:
         "Plan Conclave review runtime unavailable. Rerun planning when architect/critic review can execute.",
+      requiredChanges: collectRequiredChanges([runtimeUnavailableReview]),
     };
   }
 
   const rejectedReview = reviews.find((review) => review.verdict === "reject");
   if (rejectedReview) {
     return {
+      blockerKind: "rejected",
       summary: "Plan Conclave rejected the explicit consultation plan before candidate generation.",
       clarificationQuestion:
         "Plan Conclave rejected the draft; address the review finding and rerun planning.",
       clarityGateSummary: `Plan Conclave rejected the draft: ${rejectedReview.summary}`,
       openQuestion:
         "Plan Conclave rejected the draft; address the review finding and rerun planning.",
+      requiredChanges: collectRequiredChanges(
+        reviews.filter((review) => review.verdict === "reject"),
+      ),
     };
   }
 
   return {
+    blockerKind: "revision-cap",
     summary:
       "Consensus review did not approve the explicit consultation plan before the configured revision cap.",
     clarificationQuestion:
@@ -194,7 +254,29 @@ export function summarizePlanConsensusBlocker(consensus: PlanConsensusArtifact):
     clarityGateSummary: "Consensus review did not approve before the revision cap.",
     openQuestion:
       "Consensus review did not approve before the revision cap; revise the task contract or rerun planning.",
+    requiredChanges: collectRequiredChanges(getLatestRevisionReviews(consensus)),
   };
+}
+
+function collectRequiredChanges(reviews: PlanConsensusReview[]): string[] {
+  return [
+    ...new Set(
+      reviews.flatMap((review) =>
+        review.requiredChanges.length > 0 ? review.requiredChanges : [review.summary],
+      ),
+    ),
+  ];
+}
+
+function getLatestRevisionReviews(consensus: PlanConsensusArtifact): PlanConsensusReview[] {
+  const latestRevision = consensus.revisionHistory.at(-1);
+  if (!latestRevision) {
+    return [];
+  }
+
+  return [latestRevision.architectReview, latestRevision.criticReview].filter(
+    (review): review is PlanConsensusReview => Boolean(review),
+  );
 }
 
 export async function writePlanConsensusArtifact(options: {
@@ -211,6 +293,7 @@ async function draftConsensus(options: {
   basePlan: ConsultationPlanArtifact;
   planningSpec: PlanningSpecArtifact;
   projectRoot: string;
+  remediationContext?: PlanConsensusRemediationContext;
   reportsDir: string;
   runId: string;
   taskPacket: MaterializedTaskPacket;
@@ -220,6 +303,9 @@ async function draftConsensus(options: {
       const result = await options.adapter.draftConsensusConsultationPlan({
         consultationPlan: options.basePlan,
         logDir: options.reportsDir,
+        ...(options.remediationContext
+          ? { planConsensusRemediation: options.remediationContext }
+          : {}),
         planningSpec: options.planningSpec,
         projectRoot: options.projectRoot,
         runId: options.runId,
@@ -233,7 +319,16 @@ async function draftConsensus(options: {
     }
   }
 
-  return buildFallbackDraft(options.basePlan, options.planningSpec);
+  return options.remediationContext
+    ? planConsensusDraftSchema.parse({
+        ...options.remediationContext.sourceFinalDraft,
+        premortem: [
+          ...options.remediationContext.sourceFinalDraft.premortem,
+          `Plan Conclave remediation answer: ${options.remediationContext.continuation.answer}`,
+          ...options.remediationContext.continuation.requiredChanges,
+        ],
+      })
+    : buildFallbackDraft(options.basePlan, options.planningSpec);
 }
 
 async function reviewConsensus(options: {
@@ -241,6 +336,7 @@ async function reviewConsensus(options: {
   draft: PlanConsensusDraft;
   planningSpec: PlanningSpecArtifact;
   projectRoot: string;
+  remediationContext?: PlanConsensusRemediationContext;
   reportsDir: string;
   reviewer: "architect" | "critic";
   runId: string;
@@ -255,6 +351,9 @@ async function reviewConsensus(options: {
       const result = await method.call(options.adapter, {
         draft: options.draft,
         logDir: options.reportsDir,
+        ...(options.remediationContext
+          ? { planConsensusRemediation: options.remediationContext }
+          : {}),
         planningSpec: options.planningSpec,
         projectRoot: options.projectRoot,
         runId: options.runId,
@@ -303,6 +402,7 @@ async function reviseConsensus(options: {
   draft: PlanConsensusDraft;
   planningSpec: PlanningSpecArtifact;
   projectRoot: string;
+  remediationContext?: PlanConsensusRemediationContext;
   reportsDir: string;
   revision: number;
   runId: string;
@@ -315,6 +415,9 @@ async function reviseConsensus(options: {
         criticReview: options.criticReview,
         draft: options.draft,
         logDir: options.reportsDir,
+        ...(options.remediationContext
+          ? { planConsensusRemediation: options.remediationContext }
+          : {}),
         planningSpec: options.planningSpec,
         projectRoot: options.projectRoot,
         revision: options.revision,
