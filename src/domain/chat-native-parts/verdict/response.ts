@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import { runManifestSchema, savedConsultationStatusSchema } from "../../run.js";
-import { artifactDiagnosticSchema, consultationArtifactPathsSchema } from "../common.js";
+import {
+  artifactDiagnosticSchema,
+  consultationArtifactPathsSchema,
+  userInteractionSchema,
+} from "../common.js";
 import { verdictReviewSchema } from "./review.js";
 
 export const verdictActionResponseSchema = z.object({
@@ -12,6 +16,7 @@ export const verdictActionResponseSchema = z.object({
   summary: z.string().min(1),
   artifacts: consultationArtifactPathsSchema,
   artifactDiagnostics: z.array(artifactDiagnosticSchema).optional(),
+  userInteraction: userInteractionSchema.optional(),
 });
 
 export type VerdictActionResponse = z.infer<typeof verdictActionResponseSchema>;

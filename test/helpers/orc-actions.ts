@@ -12,6 +12,7 @@ import {
   initializeProject,
 } from "../../src/services/project.js";
 import {
+  answerPlanRun,
   planRun,
   readLatestRunManifest,
   readRunManifest,
@@ -41,6 +42,7 @@ export { writeJsonArtifact, writeTextArtifact };
 const tempRootHarness = createTempRootHarness("oraculum-orc-actions-");
 
 export const mockedPlanRun = vi.mocked(planRun);
+export const mockedAnswerPlanRun = vi.mocked(answerPlanRun);
 export const mockedReadLatestRunManifest = vi.mocked(readLatestRunManifest);
 export const mockedReadRunManifest = vi.mocked(readRunManifest);
 export const mockedWriteLatestRunState = vi.mocked(writeLatestRunState);
@@ -60,6 +62,7 @@ export function registerOrcActionsTestHarness(): void {
     delete process.env.ORACULUM_AGENT_RUNTIME;
 
     mockedPlanRun.mockReset();
+    mockedAnswerPlanRun.mockReset();
     mockedReadLatestRunManifest.mockReset();
     mockedReadRunManifest.mockReset();
     mockedWriteLatestRunState.mockReset();
@@ -77,6 +80,7 @@ export function registerOrcActionsTestHarness(): void {
     mockedBuildVerdictReview.mockResolvedValue(createDefaultVerdictReview());
     mockedRenderConsultationSummary.mockResolvedValue("Consultation summary.\n");
     mockedPlanRun.mockResolvedValue(createPlannedManifest());
+    mockedAnswerPlanRun.mockResolvedValue(createPlannedManifest());
     mockedReadLatestRunManifest.mockResolvedValue(createCompletedManifest());
     mockedReadRunManifest.mockResolvedValue(createCompletedManifest());
     mockedWriteLatestRunState.mockResolvedValue(undefined);

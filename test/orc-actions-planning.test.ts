@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   getConsultationPlanPath,
   getConsultationPlanReadinessPath,
+  getPlanningDepthPath,
+  getPlanningInterviewPath,
   getRunManifestPath,
 } from "../src/core/paths.js";
 import {
@@ -16,6 +18,7 @@ vi.mock("../src/core/subprocess.js", () => ({
 }));
 
 vi.mock("../src/services/runs.js", () => ({
+  answerPlanRun: vi.fn(),
   planRun: vi.fn(),
   readLatestRunManifest: vi.fn(),
   readRunManifest: vi.fn(),
@@ -49,14 +52,20 @@ vi.mock("../src/services/exports.js", () => ({
   materializeExport: vi.fn(),
 }));
 
-import { runConsultAction, runPlanAction } from "../src/services/orc-actions.js";
+import {
+  runConsultAction,
+  runPlanAction,
+  runUserInteractionAnswerAction,
+} from "../src/services/orc-actions.js";
 import {
   createBlockedPreflightManifest,
   createCompletedManifest,
   createOrcActionTempRoot,
+  mockedAnswerPlanRun,
   mockedEnsureProjectInitialized,
   mockedExecuteRun,
   mockedPlanRun,
+  mockedReadRunManifest,
   mockedRenderConsultationSummary,
   mockedWriteLatestRunState,
   registerOrcActionsTestHarness,
@@ -257,6 +266,326 @@ describe("chat-native Orc actions: planning", () => {
     expect(mockedWriteLatestRunState).toHaveBeenCalledWith("/tmp/project", "run_1");
     expect(response.mode).toBe("plan");
   });
+  it("returns plan clarification user interaction for answerable preflight blockers", async () => {
+    mockedPlanRun.mockResolvedValue(createBlockedPreflightManifest());
+
+    const response = await runPlanAction({
+      cwd: "/tmp/project",
+      taskInput: "add docs",
+    });
+
+    expect(response.userInteraction).toEqual({
+      kind: "plan-clarification",
+      runId: "run_blocked",
+      header: "Plan clarification",
+      question: "Which file should Oraculum update?",
+      expectedAnswerShape:
+        "Answer with the missing task intent, scope boundary, success criteria, non-goal, or judging basis.",
+      freeTextAllowed: true,
+    });
+  });
+  it("returns a stable user interaction for Augury questions", async () => {
+    const cwd = await createOrcActionTempRoot("oraculum-orc-actions-plan-interaction-");
+    mockedPlanRun.mockResolvedValue(createBlockedPreflightManifest());
+    await writeJsonArtifact(getPlanningDepthPath(cwd, "run_blocked"), {
+      runId: "run_blocked",
+      createdAt: "2026-04-05T00:00:00.000Z",
+      interviewDepth: "interview",
+      readiness: "needs-interview",
+      confidence: "medium",
+      summary: "Clarify the task.",
+      reasons: ["Missing success criteria."],
+      estimatedInterviewRounds: 1,
+      consensusReviewIntensity: "standard",
+      maxInterviewRounds: 8,
+      operatorMaxConsensusRevisions: 10,
+      maxConsensusRevisions: 2,
+    });
+    await writeJsonArtifact(getPlanningInterviewPath(cwd, "run_blocked"), {
+      runId: "run_blocked",
+      createdAt: "2026-04-05T00:00:00.000Z",
+      updatedAt: "2026-04-05T00:00:00.000Z",
+      status: "needs-clarification",
+      taskId: "task-1",
+      interviewDepth: "interview",
+      rounds: [
+        {
+          round: 1,
+          question: "Which route should be protected?",
+          perspective: "scope",
+          expectedAnswerShape: "Name the route and success signal.",
+          suggestedAnswers: [
+            {
+              label: "Protect dashboard",
+              description: "Protect /dashboard and prove signed-out users redirect.",
+            },
+            {
+              label: "Protect admin",
+              description: "Protect /admin and prove signed-out users redirect.",
+            },
+          ],
+        },
+      ],
+      nextQuestion: "Which route should be protected?",
+    });
+
+    const response = await runPlanAction({
+      cwd,
+      taskInput: "add authentication",
+    });
+
+    expect(response.userInteraction).toEqual({
+      kind: "augury-question",
+      runId: "run_blocked",
+      header: "Augury",
+      question: "Which route should be protected?",
+      expectedAnswerShape: "Name the route and success signal.",
+      options: [
+        {
+          label: "Protect dashboard",
+          description: "Protect /dashboard and prove signed-out users redirect.",
+        },
+        {
+          label: "Protect admin",
+          description: "Protect /admin and prove signed-out users redirect.",
+        },
+      ],
+      freeTextAllowed: true,
+      round: 1,
+      maxRounds: 8,
+    });
+  });
+  it("sanitizes Augury user interaction options before exposing host UI choices", async () => {
+    const cwd = await createOrcActionTempRoot("oraculum-orc-actions-plan-interaction-options-");
+    mockedPlanRun.mockResolvedValue(createBlockedPreflightManifest());
+    await writeJsonArtifact(getPlanningDepthPath(cwd, "run_blocked"), {
+      runId: "run_blocked",
+      createdAt: "2026-04-05T00:00:00.000Z",
+      interviewDepth: "interview",
+      readiness: "needs-interview",
+      confidence: "medium",
+      summary: "Clarify the task.",
+      reasons: ["Missing success criteria."],
+      estimatedInterviewRounds: 1,
+      consensusReviewIntensity: "standard",
+      maxInterviewRounds: 8,
+      operatorMaxConsensusRevisions: 10,
+      maxConsensusRevisions: 2,
+    });
+    await writeJsonArtifact(getPlanningInterviewPath(cwd, "run_blocked"), {
+      runId: "run_blocked",
+      createdAt: "2026-04-05T00:00:00.000Z",
+      updatedAt: "2026-04-05T00:00:00.000Z",
+      status: "needs-clarification",
+      taskId: "task-1",
+      interviewDepth: "interview",
+      rounds: [
+        {
+          round: 1,
+          question: "Which route should be protected?",
+          perspective: "scope",
+          expectedAnswerShape: "Name the route and success signal.",
+          suggestedAnswers: [
+            { label: "Dashboard", description: "Protect /dashboard." },
+            { label: "dashboard", description: "Duplicate label should be dropped." },
+            { label: " ", description: "Blank label should be dropped." },
+            { label: "Admin", description: "Protect /admin." },
+            { label: "Reports", description: "Protect /reports." },
+            { label: "Settings", description: "Protect /settings." },
+            { label: "Billing", description: "Fifth valid option should be dropped." },
+          ],
+        },
+      ],
+      nextQuestion: "Which route should be protected?",
+    });
+
+    const response = await runPlanAction({
+      cwd,
+      taskInput: "add authentication",
+    });
+
+    expect(response.userInteraction?.options).toEqual([
+      { label: "Dashboard", description: "Protect /dashboard." },
+      { label: "Admin", description: "Protect /admin." },
+      { label: "Reports", description: "Protect /reports." },
+      { label: "Settings", description: "Protect /settings." },
+    ]);
+  });
+  it("routes Augury answers through the common answer action", async () => {
+    const response = await runUserInteractionAnswerAction({
+      cwd: "/tmp/project",
+      kind: "augury-question",
+      runId: "run_blocked",
+      answer: "Protect /dashboard; no OAuth.",
+    });
+
+    expect(mockedAnswerPlanRun).toHaveBeenCalledWith({
+      cwd: "/tmp/project",
+      runId: "run_blocked",
+      answer: "Protect /dashboard; no OAuth.",
+      preflight: {
+        allowRuntime: true,
+      },
+      autoProfile: {
+        allowRuntime: true,
+      },
+    });
+    expect(mockedPlanRun).not.toHaveBeenCalled();
+    expect(mockedWriteLatestRunState).toHaveBeenCalledWith("/tmp/project", "run_1");
+    expect(response.mode).toBe("plan");
+  });
+  it("routes plan clarification answers through explicit planning with the source task", async () => {
+    const cwd = await createOrcActionTempRoot("oraculum-orc-actions-plan-clarification-answer-");
+    mockedReadRunManifest.mockResolvedValueOnce(createBlockedPreflightManifest());
+    await writeJsonArtifact(getPlanningDepthPath(cwd, "run_blocked"), {
+      runId: "run_blocked",
+      createdAt: "2026-04-05T00:00:00.000Z",
+      interviewDepth: "skip-interview",
+      readiness: "ready",
+      confidence: "medium",
+      summary: "Clarify the task.",
+      reasons: ["Missing source path."],
+      estimatedInterviewRounds: 0,
+      consensusReviewIntensity: "standard",
+      maxInterviewRounds: 8,
+      operatorMaxConsensusRevisions: 10,
+      maxConsensusRevisions: 1,
+    });
+
+    const response = await runUserInteractionAnswerAction({
+      cwd,
+      kind: "plan-clarification",
+      runId: "run_blocked",
+      answer: "Update docs/session.md and require a migration note.",
+    });
+
+    expect(mockedPlanRun).toHaveBeenCalledWith({
+      cwd,
+      taskInput: "/tmp/task.md",
+      agent: "codex",
+      clarificationAnswer: "Update docs/session.md and require a migration note.",
+      planningLane: "explicit-plan",
+      writeConsultationPlanArtifacts: true,
+      requirePlanningClarification: true,
+      preflight: {
+        allowRuntime: true,
+      },
+      autoProfile: {
+        allowRuntime: true,
+      },
+    });
+    expect(mockedExecuteRun).not.toHaveBeenCalled();
+    expect(response.mode).toBe("plan");
+  });
+  it("routes consult clarification answers through consult-lite and executes when preflight passes", async () => {
+    mockedReadRunManifest.mockResolvedValueOnce(createBlockedPreflightManifest());
+
+    const response = await runUserInteractionAnswerAction({
+      cwd: "/tmp/project",
+      kind: "consult-clarification",
+      runId: "run_blocked",
+      answer: "Update docs/session.md and require a migration note.",
+    });
+
+    expect(mockedPlanRun).toHaveBeenCalledWith({
+      cwd: "/tmp/project",
+      taskInput: "/tmp/task.md",
+      agent: "codex",
+      clarificationAnswer: "Update docs/session.md and require a migration note.",
+      preflight: {
+        allowRuntime: true,
+      },
+      autoProfile: {
+        allowRuntime: true,
+      },
+    });
+    expect(mockedExecuteRun).toHaveBeenCalledWith({
+      cwd: "/tmp/project",
+      runId: "run_1",
+    });
+    expect(response.mode).toBe("consult");
+  });
+  it("rejects blank common interaction answers", async () => {
+    await expect(
+      runUserInteractionAnswerAction({
+        cwd: "/tmp/project",
+        kind: "consult-clarification",
+        runId: "run_blocked",
+        answer: "   ",
+      }),
+    ).rejects.toThrow("User interaction answer must not be blank.");
+  });
+  it("rejects common answer kind mismatches against the active interaction", async () => {
+    const cwd = await createOrcActionTempRoot("oraculum-orc-actions-kind-mismatch-");
+    mockedReadRunManifest.mockResolvedValueOnce(createBlockedPreflightManifest());
+    await writeJsonArtifact(getPlanningDepthPath(cwd, "run_blocked"), {
+      runId: "run_blocked",
+      createdAt: "2026-04-05T00:00:00.000Z",
+      interviewDepth: "skip-interview",
+      readiness: "ready",
+      confidence: "medium",
+      summary: "Clarify the task.",
+      reasons: ["Missing source path."],
+      estimatedInterviewRounds: 0,
+      consensusReviewIntensity: "standard",
+      maxInterviewRounds: 8,
+      operatorMaxConsensusRevisions: 10,
+      maxConsensusRevisions: 1,
+    });
+
+    await expect(
+      runUserInteractionAnswerAction({
+        cwd,
+        kind: "consult-clarification",
+        runId: "run_blocked",
+        answer: "Use docs/session.md.",
+      }),
+    ).rejects.toThrow(
+      'Run "run_blocked" has an active plan-clarification interaction, not consult-clarification.',
+    );
+  });
+  it("omits Augury user interactions whose round exceeds the configured cap", async () => {
+    const cwd = await createOrcActionTempRoot("oraculum-orc-actions-plan-interaction-cap-");
+    mockedPlanRun.mockResolvedValue(createBlockedPreflightManifest());
+    await writeJsonArtifact(getPlanningDepthPath(cwd, "run_blocked"), {
+      runId: "run_blocked",
+      createdAt: "2026-04-05T00:00:00.000Z",
+      interviewDepth: "interview",
+      readiness: "needs-interview",
+      confidence: "medium",
+      summary: "Clarify the task.",
+      reasons: ["Missing success criteria."],
+      estimatedInterviewRounds: 0,
+      consensusReviewIntensity: "standard",
+      maxInterviewRounds: 0,
+      operatorMaxConsensusRevisions: 10,
+      maxConsensusRevisions: 2,
+    });
+    await writeJsonArtifact(getPlanningInterviewPath(cwd, "run_blocked"), {
+      runId: "run_blocked",
+      createdAt: "2026-04-05T00:00:00.000Z",
+      updatedAt: "2026-04-05T00:00:00.000Z",
+      status: "needs-clarification",
+      taskId: "task-1",
+      interviewDepth: "interview",
+      rounds: [
+        {
+          round: 1,
+          question: "Which route should be protected?",
+          perspective: "scope",
+          expectedAnswerShape: "Name the route and success signal.",
+        },
+      ],
+      nextQuestion: "Which route should be protected?",
+    });
+
+    const response = await runPlanAction({
+      cwd,
+      taskInput: "add authentication",
+    });
+
+    expect(response.userInteraction).toBeUndefined();
+  });
   it("returns blocked preflight consultations without executing candidates", async () => {
     mockedPlanRun.mockResolvedValue(createBlockedPreflightManifest());
     const progress: ConsultProgressEvent[] = [];
@@ -297,6 +626,15 @@ describe("chat-native Orc actions: planning", () => {
         "review-preflight-readiness",
         "answer-clarification-and-rerun",
       ],
+    });
+    expect(response.userInteraction).toEqual({
+      kind: "consult-clarification",
+      runId: "run_blocked",
+      header: "Consult clarification",
+      question: "Which file should Oraculum update?",
+      expectedAnswerShape:
+        "Answer with the missing implementation scope, target artifact, acceptance signal, or constraint needed before candidate execution.",
+      freeTextAllowed: true,
     });
   });
 

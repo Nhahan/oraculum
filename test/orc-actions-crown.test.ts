@@ -8,6 +8,7 @@ vi.mock("../src/core/subprocess.js", () => ({
 }));
 
 vi.mock("../src/services/runs.js", () => ({
+  answerPlanRun: vi.fn(),
   planRun: vi.fn(),
   readLatestRunManifest: vi.fn(),
   readRunManifest: vi.fn(),

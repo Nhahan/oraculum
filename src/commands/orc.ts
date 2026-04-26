@@ -3,11 +3,17 @@ import { isAbsolute, relative } from "node:path";
 import { type Command, InvalidArgumentError } from "commander";
 
 import { resolveProjectRoot } from "../core/paths.js";
-import type { CrownActionResponse } from "../domain/chat-native.js";
+import {
+  type CrownActionResponse,
+  type UserInteraction,
+  userInteractionKindSchema,
+  userInteractionSchema,
+} from "../domain/chat-native.js";
 import {
   runConsultAction,
   runCrownAction,
   runPlanAction,
+  runUserInteractionAnswerAction,
   runVerdictAction,
 } from "../services/orc-actions.js";
 
@@ -48,6 +54,24 @@ export function registerOrcCommand(program: Command): void {
         await runPlanAction({
           cwd: process.cwd(),
           taskInput: joinTaskInput(taskInput),
+        }),
+        options,
+      );
+    });
+
+  orc
+    .command("answer", { hidden: true })
+    .argument("<kind>", "user interaction kind")
+    .argument("<runId>", "user interaction run id")
+    .argument("<answer...>", "answer text")
+    .option("--json", "emit machine-readable JSON")
+    .action(async (kind: string, runId: string, answer: string[], options: JsonOption) => {
+      await printResponse(
+        await runUserInteractionAnswerAction({
+          cwd: process.cwd(),
+          kind: userInteractionKindSchema.parse(kind),
+          runId,
+          answer: joinTaskInput(answer),
         }),
         options,
       );
@@ -109,10 +133,9 @@ async function printResponse(response: unknown, options: JsonOption): Promise<vo
   }
 
   if (isSummaryResponse(response)) {
-    const summary = isPlanningResponse(response)
-      ? `${response.summary.replace(/\s+$/u, "")}\n${renderPlanningContinuationTail(response)}\n`
-      : `${response.summary}\n`;
-    process.stdout.write(summary);
+    const summary = response.summary.replace(/\s+$/u, "");
+    const tail = renderActionTail(response);
+    process.stdout.write(`${summary}${tail ? `\n${tail}` : ""}\n`);
     return;
   }
 
@@ -142,9 +165,10 @@ function isCrownResponse(value: unknown): value is CrownActionResponse {
   );
 }
 
-function isPlanningResponse(value: unknown): value is {
+function isPlanResponse(value: unknown): value is {
   mode: "plan";
   artifacts: { consultationPlanPath?: string };
+  status?: { outcomeType?: string };
   summary: string;
 } {
   return Boolean(
@@ -155,6 +179,17 @@ function isPlanningResponse(value: unknown): value is {
       typeof (value as { artifacts?: { consultationPlanPath?: unknown } }).artifacts
         ?.consultationPlanPath === "string",
   );
+}
+
+function getUserInteraction(value: unknown): UserInteraction | undefined {
+  if (!value || typeof value !== "object" || !("userInteraction" in value)) {
+    return undefined;
+  }
+
+  const parsed = userInteractionSchema.safeParse(
+    (value as { userInteraction?: unknown }).userInteraction,
+  );
+  return parsed.success ? parsed.data : undefined;
 }
 
 function renderCrownResponse(response: CrownActionResponse): string {
@@ -181,11 +216,41 @@ function renderCrownResponse(response: CrownActionResponse): string {
   ].join("\n");
 }
 
-function renderPlanningContinuationTail(response: {
+function renderActionTail(response: unknown): string {
+  const userInteraction = getUserInteraction(response);
+  if (userInteraction) {
+    return renderUserInteraction(userInteraction);
+  }
+
+  if (!isPlanResponse(response)) {
+    return "";
+  }
+  return renderPlanContinuationTail(response);
+}
+
+function renderUserInteraction(interaction: UserInteraction): string {
+  return [
+    `Clarification needed (${interaction.header}): ${interaction.question}`,
+    `Expected answer: ${interaction.expectedAnswerShape}`,
+    ...renderUserInteractionOptions(interaction.options),
+    ...(interaction.kind === "augury-question" &&
+    interaction.round !== undefined &&
+    interaction.maxRounds !== undefined
+      ? [`Round: ${interaction.round}/${interaction.maxRounds}`]
+      : []),
+    `Next: answer in the host UI, or run \`orc answer ${interaction.kind} ${interaction.runId} "<answer>"\`.`,
+  ].join("\n");
+}
+
+function renderPlanContinuationTail(response: {
   artifacts: { consultationPlanPath?: string };
+  status?: { outcomeType?: string };
 }): string {
   const planPath = response.artifacts.consultationPlanPath;
   if (!planPath) {
+    return "";
+  }
+  if (response.status?.outcomeType && response.status.outcomeType !== "pending-execution") {
     return "";
   }
 
@@ -194,6 +259,20 @@ function renderPlanningContinuationTail(response: {
     `Plan path: ${displayPath}`,
     `Next: run \`orc consult ${displayPath}\` to continue this plan.`,
   ].join("\n");
+}
+
+function renderUserInteractionOptions(
+  options: Array<{ label: string; description: string }> | undefined,
+): string[] {
+  if (!options || options.length === 0) {
+    return ["Free-text answer allowed."];
+  }
+
+  return [
+    "Options:",
+    ...options.map((option, index) => `${index + 1}. ${option.label} - ${option.description}`),
+    "Free-text answer allowed.",
+  ];
 }
 
 function toDisplayPath(projectRoot: string, targetPath: string): string {

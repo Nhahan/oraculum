@@ -1,7 +1,63 @@
 import { z } from "zod";
 
+export const userInteractionKindSchema = z.enum([
+  "augury-question",
+  "plan-clarification",
+  "consult-clarification",
+]);
+
+export const userInteractionOptionSchema = z
+  .object({
+    label: z.string().min(1),
+    description: z.string().min(1),
+  })
+  .strict();
+
+export const userInteractionSchema = z
+  .object({
+    kind: userInteractionKindSchema,
+    runId: z.string().min(1),
+    header: z.string().min(1),
+    question: z.string().min(1),
+    expectedAnswerShape: z.string().min(1),
+    options: z.array(userInteractionOptionSchema).min(2).max(4).optional(),
+    freeTextAllowed: z.literal(true),
+    round: z.number().int().min(1).optional(),
+    maxRounds: z.number().int().min(0).optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.kind === "augury-question") {
+      if (value.round === undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["round"],
+          message: "round is required for augury-question interactions.",
+        });
+      }
+      if (value.maxRounds === undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["maxRounds"],
+          message: "maxRounds is required for augury-question interactions.",
+        });
+      }
+      return;
+    }
+
+    if (value.round !== undefined || value.maxRounds !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["round"],
+        message: "round and maxRounds are only allowed for augury-question interactions.",
+      });
+    }
+  });
+
 export const consultationArtifactPathsSchema = z.object({
   consultationRoot: z.string().min(1),
+  planningSourceRunId: z.string().min(1).optional(),
+  planningSourceConsultationPlanPath: z.string().min(1).optional(),
   configPath: z.string().min(1).optional(),
   consultationPlanPath: z.string().min(1).optional(),
   consultationPlanMarkdownPath: z.string().min(1).optional(),
@@ -36,3 +92,7 @@ export const projectInitializationResultSchema = z.object({
   configPath: z.string().min(1),
   createdPaths: z.array(z.string().min(1)),
 });
+
+export type UserInteraction = z.infer<typeof userInteractionSchema>;
+export type UserInteractionKind = z.infer<typeof userInteractionKindSchema>;
+export type UserInteractionOption = z.infer<typeof userInteractionOptionSchema>;
