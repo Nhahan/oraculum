@@ -136,7 +136,7 @@ describe("consultation plan execution presets", () => {
       status: "blocked",
       readyForConsult: true,
       blockers: ["operator answer required"],
-      nextAction: 'Rerun `orc plan "<task plus the answer>"`.',
+      nextAction: 'Start a new `orc plan "<task>"` with the clarified task contract.',
     });
 
     await expect(

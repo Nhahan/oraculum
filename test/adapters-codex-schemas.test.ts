@@ -1,12 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { extractCodexPlanConsensusContinuationRecommendation } from "../src/adapters/codex/parsing.js";
 import {
   buildCodexCandidateSpecJsonSchema,
   buildCodexClarifyFollowUpJsonSchema,
-  buildCodexPlanConsensusContinuationJsonSchema,
   buildCodexPlanConsensusDraftJsonSchema,
   buildCodexPlanConsensusReviewJsonSchema,
-  buildCodexPlanningContinuationJsonSchema,
   buildCodexPlanningDepthJsonSchema,
   buildCodexPlanningQuestionJsonSchema,
   buildCodexPlanningScoreJsonSchema,
@@ -24,10 +21,8 @@ describe("Codex structured output schemas", () => {
       buildCodexCandidateSpecJsonSchema(),
       buildCodexClarifyFollowUpJsonSchema(),
       buildCodexPlanConsensusDraftJsonSchema(),
-      buildCodexPlanConsensusContinuationJsonSchema(),
       buildCodexPlanConsensusReviewJsonSchema(),
       buildCodexPlanReviewJsonSchema(),
-      buildCodexPlanningContinuationJsonSchema(),
       buildCodexPlanningDepthJsonSchema(),
       buildCodexPlanningQuestionJsonSchema(),
       buildCodexPlanningScoreJsonSchema(),
@@ -61,23 +56,6 @@ describe("Codex structured output schemas", () => {
     ]);
   });
 
-  it("classifies Plan Conclave continuation as remediation or new task", () => {
-    const schema = buildCodexPlanConsensusContinuationJsonSchema() as {
-      properties: Record<string, { enum?: string[] }>;
-    };
-
-    expect(schema.properties.classification?.enum).toEqual(["consensus-remediation", "new-task"]);
-    expect(
-      extractCodexPlanConsensusContinuationRecommendation(
-        JSON.stringify({
-          classification: "continuation",
-          confidence: "high",
-          summary: "Wrong classifier family.",
-        }),
-      ),
-    ).toBeUndefined();
-  });
-
   it("requires Augury answer shape and Plan Conclave scoring policy fields", () => {
     const questionSchema = buildCodexPlanningQuestionJsonSchema() as {
       required?: string[];
@@ -88,10 +66,26 @@ describe("Codex structured output schemas", () => {
     };
 
     expect(questionSchema.required).toContain("expectedAnswerShape");
+    expect(questionSchema.required).toContain("suggestedAnswers");
     expect(draftSchema.required).toContain("scorecardDefinition");
     expect(draftSchema.required).toContain("repairPolicy");
     expect(Object.keys(draftSchema.properties ?? {})).toContain("scorecardDefinition");
     expect(Object.keys(draftSchema.properties ?? {})).toContain("repairPolicy");
+  });
+
+  it("allows Plan Conclave review to request one nullable Augury task clarification", () => {
+    const schema = buildCodexPlanConsensusReviewJsonSchema() as {
+      properties?: Record<string, { anyOf?: Array<{ type?: string }> }>;
+      required?: string[];
+    };
+
+    expect(schema.required).toContain("taskClarificationQuestion");
+    expect(schema.properties?.taskClarificationQuestion?.anyOf).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "string" }),
+        expect.objectContaining({ type: "null" }),
+      ]),
+    );
   });
 
   it("keeps Codex nullable placeholders schema-complete for optional recommendation fields", () => {

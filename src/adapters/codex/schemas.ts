@@ -4,10 +4,8 @@ import {
   buildAgentCandidateSpecJsonSchema,
   buildAgentCandidateSpecSelectionJsonSchema,
   buildAgentClarifyFollowUpJsonSchema,
-  buildAgentPlanConsensusContinuationJsonSchema,
   buildAgentPlanConsensusDraftJsonSchema,
   buildAgentPlanConsensusReviewJsonSchema,
-  buildAgentPlanningContinuationJsonSchema,
   buildAgentPlanningDepthJsonSchema,
   buildAgentPlanningQuestionJsonSchema,
   buildAgentPlanningScoreJsonSchema,
@@ -87,14 +85,6 @@ export function buildCodexPlanningDepthJsonSchema(): Record<string, unknown> {
   return buildAgentPlanningDepthJsonSchema();
 }
 
-export function buildCodexPlanningContinuationJsonSchema(): Record<string, unknown> {
-  return buildAgentPlanningContinuationJsonSchema();
-}
-
-export function buildCodexPlanConsensusContinuationJsonSchema(): Record<string, unknown> {
-  return buildAgentPlanConsensusContinuationJsonSchema();
-}
-
 export function buildCodexPlanningQuestionJsonSchema(): Record<string, unknown> {
   const base = buildAgentPlanningQuestionJsonSchema() as {
     properties: Record<string, Record<string, unknown>>;
@@ -119,7 +109,20 @@ export function buildCodexPlanConsensusDraftJsonSchema(): Record<string, unknown
 }
 
 export function buildCodexPlanConsensusReviewJsonSchema(): Record<string, unknown> {
-  return buildAgentPlanConsensusReviewJsonSchema();
+  const base = buildAgentPlanConsensusReviewJsonSchema() as {
+    properties: Record<string, Record<string, unknown>>;
+  };
+
+  return {
+    ...base,
+    properties: {
+      ...base.properties,
+      taskClarificationQuestion: buildCodexNullableSchema(
+        base.properties.taskClarificationQuestion ?? {},
+      ),
+    },
+    required: Object.keys(base.properties),
+  };
 }
 
 function buildCodexNullableSchema(schema: Record<string, unknown>): Record<string, unknown> {

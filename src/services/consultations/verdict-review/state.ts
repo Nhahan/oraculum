@@ -5,10 +5,7 @@ import {
   getValidationSummary,
 } from "../../../domain/profile.js";
 import { buildSavedConsultationStatus, type RunManifest } from "../../../domain/run.js";
-import {
-  isPlanConsensusRemediationEligible,
-  summarizePlanConsensusBlocker,
-} from "../../plan-consensus/index.js";
+import { summarizePlanConsensusBlocker } from "../../plan-consensus/index.js";
 import type {
   LoadedVerdictReviewArtifacts,
   VerdictReviewArtifactPaths,
@@ -29,9 +26,6 @@ export function buildVerdictReviewDerivedState(
     loaded.secondOpinionWinnerSelection.agreement !== "agrees-select"
       ? { manualReviewRequired: true }
       : {}),
-    planConclaveRemediationRecommended: loaded.planConsensus
-      ? isPlanConsensusRemediationEligible(loaded.planConsensus)
-      : false,
   });
   const researchRerunInputPath =
     manifest.taskPacket.sourceKind === "research-brief"
@@ -130,8 +124,8 @@ function buildRecommendationAbsenceReason(options: {
     case "needs-clarification":
       if (options.planConsensus && !options.planConsensus.approved) {
         const blocker = summarizePlanConsensusBlocker(options.planConsensus);
-        const prefix = isPlanConsensusRemediationEligible(options.planConsensus)
-          ? "Plan Conclave remediation is required"
+        const prefix = blocker.taskClarificationQuestion
+          ? "Clarification is required"
           : "Plan Conclave did not approve";
         return `${prefix} (${blocker.blockerKind}): ${blocker.summary}`;
       }

@@ -22,20 +22,14 @@ import {
 import { recommendConsultationProfile } from "../consultation-profile.js";
 import {
   buildPlanConsensus,
-  buildPlanConsensusRemediationContext,
-  type PlanConsensusRemediationContext,
   summarizePlanConsensusBlocker,
   writePlanConsensusArtifact,
 } from "../plan-consensus/index.js";
 import {
-  applyPlanConclaveRemediationAnswer,
-  classifyPlanConsensusContinuation,
-  findActivePlanningContinuationTarget,
-} from "../planning-continuation/index.js";
-import {
   buildPlanningInterviewNeedingAnswer,
-  classifyPlanningContinuation,
+  buildPlanningInterviewQuestionArtifact,
   crystallizePlanningSpecArtifact,
+  loadActivePlanningInterviewTarget,
   recommendPlanningDepthArtifact,
   resolvePlanningLoopCaps,
   scorePlanningInterviewAnswer,
@@ -62,26 +56,91 @@ import { selectStrategies } from "./strategy-selection.js";
 import { materializeTaskInput } from "./task-input.js";
 
 export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
+  return planRunInternal(options);
+}
+
+export interface PlanAnswerRunOptions {
+  cwd: string;
+  runId: string;
+  answer: string;
+  preflight?: PlanRunOptions["preflight"];
+  autoProfile?: PlanRunOptions["autoProfile"];
+}
+
+interface ExplicitPlanAnswerTarget {
+  answer: string;
+  agent: RunManifest["agent"];
+  taskPath: string;
+  taskPacket: Awaited<ReturnType<typeof loadTaskPacket>>;
+  interview: PlanningInterviewArtifact;
+}
+
+export async function answerPlanRun(options: PlanAnswerRunOptions): Promise<RunManifest> {
+  const answer = options.answer.trim();
+  if (!answer) {
+    throw new OraculumError("Augury answer must not be blank.");
+  }
+
+  const projectRoot = resolveProjectRoot(options.cwd);
+  const target = await loadActivePlanningInterviewTarget(projectRoot, options.runId);
+
+  return planRunInternal(
+    {
+      cwd: options.cwd,
+      taskInput: answer,
+      agent: target.manifest.agent,
+      planningLane: "explicit-plan",
+      requirePlanningClarification: true,
+      writeConsultationPlanArtifacts: true,
+      ...(options.preflight ? { preflight: options.preflight } : {}),
+      ...(options.autoProfile ? { autoProfile: options.autoProfile } : {}),
+    },
+    {
+      answer,
+      agent: target.manifest.agent,
+      taskPath: target.taskPath,
+      taskPacket: target.taskPacket,
+      interview: target.interview,
+    },
+  );
+}
+
+async function planRunInternal(
+  options: PlanRunOptions,
+  answerTarget?: ExplicitPlanAnswerTarget,
+): Promise<RunManifest> {
   const invocationCwd = resolve(options.cwd);
   const projectRoot = resolveProjectRoot(options.cwd);
   const store = new RunStore(projectRoot);
   const configLayers = await loadProjectConfigLayers(projectRoot);
-  const resolvedTaskPath = await materializeTaskInput(
-    projectRoot,
-    invocationCwd,
-    options.taskInput,
-  );
+  const planningLane = options.planningLane ?? "consult-lite";
+  const planningLoopCaps = resolvePlanningLoopCaps(configLayers);
+  if (options.candidates !== undefined && options.candidates > 16) {
+    throw new OraculumError("Candidate count must be 16 or less.");
+  }
+  const runId = createRunId();
+  let runPaths: Awaited<ReturnType<typeof store.ensureRunDirectories>> | undefined;
+  const ensureRunPaths = async () => {
+    runPaths ??= await store.ensureRunDirectories(runId);
+    return runPaths;
+  };
+  const activeInterview = answerTarget?.interview;
+  const resolvedTaskPath =
+    answerTarget?.taskPath ??
+    (await materializeTaskInput(projectRoot, invocationCwd, options.taskInput));
 
-  if (!(await pathExists(resolvedTaskPath))) {
+  if (!answerTarget && !(await pathExists(resolvedTaskPath))) {
     throw new OraculumError(`Task file not found: ${resolvedTaskPath}`);
   }
 
-  const inputTaskPacket = applyPlanningClarificationAnswer(
-    await loadTaskPacket(resolvedTaskPath),
-    options.clarificationAnswer,
-  );
-  let taskPacket = inputTaskPacket;
-  let taskPath = resolvedTaskPath;
+  const inputTaskPacket =
+    answerTarget?.taskPacket ??
+    applyPlanningClarificationAnswer(
+      await loadTaskPacket(resolvedTaskPath),
+      options.clarificationAnswer,
+    );
+  const taskPacket = inputTaskPacket;
+  const taskPath = resolvedTaskPath;
   const consultationPlan = await readConsultationPlanArtifact(resolvedTaskPath);
   let config = await loadConsultationPlanBaseConfig(configLayers.config, resolvedTaskPath, {
     consultationPlanFound: Boolean(consultationPlan),
@@ -93,19 +152,13 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
       planPath: resolvedTaskPath,
     });
   }
-  const agent = options.agent ?? config.defaultAgent;
+  const agent = answerTarget?.agent ?? options.agent ?? config.defaultAgent;
   if (!config.adapters.includes(agent)) {
     throw new OraculumError(`Agent "${agent}" is not enabled in the project config.`);
   }
-  if (options.candidates !== undefined && options.candidates > 16) {
-    throw new OraculumError("Candidate count must be 16 or less.");
-  }
 
-  const runId = createRunId();
-  const runPaths = await store.ensureRunDirectories(runId);
-  const reportsDir = runPaths.reportsDir;
-  const planningLane = options.planningLane ?? "consult-lite";
-  const planningLoopCaps = resolvePlanningLoopCaps(configLayers);
+  const ensuredRunPaths = await ensureRunPaths();
+  const reportsDir = ensuredRunPaths.reportsDir;
   const adapterOptions = buildAdapterFactoryOptions(
     options.preflight,
     options.autoProfile,
@@ -123,7 +176,6 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
   let planningInterview: PlanningInterviewArtifact | undefined;
   let planningSpec: PlanningSpecArtifact | undefined;
   let planConsensus: PlanConsensusArtifact | undefined;
-  let planConsensusRemediation: PlanConsensusRemediationContext | undefined;
 
   const recommendedPreflight =
     !consultationPlan && options.preflight && planningLane !== "explicit-plan"
@@ -156,63 +208,12 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
   const preflight = consultationPlan?.preflight ?? recommendedPreflight?.preflight;
 
   const createdAt = new Date().toISOString();
-  const configPath = runPaths.configPath;
+  const configPath = ensuredRunPaths.configPath;
   await writeJsonFile(configPath, config);
 
   if (!consultationPlan && planningLane === "explicit-plan") {
-    const activeContinuationTarget = await findActivePlanningContinuationTarget(projectRoot);
-    const activeInterview =
-      activeContinuationTarget?.kind === "augury-interview"
-        ? await classifyPlanningContinuation({
-            activeInterview: activeContinuationTarget.interview,
-            adapter,
-            projectRoot,
-            reportsDir,
-            runId,
-            taskPacket: inputTaskPacket,
-          })
-        : undefined;
-    const activePlanConclaveContinuation =
-      activeContinuationTarget?.kind === "plan-conclave"
-        ? await classifyPlanConsensusContinuation({
-            adapter,
-            projectRoot,
-            reportsDir,
-            runId,
-            target: activeContinuationTarget,
-            taskPacket: inputTaskPacket,
-          })
-        : undefined;
-
-    if (activePlanConclaveContinuation) {
-      planConsensusRemediation = buildPlanConsensusRemediationContext({
-        answer: inputTaskPacket.intent,
-        blocker: activePlanConclaveContinuation.blocker,
-        createdAt,
-        sourceConsensus: activePlanConclaveContinuation.consensus,
-        sourceRunId: activePlanConclaveContinuation.runId,
-      });
-      const remediated = applyPlanConclaveRemediationAnswer({
-        answer: inputTaskPacket.intent,
-        blocker: activePlanConclaveContinuation.blocker,
-        createdAt,
-        planningDepth: activePlanConclaveContinuation.planningDepth,
-        planningSpec: activePlanConclaveContinuation.planningSpec,
-        runId,
-        sourceRunId: activePlanConclaveContinuation.runId,
-        sourceTaskPacket: activePlanConclaveContinuation.taskPacket,
-      });
-      taskPacket = remediated.taskPacket;
-      taskPath = activePlanConclaveContinuation.taskPath;
-      planningDepth = remediated.planningDepth;
-      planningSpec = remediated.planningSpec;
-      await writePlanningInterviewArtifacts({
-        depth: planningDepth,
-        projectRoot,
-        runId,
-        spec: planningSpec,
-      });
-    }
+    const auguryContinuationAnswer =
+      activeInterview && answerTarget ? answerTarget.answer : undefined;
 
     if (!planningSpec) {
       planningDepth = await recommendPlanningDepthArtifact({
@@ -222,7 +223,9 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
         projectRoot,
         reportsDir,
         runId,
-        taskPacket,
+        taskPacket: auguryContinuationAnswer
+          ? withAuguryAnswerContext(taskPacket, auguryContinuationAnswer)
+          : taskPacket,
       });
 
       if (planningDepth.readiness === "blocked") {
@@ -288,10 +291,10 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
           planningDepth.interviewDepth !== "skip-interview" ||
           planningDepth.estimatedInterviewRounds > 0);
 
-      if (shouldContinueInterviewLoop && activeInterview) {
+      if (shouldContinueInterviewLoop && activeInterview && auguryContinuationAnswer) {
         planningInterview = await scorePlanningInterviewAnswer({
           adapter,
-          answer: taskPacket.intent,
+          answer: auguryContinuationAnswer,
           createdAt,
           depth: planningDepth,
           priorInterview: activeInterview,
@@ -300,7 +303,7 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
           runId,
           taskPacket,
         });
-        if (planningInterview.status !== "ready-for-spec") {
+        if (planningInterview.status === "needs-clarification") {
           planningInterview = await buildPlanningInterviewNeedingAnswer({
             adapter,
             createdAt,
@@ -334,6 +337,36 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
             planningInterview.nextQuestion ??
             planningInterview.rounds.at(-1)?.question ??
             "Clarify the task contract before creating the consultation plan.",
+        };
+        await writePlanningInterviewArtifacts({
+          depth: planningDepth,
+          interview: planningInterview,
+          projectRoot,
+          runId,
+        });
+        return await persistBlockedPlanningManifest({
+          agent,
+          config,
+          configPath,
+          createdAt,
+          planningInterview,
+          preflight: blockedPreflight,
+          projectRoot,
+          runId,
+          store,
+          taskPacket,
+          taskPath,
+          writeConsultationPlanArtifacts: Boolean(options.writeConsultationPlanArtifacts),
+        });
+      }
+
+      if (planningInterview?.status === "blocked") {
+        const blockedPreflight = {
+          decision: "abstain" as const,
+          confidence: toPreflightConfidence(planningDepth.confidence),
+          summary:
+            "Augury Interview reached the configured round cap before the task was clear enough for candidate generation.",
+          researchPosture: "repo-only" as const,
         };
         await writePlanningInterviewArtifacts({
           depth: planningDepth,
@@ -528,7 +561,6 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
       createdAt,
       maxConsensusLoopRevisions: planningDepth?.maxConsensusRevisions ?? 0,
       planningSpec,
-      ...(planConsensusRemediation ? { remediationContext: planConsensusRemediation } : {}),
       projectRoot,
       reportsDir,
       runId,
@@ -542,13 +574,49 @@ export async function planRun(options: PlanRunOptions): Promise<RunManifest> {
 
     if (!planConsensus.approved) {
       const blocker = summarizePlanConsensusBlocker(planConsensus);
-      const blockedPreflight = {
-        decision: "needs-clarification" as const,
-        confidence: "medium" as const,
-        summary: blocker.summary,
-        researchPosture: "repo-only" as const,
-        clarificationQuestion: blocker.clarificationQuestion,
-      };
+      const canAskPlanConclaveClarification =
+        blocker.taskClarificationQuestion &&
+        planningDepth &&
+        (planningInterview?.rounds.length ?? 0) < planningDepth.maxInterviewRounds;
+      if (canAskPlanConclaveClarification && blocker.taskClarificationQuestion && planningDepth) {
+        planningInterview = buildPlanningInterviewQuestionArtifact({
+          createdAt,
+          depth: planningDepth,
+          ...(planningInterview ? { priorInterview: planningInterview } : {}),
+          question: {
+            question: blocker.taskClarificationQuestion,
+            perspective: "plan-conclave-task-clarification",
+            expectedAnswerShape:
+              "Answer with the missing task intent, scope boundary, success criteria, non-goal, or judging basis.",
+          },
+          runId,
+          taskPacket,
+        });
+        await writePlanningInterviewArtifacts({
+          depth: planningDepth,
+          interview: planningInterview,
+          projectRoot,
+          runId,
+          spec: planningSpec,
+        });
+      }
+      const blockedPreflight =
+        canAskPlanConclaveClarification && blocker.taskClarificationQuestion
+          ? {
+              decision: "needs-clarification" as const,
+              confidence: "medium" as const,
+              summary: blocker.summary,
+              researchPosture: "repo-only" as const,
+              clarificationQuestion: blocker.taskClarificationQuestion,
+            }
+          : {
+              decision: "abstain" as const,
+              confidence: "medium" as const,
+              summary: blocker.taskClarificationQuestion
+                ? "Plan Conclave found missing user intent, but the clarification budget is exhausted."
+                : blocker.summary,
+              researchPosture: "repo-only" as const,
+            };
       return await persistBlockedPlanningManifest({
         agent,
         config,
@@ -738,4 +806,14 @@ async function persistBlockedPlanningManifest(options: {
 
 function toPreflightConfidence(value: string): "low" | "medium" | "high" {
   return value === "low" || value === "medium" || value === "high" ? value : "medium";
+}
+
+function withAuguryAnswerContext(
+  taskPacket: Awaited<ReturnType<typeof loadTaskPacket>>,
+  answer: string,
+): Awaited<ReturnType<typeof loadTaskPacket>> {
+  return {
+    ...taskPacket,
+    intent: `${taskPacket.intent.trim()}\n\nLatest Augury Interview answer: ${answer}`,
+  };
 }

@@ -130,13 +130,11 @@ export async function buildConsultationSummaryDetailLines(
   if (resolvedArtifacts.planConsensus && !resolvedArtifacts.planConsensus.approved) {
     const blocker = summarizePlanConsensusBlocker(resolvedArtifacts.planConsensus);
     lines.push(
-      blocker.blockerKind === "runtime-unavailable"
-        ? "Plan Conclave blocked:"
-        : "Plan Conclave remediation needed:",
+      "Plan Conclave blocked:",
       blocker.summary,
       `Plan Conclave blocker: ${blocker.blockerKind}`,
     );
-    if (blocker.requiredChanges.length > 0) {
+    if (blocker.blockerKind !== "task-clarification" && blocker.requiredChanges.length > 0) {
       lines.push(
         "Plan Conclave required changes:",
         ...blocker.requiredChanges.map((change) => `- ${change}`),

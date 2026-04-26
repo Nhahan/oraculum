@@ -394,14 +394,20 @@ function buildConsultationPlanOpenQuestions(options: {
 
 function buildConsultationPlanNextAction(options: {
   preflight?: RunManifest["preflight"];
+  planningInterview?: ConsultationPlanArtifactWriterOptions["planningInterview"];
   projectRoot: string;
   runId: string;
 }): string {
   const planPath = `.oraculum/runs/${options.runId}/reports/consultation-plan.json`;
 
   switch (options.preflight?.decision) {
-    case "needs-clarification":
-      return 'Answer the clarification question, then rerun `orc plan "<task plus the answer>"` before `orc consult`.';
+    case "needs-clarification": {
+      const answerKind =
+        options.planningInterview?.status === "needs-clarification"
+          ? "augury-question"
+          : "plan-clarification";
+      return `Answer the clarification prompt in the host UI, or use \`orc answer ${answerKind} ${options.runId} "<answer>"\` as the shell fallback before \`orc consult\`.`;
+    }
     case "external-research-required":
       return "Gather bounded external research, refresh the task contract, and rerun `orc consult` or `orc plan`.";
     case "abstain":

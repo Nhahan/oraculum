@@ -3,11 +3,9 @@ export { buildClarifyFollowUpPrompt } from "./prompt-parts/clarify.js";
 export { buildPlanReviewPrompt } from "./prompt-parts/plan-review.js";
 export {
   buildPlanArchitectureReviewPrompt,
-  buildPlanConsensusContinuationPrompt,
   buildPlanConsensusDraftPrompt,
   buildPlanConsensusRevisionPrompt,
   buildPlanCriticReviewPrompt,
-  buildPlanningContinuationPrompt,
   buildPlanningDepthPrompt,
   buildPlanningInterviewQuestionPrompt,
   buildPlanningInterviewScorePrompt,

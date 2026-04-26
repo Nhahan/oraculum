@@ -91,18 +91,15 @@ export function buildConsultationSummaryNextStepLines(
   } else if (status.outcomeType === "needs-clarification") {
     if (resolvedArtifacts.planConsensus && !resolvedArtifacts.planConsensus.approved) {
       const blocker = summarizePlanConsensusBlocker(resolvedArtifacts.planConsensus);
-      if (blocker.blockerKind === "runtime-unavailable") {
-        lines.push(`- ${blocker.clarificationQuestion}`);
+      if (blocker.taskClarificationQuestion) {
+        lines.push("- answer the Augury clarification question in the host UI.");
+        lines.push(`- shell fallback: \`orc answer augury-question ${manifest.id} "<answer>"\`.`);
       } else {
-        lines.push(`- answer the Plan Conclave blocker: ${blocker.summary}`);
-        for (const change of blocker.requiredChanges) {
-          lines.push(`- required change: ${change}`);
-        }
-        lines.push('- rerun `orc plan "<answer>"` with the remediation answer.');
+        lines.push("- inspect the plan consensus artifact before rerunning planning.");
       }
     } else {
       const rerunCommand = pathState.consultationPlanSummaryPath
-        ? 'orc plan "<task plus the answer>"'
+        ? 'orc plan "<revised task>"'
         : 'orc consult "<task plus the answer>"';
       if (resolvedArtifacts.clarifyFollowUp && pathState.clarifyFollowUpSummaryPath) {
         lines.push(

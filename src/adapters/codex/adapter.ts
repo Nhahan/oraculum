@@ -4,11 +4,9 @@ import {
   buildCandidateSpecPrompt,
   buildClarifyFollowUpPrompt,
   buildPlanArchitectureReviewPrompt,
-  buildPlanConsensusContinuationPrompt,
   buildPlanConsensusDraftPrompt,
   buildPlanConsensusRevisionPrompt,
   buildPlanCriticReviewPrompt,
-  buildPlanningContinuationPrompt,
   buildPlanningDepthPrompt,
   buildPlanningInterviewQuestionPrompt,
   buildPlanningInterviewScorePrompt,
@@ -29,15 +27,11 @@ import {
   type AgentClarifyFollowUpResult,
   type AgentJudgeRequest,
   type AgentJudgeResult,
-  type AgentPlanConsensusContinuationRequest,
-  type AgentPlanConsensusContinuationResult,
   type AgentPlanConsensusDraftRequest,
   type AgentPlanConsensusDraftResult,
   type AgentPlanConsensusReviewRequest,
   type AgentPlanConsensusReviewResult,
   type AgentPlanConsensusRevisionRequest,
-  type AgentPlanningContinuationRequest,
-  type AgentPlanningContinuationResult,
   type AgentPlanningDepthRequest,
   type AgentPlanningDepthResult,
   type AgentPlanningQuestionRequest,
@@ -58,10 +52,8 @@ import {
   agentCandidateSpecSelectionResultSchema,
   agentClarifyFollowUpResultSchema,
   agentJudgeResultSchema,
-  agentPlanConsensusContinuationResultSchema,
   agentPlanConsensusDraftResultSchema,
   agentPlanConsensusReviewResultSchema,
-  agentPlanningContinuationResultSchema,
   agentPlanningDepthResultSchema,
   agentPlanningQuestionResultSchema,
   agentPlanningScoreResultSchema,
@@ -74,10 +66,8 @@ import {
 import {
   extractCodexCandidateSpecRecommendation,
   extractCodexClarifyFollowUpRecommendation,
-  extractCodexPlanConsensusContinuationRecommendation,
   extractCodexPlanConsensusDraftRecommendation,
   extractCodexPlanConsensusReviewRecommendation,
-  extractCodexPlanningContinuationRecommendation,
   extractCodexPlanningDepthRecommendation,
   extractCodexPlanningQuestionRecommendation,
   extractCodexPlanningScoreRecommendation,
@@ -93,10 +83,8 @@ import { executeCodexInteraction } from "./runtime.js";
 import {
   buildCodexCandidateSpecJsonSchema,
   buildCodexClarifyFollowUpJsonSchema,
-  buildCodexPlanConsensusContinuationJsonSchema,
   buildCodexPlanConsensusDraftJsonSchema,
   buildCodexPlanConsensusReviewJsonSchema,
-  buildCodexPlanningContinuationJsonSchema,
   buildCodexPlanningDepthJsonSchema,
   buildCodexPlanningQuestionJsonSchema,
   buildCodexPlanningScoreJsonSchema,
@@ -263,46 +251,6 @@ export class CodexAdapter implements AgentAdapter {
       prompt: buildPlanningDepthPrompt(request),
       request,
       resultSchema: agentPlanningDepthResultSchema,
-    });
-  }
-
-  async classifyPlanningContinuation(
-    request: AgentPlanningContinuationRequest,
-  ): Promise<AgentPlanningContinuationResult> {
-    return this.runRecommendation({
-      fallbackSummary: "Codex planning continuation classification finished.",
-      filenames: {
-        finalMessage: "planning-continuation.final-message.txt",
-        prompt: "planning-continuation.prompt.txt",
-        schema: "planning-continuation.schema.json",
-        stderr: "planning-continuation.stderr.txt",
-        stdout: "planning-continuation.stdout.jsonl",
-      },
-      outputParser: extractCodexPlanningContinuationRecommendation,
-      outputSchema: buildCodexPlanningContinuationJsonSchema(),
-      prompt: buildPlanningContinuationPrompt(request),
-      request,
-      resultSchema: agentPlanningContinuationResultSchema,
-    });
-  }
-
-  async classifyPlanConsensusContinuation(
-    request: AgentPlanConsensusContinuationRequest,
-  ): Promise<AgentPlanConsensusContinuationResult> {
-    return this.runRecommendation({
-      fallbackSummary: "Codex Plan Conclave continuation classification finished.",
-      filenames: {
-        finalMessage: "plan-consensus-continuation.final-message.txt",
-        prompt: "plan-consensus-continuation.prompt.txt",
-        schema: "plan-consensus-continuation.schema.json",
-        stderr: "plan-consensus-continuation.stderr.txt",
-        stdout: "plan-consensus-continuation.stdout.jsonl",
-      },
-      outputParser: extractCodexPlanConsensusContinuationRecommendation,
-      outputSchema: buildCodexPlanConsensusContinuationJsonSchema(),
-      prompt: buildPlanConsensusContinuationPrompt(request),
-      request,
-      resultSchema: agentPlanConsensusContinuationResultSchema,
     });
   }
 

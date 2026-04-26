@@ -7,4 +7,4 @@ export {
   writeLatestExportableRunState,
   writeLatestRunState,
 } from "./runs/latest-state.js";
-export { planRun } from "./runs/planning.js";
+export { answerPlanRun, planRun } from "./runs/planning.js";

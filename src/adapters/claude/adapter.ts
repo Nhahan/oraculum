@@ -5,11 +5,9 @@ import {
   buildCandidateSpecPrompt,
   buildClarifyFollowUpPrompt,
   buildPlanArchitectureReviewPrompt,
-  buildPlanConsensusContinuationPrompt,
   buildPlanConsensusDraftPrompt,
   buildPlanConsensusRevisionPrompt,
   buildPlanCriticReviewPrompt,
-  buildPlanningContinuationPrompt,
   buildPlanningDepthPrompt,
   buildPlanningInterviewQuestionPrompt,
   buildPlanningInterviewScorePrompt,
@@ -30,15 +28,11 @@ import {
   type AgentClarifyFollowUpResult,
   type AgentJudgeRequest,
   type AgentJudgeResult,
-  type AgentPlanConsensusContinuationRequest,
-  type AgentPlanConsensusContinuationResult,
   type AgentPlanConsensusDraftRequest,
   type AgentPlanConsensusDraftResult,
   type AgentPlanConsensusReviewRequest,
   type AgentPlanConsensusReviewResult,
   type AgentPlanConsensusRevisionRequest,
-  type AgentPlanningContinuationRequest,
-  type AgentPlanningContinuationResult,
   type AgentPlanningDepthRequest,
   type AgentPlanningDepthResult,
   type AgentPlanningQuestionRequest,
@@ -59,10 +53,8 @@ import {
   agentCandidateSpecSelectionResultSchema,
   agentClarifyFollowUpResultSchema,
   agentJudgeResultSchema,
-  agentPlanConsensusContinuationResultSchema,
   agentPlanConsensusDraftResultSchema,
   agentPlanConsensusReviewResultSchema,
-  agentPlanningContinuationResultSchema,
   agentPlanningDepthResultSchema,
   agentPlanningQuestionResultSchema,
   agentPlanningScoreResultSchema,
@@ -74,10 +66,8 @@ import {
   buildAgentCandidateSpecJsonSchema,
   buildAgentCandidateSpecSelectionJsonSchema,
   buildAgentClarifyFollowUpJsonSchema,
-  buildAgentPlanConsensusContinuationJsonSchema,
   buildAgentPlanConsensusDraftJsonSchema,
   buildAgentPlanConsensusReviewJsonSchema,
-  buildAgentPlanningContinuationJsonSchema,
   buildAgentPlanningDepthJsonSchema,
   buildAgentPlanningQuestionJsonSchema,
   buildAgentPlanningScoreJsonSchema,
@@ -88,10 +78,8 @@ import {
 import {
   extractClaudeCandidateSpecRecommendation,
   extractClaudeClarifyFollowUpRecommendation,
-  extractClaudePlanConsensusContinuationRecommendation,
   extractClaudePlanConsensusDraftRecommendation,
   extractClaudePlanConsensusReviewRecommendation,
-  extractClaudePlanningContinuationRecommendation,
   extractClaudePlanningDepthRecommendation,
   extractClaudePlanningQuestionRecommendation,
   extractClaudePlanningScoreRecommendation,
@@ -248,42 +236,6 @@ export class ClaudeAdapter implements AgentAdapter {
       prompt: buildPlanningDepthPrompt(request),
       request,
       resultSchema: agentPlanningDepthResultSchema,
-    });
-  }
-
-  async classifyPlanningContinuation(
-    request: AgentPlanningContinuationRequest,
-  ): Promise<AgentPlanningContinuationResult> {
-    return this.runRecommendation({
-      fallbackSummary: "Claude planning continuation classification finished.",
-      filenames: {
-        prompt: "planning-continuation.prompt.txt",
-        stderr: "planning-continuation.stderr.txt",
-        stdout: "planning-continuation.stdout.txt",
-      },
-      jsonSchema: buildAgentPlanningContinuationJsonSchema(),
-      outputParser: extractClaudePlanningContinuationRecommendation,
-      prompt: buildPlanningContinuationPrompt(request),
-      request,
-      resultSchema: agentPlanningContinuationResultSchema,
-    });
-  }
-
-  async classifyPlanConsensusContinuation(
-    request: AgentPlanConsensusContinuationRequest,
-  ): Promise<AgentPlanConsensusContinuationResult> {
-    return this.runRecommendation({
-      fallbackSummary: "Claude Plan Conclave continuation classification finished.",
-      filenames: {
-        prompt: "plan-consensus-continuation.prompt.txt",
-        stderr: "plan-consensus-continuation.stderr.txt",
-        stdout: "plan-consensus-continuation.stdout.txt",
-      },
-      jsonSchema: buildAgentPlanConsensusContinuationJsonSchema(),
-      outputParser: extractClaudePlanConsensusContinuationRecommendation,
-      prompt: buildPlanConsensusContinuationPrompt(request),
-      request,
-      resultSchema: agentPlanConsensusContinuationResultSchema,
     });
   }
 

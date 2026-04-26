@@ -4,11 +4,9 @@ import {
   buildCandidatePrompt,
   buildCandidateSpecPrompt,
   buildPlanArchitectureReviewPrompt,
-  buildPlanConsensusContinuationPrompt,
   buildPlanConsensusDraftPrompt,
   buildPlanConsensusRevisionPrompt,
   buildPlanCriticReviewPrompt,
-  buildPlanningContinuationPrompt,
   buildPlanningDepthPrompt,
   buildPlanningInterviewQuestionPrompt,
   buildPlanningInterviewScorePrompt,
@@ -126,50 +124,6 @@ describe("adapter prompts", () => {
       maxInterviewRounds: 8,
       operatorMaxConsensusLoopRevisions: 10,
     });
-    const continuationPrompt = buildPlanningContinuationPrompt({
-      runId: "run_augury_prompt",
-      projectRoot: "/repo",
-      logDir: "/repo/.oraculum/runs/run_augury_prompt/reports",
-      taskPacket,
-      activeInterview: interview,
-    });
-    const conclaveContinuationPrompt = buildPlanConsensusContinuationPrompt({
-      runId: "run_augury_prompt",
-      projectRoot: "/repo",
-      logDir: "/repo/.oraculum/runs/run_augury_prompt/reports",
-      taskPacket,
-      activeConsensus: {
-        runId: "run_source_conclave",
-        createdAt: "2026-04-23T00:00:00.000Z",
-        updatedAt: "2026-04-23T00:00:00.000Z",
-        approved: false,
-        maxRevisions: 1,
-        principles: [],
-        decisionDrivers: [],
-        viableOptions: draft.viableOptions,
-        selectedOption: draft.selectedOption,
-        rejectedAlternatives: [],
-        architectAntithesis: [],
-        criticVerdicts: [
-          {
-            reviewer: "critic",
-            verdict: "reject",
-            summary: "The crown gate is not witnessable.",
-            requiredChanges: ["Add a witnessable crown gate."],
-            tradeoffs: [],
-            risks: [],
-          },
-        ],
-        revisionHistory: [],
-        finalDraft: draft,
-      },
-      planningSpec,
-      blocker: {
-        blockerKind: "rejected",
-        summary: "Plan Conclave rejected the draft.",
-        requiredChanges: ["Add a witnessable crown gate."],
-      },
-    });
     const auguryScorePrompt = buildPlanningInterviewScorePrompt({
       runId: "run_augury_prompt",
       projectRoot: "/repo",
@@ -230,19 +184,6 @@ describe("adapter prompts", () => {
         tradeoffs: [],
         risks: [],
       },
-      planConsensusRemediation: {
-        continuation: {
-          sourceRunId: "run_source_conclave",
-          sourceConsensusRunId: "run_source_conclave",
-          answer: "Use refresh preservation as the crown gate.",
-          blockerKind: "rejected",
-          blockerSummary: "Plan Conclave rejected the draft.",
-          requiredChanges: ["Add a witnessable crown gate."],
-          createdAt: "2026-04-23T00:01:00.000Z",
-        },
-        sourceFinalDraft: draft,
-        sourceRevisionHistory: [],
-      },
     });
     const planReviewPrompt = buildPlanReviewPrompt({
       runId: "run_augury_prompt",
@@ -255,19 +196,15 @@ describe("adapter prompts", () => {
     expect(depthPrompt).toContain("skip-interview, interview, deep-interview");
     expect(depthPrompt).toContain("standard, elevated, high");
     expect(depthPrompt).toContain("reasons and estimatedInterviewRounds are required");
-    expect(continuationPrompt).toContain("Return classification as one of");
-    expect(continuationPrompt).toContain("confidence and summary");
-    expect(continuationPrompt).toContain("result contract, scope boundary, or judging basis");
-    expect(conclaveContinuationPrompt).toContain("blocked Oraculum Plan Conclave");
-    expect(conclaveContinuationPrompt).toContain("consensus-remediation, new-task");
-    expect(conclaveContinuationPrompt).toContain("requiredChanges");
-    expect(conclaveContinuationPrompt).toContain("directly answers the blocker");
     expect(auguryQuestionPrompt).toContain("Augury Interview");
     expect(auguryQuestionPrompt).toContain("witnessable candidate evidence");
     expect(auguryQuestionPrompt).toContain("single concrete decision");
-    expect(auguryQuestionPrompt).toContain("question, perspective, and expectedAnswerShape");
+    expect(auguryQuestionPrompt).toContain(
+      "question, perspective, expectedAnswerShape, and suggestedAnswers",
+    );
     expect(auguryQuestionPrompt).toContain("artifact, oracle signal, acceptance signal");
     expect(auguryQuestionPrompt).toContain("expectedAnswerShape is required");
+    expect(auguryQuestionPrompt).toContain("suggestedAnswers must contain 2-4");
     expect(auguryQuestionPrompt).toContain("future candidate evidence");
     expect(auguryQuestionPrompt).toContain("disqualifier");
     expect(auguryQuestionPrompt).toContain("crown gate");
@@ -281,6 +218,7 @@ describe("adapter prompts", () => {
     expect(auguryScorePrompt).toContain("at least one witnessable acceptance signal");
     expect(auguryScorePrompt).toContain("acceptance signals");
     expect(specPrompt).toContain("Oraculum Augury Interview");
+    expect(specPrompt).toContain("original task packet together with all Augury Q/A rounds");
     expect(specPrompt).toContain("use the latest snapshot as the primary source");
     expect(specPrompt).toContain("acceptance signs go to acceptanceCriteria");
     expect(specPrompt).toContain("protected-scope exclusions and disqualifiers go to nonGoals");
@@ -303,11 +241,17 @@ describe("adapter prompts", () => {
     expect(conclaveDraftPrompt).toContain("repairPolicy");
     expect(conclaveReviewPrompt).toContain("Oraculum Plan Conclave");
     expect(conclaveReviewPrompt).toContain("reject only when no bounded revision");
+    expect(conclaveReviewPrompt).toContain("Fill taskClarificationQuestion only when user intent");
+    expect(conclaveReviewPrompt).toContain(
+      "single Augury-style task/scope/success/non-goal question",
+    );
+    expect(conclaveReviewPrompt).toContain(
+      "Do not use taskClarificationQuestion to ask for crown gates",
+    );
+    expect(conclaveReviewPrompt).toContain("oracle design");
     expect(conclaveReviewPrompt).toContain("requiredChanges, tradeoffs, and risks");
     expect(conclaveCriticPrompt).toContain("repair/eliminate policy gaps");
     expect(conclaveRevisionPrompt).toContain("Plan Conclave consultation plan draft");
-    expect(conclaveRevisionPrompt).toContain("Plan Conclave remediation answer");
-    expect(conclaveRevisionPrompt).toContain("Source Plan Conclave final draft");
     expect(conclaveRevisionPrompt).toContain("crownGates, repairPolicy, or scorecardDefinition");
     expect(planReviewPrompt).toContain("review recommends blocking treatment");
     expect(planReviewPrompt).toContain("Return nextAction");

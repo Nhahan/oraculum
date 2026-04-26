@@ -26,8 +26,8 @@ import {
 import { oracleVerdictSchema, witnessSchema } from "../src/domain/oracle.js";
 import { profileRepoSignalsSchema } from "../src/domain/profile.js";
 import {
-  consultationNextActionSchema,
   planConsensusArtifactSchema,
+  planConsensusReviewSchema,
   planningDepthArtifactSchema,
 } from "../src/domain/run.js";
 import {
@@ -388,49 +388,31 @@ describe("planning artifact contracts", () => {
     ).toBe(4);
   });
 
-  it("accepts Plan Conclave continuation metadata and rejects malformed source ids", () => {
-    const consensus = planConsensusArtifactSchema.parse({
-      ...createPlanConsensusContractFixture(),
-      continuation: {
-        sourceRunId: "run_source",
-        sourceConsensusRunId: "run_source",
-        answer: "Make the crown gate witnessable with refresh-preservation evidence.",
-        blockerKind: "rejected",
-        blockerSummary: "Plan Conclave rejected the explicit consultation plan.",
-        requiredChanges: ["Add a witnessable crown gate."],
-        createdAt: "2026-04-24T00:00:00.000Z",
-      },
+  it("accepts Plan Conclave task clarification questions on reviews", () => {
+    const review = planConsensusReviewSchema.parse({
+      reviewer: "critic",
+      verdict: "reject",
+      summary: "The requested success criteria are missing.",
+      requiredChanges: [],
+      tradeoffs: [],
+      risks: [],
+      taskClarificationQuestion: "Which user-visible outcome should candidates prove?",
     });
 
-    expect(consensus.continuation?.blockerKind).toBe("rejected");
-    expect(() =>
-      planConsensusArtifactSchema.parse({
-        ...createPlanConsensusContractFixture(),
-        continuation: {
-          sourceRunId: "../run_source",
-          sourceConsensusRunId: "run_source",
-          answer: "Make the crown gate witnessable.",
-          blockerKind: "rejected",
-          blockerSummary: "Plan Conclave rejected the explicit consultation plan.",
-          requiredChanges: [],
-          createdAt: "2026-04-24T00:00:00.000Z",
-        },
-      }),
-    ).toThrow();
-    expect(() =>
-      planConsensusArtifactSchema.parse({
-        ...createPlanConsensusContractFixture(),
-        continuation: {
-          sourceRunId: "run_source",
-          sourceConsensusRunId: "run_source",
-          answer: "",
-          blockerKind: "rejected",
-          blockerSummary: "Plan Conclave rejected the explicit consultation plan.",
-          requiredChanges: [],
-          createdAt: "2026-04-24T00:00:00.000Z",
-        },
-      }),
-    ).toThrow();
+    expect(review.taskClarificationQuestion).toBe(
+      "Which user-visible outcome should candidates prove?",
+    );
+    expect(
+      planConsensusReviewSchema.parse({
+        reviewer: "critic",
+        verdict: "reject",
+        summary: "The requested success criteria are missing.",
+        requiredChanges: [],
+        tradeoffs: [],
+        risks: [],
+        taskClarificationQuestion: null,
+      }).taskClarificationQuestion,
+    ).toBeUndefined();
   });
 
   it("summarizes Plan Conclave blockers by kind with required changes", () => {
@@ -504,12 +486,6 @@ describe("planning artifact contracts", () => {
       requiredChanges: ["Separate repairable gaps from elimination gates."],
     });
     expect(runtimeUnavailable.blockerKind).toBe("runtime-unavailable");
-  });
-
-  it("accepts the Plan Conclave remediation next action", () => {
-    expect(consultationNextActionSchema.parse("answer-plan-conclave-and-rerun")).toBe(
-      "answer-plan-conclave-and-rerun",
-    );
   });
 });
 

@@ -9,10 +9,17 @@ export async function materializeTaskInput(
   projectRoot: string,
   invocationCwd: string,
   taskInput: string,
+  options?: {
+    forceInline?: boolean;
+  },
 ): Promise<string> {
   const normalized = taskInput.trim();
   if (!normalized) {
     throw new OraculumError("Task input must not be empty.");
+  }
+
+  if (options?.forceInline) {
+    return await writeInlineTaskInput(projectRoot, normalized);
   }
 
   const invocationPath = resolve(invocationCwd, normalized);
@@ -28,10 +35,17 @@ export async function materializeTaskInput(
     throw new OraculumError(`Task file not found: ${invocationPath}`);
   }
 
+  return await writeInlineTaskInput(projectRoot, normalized);
+}
+
+async function writeInlineTaskInput(
+  projectRoot: string,
+  normalizedTaskInput: string,
+): Promise<string> {
   const generatedTasksDir = getGeneratedTasksDir(projectRoot);
-  const inlineTaskId = createInlineTaskId(normalized);
+  const inlineTaskId = createInlineTaskId(normalizedTaskInput);
   const inlineTaskPath = resolve(generatedTasksDir, `${inlineTaskId}.md`);
-  await writeTextFileAtomically(inlineTaskPath, buildInlineTaskNote(normalized));
+  await writeTextFileAtomically(inlineTaskPath, buildInlineTaskNote(normalizedTaskInput));
   return inlineTaskPath;
 }
 

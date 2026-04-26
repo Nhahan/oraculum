@@ -39,6 +39,12 @@ export function buildConsultationPlanReadiness(options: {
   if (reviewStatus === "blocked") {
     warnings.add("plan review requested blocking treatment; recorded as advisory.");
   }
+  if (
+    options.consultationPlan.clarityGate?.status === "blocked" &&
+    unresolvedQuestions.length === 0
+  ) {
+    blockers.add(options.consultationPlan.clarityGate.summary);
+  }
   for (const blocker of options.review?.blockers ?? []) {
     warnings.add(`plan review finding: ${blocker}`);
   }
@@ -86,7 +92,13 @@ function buildReadinessNextAction(options: {
     return options.consultationPlan.recommendedNextAction;
   }
   if (options.consultationPlan.openQuestions.length > 0) {
-    return 'Answer the unresolved plan questions, then rerun `orc plan "<task plus the answer>"`.';
+    if (
+      options.consultationPlan.preflight?.decision === "needs-clarification" ||
+      options.consultationPlan.preflight?.decision === "external-research-required"
+    ) {
+      return options.consultationPlan.recommendedNextAction;
+    }
+    return 'Answer the unresolved plan questions in the host UI, or start a new `orc plan "<task>"` with a revised task contract.';
   }
   return "Refresh the consultation plan before running `orc consult <plan>`.";
 }

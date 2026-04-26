@@ -39,13 +39,10 @@ export {
   finalistScorecardSchema,
   planConsensusArtifactSchema,
   planConsensusBlockerKindSchema,
-  planConsensusContinuationClassificationSchema,
-  planConsensusContinuationSchema,
   planConsensusDraftSchema,
   planConsensusReviewSchema,
   planningConsensusReviewDepthSchema,
   planningConsensusReviewIntensitySchema,
-  planningContinuationClassificationSchema,
   planningDepthArtifactSchema,
   planningDepthSchema,
   planningInterviewArtifactSchema,
@@ -54,6 +51,7 @@ export {
   planningOntologySnapshotSchema,
   planningReadinessSchema,
   planningSpecArtifactSchema,
+  planningSuggestedAnswerSchema,
 } from "./schema-parts/plan.js";
 export { savedConsultationStatusSchema } from "./schema-parts/saved-status.js";
 export {
@@ -121,9 +119,6 @@ export type PlanningSpecArtifact = z.infer<
 >;
 export type PlanConsensusArtifact = z.infer<
   typeof import("./schema-parts/plan.js").planConsensusArtifactSchema
->;
-export type PlanConsensusContinuation = z.infer<
-  typeof import("./schema-parts/plan.js").planConsensusContinuationSchema
 >;
 export type PlanConsensusDraft = z.infer<
   typeof import("./schema-parts/plan.js").planConsensusDraftSchema

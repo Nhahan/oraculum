@@ -78,6 +78,6 @@ function normalizePlanReviewForReadinessGate(
       ...review.blockers.map((blocker) => `Plan review requested a block: ${blocker}`),
     ],
     nextAction:
-      'Review plan findings before consult, or rerun `orc plan "<task plus the answer>"` if the task contract is incomplete.',
+      'Review plan findings before consult, or start a new `orc plan "<task>"` with a revised task contract if the task is incomplete.',
   });
 }

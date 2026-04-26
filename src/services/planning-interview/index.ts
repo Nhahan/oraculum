@@ -1,19 +1,22 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 
 import type { AgentAdapter } from "../../adapters/types.js";
-import { getRunsDir } from "../../core/paths.js";
+import { OraculumError } from "../../core/errors.js";
 import {
+  consultationPlanArtifactSchema,
   type PlanningDepthArtifact,
   type PlanningInterviewArtifact,
   type PlanningSpecArtifact,
   planningDepthArtifactSchema,
   planningInterviewArtifactSchema,
   planningSpecArtifactSchema,
+  runManifestSchema,
 } from "../../domain/run.js";
 import type { MaterializedTaskPacket } from "../../domain/task.js";
 import type { ProjectConfigLayers } from "../project.js";
 import { pathExists, writeJsonFile, writeTextFileAtomically } from "../project.js";
 import { RunStore } from "../run-store.js";
+import { loadTaskPacket } from "../task-packets.js";
 
 export interface PlanningLoopCaps {
   explicitPlanMaxInterviewRounds: number;
@@ -83,61 +86,105 @@ export function resolvePlanningLoopCaps(configLayers: ProjectConfigLayers): Plan
   };
 }
 
-export async function findActivePlanningInterview(
-  projectRoot: string,
-): Promise<PlanningInterviewArtifact | undefined> {
-  const runsDir = getRunsDir(projectRoot);
-  if (!(await pathExists(runsDir))) {
-    return undefined;
-  }
-
-  const entries = await readdir(runsDir, { withFileTypes: true });
-  const runIds = entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort()
-    .reverse();
-
-  for (const runId of runIds) {
-    const interviewPath = new RunStore(projectRoot).getRunPaths(runId).planningInterviewPath;
-    if (!(await pathExists(interviewPath))) {
-      continue;
-    }
-
-    const parsed = planningInterviewArtifactSchema.safeParse(
-      JSON.parse(await readFile(interviewPath, "utf8")) as unknown,
-    );
-    if (parsed.success && parsed.data.status === "needs-clarification") {
-      return parsed.data;
-    }
-  }
-
-  return undefined;
+export interface ActivePlanningInterviewTarget {
+  runId: string;
+  depth: PlanningDepthArtifact;
+  manifest: Awaited<ReturnType<RunStore["readRunManifest"]>>;
+  taskPath: string;
+  taskPacket: MaterializedTaskPacket;
+  interview: PlanningInterviewArtifact;
 }
 
-export async function classifyPlanningContinuation(options: {
-  activeInterview: PlanningInterviewArtifact | undefined;
-  adapter: AgentAdapter | undefined;
-  projectRoot: string;
-  reportsDir: string;
+export async function loadActivePlanningInterviewTarget(
+  projectRoot: string,
+  runId: string,
+): Promise<ActivePlanningInterviewTarget> {
+  const store = new RunStore(projectRoot);
+  const paths = store.getRunPaths(runId);
+  const manifest = await readOptionalArtifact(paths.manifestPath, runManifestSchema);
+  if (!manifest || manifest.id !== runId) {
+    throw new OraculumError(`No planning run found for Augury answer runId "${runId}".`);
+  }
+
+  const depth = await readOptionalArtifact(paths.planningDepthPath, planningDepthArtifactSchema);
+  if (!depth || depth.runId !== runId) {
+    throw new OraculumError(`Planning run "${runId}" has no planning-depth artifact.`);
+  }
+
+  const interview = await readOptionalArtifact(
+    paths.planningInterviewPath,
+    planningInterviewArtifactSchema,
+  );
+  if (!interview || interview.runId !== runId) {
+    throw new OraculumError(`Planning run "${runId}" has no Augury Interview artifact.`);
+  }
+  if (interview.status !== "needs-clarification") {
+    throw new OraculumError(
+      `Planning run "${runId}" does not have an active Augury Interview; current status is "${interview.status}".`,
+    );
+  }
+
+  const latestRound = interview.rounds.at(-1);
+  if (!latestRound || latestRound.round > depth.maxInterviewRounds) {
+    throw new OraculumError(
+      `Planning run "${runId}" has exhausted the Augury Interview round cap.`,
+    );
+  }
+
+  const sourceTaskPacket = await loadInterviewSourceTaskPacket({
+    consultationPlanPath: paths.consultationPlanPath,
+    fallbackTaskPath: manifest.taskPath,
+    runId: manifest.id,
+  });
+  if (!sourceTaskPacket) {
+    throw new OraculumError(
+      `Planning run "${runId}" cannot continue because its source task artifact is unavailable.`,
+    );
+  }
+
+  return {
+    runId,
+    depth,
+    manifest,
+    taskPath: manifest.taskPath,
+    taskPacket: sourceTaskPacket,
+    interview,
+  };
+}
+
+async function loadInterviewSourceTaskPacket(options: {
+  consultationPlanPath: string;
+  fallbackTaskPath: string;
   runId: string;
-  taskPacket: MaterializedTaskPacket;
-}): Promise<PlanningInterviewArtifact | undefined> {
-  if (!options.activeInterview || !options.adapter?.classifyPlanningContinuation) {
+}): Promise<MaterializedTaskPacket | undefined> {
+  const consultationPlan = await readOptionalArtifact(
+    options.consultationPlanPath,
+    consultationPlanArtifactSchema,
+  );
+  if (consultationPlan?.runId === options.runId) {
+    return consultationPlan.task;
+  }
+
+  try {
+    return await loadTaskPacket(options.fallbackTaskPath);
+  } catch {
+    return undefined;
+  }
+}
+
+async function readOptionalArtifact<T>(
+  path: string,
+  schema: {
+    safeParse(value: unknown): { success: true; data: T } | { success: false };
+  },
+): Promise<T | undefined> {
+  if (!(await pathExists(path))) {
     return undefined;
   }
 
   try {
-    const result = await options.adapter.classifyPlanningContinuation({
-      activeInterview: options.activeInterview,
-      logDir: options.reportsDir,
-      projectRoot: options.projectRoot,
-      runId: options.runId,
-      taskPacket: options.taskPacket,
-    });
-    return result.status === "completed" && result.recommendation?.classification === "continuation"
-      ? options.activeInterview
-      : undefined;
+    const parsed = schema.safeParse(JSON.parse(await readFile(path, "utf8")) as unknown);
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }
@@ -216,12 +263,12 @@ export async function buildPlanningInterviewNeedingAnswer(options: {
   runId: string;
   taskPacket: MaterializedTaskPacket;
 }): Promise<PlanningInterviewArtifact> {
-  const nextRoundNumber = (options.priorInterview?.rounds.length ?? 0) + 1;
   const fallbackQuestion = buildFallbackQuestion(options.taskPacket);
   let question: {
     question: string;
     perspective: string;
     expectedAnswerShape: string;
+    suggestedAnswers?: Array<{ label: string; description: string }>;
   } = fallbackQuestion;
 
   if (options.adapter?.generatePlanningInterviewQuestion) {
@@ -235,12 +282,44 @@ export async function buildPlanningInterviewNeedingAnswer(options: {
         taskPacket: options.taskPacket,
       });
       if (result.status === "completed" && result.recommendation) {
-        question = result.recommendation;
+        question = {
+          question: result.recommendation.question,
+          perspective: result.recommendation.perspective,
+          expectedAnswerShape: result.recommendation.expectedAnswerShape,
+          ...(result.recommendation.suggestedAnswers
+            ? { suggestedAnswers: result.recommendation.suggestedAnswers }
+            : {}),
+        };
       }
     } catch {
       // Keep fallback question.
     }
   }
+
+  return buildPlanningInterviewQuestionArtifact({
+    createdAt: options.createdAt,
+    depth: options.depth,
+    ...(options.priorInterview ? { priorInterview: options.priorInterview } : {}),
+    question,
+    runId: options.runId,
+    taskPacket: options.taskPacket,
+  });
+}
+
+export function buildPlanningInterviewQuestionArtifact(options: {
+  createdAt: string;
+  depth: PlanningDepthArtifact;
+  priorInterview?: PlanningInterviewArtifact;
+  question: {
+    question: string;
+    perspective: string;
+    expectedAnswerShape: string;
+    suggestedAnswers?: Array<{ label: string; description: string }>;
+  };
+  runId: string;
+  taskPacket: MaterializedTaskPacket;
+}): PlanningInterviewArtifact {
+  const nextRoundNumber = (options.priorInterview?.rounds.length ?? 0) + 1;
 
   return planningInterviewArtifactSchema.parse({
     runId: options.runId,
@@ -254,15 +333,49 @@ export async function buildPlanningInterviewNeedingAnswer(options: {
       ...(options.priorInterview?.rounds ?? []),
       {
         round: nextRoundNumber,
-        question: question.question,
-        perspective: question.perspective,
-        ...(question.expectedAnswerShape
-          ? { expectedAnswerShape: question.expectedAnswerShape }
+        question: options.question.question,
+        perspective: options.question.perspective,
+        ...(options.question.expectedAnswerShape
+          ? { expectedAnswerShape: options.question.expectedAnswerShape }
           : {}),
+        ...toSuggestedAnswersArtifactFields(options.question.suggestedAnswers),
       },
     ],
-    nextQuestion: question.question,
+    nextQuestion: options.question.question,
   });
+}
+
+export function normalizePlanningSuggestedAnswers(
+  value: Array<{ label: string; description: string }> | undefined,
+): Array<{ label: string; description: string }> {
+  if (!value) {
+    return [];
+  }
+
+  const seenLabels = new Set<string>();
+  const normalized: Array<{ label: string; description: string }> = [];
+  for (const answer of value) {
+    const label = answer.label.trim();
+    const description = answer.description.trim();
+    const labelKey = label.toLowerCase();
+    if (!label || !description || seenLabels.has(labelKey)) {
+      continue;
+    }
+    seenLabels.add(labelKey);
+    normalized.push({ label, description });
+    if (normalized.length >= 4) {
+      break;
+    }
+  }
+
+  return normalized;
+}
+
+function toSuggestedAnswersArtifactFields(
+  value: Array<{ label: string; description: string }> | undefined,
+): { suggestedAnswers: Array<{ label: string; description: string }> } | Record<string, never> {
+  const normalized = normalizePlanningSuggestedAnswers(value);
+  return normalized.length >= 2 ? { suggestedAnswers: normalized } : {};
 }
 
 export async function scorePlanningInterviewAnswer(options: {
@@ -321,13 +434,14 @@ export async function scorePlanningInterviewAnswer(options: {
   const rounds = [...baseRounds.slice(0, -1), scoredRound];
   const clarityScore = scoredRound.clarityScore;
   const capReached = rounds.length >= options.depth.maxInterviewRounds;
-  const readyForSpec = scoredRound.readyForSpec || capReached;
+  const readyForSpec = scoredRound.readyForSpec;
+  const blocked = !readyForSpec && capReached;
 
   return planningInterviewArtifactSchema.parse({
     runId: options.runId,
     createdAt: options.createdAt,
     updatedAt: options.createdAt,
-    status: readyForSpec ? "ready-for-spec" : "needs-clarification",
+    status: readyForSpec ? "ready-for-spec" : blocked ? "blocked" : "needs-clarification",
     taskId: options.taskPacket.id,
     sourceRunId: options.priorInterview.runId,
     interviewDepth: options.depth.interviewDepth,
@@ -338,7 +452,7 @@ export async function scorePlanningInterviewAnswer(options: {
     ontologySnapshots: rounds.flatMap((round) =>
       round.ontologySnapshot ? [round.ontologySnapshot] : [],
     ),
-    ...(!readyForSpec ? { nextQuestion: lastRound.question } : {}),
+    ...(!readyForSpec && !blocked ? { nextQuestion: lastRound.question } : {}),
   });
 }
 

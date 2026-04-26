@@ -24,18 +24,14 @@ import {
   consultationClarifyFollowUpSchema,
   consultationPlanReviewSchema,
   consultationPreflightSchema,
-  type PlanConsensusArtifact,
-  type PlanConsensusContinuation,
   type PlanConsensusDraft,
   type PlanConsensusReview,
   type PlanningDepthArtifact,
   type PlanningInterviewArtifact,
   type PlanningSpecArtifact,
-  planConsensusContinuationClassificationSchema,
   planConsensusDraftSchema,
   planConsensusReviewSchema,
   planningConsensusReviewIntensitySchema,
-  planningContinuationClassificationSchema,
   planningInterviewDepthSchema,
   planningInterviewRoundSchema,
   planningSpecArtifactSchema,
@@ -258,40 +254,6 @@ export const agentPlanningDepthResultSchema = z.object({
   recommendation: agentPlanningDepthRecommendationSchema.optional(),
   artifacts: z.array(agentArtifactSchema).default([]),
 });
-export const agentPlanningContinuationResultSchema = z.object({
-  runId: z.string().min(1),
-  adapter: adapterSchema,
-  status: agentRunStatusSchema,
-  startedAt: z.string().min(1),
-  completedAt: z.string().min(1),
-  exitCode: z.number().int(),
-  summary: z.string().min(1),
-  recommendation: z
-    .object({
-      classification: planningContinuationClassificationSchema,
-      confidence: decisionConfidenceSchema,
-      summary: z.string().min(1),
-    })
-    .optional(),
-  artifacts: z.array(agentArtifactSchema).default([]),
-});
-export const agentPlanConsensusContinuationResultSchema = z.object({
-  runId: z.string().min(1),
-  adapter: adapterSchema,
-  status: agentRunStatusSchema,
-  startedAt: z.string().min(1),
-  completedAt: z.string().min(1),
-  exitCode: z.number().int(),
-  summary: z.string().min(1),
-  recommendation: z
-    .object({
-      classification: planConsensusContinuationClassificationSchema,
-      confidence: decisionConfidenceSchema,
-      summary: z.string().min(1),
-    })
-    .optional(),
-  artifacts: z.array(agentArtifactSchema).default([]),
-});
 export const agentPlanningQuestionResultSchema = z.object({
   runId: z.string().min(1),
   adapter: adapterSchema,
@@ -305,6 +267,7 @@ export const agentPlanningQuestionResultSchema = z.object({
       question: true,
       perspective: true,
       expectedAnswerShape: true,
+      suggestedAnswers: true,
     })
     .required({
       expectedAnswerShape: true,
@@ -400,12 +363,6 @@ export interface AgentAdapter {
   recommendProfile(request: AgentProfileRequest): Promise<AgentProfileResult>;
   recommendPlanReview?(request: AgentPlanReviewRequest): Promise<AgentPlanReviewResult>;
   recommendPlanningDepth?(request: AgentPlanningDepthRequest): Promise<AgentPlanningDepthResult>;
-  classifyPlanningContinuation?(
-    request: AgentPlanningContinuationRequest,
-  ): Promise<AgentPlanningContinuationResult>;
-  classifyPlanConsensusContinuation?(
-    request: AgentPlanConsensusContinuationRequest,
-  ): Promise<AgentPlanConsensusContinuationResult>;
   generatePlanningInterviewQuestion?(
     request: AgentPlanningQuestionRequest,
   ): Promise<AgentPlanningQuestionResult>;
@@ -507,28 +464,6 @@ export interface AgentPlanningDepthRequest {
   operatorMaxConsensusLoopRevisions: number;
 }
 
-export interface AgentPlanningContinuationRequest {
-  runId: string;
-  projectRoot: string;
-  logDir: string;
-  taskPacket: MaterializedTaskPacket;
-  activeInterview: PlanningInterviewArtifact;
-}
-
-export interface AgentPlanConsensusContinuationRequest {
-  runId: string;
-  projectRoot: string;
-  logDir: string;
-  taskPacket: MaterializedTaskPacket;
-  activeConsensus: PlanConsensusArtifact;
-  planningSpec: PlanningSpecArtifact;
-  blocker: {
-    blockerKind: PlanConsensusContinuation["blockerKind"];
-    summary: string;
-    requiredChanges: string[];
-  };
-}
-
 export interface AgentPlanningQuestionRequest {
   runId: string;
   projectRoot: string;
@@ -563,7 +498,6 @@ export interface AgentPlanConsensusDraftRequest {
   taskPacket: MaterializedTaskPacket;
   planningSpec: PlanningSpecArtifact;
   consultationPlan: ConsultationPlanArtifact;
-  planConsensusRemediation?: AgentPlanConsensusRemediationContext;
 }
 
 export interface AgentPlanConsensusReviewRequest {
@@ -573,7 +507,6 @@ export interface AgentPlanConsensusReviewRequest {
   taskPacket: MaterializedTaskPacket;
   planningSpec: PlanningSpecArtifact;
   draft: PlanConsensusDraft;
-  planConsensusRemediation?: AgentPlanConsensusRemediationContext;
 }
 
 export interface AgentPlanConsensusRevisionRequest extends AgentPlanConsensusReviewRequest {
@@ -626,12 +559,6 @@ export interface AgentRepairContext {
   }>;
 }
 
-export interface AgentPlanConsensusRemediationContext {
-  continuation: PlanConsensusContinuation;
-  sourceFinalDraft: PlanConsensusDraft;
-  sourceRevisionHistory: PlanConsensusArtifact["revisionHistory"];
-}
-
 export type AgentArtifact = z.infer<typeof agentArtifactSchema>;
 export type AgentRunResult = z.infer<typeof agentRunResultSchema>;
 export type FinalistSummary = z.infer<typeof finalistSummarySchema>;
@@ -646,10 +573,6 @@ export type AgentCandidateSpecSelectionResult = z.infer<
   typeof agentCandidateSpecSelectionResultSchema
 >;
 export type AgentPlanningDepthResult = z.infer<typeof agentPlanningDepthResultSchema>;
-export type AgentPlanningContinuationResult = z.infer<typeof agentPlanningContinuationResultSchema>;
-export type AgentPlanConsensusContinuationResult = z.infer<
-  typeof agentPlanConsensusContinuationResultSchema
->;
 export type AgentPlanningQuestionResult = z.infer<typeof agentPlanningQuestionResultSchema>;
 export type AgentPlanningScoreResult = z.infer<typeof agentPlanningScoreResultSchema>;
 export type AgentPlanningSpecResult = z.infer<typeof agentPlanningSpecResultSchema>;
@@ -847,33 +770,17 @@ export function buildAgentPlanningDepthJsonSchema(): Record<string, unknown> {
   };
 }
 
-export function buildAgentPlanningContinuationJsonSchema(): Record<string, unknown> {
-  return {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      classification: { type: "string", enum: ["new-task", "continuation"] },
-      confidence: { type: "string", enum: [...decisionConfidenceSchema.options] },
-      summary: { type: "string", minLength: 1 },
-    },
-    required: ["classification", "confidence", "summary"],
-  };
-}
-
-export function buildAgentPlanConsensusContinuationJsonSchema(): Record<string, unknown> {
-  return {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      classification: { type: "string", enum: ["consensus-remediation", "new-task"] },
-      confidence: { type: "string", enum: [...decisionConfidenceSchema.options] },
-      summary: { type: "string", minLength: 1 },
-    },
-    required: ["classification", "confidence", "summary"],
-  };
-}
-
 export function buildAgentPlanningQuestionJsonSchema(): Record<string, unknown> {
+  const suggestedAnswerSchema = {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      label: { type: "string", minLength: 1 },
+      description: { type: "string", minLength: 1 },
+    },
+    required: ["label", "description"],
+  };
+
   return {
     type: "object",
     additionalProperties: false,
@@ -881,8 +788,14 @@ export function buildAgentPlanningQuestionJsonSchema(): Record<string, unknown> 
       question: { type: "string", minLength: 1 },
       perspective: { type: "string", minLength: 1 },
       expectedAnswerShape: { type: "string", minLength: 1 },
+      suggestedAnswers: {
+        type: "array",
+        items: suggestedAnswerSchema,
+        minItems: 2,
+        maxItems: 4,
+      },
     },
-    required: ["question", "perspective", "expectedAnswerShape"],
+    required: ["question", "perspective", "expectedAnswerShape", "suggestedAnswers"],
   };
 }
 
@@ -1093,6 +1006,9 @@ export function buildAgentPlanConsensusReviewJsonSchema(): Record<string, unknow
       requiredChanges: stringArraySchema,
       tradeoffs: stringArraySchema,
       risks: stringArraySchema,
+      taskClarificationQuestion: {
+        anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
+      },
     },
     required: ["verdict", "summary", "requiredChanges", "tradeoffs", "risks"],
   };

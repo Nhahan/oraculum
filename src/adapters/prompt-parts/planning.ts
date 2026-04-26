@@ -1,10 +1,7 @@
 import type {
-  AgentPlanConsensusContinuationRequest,
   AgentPlanConsensusDraftRequest,
-  AgentPlanConsensusRemediationContext,
   AgentPlanConsensusReviewRequest,
   AgentPlanConsensusRevisionRequest,
-  AgentPlanningContinuationRequest,
   AgentPlanningDepthRequest,
   AgentPlanningQuestionRequest,
   AgentPlanningScoreRequest,
@@ -39,54 +36,6 @@ export function buildPlanningDepthPrompt(request: AgentPlanningDepthRequest): st
   ].join("\n");
 }
 
-export function buildPlanningContinuationPrompt(request: AgentPlanningContinuationRequest): string {
-  return [
-    "You are deciding whether the new `orc plan` input answers the latest active Augury Interview.",
-    "Return JSON only matching the provided schema.",
-    "",
-    "Active interview:",
-    JSON.stringify(request.activeInterview, null, 2),
-    "",
-    "New input:",
-    formatTask(request.taskPacket),
-    "",
-    "Rules:",
-    "- Return classification as one of: continuation, new-task.",
-    "- Return confidence and summary; both are required schema fields.",
-    "- Use continuation only when the new input is best read as an answer or refinement for the active interview.",
-    "- Use new-task when it starts an unrelated plan or materially changes the intended task.",
-    "- Treat changes to result contract, scope boundary, or judging basis as new-task instead of continuation.",
-  ].join("\n");
-}
-
-export function buildPlanConsensusContinuationPrompt(
-  request: AgentPlanConsensusContinuationRequest,
-): string {
-  return [
-    "You are deciding whether the new `orc plan` input is a remediation answer for a blocked Oraculum Plan Conclave or a new planning task.",
-    "Return JSON only matching the provided schema.",
-    "",
-    "Blocked Plan Conclave consensus:",
-    JSON.stringify(request.activeConsensus, null, 2),
-    "",
-    "Planning spec for the blocked run:",
-    JSON.stringify(request.planningSpec, null, 2),
-    "",
-    "Blocker:",
-    JSON.stringify(request.blocker, null, 2),
-    "",
-    "New input:",
-    formatTask(request.taskPacket),
-    "",
-    "Rules:",
-    "- Return classification as one of: consensus-remediation, new-task.",
-    "- Return confidence and summary; both are required schema fields.",
-    "- Use consensus-remediation only when the input directly answers the blocker or requiredChanges without changing the task goal, scope boundary, or judging basis.",
-    "- Use new-task when the input starts an unrelated plan, changes the intended result, broadens or narrows scope, or replaces the judging basis.",
-    "- Do not treat runtime-unavailable blockers as answerable remediation; those require rerunning when the review runtime can execute.",
-  ].join("\n");
-}
-
 export function buildPlanningInterviewQuestionPrompt(
   request: AgentPlanningQuestionRequest,
 ): string {
@@ -103,12 +52,14 @@ export function buildPlanningInterviewQuestionPrompt(
     formatTask(request.taskPacket),
     "",
     "Question rules:",
-    "- Return question, perspective, and expectedAnswerShape; all three fields are required.",
+    "- Return question, perspective, expectedAnswerShape, and suggestedAnswers; all fields are required.",
     "- Target the weakest missing contract dimension: goal, scope, non-goal, acceptance criteria, risk, or judging basis.",
     "- Seek witnessable candidate evidence: the answer should clarify a future acceptance signal, disqualifier, protected scope, risk, or crown gate.",
     "- Ask about a single concrete decision the operator can answer from intent, not an implementation fact.",
     "- Do not ask the operator for repo inspection, command flags, or implementation details.",
     "- expectedAnswerShape is required. State the artifact, oracle signal, acceptance signal, or disqualifier that the answer would make usable as future candidate evidence.",
+    "- suggestedAnswers must contain 2-4 complete answer choices with concise labels and descriptions.",
+    "- Suggested answers should be mutually distinct, directly answer the question, and be safe defaults a human can choose or edit.",
     "- Do not ask for command flags or runtime knobs.",
     "- Prefer one answerable product/engineering decision over a broad questionnaire.",
   ].join("\n");
@@ -149,6 +100,8 @@ export function buildPlanningSpecPrompt(request: AgentPlanningSpecRequest): stri
     request.interview ? "Interview:" : "Interview: none",
     request.interview ? JSON.stringify(request.interview, null, 2) : "",
     "",
+    "Use the original task packet together with all Augury Q/A rounds; do not replace the task with a continuation answer.",
+    "",
     formatTask(request.taskPacket),
     "",
     "Spec rules:",
@@ -173,8 +126,6 @@ export function buildPlanConsensusDraftPrompt(request: AgentPlanConsensusDraftRe
     "",
     "Base consultation plan:",
     JSON.stringify(request.consultationPlan, null, 2),
-    "",
-    ...formatPlanConsensusRemediationSection(request.planConsensusRemediation),
     "",
     "Draft rules:",
     "- Optimize for falsification and patch selection, not open-ended autonomy.",
@@ -229,8 +180,6 @@ export function buildPlanConsensusRevisionPrompt(
     "Critic review:",
     JSON.stringify(request.criticReview ?? null, null, 2),
     "",
-    ...formatPlanConsensusRemediationSection(request.planConsensusRemediation),
-    "",
     "Revision rules:",
     "- Address requiredChanges directly.",
     "- Treat required changes to crownGates, repairPolicy, or scorecardDefinition as highest priority.",
@@ -256,53 +205,17 @@ function buildConsensusReviewPrompt(
     "Draft:",
     JSON.stringify(request.draft, null, 2),
     "",
-    ...formatPlanConsensusRemediationSection(request.planConsensusRemediation),
-    "",
     "Verdict rules:",
     "- approve only when the draft is ready for candidate generation.",
     "- revise when concrete requiredChanges could make it safe within the revision cap.",
     "- reject only when no bounded revision can make the plan safe because the task contract itself is too unclear or unsafe.",
+    "- Fill taskClarificationQuestion only when user intent, scope, success criteria, non-goals, or judging basis is missing and internal revision cannot safely resolve it.",
+    "- taskClarificationQuestion must be a single Augury-style task/scope/success/non-goal question for the operator.",
+    "- Do not use taskClarificationQuestion to ask for crown gates, oracle design, validation commands, implementation details, reviewer remediation, or Plan Conclave process decisions.",
+    "- Leave taskClarificationQuestion null or omit it when the issue is an internal plan quality gap that Plan Conclave can revise or reject.",
     "- Return requiredChanges, tradeoffs, and risks as arrays; use empty arrays when none apply.",
     "- requiredChanges should name concrete witness gaps, crown-gate gaps, or repair/eliminate policy gaps.",
   ].join("\n");
-}
-
-function formatPlanConsensusRemediationSection(
-  remediation: AgentPlanConsensusRemediationContext | undefined,
-): string[] {
-  if (!remediation) {
-    return [];
-  }
-
-  return [
-    "Plan Conclave remediation answer:",
-    remediation.continuation.answer,
-    "",
-    "Source Plan Conclave blocker:",
-    JSON.stringify(
-      {
-        sourceRunId: remediation.continuation.sourceRunId,
-        sourceConsensusRunId: remediation.continuation.sourceConsensusRunId,
-        blockerKind: remediation.continuation.blockerKind,
-        blockerSummary: remediation.continuation.blockerSummary,
-        requiredChanges: remediation.continuation.requiredChanges,
-      },
-      null,
-      2,
-    ),
-    "",
-    "Source Plan Conclave final draft:",
-    JSON.stringify(remediation.sourceFinalDraft, null, 2),
-    "",
-    "Source Plan Conclave revision history:",
-    JSON.stringify(remediation.sourceRevisionHistory, null, 2),
-    "",
-    "Remediation rules:",
-    "- Treat the answer as operator remediation for the source Plan Conclave blocker.",
-    "- Preserve the original planning spec unless the answer directly resolves a requiredChange.",
-    "- Address source requiredChanges explicitly in draft, review, and revision reasoning.",
-    "- Do not broaden the plan beyond the source task contract.",
-  ];
 }
 
 function formatTask(taskPacket: AgentPlanningDepthRequest["taskPacket"]): string {

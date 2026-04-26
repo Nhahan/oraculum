@@ -2,12 +2,10 @@ import type { AgentAdapter } from "../../adapters/types.js";
 import {
   type ConsultationPlanArtifact,
   type PlanConsensusArtifact,
-  type PlanConsensusContinuation,
   type PlanConsensusDraft,
   type PlanConsensusReview,
   type PlanningSpecArtifact,
   planConsensusArtifactSchema,
-  planConsensusContinuationSchema,
   planConsensusDraftSchema,
   planConsensusReviewSchema,
 } from "../../domain/run.js";
@@ -20,7 +18,6 @@ export async function buildPlanConsensus(options: {
   basePlan: ConsultationPlanArtifact;
   createdAt: string;
   maxConsensusLoopRevisions: number;
-  remediationContext?: PlanConsensusRemediationContext;
   planningSpec: PlanningSpecArtifact;
   projectRoot: string;
   reportsDir: string;
@@ -55,6 +52,9 @@ export async function buildPlanConsensus(options: {
       criticReview,
     });
 
+    if (hasTaskClarificationQuestion(architectReview, criticReview)) {
+      break;
+    }
     if (architectReview.verdict === "approve" && criticReview.verdict === "approve") {
       approved = true;
       break;
@@ -90,55 +90,17 @@ export async function buildPlanConsensus(options: {
     criticVerdicts,
     revisionHistory,
     finalDraft: draft,
-    ...(options.remediationContext
-      ? { continuation: options.remediationContext.continuation }
-      : {}),
   });
 }
 
 export interface PlanConsensusBlockerSummary {
-  blockerKind: PlanConsensusContinuation["blockerKind"];
+  blockerKind: "task-clarification" | "rejected" | "revision-cap" | "runtime-unavailable";
   summary: string;
   clarificationQuestion: string;
   clarityGateSummary: string;
   openQuestion: string;
   requiredChanges: string[];
-}
-
-export interface PlanConsensusRemediationContext {
-  continuation: PlanConsensusContinuation;
-  sourceFinalDraft: PlanConsensusDraft;
-  sourceRevisionHistory: PlanConsensusArtifact["revisionHistory"];
-}
-
-export function buildPlanConsensusRemediationContext(options: {
-  answer: string;
-  blocker: PlanConsensusBlockerSummary;
-  createdAt: string;
-  sourceConsensus: PlanConsensusArtifact;
-  sourceRunId: string;
-}): PlanConsensusRemediationContext {
-  return {
-    continuation: planConsensusContinuationSchema.parse({
-      sourceRunId: options.sourceRunId,
-      sourceConsensusRunId: options.sourceConsensus.runId,
-      answer: options.answer,
-      blockerKind: options.blocker.blockerKind,
-      blockerSummary: options.blocker.summary,
-      requiredChanges: options.blocker.requiredChanges,
-      createdAt: options.createdAt,
-    }),
-    sourceFinalDraft: options.sourceConsensus.finalDraft,
-    sourceRevisionHistory: options.sourceConsensus.revisionHistory,
-  };
-}
-
-export function isPlanConsensusRemediationEligible(consensus: PlanConsensusArtifact): boolean {
-  if (consensus.approved) {
-    return false;
-  }
-
-  return summarizePlanConsensusBlocker(consensus).blockerKind !== "runtime-unavailable";
+  taskClarificationQuestion?: string;
 }
 
 export function applyPlanConsensusToConsultationPlan(
@@ -187,29 +149,40 @@ export function applyPlanConsensusToConsultationPlan(
         : (blocker?.clarityGateSummary ??
           "Consensus review did not approve before the revision cap."),
     },
-    openQuestions: consensus.approved
-      ? plan.openQuestions
-      : [
-          ...plan.openQuestions,
-          blocker?.openQuestion ??
-            "Consensus review did not approve before the revision cap; revise the task contract or rerun planning.",
-        ],
+    openQuestions:
+      consensus.approved || !blocker?.taskClarificationQuestion
+        ? plan.openQuestions
+        : [...plan.openQuestions, blocker.taskClarificationQuestion],
   };
 }
 
 export function summarizePlanConsensusBlocker(consensus: PlanConsensusArtifact): {
-  blockerKind: PlanConsensusContinuation["blockerKind"];
+  blockerKind: "task-clarification" | "rejected" | "revision-cap" | "runtime-unavailable";
   summary: string;
   clarificationQuestion: string;
   clarityGateSummary: string;
   openQuestion: string;
   requiredChanges: string[];
+  taskClarificationQuestion?: string;
 } {
   const reviews = consensus.revisionHistory.flatMap((revision) =>
     [revision.architectReview, revision.criticReview].filter(
       (review): review is PlanConsensusReview => Boolean(review),
     ),
   );
+  const taskClarificationReview = reviews.find((review) => review.taskClarificationQuestion);
+  if (taskClarificationReview?.taskClarificationQuestion) {
+    return {
+      blockerKind: "task-clarification",
+      summary:
+        "Plan Conclave found that user intent is still too unclear for candidate generation.",
+      clarificationQuestion: taskClarificationReview.taskClarificationQuestion,
+      clarityGateSummary: `Plan Conclave requested Augury clarification: ${taskClarificationReview.summary}`,
+      openQuestion: taskClarificationReview.taskClarificationQuestion,
+      requiredChanges: collectRequiredChanges([taskClarificationReview]),
+      taskClarificationQuestion: taskClarificationReview.taskClarificationQuestion,
+    };
+  }
   const runtimeUnavailableReview = reviews.find((review) =>
     [review.summary, ...review.requiredChanges].some((value) =>
       value.toLowerCase().includes("runtime unavailable"),
@@ -293,7 +266,6 @@ async function draftConsensus(options: {
   basePlan: ConsultationPlanArtifact;
   planningSpec: PlanningSpecArtifact;
   projectRoot: string;
-  remediationContext?: PlanConsensusRemediationContext;
   reportsDir: string;
   runId: string;
   taskPacket: MaterializedTaskPacket;
@@ -303,9 +275,6 @@ async function draftConsensus(options: {
       const result = await options.adapter.draftConsensusConsultationPlan({
         consultationPlan: options.basePlan,
         logDir: options.reportsDir,
-        ...(options.remediationContext
-          ? { planConsensusRemediation: options.remediationContext }
-          : {}),
         planningSpec: options.planningSpec,
         projectRoot: options.projectRoot,
         runId: options.runId,
@@ -319,16 +288,7 @@ async function draftConsensus(options: {
     }
   }
 
-  return options.remediationContext
-    ? planConsensusDraftSchema.parse({
-        ...options.remediationContext.sourceFinalDraft,
-        premortem: [
-          ...options.remediationContext.sourceFinalDraft.premortem,
-          `Plan Conclave remediation answer: ${options.remediationContext.continuation.answer}`,
-          ...options.remediationContext.continuation.requiredChanges,
-        ],
-      })
-    : buildFallbackDraft(options.basePlan, options.planningSpec);
+  return buildFallbackDraft(options.basePlan, options.planningSpec);
 }
 
 async function reviewConsensus(options: {
@@ -336,7 +296,6 @@ async function reviewConsensus(options: {
   draft: PlanConsensusDraft;
   planningSpec: PlanningSpecArtifact;
   projectRoot: string;
-  remediationContext?: PlanConsensusRemediationContext;
   reportsDir: string;
   reviewer: "architect" | "critic";
   runId: string;
@@ -351,9 +310,6 @@ async function reviewConsensus(options: {
       const result = await method.call(options.adapter, {
         draft: options.draft,
         logDir: options.reportsDir,
-        ...(options.remediationContext
-          ? { planConsensusRemediation: options.remediationContext }
-          : {}),
         planningSpec: options.planningSpec,
         projectRoot: options.projectRoot,
         runId: options.runId,
@@ -386,6 +342,9 @@ function summarizeRevision(
   architectReview: PlanConsensusReview,
   criticReview: PlanConsensusReview,
 ): string {
+  if (hasTaskClarificationQuestion(architectReview, criticReview)) {
+    return "Plan Conclave requested Augury clarification.";
+  }
   if (architectReview.verdict === "approve" && criticReview.verdict === "approve") {
     return "Architect and critic approved the draft.";
   }
@@ -395,6 +354,10 @@ function summarizeRevision(
   return "Consensus review requested revision.";
 }
 
+function hasTaskClarificationQuestion(...reviews: PlanConsensusReview[]): boolean {
+  return reviews.some((review) => Boolean(review.taskClarificationQuestion));
+}
+
 async function reviseConsensus(options: {
   adapter: AgentAdapter | undefined;
   architectReview: PlanConsensusReview;
@@ -402,7 +365,6 @@ async function reviseConsensus(options: {
   draft: PlanConsensusDraft;
   planningSpec: PlanningSpecArtifact;
   projectRoot: string;
-  remediationContext?: PlanConsensusRemediationContext;
   reportsDir: string;
   revision: number;
   runId: string;
@@ -415,9 +377,6 @@ async function reviseConsensus(options: {
         criticReview: options.criticReview,
         draft: options.draft,
         logDir: options.reportsDir,
-        ...(options.remediationContext
-          ? { planConsensusRemediation: options.remediationContext }
-          : {}),
         planningSpec: options.planningSpec,
         projectRoot: options.projectRoot,
         revision: options.revision,
