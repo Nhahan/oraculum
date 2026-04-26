@@ -99,6 +99,27 @@ function renderClaudeSkill(entry: CommandManifestEntry): string {
 }
 
 function renderClaudeCommand(entry: CommandManifestEntry): string {
+  if (isUserInteractionRoute(entry)) {
+    return [
+      "---",
+      `description: "${buildClaudeRouteDescription(entry).replaceAll('"', '\\"')}"`,
+      "---",
+      "",
+      "Host-guided interactive Oraculum route.",
+      `Run \`oraculum orc ${entry.path.join(" ")} --json {{ARGUMENTS}}\` as the initial shell command.`,
+      "If the JSON response includes `userInteraction`, call `AskUserQuestion` with one question, header `userInteraction.header`, `multiSelect=false`, and `userInteraction.question` as the prompt.",
+      "Use choices only when `userInteraction.options` is present, and include only those exact choices. If `userInteraction.options` is absent, ask an open free-text question with no choices; do not invent placeholder choices such as `Provide custom string`, `Skip / cancel`, or `Type something`.",
+      "Allow custom text because `userInteraction.freeTextAllowed` is true, then run `oraculum orc answer --json <userInteraction.kind> <userInteraction.runId> <answer>` with the selected option label or the user's literal custom text. Never pass UI sentinels such as `__other__` or placeholder choice labels as the answer.",
+      "Repeat until `userInteraction` is absent, then return the final response summary. Do not execute commands mentioned in `Next`.",
+      "Do not inspect files, edit files, apply candidate changes, clean the worktree, or continue the task yourself.",
+      "",
+      "## User Input",
+      "",
+      "{{ARGUMENTS}}",
+      "",
+    ].join("\n");
+  }
+
   return [
     "---",
     `description: "${buildClaudeRouteDescription(entry).replaceAll('"', '\\"')}"`,
@@ -129,8 +150,7 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
 
   if (entry.id === "consult") {
     return [
-      ...shared,
-      "Run: `oraculum orc consult $ARGUMENTS`.",
+      ...buildClaudeUserInteractionRouteNotes(entry),
       "Args: optional taskInput=$ARGUMENTS. If empty, resume the latest running consultation first, otherwise execute the latest ready consultation plan. Do not parse planning flags.",
       "`orc consult` must never run `orc crown`; crown only when the user sends a separate `orc crown` input.",
     ];
@@ -138,9 +158,8 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
 
   if (entry.id === "plan") {
     return [
-      ...shared,
-      "Run: `oraculum orc plan $ARGUMENTS`.",
-      "Args: taskInput=$ARGUMENTS only; do not parse planning flags. Clarification answers belong in the revised task text.",
+      ...buildClaudeUserInteractionRouteNotes(entry),
+      "Args: taskInput=$ARGUMENTS only; do not parse planning flags.",
     ];
   }
 
@@ -152,9 +171,36 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
     ];
   }
 
+  if (entry.id === "verdict") {
+    return [
+      ...buildClaudeUserInteractionRouteNotes(entry),
+      "Args: optional first positional=consultationId.",
+    ];
+  }
+
   return [...shared, `Run: \`oraculum orc ${entry.path.join(" ")} $ARGUMENTS\`.`];
 }
 
 function buildClaudeRouteDescription(entry: CommandManifestEntry): string {
   return `orc ${entry.path.join(" ")}`;
+}
+
+function buildClaudeUserInteractionRouteNotes(entry: CommandManifestEntry): string[] {
+  return [
+    "Direct CLI only.",
+    "Use one direct CLI call for each interaction hop.",
+    "Before each CLI command: no user text, no file reads, no extra shell.",
+    `Run first: \`oraculum orc ${entry.path.join(" ")} --json $ARGUMENTS\`.`,
+    "If JSON includes `userInteraction`, call `AskUserQuestion` with one question, header `userInteraction.header`, `multiSelect=false`, and `userInteraction.question` as the prompt.",
+    "Use choices only when `userInteraction.options` is present, and include only those exact choices. If `userInteraction.options` is absent, ask an open free-text question with no choices; do not invent placeholder choices such as `Provide custom string`, `Skip / cancel`, or `Type something`.",
+    "Allow custom text because `userInteraction.freeTextAllowed` is true, then pass the selected option label or the user's literal custom text to `oraculum orc answer --json <userInteraction.kind> <userInteraction.runId> <answer>`. Never pass UI sentinels such as `__other__` or placeholder choice labels as the answer.",
+    "Repeat the same JSON loop until `userInteraction` is absent.",
+    "After the final CLI call, return only the final summary or failure.",
+    "Do not execute commands mentioned in the CLI output's `Next` section.",
+    "Do not inspect files, edit files, apply candidate changes, clean the worktree, or continue the task yourself after the final CLI call.",
+  ];
+}
+
+function isUserInteractionRoute(entry: CommandManifestEntry): boolean {
+  return entry.id === "consult" || entry.id === "plan" || entry.id === "verdict";
 }

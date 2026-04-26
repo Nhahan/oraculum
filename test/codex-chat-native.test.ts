@@ -31,14 +31,40 @@ describe("Codex chat-native packaging", () => {
     );
     expect(rules[0]?.content).toContain("do not inspect files, run extra shell commands");
     expect(rules[0]?.content).toContain(
-      "`orc consult` -> run `oraculum orc consult`; this resumes the latest running consultation first",
+      "`orc consult` -> run `oraculum orc consult --json`; this resumes the latest running consultation first",
     );
+    expect(rules[0]?.content).toContain("oraculum orc consult --json");
+    expect(rules[0]?.content).toContain("oraculum orc plan --json");
+    expect(rules[0]?.content).toContain("oraculum orc verdict --json");
+    expect(rules[0]?.content).toContain("structured user-input");
+    expect(rules[0]?.content).toContain("oraculum orc answer --json");
+    expect(rules[0]?.content).toContain("userInteraction.kind");
+    expect(rules[0]?.content).toContain("include only those exact choices");
+    expect(rules[0]?.content).toContain("__other__");
     expect(skills.map((file) => file.path)).toEqual([
       "skills/route-consult/SKILL.md",
       "skills/route-plan/SKILL.md",
       "skills/route-verdict/SKILL.md",
       "skills/route-crown/SKILL.md",
     ]);
+    expect(skills.find((file) => file.path.endsWith("route-plan/SKILL.md"))?.content).toContain(
+      "userInteraction.question",
+    );
+    expect(skills.find((file) => file.path.endsWith("route-plan/SKILL.md"))?.content).toContain(
+      "userInteraction.options",
+    );
+    expect(skills.find((file) => file.path.endsWith("route-plan/SKILL.md"))?.content).toContain(
+      "include only those exact choices",
+    );
+    expect(skills.find((file) => file.path.endsWith("route-consult/SKILL.md"))?.content).toContain(
+      "oraculum orc consult --json",
+    );
+    expect(skills.find((file) => file.path.endsWith("route-verdict/SKILL.md"))?.content).toContain(
+      "oraculum orc verdict --json",
+    );
+    expect(skills.find((file) => file.path.endsWith("route-consult/SKILL.md"))?.content).toContain(
+      "oraculum orc answer --json",
+    );
     expect(getExpectedCodexRuleFileName()).toBe("oraculum.md");
     expect(getExpectedCodexSkillDirs()).toContain("route-consult");
   });
@@ -97,7 +123,7 @@ describe("Codex setup", () => {
     ).resolves.toContain("If empty, resume the latest running consultation first");
     await expect(
       readFile(join(result.skillsRoot, "route-consult", "SKILL.md"), "utf8"),
-    ).resolves.toContain("report only its stdout or failure");
+    ).resolves.toContain("report only its stdout summary or failure");
     await expect(
       readFile(join(result.skillsRoot, "route-crown", "SKILL.md"), "utf8"),
     ).resolves.toContain("Do not inspect files, run extra shell commands, edit files");

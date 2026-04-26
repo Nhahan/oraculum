@@ -97,6 +97,30 @@ describe("Claude Code chat-native packaging", () => {
     expect(skills.find((file) => file.path.endsWith("/consult/SKILL.md"))?.content).toContain(
       "If empty, resume the latest running consultation first",
     );
+    expect(skills.find((file) => file.path.endsWith("/plan/SKILL.md"))?.content).toContain(
+      "oraculum orc plan --json",
+    );
+    expect(skills.find((file) => file.path.endsWith("/plan/SKILL.md"))?.content).toContain(
+      "userInteraction.question",
+    );
+    expect(skills.find((file) => file.path.endsWith("/plan/SKILL.md"))?.content).toContain(
+      "AskUserQuestion",
+    );
+    expect(skills.find((file) => file.path.endsWith("/plan/SKILL.md"))?.content).toContain(
+      "do not invent placeholder choices",
+    );
+    expect(skills.find((file) => file.path.endsWith("/plan/SKILL.md"))?.content).toContain(
+      "__other__",
+    );
+    expect(skills.find((file) => file.path.endsWith("/plan/SKILL.md"))?.content).toContain(
+      "oraculum orc answer --json",
+    );
+    expect(skills.find((file) => file.path.endsWith("/consult/SKILL.md"))?.content).toContain(
+      "oraculum orc consult --json",
+    );
+    expect(skills.find((file) => file.path.endsWith("/verdict/SKILL.md"))?.content).toContain(
+      "oraculum orc verdict --json",
+    );
   });
 
   it("resolves the packaged Claude root inside dist", () => {

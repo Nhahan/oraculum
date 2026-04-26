@@ -57,4 +57,16 @@ describe("packaged host artifact layout", () => {
       expect(codexPaths.has(`${codexRoot}/${skill.path}`)).toBe(true);
     }
   });
+  it("uses the common user interaction loop in generated host artifacts", () => {
+    const contents = [
+      ...buildClaudeCommandFiles(oraculumCommandManifest).map((file) => file.content),
+      ...buildClaudeSkillFiles(oraculumCommandManifest).map((file) => file.content),
+      ...buildCodexRuleFiles(oraculumCommandManifest).map((file) => file.content),
+      ...buildCodexSkillFiles(oraculumCommandManifest).map((file) => file.content),
+    ].join("\n");
+
+    expect(contents).toContain("userInteraction");
+    expect(contents).toContain("oraculum orc answer --json");
+    expect(contents).not.toContain(["plan", "Interaction"].join(""));
+  });
 });
