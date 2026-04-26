@@ -103,9 +103,11 @@ Git 프로젝트에서는 `crown`이 지정한 브랜치를 만들고 추천된 
 
 채팅 네이티브 planning 명령은 입력 표면을 task 전용으로 유지합니다. 빠른 시작 기본값은 `.oraculum/config.json`에, 고급 프로젝트 정책은 `.oraculum/advanced.json`에 두고, 작업별 요구사항은 task 문장에 포함하세요. 레포지토리 로컬 oracle 명령은 `.oraculum/advanced.json` 안에서 자체 `timeoutMs`를 계속 가질 수 있습니다.
 
-더 넓거나 위험한 작업을 먼저 shape하고 싶다면 `orc plan "<task>"`를 사용하세요. plan 요청이 아직 불명확하면 Oraculum은 실행 가능한 plan을 만들기 전에 하나의 구체적인 clarification을 묻습니다. 답변은 task 문장에 포함해서 `orc plan`을 다시 실행하세요. 준비되면 재사용 가능한 `consultation-plan.json`, `plan-readiness.json`, 사람이 읽기 쉬운 `consultation-plan.md`를 저장하고, 나중에 `orc consult <plan-artifact>`로 다시 실행할 수 있습니다.
+runtime preflight가 사용할 수 없거나 구조화된 readiness를 반환하지 못하면, Oraculum은 추측으로 candidate generation을 시작하지 않고 하나의 bounded clarification으로 fail closed합니다.
 
-가장 최근 실행 결과를 나중에 다시 열어보거나, 예전 실행을 조회하거나, 기록 보관함을 살펴보거나, 셸 전용 setup, uninstall, diagnostics, direct host diagnostics이 필요하다면 [고급 사용법](./docs/advanced-usage.md)을 참고하세요.
+더 넓거나 위험한 작업을 먼저 shape하고 싶다면 `orc plan "<task>"`를 사용하세요. Explicit planning에서 사용자에게 보이는 clarification loop는 Augury Interview 하나입니다. Augury는 operator clarification이 필요할 때 `planning-spec.json` 전에 실행되고, goal, constraint, non-goal, acceptance criteria, risk로 구성된 `ontologySnapshot` sign bundle을 기록합니다. Plan Conclave는 `planning-spec.json` 뒤에서 실행되는 내부 architect/critic 품질 게이트로 남지만, 사용자에게 reviewer fix, crown gate, oracle 설계, implementation detail을 묻지 않습니다. Plan Conclave가 사용자 의도, 범위, 성공 기준, non-goal이 아직 부족하다고 판단한 경우에만 host UI에 표시되는 Augury clarification question으로 되돌아갑니다. 준비되면 `planning-spec.json`, `plan-consensus.json`, 재사용 가능한 `consultation-plan.json`, `plan-readiness.json`, 사람이 읽기 쉬운 `consultation-plan.md`를 저장하고, 나중에 `orc consult <plan-artifact>`로 실행할 수 있습니다.
+
+가장 최근 실행 결과를 나중에 다시 열어보거나, 저장된 verdict artifact를 확인하거나, 셸 전용 setup, uninstall, diagnostics, direct CLI command가 필요하다면 [고급 사용법](./docs/advanced-usage.md)을 참고하세요.
 
 ## 동작 방식
 

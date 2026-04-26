@@ -196,11 +196,13 @@ Use this when the task is broad, risky, or still needs a stronger execution cont
 - `.oraculum/runs/<consultation-id>/reports/plan-readiness.json`
 - `.oraculum/runs/<consultation-id>/reports/consultation-plan.md`
 
-If the requested plan lacks a concrete result contract or judging basis, `orc plan` stops before candidate planning and asks one clarification question. Answer it with another `orc plan` call. Oraculum asks the runtime to classify whether the new input is a continuation of the active Augury Interview rather than relying on a hardcoded answer prefix:
+If the requested plan lacks a concrete result contract or judging basis, `orc plan` stops before candidate planning and asks one clarification question. Answer that Augury prompt in the host UI. Shell-only integrations can use the internal answer route shown in the CLI output:
 
 ```text
-orc plan "Email/password login only, protect /dashboard, no OAuth."
+orc answer augury-question <run-id> "Email/password login only, protect /dashboard, no OAuth."
 ```
+
+Host-installed Claude Code and Codex handlers run `oraculum orc consult --json`, `oraculum orc plan --json`, and `oraculum orc verdict --json` and use the stable `userInteraction` field to guide clarification loops. When `userInteraction` is present, the host asks that question with structured choices from `userInteraction.options` when present, waits for your selected label or custom text, and invokes `oraculum orc answer --json <userInteraction.kind> <userInteraction.runId> <answer>`. Plain CLI output prints the same clarification question and numbered choices for humans. A later `orc plan "<task>"` always starts a new planning task.
 
 The JSON artifact is rerunnable:
 
@@ -208,14 +210,14 @@ The JSON artifact is rerunnable:
 orc consult .oraculum/runs/<consultation-id>/reports/consultation-plan.json
 ```
 
-Plan Conclave blocks have a separate continuation shape. When reviewer rejection or a revision-cap miss leaves `plan-consensus.json` with `approved=false`, status and summaries show "Plan Conclave remediation needed" with the blocker and required changes. Answer with another `orc plan "<answer>"`; if the runtime classifies the input as direct remediation for those required changes, Oraculum creates a fresh run, preserves the blocked run as immutable evidence, links the new `plan-consensus.json` through its `continuation` field, and reruns Plan Conclave from the previous task contract and planning spec with the remediation answer injected. If the input changes the goal, scope boundary, or judging basis, it is treated as a new planning task. Review-runtime-unavailable Plan Conclave blockers are not continuation targets because an operator answer cannot repair an unavailable review runtime.
+Plan Conclave does not have a user remediation continuation. It is an internal post-spec architect/critic quality gate. When it finds a normal plan quality gap, rejection, revision-cap miss, or review-runtime-unavailable condition, planning stops as an internal planning failure before candidate generation. When it finds that user intent, scope, success criteria, non-goals, or judging basis are still missing and internal revision cannot safely infer them, it emits one Augury-style task clarification question. That question is recorded in `planning-interview.json`, surfaced as `Clarification needed`, and answered through the same `orc answer augury-question` route.
 
-Explicit planning uses model judgment for Augury Interview depth, Plan Conclave intensity, interview questions, readiness scoring, planning-spec crystallization, Plan Conclave remediation classification, architect review, critic review, and bounded revision. Deterministic code only validates schemas, discovers active planning blockers, derives the effective Plan Conclave revision budget from the selected intensity within the operator cap, writes artifacts, checks path safety through the plan schema, and enforces runaway caps.
+Explicit planning uses model judgment for Augury Interview depth, Plan Conclave intensity, interview questions, structured answer choices, readiness scoring, planning-spec crystallization, architect review, critic review, bounded revision, and deciding whether a Plan Conclave issue is truly missing user intent. Deterministic code validates schemas, routes answers to the specified active Augury run, derives the effective Plan Conclave revision budget from the selected intensity within the operator cap, writes artifacts, checks path safety through the plan schema, and enforces runaway caps.
 
 The planning lane has two named loops:
 
 - Augury Interview: runs before `planning-spec.json` when the task still needs operator clarification. It extracts the signs future candidates must satisfy or violate as the `ontologySnapshot` sign bundle: goals, constraints, non-goals, acceptance criteria, and risks. The runtime must leave sign arrays empty when the answer provides no evidence, and it should mark spec readiness only when a witnessable goal/scope boundary or acceptance/judging basis is visible enough for future candidate evidence. `interviewDepth`, `estimatedInterviewRounds`, and `explicitPlanMaxInterviewRounds` bound this loop.
-- Plan Conclave: runs after `planning-spec.json` and revises the consultation-plan draft when architect/critic review asks for changes. `consensusReviewIntensity` is the primary signal for this loop; `interviewDepth` is only a bounded budget modifier, not extra interview work. `revise` means bounded required changes can still make the plan safe. `reject` is terminal and is reserved for task contracts that cannot be made safe within bounded revision. Runtime-unavailable review also rejects conservatively instead of approving by fallback.
+- Plan Conclave: runs after `planning-spec.json` and revises the consultation-plan draft when architect/critic review asks for internal plan changes. `consensusReviewIntensity` is the primary signal for this loop; `interviewDepth` is only a bounded budget modifier, not extra interview work. `revise` means bounded required changes can still make the plan safe. `reject` is terminal for the current planning run unless the review supplies a task clarification question, in which case control returns to Augury. Runtime-unavailable review rejects conservatively instead of approving by fallback.
 
 The default safety caps live in the advanced project layer:
 
@@ -231,13 +233,14 @@ The default safety caps live in the advanced project layer:
 }
 ```
 
-These caps are operator safety boundaries, not exact semantic budgets. For Plan Conclave, `explicitPlanMaxConsensusRevisions` is a maximum cap. `planning-depth.json` records that configured cap as `operatorMaxConsensusRevisions` and records the effective Plan Conclave budget as `maxConsensusRevisions`; the effective value comes from the runtime-selected `consensusReviewIntensity` plus `interviewDepth`, clamped by the operator cap and the hard safety ceiling. Continuation answers run depth/intensity selection again before scoring the active Augury answer, so the final budget reflects the clarified task contract. `consultLiteMaxPlanningCalls` is the consult-lite preflight cap for the lighter `orc consult` path. `orc consult` can block on one high-value clarification, but it does not run the full multi-round Augury Interview and Plan Conclave pipeline unless you explicitly use `orc plan`.
+These caps are operator safety boundaries, not exact semantic budgets. For Plan Conclave, `explicitPlanMaxConsensusRevisions` is a maximum cap. `planning-depth.json` records that configured cap as `operatorMaxConsensusRevisions` and records the effective Plan Conclave budget as `maxConsensusRevisions`; the effective value comes from the runtime-selected `consensusReviewIntensity` plus `interviewDepth`, clamped by the operator cap and the hard safety ceiling. `orc answer augury-question` runs depth/intensity selection again before scoring the active Augury answer, so the final budget reflects the clarified task contract. `consultLiteMaxPlanningCalls` is the consult-lite preflight cap for the lighter `orc consult` path. `orc consult` can block on one high-value clarification, but it does not run the full multi-round Augury Interview and Plan Conclave pipeline unless you explicitly use `orc plan`.
 
-Plan Conclave blocked summaries distinguish three cases:
+Plan Conclave blocked summaries distinguish four cases:
 
-- reviewer rejection: `plan-consensus.json` is terminal with `approved=false`, no revision is attempted, and `plan-readiness.json` asks for the rejection to be addressed. A direct answer to the required changes can continue planning through a new linked run.
+- task clarification: `plan-consensus.json` has `approved=false`, `planning-interview.json` records the Augury question, and the next action is to answer that clarification.
+- reviewer rejection: `plan-consensus.json` is terminal with `approved=false`, no revision is attempted, and readiness reports an internal planning blocker instead of asking for reviewer remediation.
 - review runtime unavailable: `plan-consensus.json` is terminal with `approved=false`, and readiness asks for planning to be rerun when review can execute.
-- revision cap miss: `plan-consensus.json` is terminal with `approved=false` after exhausting `maxConsensusRevisions`, and readiness reports the cap miss separately from rejection. A direct answer to the latest required changes can continue planning through a new linked run.
+- revision cap miss: `plan-consensus.json` is terminal with `approved=false` after exhausting `maxConsensusRevisions`, and readiness reports the cap miss separately from rejection.
 
 `orc consult <consultation-plan.json>` checks `plan-readiness.json` before creating candidates. If the plan still lacks information, Oraculum asks for clarification instead of treating that as an execution block. It fails fast only for hard readiness problems such as invalid artifacts, stale plan basis, or planned oracle ids that no longer exist in the execution contract.
 
