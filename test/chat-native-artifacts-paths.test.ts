@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   getClarifyFollowUpPath,
+  getConsultationPlanPath,
+  getConsultationPlanReadinessPath,
   getExportPlanPath,
   getFailureAnalysisPath,
   getFinalistComparisonJsonPath,
@@ -25,10 +27,13 @@ import {
 import { consultActionResponseSchema } from "../src/domain/chat-native.js";
 import {
   consultationClarifyFollowUpSchema,
+  consultationPlanReadinessSchema,
   consultationResearchBriefSchema,
   exportPlanSchema,
+  planningDepthArtifactSchema,
 } from "../src/domain/run.js";
 import { buildConsultationArtifacts } from "../src/services/chat-native.js";
+import { buildVerdictReview } from "../src/services/consultations.js";
 import { failureAnalysisSchema } from "../src/services/failure-analysis.js";
 import { initializeProject } from "../src/services/project.js";
 import {
@@ -39,6 +44,7 @@ import {
   writePreflightReadinessArtifact,
   writeTextArtifact,
 } from "./helpers/chat-native.js";
+import { createRecommendedManifest, writeManifest } from "./helpers/consultations.js";
 
 registerChatNativeTempRootCleanup();
 
@@ -190,4 +196,108 @@ describe("chat-native consultation artifacts", () => {
 
     expect(parsed.crowningRecordPath).toBeUndefined();
   });
+
+  it("falls back to source planning artifacts for consultation-plan execution runs", async () => {
+    const projectRoot = await createChatNativeTempRoot("oraculum-chat-native-plan-lineage-");
+    const planningRunId = "run_20260409_plan_source";
+    const executionRunId = "run_20260409_plan_execution";
+
+    await writeCompleteConsultationArtifacts(projectRoot, planningRunId);
+    await writeSourcePlanReadiness(projectRoot, planningRunId);
+    const executionManifest = createRecommendedManifest(executionRunId, {
+      manifestOverrides: {
+        taskPath: getConsultationPlanPath(projectRoot, planningRunId),
+      },
+      taskPacketOverrides: {
+        sourceKind: "consultation-plan",
+        sourcePath: getConsultationPlanPath(projectRoot, planningRunId),
+      },
+    });
+    await writeManifest(projectRoot, executionManifest);
+
+    const parsed = consultActionResponseSchema.shape.artifacts.parse(
+      buildConsultationArtifacts(projectRoot, executionRunId),
+    );
+    const review = await buildVerdictReview(executionManifest, parsed);
+
+    expect(parsed.planningSourceRunId).toBe(planningRunId);
+    expect(parsed.planningSourceConsultationPlanPath).toBe(
+      getConsultationPlanPath(projectRoot, planningRunId),
+    );
+    expect(parsed.consultationPlanPath).toBe(getConsultationPlanPath(projectRoot, planningRunId));
+    expect(parsed.consultationPlanReadinessPath).toBe(
+      getConsultationPlanReadinessPath(projectRoot, planningRunId),
+    );
+    expect(parsed.planningDepthPath).toBe(getPlanningDepthPath(projectRoot, planningRunId));
+    expect(review.artifactAvailability.planReadiness).toBe(true);
+    expect(review.artifactAvailability.planConsensus).toBe(true);
+    expect(review.planReadinessStatus).toBe("clear");
+  });
+
+  it("prefers execution artifacts over source planning artifacts", async () => {
+    const projectRoot = await createChatNativeTempRoot(
+      "oraculum-chat-native-plan-lineage-priority-",
+    );
+    const planningRunId = "run_20260409_plan_source";
+    const executionRunId = "run_20260409_plan_execution";
+
+    await writeCompleteConsultationArtifacts(projectRoot, planningRunId);
+    await writeSourcePlanReadiness(projectRoot, planningRunId);
+    await mkdir(join(getRunDir(projectRoot, executionRunId), "reports"), { recursive: true });
+    await writeJsonArtifact(
+      getPlanningDepthPath(projectRoot, executionRunId),
+      planningDepthArtifactSchema.parse({
+        runId: executionRunId,
+        createdAt: "2026-04-14T00:00:00.000Z",
+        interviewDepth: "skip-interview",
+        readiness: "ready",
+        confidence: "medium",
+        summary: "Execution-local planning depth artifact.",
+        reasons: [],
+        estimatedInterviewRounds: 0,
+        consensusReviewIntensity: "standard",
+        maxInterviewRounds: 0,
+        operatorMaxConsensusRevisions: 0,
+        maxConsensusRevisions: 0,
+      }),
+    );
+    await writeManifest(
+      projectRoot,
+      createRecommendedManifest(executionRunId, {
+        manifestOverrides: {
+          taskPath: getConsultationPlanPath(projectRoot, planningRunId),
+        },
+        taskPacketOverrides: {
+          sourceKind: "consultation-plan",
+          sourcePath: getConsultationPlanPath(projectRoot, planningRunId),
+        },
+      }),
+    );
+
+    const parsed = consultActionResponseSchema.shape.artifacts.parse(
+      buildConsultationArtifacts(projectRoot, executionRunId),
+    );
+
+    expect(parsed.planningSourceRunId).toBe(planningRunId);
+    expect(parsed.planningDepthPath).toBe(getPlanningDepthPath(projectRoot, executionRunId));
+    expect(parsed.consultationPlanPath).toBe(getConsultationPlanPath(projectRoot, planningRunId));
+  });
 });
+
+async function writeSourcePlanReadiness(projectRoot: string, runId: string): Promise<void> {
+  await writeJsonArtifact(
+    getConsultationPlanReadinessPath(projectRoot, runId),
+    consultationPlanReadinessSchema.parse({
+      runId,
+      status: "clear",
+      readyForConsult: true,
+      blockers: [],
+      warnings: [],
+      staleBasis: false,
+      missingOracleIds: [],
+      unresolvedQuestions: [],
+      reviewStatus: "clear",
+      nextAction: "Execute the planned consultation.",
+    }),
+  );
+}

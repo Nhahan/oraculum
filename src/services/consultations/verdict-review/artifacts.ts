@@ -21,6 +21,7 @@ export async function loadVerdictReviewArtifacts(
   manifest: RunManifest,
   artifacts: VerdictReviewArtifactPaths,
 ): Promise<LoadedVerdictReviewArtifacts> {
+  const planningArtifactRunId = artifacts.planningSourceRunId ?? manifest.id;
   const comparisonReport = await readComparisonReportArtifact(artifacts.comparisonJsonPath);
   const filteredComparisonReport = filterArtifactForConsultationRun(comparisonReport, {
     expectedRunId: manifest.id,
@@ -34,15 +35,15 @@ export async function loadVerdictReviewArtifacts(
   );
   const consultationPlanReadiness = filterArtifactForConsultationRun(
     await readConsultationPlanReadinessArtifact(artifacts.consultationPlanReadinessPath),
-    { expectedRunId: manifest.id },
+    { expectedRunId: planningArtifactRunId },
   );
   const consultationPlanReview = filterArtifactForConsultationRun(
     await readConsultationPlanReviewArtifact(artifacts.consultationPlanReviewPath),
-    { expectedRunId: manifest.id },
+    { expectedRunId: planningArtifactRunId },
   );
   const planConsensus = filterArtifactForConsultationRun(
     await readPlanConsensusArtifact(artifacts.planConsensusPath),
-    { expectedRunId: manifest.id },
+    { expectedRunId: planningArtifactRunId },
   );
   const winnerSelection = filterArtifactForConsultationRun(
     await readWinnerSelectionArtifact(artifacts.winnerSelectionPath),

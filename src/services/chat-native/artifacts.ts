@@ -12,6 +12,8 @@ export function buildConsultationArtifacts(
   },
 ): {
   consultationRoot: string;
+  planningSourceRunId?: string;
+  planningSourceConsultationPlanPath?: string;
   configPath?: string;
   consultationPlanPath?: string;
   consultationPlanMarkdownPath?: string;

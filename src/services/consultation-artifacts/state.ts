@@ -72,6 +72,10 @@ export function buildConsultationArtifactState(
 
   return {
     consultationRoot: paths.consultationRoot,
+    ...(paths.planningSourceRunId ? { planningSourceRunId: paths.planningSourceRunId } : {}),
+    ...(paths.planningSourceConsultationPlanPath
+      ? { planningSourceConsultationPlanPath: paths.planningSourceConsultationPlanPath }
+      : {}),
     ...(paths.configPath && existsSync(paths.configPath) ? { configPath: paths.configPath } : {}),
     ...(consultationPlan && paths.consultationPlanPath
       ? { consultationPlanPath: paths.consultationPlanPath, consultationPlan }
@@ -149,6 +153,10 @@ export function toAvailableConsultationArtifactPaths(
 ): ConsultationArtifactPaths {
   return {
     consultationRoot: state.consultationRoot,
+    ...(state.planningSourceRunId ? { planningSourceRunId: state.planningSourceRunId } : {}),
+    ...(state.planningSourceConsultationPlanPath
+      ? { planningSourceConsultationPlanPath: state.planningSourceConsultationPlanPath }
+      : {}),
     ...(state.configPath ? { configPath: state.configPath } : {}),
     ...(state.consultationPlanPath ? { consultationPlanPath: state.consultationPlanPath } : {}),
     ...(state.consultationPlanMarkdownPath

@@ -24,6 +24,8 @@ export interface ConsultationArtifactDiagnostic {
 
 export interface ConsultationArtifactPaths {
   consultationRoot: string;
+  planningSourceRunId?: string;
+  planningSourceConsultationPlanPath?: string;
   configPath?: string;
   consultationPlanPath?: string;
   consultationPlanMarkdownPath?: string;

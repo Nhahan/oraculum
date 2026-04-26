@@ -12,21 +12,23 @@ import type { secondOpinionWinnerSelectionArtifactSchema } from "../../finalist-
 import type { comparisonReportSchema } from "../../finalist-report.js";
 
 export interface VerdictReviewArtifactPaths {
-  consultationRoot?: string;
-  configPath?: string;
-  consultationPlanReadinessPath?: string;
-  consultationPlanReviewPath?: string;
-  planConsensusPath?: string;
-  preflightReadinessPath?: string;
-  clarifyFollowUpPath?: string;
-  researchBriefPath?: string;
-  failureAnalysisPath?: string;
-  profileSelectionPath?: string;
-  comparisonJsonPath?: string;
-  comparisonMarkdownPath?: string;
-  winnerSelectionPath?: string;
-  secondOpinionWinnerSelectionPath?: string;
-  crowningRecordPath?: string;
+  consultationRoot?: string | undefined;
+  planningSourceRunId?: string | undefined;
+  planningSourceConsultationPlanPath?: string | undefined;
+  configPath?: string | undefined;
+  consultationPlanReadinessPath?: string | undefined;
+  consultationPlanReviewPath?: string | undefined;
+  planConsensusPath?: string | undefined;
+  preflightReadinessPath?: string | undefined;
+  clarifyFollowUpPath?: string | undefined;
+  researchBriefPath?: string | undefined;
+  failureAnalysisPath?: string | undefined;
+  profileSelectionPath?: string | undefined;
+  comparisonJsonPath?: string | undefined;
+  comparisonMarkdownPath?: string | undefined;
+  winnerSelectionPath?: string | undefined;
+  secondOpinionWinnerSelectionPath?: string | undefined;
+  crowningRecordPath?: string | undefined;
 }
 
 export interface LoadedVerdictReviewArtifacts {
