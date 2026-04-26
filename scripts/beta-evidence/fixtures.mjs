@@ -1019,10 +1019,22 @@ function preflightPayload() {
 
 function winnerPayload() {
   if (scenario.kind === "abstain" || scenario.kind === "manual-crown") {
-    return { decision: "abstain", confidence: "medium", summary: "Survivors are too close to recommend automatically." };
+    return {
+      decision: "abstain",
+      candidateId: null,
+      confidence: "medium",
+      summary: "Survivors are too close to recommend automatically.",
+      judgingCriteria: ["Survivor evidence is strong enough to recommend safely."],
+    };
   }
   const recommendedId = scenario.candidateCount > 1 ? "cand-02" : "cand-01";
-  return { candidateId: recommendedId, confidence: "high", summary: recommendedId + " preserved the strongest evidence." };
+  return {
+    decision: "select",
+    candidateId: recommendedId,
+    confidence: "high",
+    summary: recommendedId + " preserved the strongest evidence.",
+    judgingCriteria: ["Target behavior passes repo-local evidence."],
+  };
 }
 
 function profilePayload() {

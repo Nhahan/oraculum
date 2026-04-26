@@ -283,7 +283,7 @@ async function runScenario(tempRoot, fakeCodex, scenario) {
 
     const crown = await orcActions.runCrownAction({
       cwd: oraculumRoot,
-      branchName: `fix/${scenario.id}`,
+      materializationName: `fix/${scenario.id}`,
       withReport: false,
     });
     assertEqual(crown.plan.winnerId, "cand-02", `${scenario.id}: crowned winner mismatch.`);
@@ -513,7 +513,13 @@ function profilePayload() {
 }
 
 function winnerPayload() {
-  return { candidateId: "cand-02", confidence: "high", summary: "cand-02 is the only invariant-preserving survivor." };
+  return {
+    decision: "select",
+    candidateId: "cand-02",
+    confidence: "high",
+    summary: "cand-02 is the only invariant-preserving survivor.",
+    judgingCriteria: ["The scenario invariant remains satisfied."],
+  };
 }
 
 if (!isPreflight && !isProfile && !isWinner) {

@@ -298,7 +298,7 @@ async function runPatchFirstRoute(root, fakeCodex, eventLogPath, scenario) {
     });
     const crown = await orcActions.runCrownAction({
       cwd: root,
-      branchName: `spec-first-benchmark/${scenario.id}`,
+      materializationName: `spec-first-benchmark/${scenario.id}`,
       withReport: false,
     });
     const events = await readJsonLines(eventLogPath);
@@ -589,9 +589,11 @@ function profilePayload() {
 
 function winnerPayload() {
   return {
+    decision: "select",
     candidateId: "cand-02",
     confidence: "high",
     summary: "cand-02 is the invariant-preserving implementation.",
+    judgingCriteria: ["The scenario invariant remains satisfied."],
   };
 }
 

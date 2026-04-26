@@ -70,6 +70,18 @@ export async function prepareExportPlan(
       `Candidate "${winner.id}" is not ready to materialize because its status is "${winner.status}".`,
     );
   }
+  const planPath = store.getRunPaths(manifest.id).exportPlanPath;
+  if (winner.status === "exported") {
+    const displayPlanPath = toDisplayPath(projectRoot, planPath);
+    if (await pathExists(planPath)) {
+      throw new OraculumError(
+        `Candidate "${winner.id}" is already exported for consultation "${manifest.id}". Reopen the crowning record: ${displayPlanPath}`,
+      );
+    }
+    throw new OraculumError(
+      `Candidate "${winner.id}" is already exported for consultation "${manifest.id}", but the crowning record is missing at ${displayPlanPath}. Repair the consultation state before rerunning crown.`,
+    );
+  }
 
   await assertCrownSafetyGate({
     allowUnsafe: options.allowUnsafe === true,
@@ -130,7 +142,6 @@ export async function prepareExportPlan(
 
   exportPlanSchema.parse(plan);
 
-  const planPath = store.getRunPaths(manifest.id).exportPlanPath;
   return { plan, path: planPath };
 }
 

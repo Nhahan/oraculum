@@ -84,9 +84,11 @@ const shouldPublishedSmokeMutateWorkspace = ${shouldPublishedSmokeMutateWorkspac
 
 	function winnerPayload() {
   return {
+    decision: "select",
     candidateId: "cand-02",
     confidence: "high",
     summary: "cand-02 preserved the strongest evidence.",
+    judgingCriteria: ["The winner-specific hello string is implemented."],
   };
 }
 
@@ -247,7 +249,7 @@ async function main() {
     const crown = await invokeTool(env, async () => {
       const response = await runCrownAction({
         cwd: projectRoot,
-        branchName: "fix/published-smoke",
+        materializationName: "fix/published-smoke",
       });
       return [
         `Crowned ${response.plan.winnerId}`,

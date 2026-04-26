@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   getCandidateManifestPath,
   getExportPatchPath,
+  getExportPlanPath,
   getRunManifestPath,
 } from "../src/core/paths.js";
 import { exportPlanSchema, runManifestSchema } from "../src/domain/run.js";
@@ -76,6 +77,62 @@ describe("materialized exports", () => {
         JSON.parse(await readFile(getRunManifestPath(cwd, planned.id), "utf8")) as unknown,
       );
       expect(savedManifest.candidates[0]?.status).toBe("exported");
+
+      await expect(
+        materializeExport({
+          cwd,
+          materializationName: "fix/session-loss-again",
+          withReport: true,
+        }),
+      ).rejects.toThrow(
+        `Candidate "cand-01" is already exported for consultation "${planned.id}". Reopen the crowning record: .oraculum/runs/${planned.id}/reports/export-plan.json`,
+      );
+    },
+    EXPORT_GIT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "does not rematerialize exported candidates when the crowning record is missing",
+    async () => {
+      const cwd = await createTempRoot();
+      await initializeGitProject(cwd);
+      await writeFile(join(cwd, ".gitignore"), ".oraculum/\n", "utf8");
+      await writeFile(join(cwd, "app.txt"), "original\n", "utf8");
+      await commitAll(cwd, "initial project");
+      await initializeProject({ cwd, force: false });
+
+      const fakeCodex = await writeExportingCodex(cwd);
+      const planned = await planRun({
+        cwd,
+        taskInput: "fix session loss on refresh",
+        agent: "codex",
+        candidates: 1,
+      });
+
+      await executeRun({
+        cwd,
+        runId: planned.id,
+        codexBinaryPath: fakeCodex,
+        timeoutMs: FAKE_AGENT_TIMEOUT_MS,
+      });
+
+      await materializeExport({
+        cwd,
+        materializationName: "fix/session-loss",
+        withReport: true,
+      });
+      await rm(getExportPlanPath(cwd, planned.id), { force: true });
+
+      await expect(
+        materializeExport({
+          cwd,
+          materializationName: "fix/session-loss-again",
+          withReport: true,
+          allowUnsafe: true,
+        }),
+      ).rejects.toThrow(
+        `Candidate "cand-01" is already exported for consultation "${planned.id}", but the crowning record is missing at .oraculum/runs/${planned.id}/reports/export-plan.json.`,
+      );
     },
     EXPORT_GIT_TEST_TIMEOUT_MS,
   );

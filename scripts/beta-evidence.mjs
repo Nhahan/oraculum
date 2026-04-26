@@ -196,7 +196,7 @@ async function executeScenario(workdir, scenario) {
       {
         cwd: workdir,
         candidateId: "cand-02",
-        branchName: buildBranchName(scenario, "manual"),
+        materializationName: buildBranchName(scenario, "manual"),
       },
       { env },
     );
@@ -278,7 +278,7 @@ async function executeScenario(workdir, scenario) {
         cwd: workdir,
         candidateId: scenario.manualCandidateId,
         consultationId: firstRunId,
-        branchName: buildBranchName(scenario, scenario.manualCandidateId),
+        materializationName: buildBranchName(scenario, scenario.manualCandidateId),
       },
       { env },
     );
@@ -315,7 +315,7 @@ async function executeScenario(workdir, scenario) {
     const crown = await runCrownActionRequest(
       {
         cwd: workdir,
-        branchName: buildBranchName(scenario, "stale"),
+        materializationName: buildBranchName(scenario, "stale"),
       },
       {
         env,
@@ -338,7 +338,7 @@ async function executeScenario(workdir, scenario) {
     const crown = await runCrownActionRequest(
       {
         cwd: workdir,
-        branchName,
+        materializationName: branchName,
       },
       {
         env,
@@ -506,7 +506,7 @@ async function assertHappyCrown(workdir, scenario, env, candidateId = "cand-02")
     {
       cwd: toolCwd,
       ...(candidateId === "cand-02" ? {} : { candidateId }),
-      ...(scenario.workspaceMode === "git" ? { branchName } : {}),
+      ...(scenario.workspaceMode === "git" ? { materializationName: branchName } : {}),
     },
     { env },
   );

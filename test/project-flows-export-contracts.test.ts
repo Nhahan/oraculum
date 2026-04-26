@@ -109,7 +109,7 @@ describe("project flows export contracts", () => {
     );
   });
 
-  it("accepts implicit export when the outcome records the recommended survivor id", async () => {
+  it("rejects implicit export when the recommended survivor was already exported", async () => {
     const cwd = await createInitializedProject();
     const runId = "run_legacy_survivor";
 
@@ -135,16 +135,15 @@ describe("project flows export contracts", () => {
       }),
     );
 
-    const result = await buildExportPlan({
-      cwd,
-      runId,
-      withReport: false,
-    });
-
-    expect(result.plan.runId).toBe(runId);
-    expect(result.plan.winnerId).toBe("cand-01");
-    expect(result.plan.mode).toBe("workspace-sync");
-    expect(result.plan.materializationMode).toBe("workspace-sync");
+    await expect(
+      buildExportPlan({
+        cwd,
+        runId,
+        withReport: false,
+      }),
+    ).rejects.toThrow(
+      `Candidate "cand-01" is already exported for consultation "${runId}", but the crowning record is missing at .oraculum/runs/${runId}/reports/export-plan.json.`,
+    );
   });
 
   it("rejects older exportable runs that do not record base metadata", async () => {
