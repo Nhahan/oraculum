@@ -168,7 +168,7 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
     return [
       ...shared,
       "Run: `oraculum orc crown $ARGUMENTS`.",
-      "Args: optional first positional=materializationName; pass `--allow-unsafe` through when present.",
+      "Args: optional first positional=materializationName label; pass `--branch <branchName>` and `--allow-unsafe` through when present. Omit `--branch` for the default direct apply into the current workspace.",
     ];
   }
 

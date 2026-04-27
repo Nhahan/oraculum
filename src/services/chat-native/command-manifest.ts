@@ -92,10 +92,16 @@ export const oraculumCommandManifest = [
       {
         name: "materializationName",
         kind: "string",
-        description:
-          "Branch name to create, or an optional workspace-sync materialization label in non-Git projects.",
+        description: "Optional materialization label recorded on direct apply.",
         required: false,
         positional: true,
+      },
+      {
+        name: "branchName",
+        kind: "string",
+        description:
+          "Create this branch before applying the recommended result. Omit for the default direct apply.",
+        option: "--branch",
       },
       {
         name: "allowUnsafe",
@@ -105,7 +111,7 @@ export const oraculumCommandManifest = [
         option: "--allow-unsafe",
       },
     ],
-    examples: ["orc crown fix/session-loss", "orc crown", "orc crown --allow-unsafe"],
+    examples: ["orc crown", "orc crown release-label", "orc crown --branch fix/session-loss"],
     hostAdditions: {},
   },
 ].map((entry) => commandManifestEntrySchema.parse(entry));

@@ -71,7 +71,7 @@ function renderCodexRules(manifest: readonly CommandManifestEntry[]): string {
     "- `orc consult <taskInput>` -> run `oraculum orc consult --json <taskInput>`; advanced planning controls live in `.oraculum/config.json`, `.oraculum/advanced.json`, or the task contract. If JSON includes `userInteraction`, run the structured answer loop below.",
     "- `orc plan <taskInput>` -> run `oraculum orc plan --json <taskInput>`; if JSON includes `userInteraction`, run the structured answer loop below.",
     "- `orc verdict [consultationId]` -> run `oraculum orc verdict --json [consultationId]`; if JSON includes `userInteraction`, run the structured answer loop below.",
-    "- `orc crown [materializationName] [--allow-unsafe]` -> run `oraculum orc crown [materializationName] [--allow-unsafe]`.",
+    "- `orc crown [materializationName] [--branch <branchName>] [--allow-unsafe]` -> run `oraculum orc crown [materializationName] [--branch <branchName>] [--allow-unsafe]`; omit `--branch` for the default direct apply into the current workspace.",
     "- Structured answer loop: ask exactly one Codex structured user-input question using `userInteraction.header` as the header and `userInteraction.question` as the prompt. Use choices only when `userInteraction.options` is present, and include only those exact choices. If `userInteraction.options` is absent, ask an open free-text question with no choices. Pass the selected option label or the user's literal custom text to `oraculum orc answer --json <userInteraction.kind> <userInteraction.runId> <answer>`. Never pass UI sentinels such as `__other__` or placeholder choice labels as the answer. Repeat until `userInteraction` is absent, then report only the final summary, crown materialization result, or failure.",
     "",
     "If the Oraculum CLI is unavailable, respond with explicit setup guidance instead of improvising:",
@@ -98,7 +98,7 @@ function renderCodexSkill(entry: CommandManifestEntry): string {
         : entry.id === "verdict"
           ? "Args: cwd=current-directory; optional first positional=consultationId."
           : entry.id === "crown"
-            ? "Args: cwd=current-directory; optional first positional=materializationName; optional --allow-unsafe => allowUnsafe=true."
+            ? "Args: cwd=current-directory; optional first positional=materializationName label; optional --branch => branchName; optional --allow-unsafe => allowUnsafe=true."
             : "Args: cwd=current-directory.";
 
   return [

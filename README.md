@@ -101,10 +101,10 @@ orc consult --defer "fix session loss on refresh"
 Then crown manually:
 
 ```text
-orc crown fix/session-loss
+orc crown
 ```
 
-In a Git-backed project, the apply prompt or `crown` uses the branch name you provide and materializes the recommended result there. In a non-Git project, applying the prompt or using bare `orc crown` syncs the recommended result back into the project folder without requiring a fake branch name.
+By default, approving the apply prompt or running `orc crown` applies the recommended result directly into the current project workspace. In a Git-backed project, that means the current branch working tree; in a non-Git project, Oraculum syncs the crowned workspace back into the project folder. To materialize onto a new Git branch instead, use `orc crown --branch fix/session-loss`.
 
 `crown` blocks by default when the verdict still has validation gaps, a fallback-policy winner, or second-opinion manual-review pressure. After operator review, `orc crown --allow-unsafe` records that explicit override in the export plan.
 
