@@ -32,7 +32,7 @@ export async function generateWorkspacePatch(
     timeoutMs: 30_000,
   });
   if (changedPathsResult.exitCode !== 0 || untrackedResult.exitCode !== 0) {
-    throw new OraculumError(`Failed to inspect branch materialization paths from ${workspaceDir}.`);
+    throw new OraculumError(`Failed to inspect git materialization paths from ${workspaceDir}.`);
   }
 
   const changedPaths = new Set<string>();
@@ -91,9 +91,7 @@ export async function generateWorkspacePatch(
     timeoutMs: 30_000,
   });
   if (diff.exitCode !== 0) {
-    throw new OraculumError(
-      `Failed to generate branch materialization changes from ${workspaceDir}.`,
-    );
+    throw new OraculumError(`Failed to generate git materialization changes from ${workspaceDir}.`);
   }
 
   return diff.stdout;

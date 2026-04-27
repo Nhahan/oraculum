@@ -398,7 +398,7 @@ async function runApplyApprovalAnswerAction(request: UserInteractionAnswerAction
     });
   }
 
-  const materializationName = resolveApplyApprovalMaterializationName(manifest, request.answer);
+  const materializationName = resolveApplyApprovalMaterializationName(request.answer);
 
   return runCrownAction({
     cwd: request.cwd,
@@ -408,20 +408,7 @@ async function runApplyApprovalAnswerAction(request: UserInteractionAnswerAction
   });
 }
 
-function resolveApplyApprovalMaterializationName(
-  manifest: Awaited<ReturnType<typeof readRunManifest>>,
-  answer: string,
-): string | undefined {
-  const winner = getRecommendedWinnerCandidate(manifest);
-  if (winner?.workspaceMode === "git-worktree") {
-    if (isApplyAffirmativeAnswer(answer)) {
-      throw new OraculumError(
-        `Apply approval for consultation "${manifest.id}" requires a target branch name.`,
-      );
-    }
-    return answer;
-  }
-
+function resolveApplyApprovalMaterializationName(answer: string): string | undefined {
   if (isApplyAffirmativeAnswer(answer)) {
     return undefined;
   }

@@ -5,7 +5,6 @@ import {
   exportMaterializationModeSchema,
   exportModeSchema,
   exportPlanSchema,
-  getExportMaterializationMode,
   optionalNonEmptyStringSchema,
   runManifestSchema,
   savedConsultationStatusSchema,
@@ -15,6 +14,7 @@ export const crownActionRequestInputSchema = z
   .object({
     cwd: z.string().min(1),
     materializationName: z.string().min(1).optional(),
+    branchName: z.string().min(1).optional(),
     consultationId: artifactPathSegmentSchema.optional(),
     candidateId: artifactPathSegmentSchema.optional(),
     withReport: z.boolean().default(false),
@@ -52,11 +52,41 @@ export const crownMaterializationSchema = z
       });
     }
 
-    if (materialization.materializationMode !== getExportMaterializationMode(materialization)) {
+    if (materialization.mode === "git-branch" && materialization.materializationMode !== "branch") {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["materializationMode"],
-        message: "materializationMode must match mode.",
+        message: 'git-branch materializations must use materializationMode "branch".',
+      });
+    }
+
+    if (materialization.mode === "git-apply" && materialization.branchName) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["branchName"],
+        message: "Git working-tree materializations must not include branchName.",
+      });
+    }
+
+    if (
+      materialization.mode === "git-apply" &&
+      materialization.materializationMode !== "working-tree"
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["materializationMode"],
+        message: 'git-apply materializations must use materializationMode "working-tree".',
+      });
+    }
+
+    if (
+      materialization.mode === "workspace-sync" &&
+      materialization.materializationMode !== "workspace-sync"
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["materializationMode"],
+        message: 'workspace-sync materializations must use materializationMode "workspace-sync".',
       });
     }
 
@@ -74,7 +104,7 @@ export const crownMaterializationSchema = z
     }
 
     if (
-      materialization.mode === "workspace-sync" &&
+      (materialization.mode === "git-apply" || materialization.mode === "workspace-sync") &&
       materialization.materializationName &&
       materialization.materializationLabel &&
       materialization.materializationName !== materialization.materializationLabel
@@ -83,7 +113,7 @@ export const crownMaterializationSchema = z
         code: z.ZodIssueCode.custom,
         path: ["materializationName"],
         message:
-          "materializationName must match materializationLabel for workspace-sync crown materializations.",
+          "materializationName must match materializationLabel for labeled crown materializations.",
       });
     }
   });

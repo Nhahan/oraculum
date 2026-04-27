@@ -11,6 +11,42 @@ import {
 } from "../shared.js";
 import { type GitExportStateSnapshot, listGitUntrackedPaths } from "./state.js";
 
+export async function rollbackFailedGitApplyExport(
+  projectRoot: string,
+  previousState: GitExportStateSnapshot,
+): Promise<void> {
+  const failures: string[] = [];
+
+  const reset = await runSubprocess({
+    command: "git",
+    args: ["reset", "--hard", "HEAD"],
+    cwd: projectRoot,
+    timeoutMs: 30_000,
+  });
+  if (reset.exitCode !== 0) {
+    failures.push("git reset --hard HEAD");
+  }
+
+  try {
+    await removeNewGitUntrackedPaths(projectRoot, previousState);
+  } catch (error) {
+    failures.push(`remove new untracked paths (${formatUnknownError(error)})`);
+  }
+
+  const restore = await restoreGitPosition(
+    projectRoot,
+    previousState.currentBranch,
+    previousState.currentRevision,
+  );
+  if (restore.exitCode !== 0) {
+    failures.push(`git ${restore.args.join(" ")}`);
+  }
+
+  if (failures.length > 0) {
+    throw new OraculumError(`Rollback failed during: ${failures.join(", ")}.`);
+  }
+}
+
 export async function rollbackFailedGitBranchExport(
   projectRoot: string,
   branchName: string,

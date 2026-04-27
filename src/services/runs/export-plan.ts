@@ -16,6 +16,7 @@ interface BuildExportPlanOptions {
   runId?: string;
   winnerId?: string;
   materializationName?: string;
+  branchName?: string;
   withReport: boolean;
   allowUnsafe?: boolean;
 }
@@ -96,16 +97,17 @@ export async function prepareExportPlan(
   }
 
   const reportFiles = options.withReport ? await collectReportFiles(projectRoot, manifest.id) : [];
-  const mode = winner.workspaceMode === "git-worktree" ? "git-branch" : "workspace-sync";
-  const materializationMode = mode === "git-branch" ? "branch" : "workspace-sync";
-  if (mode === "git-branch" && !options.materializationName) {
+  const mode =
+    winner.workspaceMode === "git-worktree"
+      ? options.branchName
+        ? "git-branch"
+        : "git-apply"
+      : "workspace-sync";
+  const materializationMode =
+    mode === "git-branch" ? "branch" : mode === "git-apply" ? "working-tree" : "workspace-sync";
+  if ((mode === "git-branch" || mode === "git-apply") && !winner.baseRevision) {
     throw new OraculumError(
-      "Branch materialization requires a target branch name. Use `orc crown <branch-name>`.",
-    );
-  }
-  if (mode === "git-branch" && !winner.baseRevision) {
-    throw new OraculumError(
-      `Candidate "${winner.id}" was produced by an older consultation artifact that does not record the git base revision needed for branch materialization. Re-run the consultation before materializing it.`,
+      `Candidate "${winner.id}" was produced by an older consultation artifact that does not record the git base revision needed for git materialization. Re-run the consultation before materializing it.`,
     );
   }
 
@@ -121,11 +123,11 @@ export async function prepareExportPlan(
     mode,
     materializationMode,
     workspaceDir: winner.workspaceDir,
-    ...(mode === "git-branch" ? { branchName: options.materializationName } : {}),
-    ...(mode === "workspace-sync" && options.materializationName
+    ...(mode === "git-branch" ? { branchName: options.branchName } : {}),
+    ...((mode === "git-apply" || mode === "workspace-sync") && options.materializationName
       ? { materializationLabel: options.materializationName }
       : {}),
-    ...(mode === "git-branch"
+    ...(mode === "git-branch" || mode === "git-apply"
       ? {
           patchPath: store.getRunPaths(manifest.id).exportPatchPath,
         }

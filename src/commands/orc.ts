@@ -27,6 +27,7 @@ interface ConsultOptions extends JsonOption {
 
 interface CrownOptions extends JsonOption {
   allowUnsafe?: boolean;
+  branch?: string;
 }
 
 export function registerOrcCommand(program: Command): void {
@@ -99,7 +100,8 @@ export function registerOrcCommand(program: Command): void {
 
   orc
     .command("crown")
-    .argument("[materializationName]", "branch name or optional workspace-sync label")
+    .argument("[materializationName]", "optional materialization label")
+    .option("--branch <branchName>", "create a branch before applying the recommended result")
     .option("--allow-unsafe", "explicitly bypass crown safety blockers")
     .option("--json", "emit machine-readable JSON")
     .action(async (materializationName: string | undefined, options: CrownOptions) => {
@@ -108,6 +110,7 @@ export function registerOrcCommand(program: Command): void {
           cwd: process.cwd(),
           withReport: false,
           ...(materializationName ? { materializationName } : {}),
+          ...(options.branch ? { branchName: options.branch } : {}),
           ...(options.allowUnsafe ? { allowUnsafe: true } : {}),
         }),
         options,

@@ -11,11 +11,8 @@ const PLAN_CLARIFICATION_EXPECTED_ANSWER =
 const CONSULT_CLARIFICATION_EXPECTED_ANSWER =
   "Answer with the missing implementation scope, target artifact, acceptance signal, or constraint needed before candidate execution.";
 
-const APPLY_APPROVAL_EXPECTED_WORKSPACE_SYNC =
+const APPLY_APPROVAL_EXPECTED_APPLY =
   "Choose Apply, choose Do not apply, or enter an optional materialization label to apply with that label.";
-
-const APPLY_APPROVAL_EXPECTED_GIT_BRANCH =
-  "Answer with the target branch name to create for the recommended result, for example fix/session-loss.";
 
 export function buildUserInteraction(options: {
   manifest: RunManifest;
@@ -117,23 +114,12 @@ function buildApplyApprovalInteraction(
     return undefined;
   }
 
-  if (winner.workspaceMode === "git-worktree") {
-    return {
-      kind: "apply-approval",
-      runId: manifest.id,
-      header: "Apply recommended result",
-      question: `Enter the branch name to create for recommended candidate ${winner.id}.`,
-      expectedAnswerShape: APPLY_APPROVAL_EXPECTED_GIT_BRANCH,
-      freeTextAllowed: true,
-    };
-  }
-
   return {
     kind: "apply-approval",
     runId: manifest.id,
     header: "Apply recommended result",
     question: `Apply recommended candidate ${winner.id} to this workspace?`,
-    expectedAnswerShape: APPLY_APPROVAL_EXPECTED_WORKSPACE_SYNC,
+    expectedAnswerShape: APPLY_APPROVAL_EXPECTED_APPLY,
     options: [
       {
         label: "Apply",

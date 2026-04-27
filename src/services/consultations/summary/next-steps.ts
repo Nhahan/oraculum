@@ -150,14 +150,7 @@ export function buildConsultationSummaryNextStepLines(
   } else if (status.outcomeType === "abstained-before-execution") {
     lines.push("- revise the task scope or repository setup, then rerun `orc consult`.");
   } else if (recommendedCandidateId) {
-    const recommendedCandidate = manifest.candidates.find(
-      (candidate) => candidate.id === recommendedCandidateId,
-    );
-    const crownTarget =
-      recommendedCandidate?.workspaceMode === "copy"
-        ? context.crownCommand
-        : `${context.crownCommand} <branch-name>`;
-    lines.push(`- crown the ${context.crownableResultLabel}: ${crownTarget}`);
+    lines.push(`- crown the ${context.crownableResultLabel}: ${context.crownCommand}`);
   } else if (manifest.status === "completed" && context.finalists.length > 0) {
     lines.push(
       pathState.comparisonReportSummaryPath

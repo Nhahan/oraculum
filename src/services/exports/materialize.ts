@@ -17,7 +17,7 @@ import {
   markCandidateExported,
   readRunManagedTreeRules,
 } from "./bookkeeping.js";
-import { materializeGitBranchExport } from "./git.js";
+import { materializeGitApplyExport, materializeGitBranchExport } from "./git.js";
 import { formatUnknownError, readOptionalTextFile, restoreOptionalTextFile } from "./shared.js";
 import type { MaterializeExportOptions } from "./types.js";
 import { materializeWorkspaceSyncExport } from "./workspace-sync.js";
@@ -44,10 +44,13 @@ export async function materializeExport(
   await mkdir(dirname(path), { recursive: true });
   await mkdir(dirname(syncSummaryPath), { recursive: true });
 
+  const materializationMode = getExportMaterializationMode(planned);
   const outcome =
-    getExportMaterializationMode(planned) === "branch"
+    materializationMode === "branch"
       ? await materializeGitBranchExport(projectRoot, planned, winner, managedTreeRules)
-      : await materializeWorkspaceSyncExport(projectRoot, planned, winner, managedTreeRules);
+      : materializationMode === "working-tree"
+        ? await materializeGitApplyExport(projectRoot, planned, winner, managedTreeRules)
+        : await materializeWorkspaceSyncExport(projectRoot, planned, winner, managedTreeRules);
 
   const updatedPlan = exportPlanSchema.parse({
     ...planned,

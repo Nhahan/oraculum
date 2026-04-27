@@ -6,6 +6,7 @@ export interface MaterializeExportOptions {
   runId?: string;
   winnerId?: string;
   materializationName?: string;
+  branchName?: string;
   withReport: boolean;
   allowUnsafe?: boolean;
 }

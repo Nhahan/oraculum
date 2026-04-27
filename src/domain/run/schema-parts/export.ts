@@ -42,6 +42,22 @@ export const exportPlanSchema = z
       });
     }
 
+    if (plan.mode === "git-apply" && plan.branchName) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["branchName"],
+        message: "Git working-tree exports must not include branchName.",
+      });
+    }
+
+    if (plan.mode === "git-apply" && plan.materializationMode !== "working-tree") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["materializationMode"],
+        message: 'git-apply exports must use materializationMode "working-tree".',
+      });
+    }
+
     if (plan.mode === "workspace-sync" && plan.materializationMode !== "workspace-sync") {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -50,11 +66,11 @@ export const exportPlanSchema = z
       });
     }
 
-    if (plan.mode === "git-branch" && !plan.patchPath) {
+    if ((plan.mode === "git-branch" || plan.mode === "git-apply") && !plan.patchPath) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["patchPath"],
-        message: "Git branch exports must include patchPath.",
+        message: "Git exports must include patchPath.",
       });
     }
   });

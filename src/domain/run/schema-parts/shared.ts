@@ -74,8 +74,8 @@ export const reportBundleSchema = z.object({
   rootDir: z.string().min(1),
   files: z.array(z.string().min(1)).min(1),
 });
-export const exportModeSchema = z.enum(["git-branch", "workspace-sync"]);
-export const exportMaterializationModeSchema = z.enum(["branch", "workspace-sync"]);
+export const exportModeSchema = z.enum(["git-apply", "git-branch", "workspace-sync"]);
+export const exportMaterializationModeSchema = z.enum(["working-tree", "branch", "workspace-sync"]);
 export const optionalNonEmptyStringSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim().length === 0 ? undefined : value),
   z.string().min(1).optional(),
