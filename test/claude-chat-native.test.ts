@@ -97,6 +97,12 @@ describe("Claude Code chat-native packaging", () => {
     expect(skills.find((file) => file.path.endsWith("/consult/SKILL.md"))?.content).toContain(
       "If empty, resume the latest running consultation first",
     );
+    expect(skills.find((file) => file.path.endsWith("/consult/SKILL.md"))?.content).toContain(
+      "orc consult --defer",
+    );
+    expect(skills.find((file) => file.path.endsWith("/consult/SKILL.md"))?.content).toContain(
+      "apply-approval",
+    );
     expect(skills.find((file) => file.path.endsWith("/plan/SKILL.md"))?.content).toContain(
       "oraculum orc plan --json",
     );
@@ -107,7 +113,7 @@ describe("Claude Code chat-native packaging", () => {
       "AskUserQuestion",
     );
     expect(skills.find((file) => file.path.endsWith("/plan/SKILL.md"))?.content).toContain(
-      "do not invent placeholder choices",
+      "Do not invent placeholder choices",
     );
     expect(skills.find((file) => file.path.endsWith("/plan/SKILL.md"))?.content).toContain(
       "__other__",

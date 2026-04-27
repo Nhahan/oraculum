@@ -33,6 +33,8 @@ describe("Codex chat-native packaging", () => {
     expect(rules[0]?.content).toContain(
       "`orc consult` -> run `oraculum orc consult --json`; this resumes the latest running consultation first",
     );
+    expect(rules[0]?.content).toContain("orc consult --defer");
+    expect(rules[0]?.content).toContain("apply-approval");
     expect(rules[0]?.content).toContain("oraculum orc consult --json");
     expect(rules[0]?.content).toContain("oraculum orc plan --json");
     expect(rules[0]?.content).toContain("oraculum orc verdict --json");
@@ -58,6 +60,9 @@ describe("Codex chat-native packaging", () => {
     );
     expect(skills.find((file) => file.path.endsWith("route-consult/SKILL.md"))?.content).toContain(
       "oraculum orc consult --json",
+    );
+    expect(skills.find((file) => file.path.endsWith("route-consult/SKILL.md"))?.content).toContain(
+      "apply-approval",
     );
     expect(skills.find((file) => file.path.endsWith("route-verdict/SKILL.md"))?.content).toContain(
       "oraculum orc verdict --json",
@@ -123,7 +128,9 @@ describe("Codex setup", () => {
     ).resolves.toContain("If empty, resume the latest running consultation first");
     await expect(
       readFile(join(result.skillsRoot, "route-consult", "SKILL.md"), "utf8"),
-    ).resolves.toContain("report only its stdout summary or failure");
+    ).resolves.toContain(
+      "report only its stdout summary, crown materialization result, or failure",
+    );
     await expect(
       readFile(join(result.skillsRoot, "route-crown", "SKILL.md"), "utf8"),
     ).resolves.toContain("Do not inspect files, run extra shell commands, edit files");

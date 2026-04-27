@@ -13,6 +13,13 @@ const planningArguments = [
 
 const consultArguments = [
   {
+    name: "deferApply",
+    kind: "boolean",
+    description:
+      "Skip the apply approval prompt for this consultation so the recommendation can be materialized later with orc crown.",
+    option: "--defer",
+  },
+  {
     name: "taskInput",
     kind: "string",
     description:
@@ -35,7 +42,9 @@ export const oraculumCommandManifest = [
     arguments: consultArguments,
     examples: [
       "orc consult",
+      "orc consult --defer",
       'orc consult "fix session loss on refresh"',
+      'orc consult --defer "fix session loss on refresh"',
       "orc consult .oraculum/runs/run_20260404_xxxx/reports/consultation-plan.json",
     ],
     hostAdditions: {},

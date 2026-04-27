@@ -107,10 +107,11 @@ function renderClaudeCommand(entry: CommandManifestEntry): string {
       "",
       "Host-guided interactive Oraculum route.",
       `Run \`oraculum orc ${entry.path.join(" ")} --json {{ARGUMENTS}}\` as the initial shell command.`,
-      "If the JSON response includes `userInteraction`, call `AskUserQuestion` with one question, header `userInteraction.header`, `multiSelect=false`, and `userInteraction.question` as the prompt.",
-      "Use choices only when `userInteraction.options` is present, and include only those exact choices. If `userInteraction.options` is absent, ask an open free-text question with no choices; do not invent placeholder choices such as `Provide custom string`, `Skip / cancel`, or `Type something`.",
+      "If the JSON response includes `userInteraction` and `userInteraction.options` is present, call `AskUserQuestion` with one question, header `userInteraction.header`, `multiSelect=false`, `userInteraction.question` as the prompt, and only those exact choices.",
+      "If `userInteraction.options` is absent, do not call `AskUserQuestion`; ask the user for one normal free-text reply using `userInteraction.question`, then stop until the user replies. Do not invent placeholder choices such as `Provide custom string`, `Skip / cancel`, `Type something`, or branch-name suggestions.",
       "Allow custom text because `userInteraction.freeTextAllowed` is true, then run `oraculum orc answer --json <userInteraction.kind> <userInteraction.runId> <answer>` with the selected option label or the user's literal custom text. Never pass UI sentinels such as `__other__` or placeholder choice labels as the answer.",
-      "Repeat until `userInteraction` is absent, then return the final response summary. Do not execute commands mentioned in `Next`.",
+      "`apply-approval` is the apply gate; ask it exactly like other `userInteraction` prompts. `orc consult --defer` suppresses this gate so the user can run `orc crown` manually later.",
+      "Repeat until `userInteraction` is absent, then return the final response summary or crown materialization result. Do not execute commands mentioned in `Next`.",
       "Do not inspect files, edit files, apply candidate changes, clean the worktree, or continue the task yourself.",
       "",
       "## User Input",
@@ -151,8 +152,8 @@ function buildClaudeSkillNotes(entry: CommandManifestEntry): string[] {
   if (entry.id === "consult") {
     return [
       ...buildClaudeUserInteractionRouteNotes(entry),
-      "Args: optional taskInput=$ARGUMENTS. If empty, resume the latest running consultation first, otherwise execute the latest ready consultation plan. Do not parse planning flags.",
-      "`orc consult` must never run `orc crown`; crown only when the user sends a separate `orc crown` input.",
+      "Args: optional --defer passes through to `oraculum orc consult --json --defer`; optional taskInput=$ARGUMENTS. If empty, resume the latest running consultation first, otherwise execute the latest ready consultation plan.",
+      "`orc consult` may ask `apply-approval` after an eligible verdict; answer it through `oraculum orc answer --json apply-approval <runId> <answer>`. `orc consult --defer` keeps the manual `orc crown` flow.",
     ];
   }
 
@@ -191,11 +192,12 @@ function buildClaudeUserInteractionRouteNotes(entry: CommandManifestEntry): stri
     "Use one direct CLI call for each interaction hop.",
     "Before each CLI command: no user text, no file reads, no extra shell.",
     `Run first: \`oraculum orc ${entry.path.join(" ")} --json $ARGUMENTS\`.`,
-    "If JSON includes `userInteraction`, call `AskUserQuestion` with one question, header `userInteraction.header`, `multiSelect=false`, and `userInteraction.question` as the prompt.",
-    "Use choices only when `userInteraction.options` is present, and include only those exact choices. If `userInteraction.options` is absent, ask an open free-text question with no choices; do not invent placeholder choices such as `Provide custom string`, `Skip / cancel`, or `Type something`.",
+    "If JSON includes `userInteraction` and `userInteraction.options` is present, call `AskUserQuestion` with one question, header `userInteraction.header`, `multiSelect=false`, `userInteraction.question` as the prompt, and only those exact choices.",
+    "If `userInteraction.options` is absent, do not call `AskUserQuestion`; ask the user for one normal free-text reply using `userInteraction.question`, then stop until the user replies. Do not invent placeholder choices such as `Provide custom string`, `Skip / cancel`, `Type something`, or branch-name suggestions.",
     "Allow custom text because `userInteraction.freeTextAllowed` is true, then pass the selected option label or the user's literal custom text to `oraculum orc answer --json <userInteraction.kind> <userInteraction.runId> <answer>`. Never pass UI sentinels such as `__other__` or placeholder choice labels as the answer.",
+    "`apply-approval` is the apply gate; ask it exactly like other `userInteraction` prompts. `orc consult --defer` suppresses this gate so the user can run `orc crown` manually later.",
     "Repeat the same JSON loop until `userInteraction` is absent.",
-    "After the final CLI call, return only the final summary or failure.",
+    "After the final CLI call, return only the final summary, crown materialization result, or failure.",
     "Do not execute commands mentioned in the CLI output's `Next` section.",
     "Do not inspect files, edit files, apply candidate changes, clean the worktree, or continue the task yourself after the final CLI call.",
   ];

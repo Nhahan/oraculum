@@ -66,12 +66,13 @@ function renderCodexRules(manifest: readonly CommandManifestEntry[]): string {
     "",
     "### Argument Mapping",
     "",
-    "- `orc consult` -> run `oraculum orc consult --json`; this resumes the latest running consultation first, otherwise it executes the latest ready consultation plan. If JSON includes `userInteraction`, run the structured answer loop below.",
+    "- `orc consult` -> run `oraculum orc consult --json`; this resumes the latest running consultation first, otherwise it executes the latest ready consultation plan. If JSON includes `userInteraction`, run the structured answer loop below; eligible winners may surface `apply-approval` so the host asks before materializing.",
+    "- `orc consult --defer [taskInput]` -> pass `--defer` through to `oraculum orc consult --json --defer [taskInput]`; this keeps the verdict-only/manual `orc crown` flow and must not ask `apply-approval`.",
     "- `orc consult <taskInput>` -> run `oraculum orc consult --json <taskInput>`; advanced planning controls live in `.oraculum/config.json`, `.oraculum/advanced.json`, or the task contract. If JSON includes `userInteraction`, run the structured answer loop below.",
     "- `orc plan <taskInput>` -> run `oraculum orc plan --json <taskInput>`; if JSON includes `userInteraction`, run the structured answer loop below.",
     "- `orc verdict [consultationId]` -> run `oraculum orc verdict --json [consultationId]`; if JSON includes `userInteraction`, run the structured answer loop below.",
     "- `orc crown [materializationName] [--allow-unsafe]` -> run `oraculum orc crown [materializationName] [--allow-unsafe]`.",
-    "- Structured answer loop: ask exactly one Codex structured user-input question using `userInteraction.header` as the header and `userInteraction.question` as the prompt. Use choices only when `userInteraction.options` is present, and include only those exact choices. If `userInteraction.options` is absent, ask an open free-text question with no choices. Pass the selected option label or the user's literal custom text to `oraculum orc answer --json <userInteraction.kind> <userInteraction.runId> <answer>`. Never pass UI sentinels such as `__other__` or placeholder choice labels as the answer. Repeat until `userInteraction` is absent, then report only the final summary or failure.",
+    "- Structured answer loop: ask exactly one Codex structured user-input question using `userInteraction.header` as the header and `userInteraction.question` as the prompt. Use choices only when `userInteraction.options` is present, and include only those exact choices. If `userInteraction.options` is absent, ask an open free-text question with no choices. Pass the selected option label or the user's literal custom text to `oraculum orc answer --json <userInteraction.kind> <userInteraction.runId> <answer>`. Never pass UI sentinels such as `__other__` or placeholder choice labels as the answer. Repeat until `userInteraction` is absent, then report only the final summary, crown materialization result, or failure.",
     "",
     "If the Oraculum CLI is unavailable, respond with explicit setup guidance instead of improvising:",
     "",
@@ -91,7 +92,7 @@ function renderCodexSkill(entry: CommandManifestEntry): string {
       : `Exact \`orc ${entry.path.join(" ")}\` handler.`;
   const argsLine =
     entry.id === "consult"
-      ? "Args: cwd=current-directory; optional taskInput=user text after command or a task/consultation-plan path. If empty, resume the latest running consultation first, otherwise execute the latest ready consultation plan."
+      ? "Args: cwd=current-directory; optional --defer => deferApply=true; optional taskInput=user text after command or a task/consultation-plan path. If empty, resume the latest running consultation first, otherwise execute the latest ready consultation plan."
       : entry.id === "plan"
         ? "Args: cwd=current-directory; taskInput=user text after command only; do not parse planning flags."
         : entry.id === "verdict"
@@ -117,11 +118,12 @@ function renderCodexSkill(entry: CommandManifestEntry): string {
           "Use `userInteraction.header` as the header and `userInteraction.question` as the prompt.",
           "Use choices only when `userInteraction.options` is present, and include only those exact choices. If `userInteraction.options` is absent, ask an open free-text question with no choices.",
           "Pass the selected option label or the user's literal custom text to `oraculum orc answer --json <userInteraction.kind> <userInteraction.runId> <answer>`. Never pass UI sentinels such as `__other__` or placeholder choice labels as the answer.",
-          "Repeat until `userInteraction` is absent; then report only the final summary or failure.",
+          "`apply-approval` is the apply gate; ask it exactly like other `userInteraction` prompts. `orc consult --defer` suppresses this gate so the user can run `orc crown` manually later.",
+          "Repeat until `userInteraction` is absent; then report only the final summary, crown materialization result, or failure.",
         ]
       : []),
     interactiveRoute
-      ? "After the final Oraculum CLI call returns, report only its stdout summary or failure."
+      ? "After the final Oraculum CLI call returns, report only its stdout summary, crown materialization result, or failure."
       : "After the Oraculum CLI returns, report only its stdout or failure.",
     "Do not execute commands mentioned in the CLI output's `Next` section.",
     "Do not inspect files, run extra shell commands, edit files, apply candidate changes, clean the worktree, or continue the task yourself after the direct CLI call.",
