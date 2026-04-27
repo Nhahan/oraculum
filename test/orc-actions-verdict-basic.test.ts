@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   createBlockedPreflightManifest,
+  createCandidate,
+  createCompletedManifest,
   mockedReadRunManifest,
   registerOrcActionsTestHarness,
   runVerdictAction,
@@ -59,6 +61,30 @@ describe("chat-native Orc actions: verdict basics", () => {
       finalistIds: ["cand-01"],
       validationProfileId: "library",
       validationSignals: ["package-export"],
+    });
+  });
+  it("surfaces apply approval when reopening an eligible crownable verdict", async () => {
+    mockedReadRunManifest.mockResolvedValueOnce({
+      ...createCompletedManifest(),
+      candidates: [
+        createCandidate("cand-01", {
+          status: "promoted",
+          workspaceMode: "copy",
+          workspaceDir: "/tmp/workspace",
+          taskPacketPath: "/tmp/task-packet.json",
+        }),
+      ],
+    });
+
+    const verdict = await runVerdictAction({
+      cwd: "/tmp/project",
+      consultationId: "run_1",
+    });
+
+    expect(verdict.userInteraction).toMatchObject({
+      kind: "apply-approval",
+      runId: "run_1",
+      header: "Apply recommended result",
     });
   });
   it("surfaces answerable blocked consultation clarification through verdict", async () => {

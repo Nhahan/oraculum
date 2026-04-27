@@ -4,6 +4,7 @@ export const userInteractionKindSchema = z.enum([
   "augury-question",
   "plan-clarification",
   "consult-clarification",
+  "apply-approval",
 ]);
 
 export const userInteractionOptionSchema = z

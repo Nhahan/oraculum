@@ -34,13 +34,18 @@ import {
   writeLatestRunState,
 } from "../runs.js";
 import { resolveConsultExecutionTarget } from "./consult-resolution.js";
+import { runCrownAction } from "./crown.js";
 import {
   buildConsultationActionPayload,
   buildPlanRunRequest,
   ensureProjectInitializedForAction,
   resolveActionConsultationArtifacts,
 } from "./shared.js";
-import { buildUserInteraction, inferVerdictUserInteractionSurface } from "./user-interaction.js";
+import {
+  buildUserInteraction,
+  inferVerdictUserInteractionSurface,
+  isApplyApprovalEligible,
+} from "./user-interaction.js";
 
 export async function runConsultAction(
   input: ConsultActionRequest,
@@ -68,6 +73,7 @@ export async function runConsultAction(
         cwd: request.cwd,
         manifest: execution.manifest,
         surface: "consult",
+        deferApply: request.deferApply === true,
       })),
     });
   }
@@ -94,6 +100,7 @@ export async function runConsultAction(
         manifest,
         initialized,
         surface: "consult",
+        deferApply: request.deferApply === true,
       })),
     });
   }
@@ -110,6 +117,7 @@ export async function runConsultAction(
       manifest: execution.manifest,
       initialized,
       surface: "consult",
+      deferApply: request.deferApply === true,
     })),
   });
 }
@@ -140,6 +148,10 @@ export async function runUserInteractionAnswerAction(
     case "consult-clarification":
       return userInteractionAnswerActionResponseSchema.parse(
         await runPreflightClarificationAnswerAction({ ...request, answer }),
+      );
+    case "apply-approval":
+      return userInteractionAnswerActionResponseSchema.parse(
+        await runApplyApprovalAnswerAction({ ...request, answer }),
       );
   }
 }
@@ -314,6 +326,7 @@ async function buildActionPayloadWithUserInteraction(options: {
   initialized?: Awaited<ReturnType<typeof ensureProjectInitializedForAction>>;
   surface: "plan" | "consult";
   artifacts?: Awaited<ReturnType<typeof resolveActionConsultationArtifacts>>;
+  deferApply?: boolean | undefined;
 }) {
   const artifacts =
     options.artifacts ?? (await resolveActionConsultationArtifacts(options.cwd, options.manifest));
@@ -321,6 +334,7 @@ async function buildActionPayloadWithUserInteraction(options: {
     manifest: options.manifest,
     artifacts,
     surface: options.surface,
+    deferApply: options.deferApply,
   });
   const payload = await buildConsultationActionPayload(
     options.cwd,
@@ -332,4 +346,144 @@ async function buildActionPayloadWithUserInteraction(options: {
     ...payload,
     ...(userInteraction ? { userInteraction } : {}),
   };
+}
+
+async function runApplyApprovalAnswerAction(request: UserInteractionAnswerActionRequest) {
+  const manifest = await readRunManifest(request.cwd, request.runId);
+  const artifacts = await resolveActionConsultationArtifacts(request.cwd, manifest);
+  const activeSurface = inferVerdictUserInteractionSurface({ manifest, artifacts });
+  const activeInteraction = buildUserInteraction({
+    manifest,
+    artifacts,
+    surface: activeSurface,
+  });
+
+  if (!activeInteraction) {
+    if (isWinnerAlreadyMaterialized(manifest, artifacts)) {
+      throw new OraculumError(
+        `Run "${request.runId}" already has a materialized recommended result.`,
+      );
+    }
+    if (
+      !isRunCrownableForApplyApproval(manifest) ||
+      !isApplyApprovalEligible(manifest, artifacts)
+    ) {
+      throw new OraculumError(`Run "${request.runId}" is not crownable for apply approval.`);
+    }
+    throw new OraculumError(
+      `Run "${request.runId}" does not have an active ${request.kind} interaction.`,
+    );
+  }
+  if (activeInteraction.kind !== request.kind) {
+    throw new OraculumError(
+      `Run "${request.runId}" has an active ${activeInteraction.kind} interaction, not ${request.kind}.`,
+    );
+  }
+  if (activeInteraction.runId !== request.runId) {
+    throw new OraculumError(
+      `Run "${request.runId}" is stale for ${request.kind}; answer run "${activeInteraction.runId}" instead.`,
+    );
+  }
+
+  if (isApplySkipAnswer(request.answer)) {
+    return consultActionResponseSchema.parse({
+      mode: "consult",
+      ...(await buildActionPayloadWithUserInteraction({
+        cwd: request.cwd,
+        manifest,
+        surface: "consult",
+        artifacts,
+        deferApply: true,
+      })),
+    });
+  }
+
+  const materializationName = resolveApplyApprovalMaterializationName(manifest, request.answer);
+
+  return runCrownAction({
+    cwd: request.cwd,
+    consultationId: request.runId,
+    withReport: false,
+    ...(materializationName ? { materializationName } : {}),
+  });
+}
+
+function resolveApplyApprovalMaterializationName(
+  manifest: Awaited<ReturnType<typeof readRunManifest>>,
+  answer: string,
+): string | undefined {
+  const winner = getRecommendedWinnerCandidate(manifest);
+  if (winner?.workspaceMode === "git-worktree") {
+    if (isApplyAffirmativeAnswer(answer)) {
+      throw new OraculumError(
+        `Apply approval for consultation "${manifest.id}" requires a target branch name.`,
+      );
+    }
+    return answer;
+  }
+
+  if (isApplyAffirmativeAnswer(answer)) {
+    return undefined;
+  }
+
+  return answer;
+}
+
+function isWinnerAlreadyMaterialized(
+  manifest: Awaited<ReturnType<typeof readRunManifest>>,
+  artifacts: Awaited<ReturnType<typeof resolveActionConsultationArtifacts>>,
+): boolean {
+  const winner = getRecommendedWinnerCandidate(manifest);
+  return Boolean(
+    artifacts.crowningRecordAvailable ||
+      artifacts.hasExportedCandidate ||
+      winner?.status === "exported",
+  );
+}
+
+function isRunCrownableForApplyApproval(
+  manifest: Awaited<ReturnType<typeof readRunManifest>>,
+): boolean {
+  return Boolean(
+    manifest.status === "completed" &&
+      manifest.outcome?.type === "recommended-survivor" &&
+      manifest.outcome.crownable &&
+      (manifest.recommendedWinner?.candidateId ?? manifest.outcome.recommendedCandidateId),
+  );
+}
+
+function getRecommendedWinnerCandidate(
+  manifest: Awaited<ReturnType<typeof readRunManifest>>,
+): Awaited<ReturnType<typeof readRunManifest>>["candidates"][number] | undefined {
+  const candidateId =
+    manifest.recommendedWinner?.candidateId ?? manifest.outcome?.recommendedCandidateId;
+  return manifest.candidates.find((candidate) => candidate.id === candidateId);
+}
+
+function isApplySkipAnswer(answer: string): boolean {
+  return [
+    "do not apply",
+    "don't apply",
+    "dont apply",
+    "skip",
+    "cancel",
+    "defer",
+    "not now",
+    "no",
+    "n",
+  ].includes(normalizeApplyAnswer(answer));
+}
+
+function isApplyAffirmativeAnswer(answer: string): boolean {
+  return ["apply", "yes", "y", "approve", "approved", "crown", "materialize"].includes(
+    normalizeApplyAnswer(answer),
+  );
+}
+
+function normalizeApplyAnswer(answer: string): string {
+  return answer
+    .trim()
+    .toLowerCase()
+    .replace(/[.!]+$/u, "")
+    .replace(/\s+/gu, " ");
 }

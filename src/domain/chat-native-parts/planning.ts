@@ -8,6 +8,7 @@ import {
   userInteractionKindSchema,
   userInteractionSchema,
 } from "./common.js";
+import { crownActionResponseSchema } from "./crown.js";
 
 const planningActionRequestBaseSchema = z
   .object({
@@ -29,6 +30,7 @@ const consultActionRequestBaseSchema = z
   .object({
     cwd: z.string().min(1),
     taskInput: z.string().min(1).optional(),
+    deferApply: z.boolean().optional(),
   })
   .strict();
 
@@ -57,6 +59,7 @@ export const userInteractionAnswerActionRequestSchema =
 export const userInteractionAnswerActionResponseSchema = z.union([
   consultActionResponseSchema,
   planActionResponseSchema,
+  crownActionResponseSchema,
 ]);
 
 export type ConsultActionRequest = z.infer<typeof consultActionRequestSchema>;

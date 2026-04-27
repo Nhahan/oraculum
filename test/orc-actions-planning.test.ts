@@ -2,13 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import {
   getConsultationPlanPath,
   getConsultationPlanReadinessPath,
+  getExportPlanPath,
+  getExportSyncSummaryPath,
   getPlanningDepthPath,
   getPlanningInterviewPath,
   getRunManifestPath,
 } from "../src/core/paths.js";
+import { consultActionRequestSchema } from "../src/domain/chat-native.js";
 import {
   consultationPlanArtifactSchema,
   consultationPlanReadinessSchema,
+  type RunManifest,
   runManifestSchema,
 } from "../src/domain/run.js";
 import type { ConsultProgressEvent } from "../src/services/consult-progress.js";
@@ -59,16 +63,24 @@ import {
 } from "../src/services/orc-actions.js";
 import {
   createBlockedPreflightManifest,
+  createCandidate,
   createCompletedManifest,
+  createFinalistsWithoutRecommendationManifest,
   createOrcActionTempRoot,
+  createSubprocessResult,
   mockedAnswerPlanRun,
   mockedEnsureProjectInitialized,
   mockedExecuteRun,
+  mockedMaterializeExport,
   mockedPlanRun,
   mockedReadRunManifest,
   mockedRenderConsultationSummary,
+  mockedRunSubprocess,
   mockedWriteLatestRunState,
   registerOrcActionsTestHarness,
+  writeDisagreeingSecondOpinionSelection,
+  writeExportPatch,
+  writeExportPlanArtifact,
   writeJsonArtifact,
 } from "./helpers/orc-actions.js";
 import {
@@ -124,6 +136,130 @@ describe("chat-native Orc actions: planning", () => {
       recommendedCandidateId: "cand-01",
       nextActions: ["reopen-verdict", "crown-recommended-result"],
     });
+  });
+  it("accepts deferApply at the consult action schema boundary", () => {
+    expect(
+      consultActionRequestSchema.parse({
+        cwd: "/tmp/project",
+        taskInput: "tasks/task.md",
+        deferApply: true,
+      }),
+    ).toMatchObject({
+      deferApply: true,
+    });
+  });
+  it("returns apply approval for an eligible workspace-sync winner", async () => {
+    mockedExecuteRun.mockResolvedValueOnce({
+      candidateResults: [],
+      manifest: createCompletedManifestWithWorkspaceMode("copy"),
+    });
+
+    const response = await runConsultAction({
+      cwd: "/tmp/project",
+      taskInput: "tasks/task.md",
+    });
+
+    expect(response.userInteraction).toEqual({
+      kind: "apply-approval",
+      runId: "run_1",
+      header: "Apply recommended result",
+      question: "Apply recommended candidate cand-01 to this workspace?",
+      expectedAnswerShape:
+        "Choose Apply, choose Do not apply, or enter an optional materialization label to apply with that label.",
+      options: [
+        {
+          label: "Apply",
+          description: "Materialize the recommended result in the project workspace.",
+        },
+        {
+          label: "Do not apply",
+          description: "Keep the verdict only and leave the project workspace unchanged.",
+        },
+      ],
+      freeTextAllowed: true,
+    });
+  });
+  it("returns branch-name apply approval for an eligible git winner", async () => {
+    mockedExecuteRun.mockResolvedValueOnce({
+      candidateResults: [],
+      manifest: createCompletedManifestWithWorkspaceMode("git-worktree"),
+    });
+
+    const response = await runConsultAction({
+      cwd: "/tmp/project",
+      taskInput: "tasks/task.md",
+    });
+
+    expect(response.userInteraction).toEqual({
+      kind: "apply-approval",
+      runId: "run_1",
+      header: "Apply recommended result",
+      question: "Enter the branch name to create for recommended candidate cand-01.",
+      expectedAnswerShape:
+        "Answer with the target branch name to create for the recommended result, for example fix/session-loss.",
+      freeTextAllowed: true,
+    });
+  });
+  it("defers apply approval when consult deferApply is set", async () => {
+    mockedExecuteRun.mockResolvedValueOnce({
+      candidateResults: [],
+      manifest: createCompletedManifestWithWorkspaceMode("copy"),
+    });
+
+    const response = await runConsultAction({
+      cwd: "/tmp/project",
+      taskInput: "tasks/task.md",
+      deferApply: true,
+    });
+
+    expect(response.userInteraction).toBeUndefined();
+  });
+  it("omits apply approval when safety blockers require manual crown review", async () => {
+    const cwd = await createOrcActionTempRoot("oraculum-orc-actions-apply-blockers-");
+
+    const blockedManifests = [
+      createCompletedManifestWithWorkspaceMode("copy", {
+        outcome: {
+          validationGapCount: 1,
+          validationPosture: "validation-gaps",
+        },
+        profileSelection: {
+          validationGaps: ["Missing full-suite evidence."],
+        },
+      }),
+      createCompletedManifestWithWorkspaceMode("copy", {
+        recommendedWinner: {
+          source: "fallback-policy",
+        },
+      }),
+    ];
+
+    for (const manifest of blockedManifests) {
+      mockedExecuteRun.mockResolvedValueOnce({
+        candidateResults: [],
+        manifest,
+      });
+
+      const response = await runConsultAction({
+        cwd,
+        taskInput: "tasks/task.md",
+      });
+
+      expect(response.userInteraction).toBeUndefined();
+    }
+
+    await writeDisagreeingSecondOpinionSelection(cwd, "run_1");
+    mockedExecuteRun.mockResolvedValueOnce({
+      candidateResults: [],
+      manifest: createCompletedManifestWithWorkspaceMode("copy"),
+    });
+
+    const manualReviewResponse = await runConsultAction({
+      cwd,
+      taskInput: "tasks/task.md",
+    });
+
+    expect(manualReviewResponse.userInteraction).toBeUndefined();
   });
   it("emits consult progress updates in execution order", async () => {
     const progress: ConsultProgressEvent[] = [];
@@ -505,6 +641,157 @@ describe("chat-native Orc actions: planning", () => {
     });
     expect(response.mode).toBe("consult");
   });
+  it("routes workspace-sync apply approval through crown materialization", async () => {
+    const cwd = await createOrcActionTempRoot("oraculum-orc-actions-apply-workspace-");
+    const manifest = createCompletedManifestWithWorkspaceMode("copy");
+    mockedReadRunManifest.mockResolvedValue(manifest);
+    await writeJsonArtifact(getExportSyncSummaryPath(cwd, "run_1"), {
+      appliedFiles: ["app.txt"],
+      removedFiles: [],
+    });
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        mode: "workspace-sync",
+        materializationMode: "workspace-sync",
+        workspaceDir: "/tmp/workspace",
+        appliedPathCount: 1,
+        removedPathCount: 0,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: getExportPlanPath(cwd, "run_1"),
+    });
+
+    const response = await runUserInteractionAnswerAction({
+      cwd,
+      kind: "apply-approval",
+      runId: "run_1",
+      answer: "Apply",
+    });
+
+    expect(mockedMaterializeExport).toHaveBeenCalledWith({
+      cwd,
+      runId: "run_1",
+      withReport: false,
+    });
+    expect(response.mode).toBe("crown");
+  });
+  it("uses a free-text apply approval answer as the git branch name", async () => {
+    const cwd = await createOrcActionTempRoot("oraculum-orc-actions-apply-branch-");
+    const manifest = createCompletedManifestWithWorkspaceMode("git-worktree");
+    const patchPath = await writeExportPatch(cwd, [
+      "diff --git a/src/message.js b/src/message.js",
+      "--- a/src/message.js",
+      "+++ b/src/message.js",
+      "@@ -1 +1 @@",
+      '-export const message = "before";',
+      '+export const message = "after";',
+      "",
+    ]);
+    mockedReadRunManifest.mockResolvedValue(manifest);
+    mockedRunSubprocess.mockResolvedValueOnce(
+      createSubprocessResult({ stdout: "fix/session-loss\n" }),
+    );
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        branchName: "fix/session-loss",
+        mode: "git-branch",
+        materializationMode: "branch",
+        workspaceDir: "/tmp/workspace",
+        patchPath,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: getExportPlanPath(cwd, "run_1"),
+    });
+
+    const response = await runUserInteractionAnswerAction({
+      cwd,
+      kind: "apply-approval",
+      runId: "run_1",
+      answer: "fix/session-loss",
+    });
+
+    expect(mockedMaterializeExport).toHaveBeenCalledWith({
+      cwd,
+      runId: "run_1",
+      materializationName: "fix/session-loss",
+      withReport: false,
+    });
+    expect(response.mode).toBe("crown");
+  });
+  it("returns the consult summary without materializing when apply approval is skipped", async () => {
+    const manifest = createCompletedManifestWithWorkspaceMode("copy");
+    mockedReadRunManifest.mockResolvedValueOnce(manifest);
+
+    const response = await runUserInteractionAnswerAction({
+      cwd: "/tmp/project",
+      kind: "apply-approval",
+      runId: "run_1",
+      answer: "Do not apply",
+    });
+
+    expect(mockedMaterializeExport).not.toHaveBeenCalled();
+    expect(response.mode).toBe("consult");
+    if (response.mode === "consult") {
+      expect(response.userInteraction).toBeUndefined();
+    }
+  });
+  it("rejects apply approval for non-crownable runs", async () => {
+    mockedReadRunManifest.mockResolvedValueOnce(createFinalistsWithoutRecommendationManifest());
+
+    await expect(
+      runUserInteractionAnswerAction({
+        cwd: "/tmp/project",
+        kind: "apply-approval",
+        runId: "run_1",
+        answer: "Apply",
+      }),
+    ).rejects.toThrow('Run "run_1" is not crownable for apply approval.');
+  });
+  it("rejects apply approval when another interaction kind is active", async () => {
+    mockedReadRunManifest.mockResolvedValueOnce(createBlockedPreflightManifest());
+
+    await expect(
+      runUserInteractionAnswerAction({
+        cwd: "/tmp/project",
+        kind: "apply-approval",
+        runId: "run_blocked",
+        answer: "Apply",
+      }),
+    ).rejects.toThrow(
+      'Run "run_blocked" has an active consult-clarification interaction, not apply-approval.',
+    );
+  });
+  it("rejects apply approval for already materialized runs", async () => {
+    const cwd = await createOrcActionTempRoot("oraculum-orc-actions-apply-exported-");
+    await writeExportPlanArtifact(cwd, "run_1", "cand-01");
+    mockedReadRunManifest.mockResolvedValueOnce(
+      createCompletedManifestWithWorkspaceMode("copy", {
+        candidates: [
+          createCandidate("cand-01", {
+            status: "exported",
+            workspaceMode: "copy",
+            workspaceDir: "/tmp/workspace",
+            taskPacketPath: "/tmp/task-packet.json",
+          }),
+        ],
+      }),
+    );
+
+    await expect(
+      runUserInteractionAnswerAction({
+        cwd,
+        kind: "apply-approval",
+        runId: "run_1",
+        answer: "Apply",
+      }),
+    ).rejects.toThrow('Run "run_1" already has a materialized recommended result.');
+  });
   it("rejects blank common interaction answers", async () => {
     await expect(
       runUserInteractionAnswerAction({
@@ -813,3 +1100,39 @@ describe("chat-native Orc actions: planning", () => {
     expect(mockedExecuteRun).not.toHaveBeenCalled();
   });
 });
+
+function createCompletedManifestWithWorkspaceMode(
+  workspaceMode: NonNullable<RunManifest["candidates"][number]["workspaceMode"]>,
+  overrides: {
+    outcome?: Partial<NonNullable<RunManifest["outcome"]>>;
+    profileSelection?: Partial<NonNullable<RunManifest["profileSelection"]>>;
+    recommendedWinner?: Partial<NonNullable<RunManifest["recommendedWinner"]>>;
+    candidates?: RunManifest["candidates"];
+  } = {},
+): RunManifest {
+  const base = createCompletedManifest();
+
+  return runManifestSchema.parse({
+    ...base,
+    profileSelection: {
+      ...(base.profileSelection ?? {}),
+      ...(overrides.profileSelection ?? {}),
+    },
+    recommendedWinner: {
+      ...(base.recommendedWinner ?? {}),
+      ...(overrides.recommendedWinner ?? {}),
+    },
+    outcome: {
+      ...(base.outcome ?? {}),
+      ...(overrides.outcome ?? {}),
+    },
+    candidates: overrides.candidates ?? [
+      createCandidate("cand-01", {
+        status: "promoted",
+        workspaceMode,
+        workspaceDir: "/tmp/workspace",
+        taskPacketPath: "/tmp/task-packet.json",
+      }),
+    ],
+  });
+}

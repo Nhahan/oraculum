@@ -21,6 +21,10 @@ interface JsonOption {
   json?: boolean;
 }
 
+interface ConsultOptions extends JsonOption {
+  defer?: boolean;
+}
+
 interface CrownOptions extends JsonOption {
   allowUnsafe?: boolean;
 }
@@ -33,13 +37,15 @@ export function registerOrcCommand(program: Command): void {
   orc
     .command("consult")
     .argument("[taskInput...]", "inline task text, task note path, or task packet path")
+    .option("--defer", "return the verdict without opening the apply approval prompt")
     .option("--json", "emit machine-readable JSON")
-    .action(async (taskInput: string[] | undefined, options: JsonOption) => {
+    .action(async (taskInput: string[] | undefined, options: ConsultOptions) => {
       const resolvedTaskInput = joinOptionalTaskInput(taskInput);
       await printResponse(
         await runConsultAction({
           cwd: process.cwd(),
           ...(resolvedTaskInput ? { taskInput: resolvedTaskInput } : {}),
+          ...(options.defer ? { deferApply: true } : {}),
         }),
         options,
       );
@@ -229,8 +235,9 @@ function renderActionTail(response: unknown): string {
 }
 
 function renderUserInteraction(interaction: UserInteraction): string {
+  const label = interaction.kind === "apply-approval" ? "Approval needed" : "Clarification needed";
   return [
-    `Clarification needed (${interaction.header}): ${interaction.question}`,
+    `${label} (${interaction.header}): ${interaction.question}`,
     `Expected answer: ${interaction.expectedAnswerShape}`,
     ...renderUserInteractionOptions(interaction.options),
     ...(interaction.kind === "augury-question" &&

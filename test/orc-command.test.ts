@@ -81,6 +81,20 @@ describe("orc command", () => {
     });
   });
 
+  it("passes consult --defer through as deferApply", async () => {
+    const program = createProgram();
+
+    await captureStdout(async () => {
+      await program.parseAsync(["orc", "consult", "--defer", "fix", "login"], { from: "user" });
+    });
+
+    expect(mockedRunConsultAction).toHaveBeenCalledWith({
+      cwd: process.cwd(),
+      taskInput: "fix login",
+      deferApply: true,
+    });
+  });
+
   it("prints plan continuation tail after the summary", async () => {
     const program = createProgram();
 
@@ -192,6 +206,42 @@ describe("orc command", () => {
       'Next: answer in the host UI, or run `orc answer plan-clarification run_2 "<answer>"`.',
     );
   });
+  it("prints apply approval interactions as approval prompts", async () => {
+    mockedRunConsultAction.mockResolvedValueOnce({
+      mode: "consult",
+      summary: "Consult summary.",
+      userInteraction: {
+        kind: "apply-approval",
+        runId: "run_1",
+        header: "Apply recommended result",
+        question: "Apply recommended candidate cand-01 to this workspace?",
+        expectedAnswerShape: "Choose Apply or Do not apply.",
+        options: [
+          {
+            label: "Apply",
+            description: "Materialize the recommended result.",
+          },
+          {
+            label: "Do not apply",
+            description: "Leave the workspace unchanged.",
+          },
+        ],
+        freeTextAllowed: true,
+      },
+    } as never);
+    const program = createProgram();
+
+    const output = await captureStdout(async () => {
+      await program.parseAsync(["orc", "consult", "fix", "login"], { from: "user" });
+    });
+
+    expect(output).toContain(
+      "Approval needed (Apply recommended result): Apply recommended candidate cand-01 to this workspace?",
+    );
+    expect(output).toContain(
+      'Next: answer in the host UI, or run `orc answer apply-approval run_1 "<answer>"`.',
+    );
+  });
   it("forwards common interaction answers to the answer action", async () => {
     const program = createProgram();
 
@@ -209,6 +259,22 @@ describe("orc command", () => {
       kind: "consult-clarification",
       runId: "run_1",
       answer: "Protect /dashboard",
+    });
+  });
+  it("forwards apply approval answers to the answer action", async () => {
+    const program = createProgram();
+
+    await captureStdout(async () => {
+      await program.parseAsync(["orc", "answer", "apply-approval", "run_1", "Apply"], {
+        from: "user",
+      });
+    });
+
+    expect(mockedRunUserInteractionAnswerAction).toHaveBeenCalledWith({
+      cwd: process.cwd(),
+      kind: "apply-approval",
+      runId: "run_1",
+      answer: "Apply",
     });
   });
   it("rejects the removed draft subcommand", async () => {

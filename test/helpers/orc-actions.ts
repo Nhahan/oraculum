@@ -230,6 +230,7 @@ export function createCandidate(
   id: string,
   overrides: Partial<{
     status: "planned" | "promoted" | "exported";
+    workspaceMode: "copy" | "git-worktree";
     workspaceDir: string;
     taskPacketPath: string;
     strategyId: string;
@@ -239,6 +240,7 @@ export function createCandidate(
   const candidateOverrides = {
     ...(overrides.strategyId ? { strategyId: overrides.strategyId } : {}),
     ...(overrides.strategyLabel ? { strategyLabel: overrides.strategyLabel } : {}),
+    ...(overrides.workspaceMode ? { workspaceMode: overrides.workspaceMode } : {}),
     workspaceDir: overrides.workspaceDir ?? `/tmp/${id}`,
     taskPacketPath: overrides.taskPacketPath ?? `/tmp/${id}.json`,
     createdAt: "2026-04-05T00:00:00.000Z",
