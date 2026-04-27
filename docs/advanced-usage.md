@@ -9,6 +9,7 @@ orc consult "fix session loss on refresh"
 ```
 
 `consult` already prints the latest summary. Everything below is for reopening a consultation later, shaping the tournament more explicitly, or using shell-only setup, uninstall, diagnostics, and direct CLI commands.
+When a consultation finishes with a safe recommended result, the default host flow asks for apply approval and then materializes through the guarded crown path. Use `orc consult --defer ...` when you want verdict-only output and a later manual `orc crown`.
 
 The primary product surface is interactive `orc ...` commands inside Claude Code and Codex after setup. The shell binary remains for setup, uninstall, diagnostics, and the direct host route used by installed artifacts. Run `oraculum setup ...` in your terminal first. Current setup is host-level and global for your local Claude Code or Codex installation, not directory-scoped.
 
@@ -33,6 +34,14 @@ orc consult tasks/fix-session-loss.md
 - inline task text
 - a task note file
 - a task packet path
+
+Use `--defer` to skip the apply approval prompt for this consultation:
+
+```text
+orc consult --defer tasks/fix-session-loss.md
+```
+
+After a deferred consultation, reopen the verdict with `orc verdict` or materialize manually with `orc crown`.
 
 ## Configure Runtime And Candidate Count
 
@@ -116,7 +125,7 @@ Without a consultation id, `verdict` uses the latest consultation automatically.
 orc crown fix/session-loss
 ```
 
-The shared `crown` path crowns the latest recommended result automatically.
+The shared `crown` path is still available for deferred apply, recovery, and shell-only workflows. The default `orc consult` host flow uses the same crown materialization logic after you approve an eligible recommendation.
 
 In a Git-backed project, `crown` expects the target branch name as the first argument, creates that branch, and materializes the recommended result there. In a non-Git project, use bare `orc crown`; it syncs the crowned workspace back into the project folder. If you pass a first argument in workspace-sync mode, Oraculum records it only as a materialization label.
 
@@ -203,6 +212,7 @@ orc answer augury-question <run-id> "Email/password login only, protect /dashboa
 ```
 
 Host-installed Claude Code and Codex handlers run `oraculum orc consult --json`, `oraculum orc plan --json`, and `oraculum orc verdict --json` and use the stable `userInteraction` field to guide clarification loops. When `userInteraction` is present, the host asks that question with structured choices from `userInteraction.options` when present, waits for your selected label or custom text, and invokes `oraculum orc answer --json <userInteraction.kind> <userInteraction.runId> <answer>`. Plain CLI output prints the same clarification question and numbered choices for humans. A later `orc plan "<task>"` always starts a new planning task.
+The same loop handles `apply-approval`: `Apply` materializes a non-Git workspace-sync result, a custom label applies workspace-sync with that label, and a Git-backed result expects the branch name as the answer. `Do not apply`, `skip`, `cancel`, and `defer` leave the verdict unchanged so you can crown manually later.
 
 The JSON artifact is rerunnable:
 

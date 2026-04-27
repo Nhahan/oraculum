@@ -90,14 +90,21 @@ orc consult "fix session loss on refresh"
 ```
 
 That flow initializes Oraculum on first use, runs the tournament, and prints the verdict summary immediately.
+When the verdict has a safe recommended result, the host asks whether to apply it. Approving that prompt materializes the result through the same guarded crown path.
 
-When you want to apply the latest recommended result later:
+When you want to inspect first and apply the latest recommended result later:
+
+```text
+orc consult --defer "fix session loss on refresh"
+```
+
+Then crown manually:
 
 ```text
 orc crown fix/session-loss
 ```
 
-In a Git-backed project, `crown` creates the named branch and materializes the recommended result there. In a non-Git project, use bare `orc crown`; it syncs the recommended result back into the project folder without requiring a fake branch name.
+In a Git-backed project, the apply prompt or `crown` uses the branch name you provide and materializes the recommended result there. In a non-Git project, applying the prompt or using bare `orc crown` syncs the recommended result back into the project folder without requiring a fake branch name.
 
 `crown` blocks by default when the verdict still has validation gaps, a fallback-policy winner, or second-opinion manual-review pressure. After operator review, `orc crown --allow-unsafe` records that explicit override in the export plan.
 
