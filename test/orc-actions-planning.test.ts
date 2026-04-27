@@ -179,7 +179,7 @@ describe("chat-native Orc actions: planning", () => {
       freeTextAllowed: true,
     });
   });
-  it("returns branch-name apply approval for an eligible git winner", async () => {
+  it("returns direct apply approval for an eligible git winner", async () => {
     mockedExecuteRun.mockResolvedValueOnce({
       candidateResults: [],
       manifest: createCompletedManifestWithWorkspaceMode("git-worktree"),
@@ -194,9 +194,19 @@ describe("chat-native Orc actions: planning", () => {
       kind: "apply-approval",
       runId: "run_1",
       header: "Apply recommended result",
-      question: "Enter the branch name to create for recommended candidate cand-01.",
+      question: "Apply recommended candidate cand-01 to this workspace?",
       expectedAnswerShape:
-        "Answer with the target branch name to create for the recommended result, for example fix/session-loss.",
+        "Choose Apply, choose Do not apply, or enter an optional materialization label to apply with that label.",
+      options: [
+        {
+          label: "Apply",
+          description: "Materialize the recommended result in the project workspace.",
+        },
+        {
+          label: "Do not apply",
+          description: "Keep the verdict only and leave the project workspace unchanged.",
+        },
+      ],
       freeTextAllowed: true,
     });
   });
@@ -678,8 +688,50 @@ describe("chat-native Orc actions: planning", () => {
     });
     expect(response.mode).toBe("crown");
   });
-  it("uses a free-text apply approval answer as the git branch name", async () => {
-    const cwd = await createOrcActionTempRoot("oraculum-orc-actions-apply-branch-");
+  it("routes git apply approval through direct working-tree materialization", async () => {
+    const cwd = await createOrcActionTempRoot("oraculum-orc-actions-apply-git-");
+    const manifest = createCompletedManifestWithWorkspaceMode("git-worktree");
+    const patchPath = await writeExportPatch(cwd, [
+      "diff --git a/src/message.js b/src/message.js",
+      "--- a/src/message.js",
+      "+++ b/src/message.js",
+      "@@ -1 +1 @@",
+      '-export const message = "before";',
+      '+export const message = "after";',
+      "",
+    ]);
+    mockedReadRunManifest.mockResolvedValue(manifest);
+    mockedRunSubprocess.mockResolvedValueOnce(createSubprocessResult({ stdout: "main\n" }));
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        mode: "git-apply",
+        materializationMode: "working-tree",
+        workspaceDir: "/tmp/workspace",
+        patchPath,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: getExportPlanPath(cwd, "run_1"),
+    });
+
+    const response = await runUserInteractionAnswerAction({
+      cwd,
+      kind: "apply-approval",
+      runId: "run_1",
+      answer: "Apply",
+    });
+
+    expect(mockedMaterializeExport).toHaveBeenCalledWith({
+      cwd,
+      runId: "run_1",
+      withReport: false,
+    });
+    expect(response.mode).toBe("crown");
+  });
+  it("uses a free-text apply approval answer as a git apply label", async () => {
+    const cwd = await createOrcActionTempRoot("oraculum-orc-actions-apply-git-label-");
     const manifest = createCompletedManifestWithWorkspaceMode("git-worktree");
     const patchPath = await writeExportPatch(cwd, [
       "diff --git a/src/message.js b/src/message.js",
@@ -698,10 +750,10 @@ describe("chat-native Orc actions: planning", () => {
       plan: {
         runId: "run_1",
         winnerId: "cand-01",
-        branchName: "fix/session-loss",
-        mode: "git-branch",
-        materializationMode: "branch",
+        mode: "git-apply",
+        materializationMode: "working-tree",
         workspaceDir: "/tmp/workspace",
+        materializationLabel: "fix/session-loss",
         patchPath,
         withReport: false,
         createdAt: "2026-04-05T00:00:00.000Z",

@@ -68,6 +68,7 @@ describe("packaged host artifact layout", () => {
     expect(contents).toContain("userInteraction");
     expect(contents).toContain("apply-approval");
     expect(contents).toContain("consult --defer");
+    expect(contents).toContain("--branch");
     expect(contents).toContain("oraculum orc answer --json");
     expect(contents).not.toContain(["plan", "Interaction"].join(""));
   });

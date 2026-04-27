@@ -41,7 +41,7 @@ describe("consultation verdict review artifact availability: winner and failure"
     );
 
     expect(summary).toContain("- second-opinion winner selection: not available");
-    expect(summary).toContain("- crown the recommended survivor: orc crown <branch-name>");
+    expect(summary).toContain("- crown the recommended survivor: orc crown");
     expect(summary).not.toContain("Second-opinion judge:");
     expect(review.artifactAvailability.secondOpinionWinnerSelection).toBe(false);
     expect(review.secondOpinionAgreement).toBeUndefined();

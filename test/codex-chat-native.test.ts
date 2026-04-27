@@ -34,6 +34,7 @@ describe("Codex chat-native packaging", () => {
       "`orc consult` -> run `oraculum orc consult --json`; this resumes the latest running consultation first",
     );
     expect(rules[0]?.content).toContain("orc consult --defer");
+    expect(rules[0]?.content).toContain("orc crown [materializationName] [--branch <branchName>]");
     expect(rules[0]?.content).toContain("apply-approval");
     expect(rules[0]?.content).toContain("oraculum orc consult --json");
     expect(rules[0]?.content).toContain("oraculum orc plan --json");

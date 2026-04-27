@@ -100,6 +100,9 @@ describe("Claude Code chat-native packaging", () => {
     expect(skills.find((file) => file.path.endsWith("/consult/SKILL.md"))?.content).toContain(
       "orc consult --defer",
     );
+    expect(skills.find((file) => file.path.endsWith("/crown/SKILL.md"))?.content).toContain(
+      "--branch <branchName>",
+    );
     expect(skills.find((file) => file.path.endsWith("/consult/SKILL.md"))?.content).toContain(
       "apply-approval",
     );

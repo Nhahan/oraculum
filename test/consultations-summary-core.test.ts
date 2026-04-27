@@ -51,7 +51,7 @@ describe("consultation summary core rendering", () => {
 
     expect(summary).toContain("Outcome: recommended-survivor");
     expect(summary).toContain("Recommended survivor: cand-01");
-    expect(summary).toContain("- crown the recommended survivor: orc crown <branch-name>");
+    expect(summary).toContain("- crown the recommended survivor: orc crown");
   });
 
   it("renders artifact-aware recommendation and crown guidance when the task targets a repo artifact", async () => {
@@ -134,7 +134,7 @@ describe("consultation summary core rendering", () => {
       surface: "chat-native",
     });
 
-    expect(summary).toContain("orc crown <branch-name>");
+    expect(summary).toContain("orc crown");
     expect(summary).toContain("orc verdict");
     expect(summary).not.toContain("oraculum crown");
   });

@@ -118,7 +118,7 @@ describe("chat-native Orc actions: crown", () => {
 
     const response = await runCrownAction({
       cwd: root,
-      materializationName: "fix/session-loss",
+      branchName: "fix/session-loss",
       candidateId: "cand-02",
       consultationId: "run_9",
       withReport: true,
@@ -126,7 +126,7 @@ describe("chat-native Orc actions: crown", () => {
 
     expect(mockedMaterializeExport).toHaveBeenCalledWith({
       cwd: root,
-      materializationName: "fix/session-loss",
+      branchName: "fix/session-loss",
       winnerId: "cand-02",
       runId: "run_9",
       withReport: true,
@@ -143,6 +143,61 @@ describe("chat-native Orc actions: crown", () => {
       currentBranch: "fix/session-loss",
       changedPaths: ["src/message.js"],
       changedPathCount: 1,
+    });
+  });
+  it("returns direct git apply materialization by default", async () => {
+    const root = await createOrcActionTempRoot("oraculum-orc-actions-crown-git-apply-");
+    const patchPath = await writeExportPatch(root, [
+      "diff --git a/src/message.js b/src/message.js",
+      "--- a/src/message.js",
+      "+++ b/src/message.js",
+      "@@ -1 +1 @@",
+      '-export const message = "before";',
+      '+export const message = "after";',
+      "",
+    ]);
+    mockedMaterializeExport.mockResolvedValueOnce({
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        mode: "git-apply",
+        materializationMode: "working-tree",
+        materializationLabel: "release-label",
+        workspaceDir: "/tmp/workspace",
+        patchPath,
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      path: join(root, ".oraculum", "runs", "run_1", "reports", "export-plan.json"),
+    });
+    mockedRunSubprocess.mockResolvedValueOnce(createSubprocessResult({ stdout: "main\n" }));
+
+    const response = await runCrownAction({
+      cwd: root,
+      materializationName: "release-label",
+      withReport: false,
+    });
+
+    expect(mockedMaterializeExport).toHaveBeenCalledWith({
+      cwd: root,
+      materializationName: "release-label",
+      withReport: false,
+    });
+    expect(response.materialization).toEqual({
+      materialized: true,
+      verified: true,
+      mode: "git-apply",
+      materializationMode: "working-tree",
+      materializationName: "release-label",
+      materializationLabel: "release-label",
+      currentBranch: "main",
+      changedPaths: ["src/message.js"],
+      changedPathCount: 1,
+      checks: [
+        expect.objectContaining({ id: "git-patch-artifact", status: "passed" }),
+        expect.objectContaining({ id: "current-branch", status: "passed" }),
+        expect.objectContaining({ id: "changed-paths", status: "passed" }),
+      ],
     });
   });
   it("forwards explicit unsafe overrides to materialization", async () => {
@@ -219,7 +274,7 @@ describe("chat-native Orc actions: crown", () => {
     });
   });
 
-  it("trims crown string inputs before materialization", async () => {
+  it("trims crown branch inputs before materialization", async () => {
     const root = await createOrcActionTempRoot("oraculum-orc-actions-crown-trimmed-");
     const patchPath = await writeExportPatch(root, [
       "diff --git a/src/message.js b/src/message.js",
@@ -250,13 +305,13 @@ describe("chat-native Orc actions: crown", () => {
 
     await runCrownAction({
       cwd: root,
-      materializationName: "  fix/session-loss  ",
+      branchName: "  fix/session-loss  ",
       withReport: false,
     });
 
     expect(mockedMaterializeExport).toHaveBeenCalledWith({
       cwd: root,
-      materializationName: "fix/session-loss",
+      branchName: "fix/session-loss",
       withReport: false,
     });
   });
@@ -374,7 +429,7 @@ describe("chat-native Orc actions: crown", () => {
 
     const response = await runCrownAction({
       cwd: root,
-      materializationName: "fix/session-loss",
+      branchName: "fix/session-loss",
       withReport: false,
     });
 
@@ -437,7 +492,7 @@ describe("chat-native Orc actions: crown", () => {
 
     const response = await runCrownAction({
       cwd: root,
-      materializationName: "fix/session-loss",
+      branchName: "fix/session-loss",
       withReport: false,
     });
 
@@ -541,7 +596,7 @@ describe("chat-native Orc actions: crown", () => {
     await expect(
       runCrownAction({
         cwd: root,
-        materializationName: "fix/session-loss",
+        branchName: "fix/session-loss",
         withReport: false,
       }),
     ).rejects.toThrow('expected current git branch "fix/session-loss", received "main"');
@@ -567,9 +622,9 @@ describe("chat-native Orc actions: crown", () => {
     await expect(
       runCrownAction({
         cwd: root,
-        materializationName: "fix/session-loss",
+        branchName: "fix/session-loss",
         withReport: false,
       }),
-    ).rejects.toThrow("expected branch materialization artifact does not exist");
+    ).rejects.toThrow("expected git materialization artifact does not exist");
   });
 });

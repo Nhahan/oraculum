@@ -210,10 +210,40 @@ describe("project flows export contracts", () => {
         materializationName: "fix/session-loss",
         withReport: false,
       }),
-    ).rejects.toThrow("git base revision needed for branch materialization");
+    ).rejects.toThrow("git base revision needed for git materialization");
   });
 
-  it("requires a branch name when materializing a branch-backed recommended result", async () => {
+  it("defaults git-backed recommended results to working-tree materialization", async () => {
+    const cwd = await createInitializedProject();
+    const runId = "run_working_tree_materialization";
+
+    await writeProjectFlowManifest(
+      cwd,
+      createRecommendedProjectFlowManifest(cwd, runId, {
+        candidateOverrides: {
+          workspaceMode: "git-worktree",
+          baseRevision: "abc123",
+        },
+        taskPacketOverrides: {
+          id: "task_branch",
+          title: "Branch-backed task",
+          sourcePath: join(cwd, "tasks", "branch-backed.md"),
+        },
+      }),
+    );
+
+    const result = await buildExportPlan({
+      cwd,
+      runId,
+      withReport: false,
+    });
+
+    expect(result.plan.mode).toBe("git-apply");
+    expect(result.plan.materializationMode).toBe("working-tree");
+    expect(result.plan.branchName).toBeUndefined();
+  });
+
+  it("uses explicit branch materialization when a branch name is requested", async () => {
     const cwd = await createInitializedProject();
     const runId = "run_branch_materialization";
 
@@ -232,13 +262,16 @@ describe("project flows export contracts", () => {
       }),
     );
 
-    await expect(
-      buildExportPlan({
-        cwd,
-        runId,
-        withReport: false,
-      }),
-    ).rejects.toThrow("Branch materialization requires a target branch name");
+    const result = await buildExportPlan({
+      cwd,
+      runId,
+      branchName: "fix/session-loss",
+      withReport: false,
+    });
+
+    expect(result.plan.mode).toBe("git-branch");
+    expect(result.plan.materializationMode).toBe("branch");
+    expect(result.plan.branchName).toBe("fix/session-loss");
   });
 
   it("uses artifact-aware guidance when a recommended result lacks a recorded materialization mode", async () => {

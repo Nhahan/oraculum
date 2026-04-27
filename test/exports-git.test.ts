@@ -27,7 +27,7 @@ import { normalizeLineEndings } from "./helpers/platform.js";
 
 describe("materialized exports", () => {
   it(
-    "creates a real git branch export from the recommended winner",
+    "applies a git winner directly to the current working tree by default",
     async () => {
       const cwd = await createTempRoot();
       await initializeGitProject(cwd);
@@ -35,6 +35,7 @@ describe("materialized exports", () => {
       await writeFile(join(cwd, "app.txt"), "original\n", "utf8");
       await writeFile(join(cwd, "remove.txt"), "remove me\n", "utf8");
       await commitAll(cwd, "initial project");
+      const baseBranch = await currentBranch(cwd);
       await initializeProject({ cwd, force: false });
 
       const fakeCodex = await writeExportingCodex(cwd);
@@ -54,19 +55,18 @@ describe("materialized exports", () => {
 
       const result = await materializeExport({
         cwd,
-        materializationName: "fix/session-loss",
         withReport: true,
       });
 
-      expect(result.plan.mode).toBe("git-branch");
-      expect(result.plan.materializationMode).toBe("branch");
+      expect(result.plan.mode).toBe("git-apply");
+      expect(result.plan.materializationMode).toBe("working-tree");
       expect(result.plan.patchPath).toBe(getExportPatchPath(cwd, planned.id));
       expect(normalizeLineEndings(await readFile(join(cwd, "app.txt"), "utf8"))).toBe("patched\n");
       expect(normalizeLineEndings(await readFile(join(cwd, "added.txt"), "utf8"))).toBe(
         "new file\n",
       );
       await expect(readFile(join(cwd, "remove.txt"), "utf8")).rejects.toThrow();
-      expect(await currentBranch(cwd)).toBe("fix/session-loss");
+      expect(await currentBranch(cwd)).toBe(baseBranch);
 
       const savedPlan = exportPlanSchema.parse(
         JSON.parse(await readFile(result.path, "utf8")) as unknown,
@@ -81,7 +81,6 @@ describe("materialized exports", () => {
       await expect(
         materializeExport({
           cwd,
-          materializationName: "fix/session-loss-again",
           withReport: true,
         }),
       ).rejects.toThrow(
@@ -118,7 +117,6 @@ describe("materialized exports", () => {
 
       await materializeExport({
         cwd,
-        materializationName: "fix/session-loss",
         withReport: true,
       });
       await rm(getExportPlanPath(cwd, planned.id), { force: true });
@@ -138,7 +136,7 @@ describe("materialized exports", () => {
   );
 
   it(
-    "requires a target branch name for git-backed crowning",
+    "creates a git branch only when branch materialization is explicitly requested",
     async () => {
       const cwd = await createTempRoot();
       await initializeGitProject(cwd);
@@ -162,12 +160,16 @@ describe("materialized exports", () => {
         timeoutMs: FAKE_AGENT_TIMEOUT_MS,
       });
 
-      await expect(
-        materializeExport({
-          cwd,
-          withReport: false,
-        }),
-      ).rejects.toThrow("Branch materialization requires a target branch name");
+      const result = await materializeExport({
+        cwd,
+        branchName: "fix/session-loss",
+        withReport: false,
+      });
+
+      expect(result.plan.mode).toBe("git-branch");
+      expect(result.plan.materializationMode).toBe("branch");
+      expect(result.plan.branchName).toBe("fix/session-loss");
+      expect(await currentBranch(cwd)).toBe("fix/session-loss");
     },
     EXPORT_GIT_TEST_TIMEOUT_MS,
   );
@@ -227,7 +229,7 @@ if (out) {
 
       await materializeExport({
         cwd,
-        materializationName: "fix/rename-file",
+        branchName: "fix/rename-file",
         withReport: false,
       });
 
@@ -268,7 +270,6 @@ if (out) {
       await expect(
         materializeExport({
           cwd,
-          materializationName: "fix/session-loss",
           withReport: false,
         }),
       ).rejects.toThrow("tracked local changes");
@@ -307,7 +308,6 @@ if (out) {
       await expect(
         materializeExport({
           cwd,
-          materializationName: "fix/session-loss",
           withReport: false,
         }),
       ).rejects.toThrow("recorded base revision");
@@ -430,7 +430,6 @@ if (out) fs.writeFileSync(out, "patched", "utf8");
 
       await materializeExport({
         cwd,
-        materializationName: "fix/session-loss",
         withReport: false,
       });
 
@@ -448,6 +447,7 @@ if (out) fs.writeFileSync(out, "patched", "utf8");
       await writeFile(join(cwd, ".gitignore"), ".oraculum/\n", "utf8");
       await writeFile(join(cwd, "app.txt"), "original\n", "utf8");
       await commitAll(cwd, "initial project");
+      const baseBranch = await currentBranch(cwd);
       await initializeProject({ cwd, force: false });
 
       const fakeCodex = await writeNodeBinary(
@@ -503,14 +503,13 @@ if (out) {
 
       await materializeExport({
         cwd,
-        materializationName: "fix/session-loss",
         withReport: false,
       });
 
       expect(normalizeLineEndings(await readFile(join(cwd, "app.txt"), "utf8"))).toBe(
         "patched from commit\n",
       );
-      expect(await currentBranch(cwd)).toBe("fix/session-loss");
+      expect(await currentBranch(cwd)).toBe(baseBranch);
     },
     EXPORT_GIT_TEST_TIMEOUT_MS,
   );
@@ -548,7 +547,6 @@ if (out) {
       await expect(
         materializeExport({
           cwd,
-          materializationName: "fix/session-loss",
           withReport: false,
         }),
       ).rejects.toThrow(

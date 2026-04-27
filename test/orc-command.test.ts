@@ -14,6 +14,7 @@ vi.mock("../src/services/orc-actions.js", () => ({
 import { buildProgram } from "../src/program.js";
 import {
   runConsultAction,
+  runCrownAction,
   runPlanAction,
   runUserInteractionAnswerAction,
   runVerdictAction,
@@ -21,6 +22,7 @@ import {
 import { captureStdout } from "./helpers/stdout.js";
 
 const mockedRunConsultAction = vi.mocked(runConsultAction);
+const mockedRunCrownAction = vi.mocked(runCrownAction);
 const mockedRunPlanAction = vi.mocked(runPlanAction);
 const mockedRunUserInteractionAnswerAction = vi.mocked(runUserInteractionAnswerAction);
 const mockedRunVerdictAction = vi.mocked(runVerdictAction);
@@ -28,12 +30,37 @@ const mockedRunVerdictAction = vi.mocked(runVerdictAction);
 describe("orc command", () => {
   beforeEach(() => {
     mockedRunConsultAction.mockReset();
+    mockedRunCrownAction.mockReset();
     mockedRunPlanAction.mockReset();
     mockedRunUserInteractionAnswerAction.mockReset();
     mockedRunVerdictAction.mockReset();
     mockedRunConsultAction.mockResolvedValue({
       mode: "consult",
       summary: "Consultation summary.",
+    } as never);
+    mockedRunCrownAction.mockResolvedValue({
+      mode: "crown",
+      plan: {
+        runId: "run_1",
+        winnerId: "cand-01",
+        mode: "git-apply",
+        materializationMode: "working-tree",
+        workspaceDir: "/tmp/workspace",
+        withReport: false,
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+      recordPath: "/tmp/project/.oraculum/runs/run_1/reports/export-plan.json",
+      materialization: {
+        materialized: true,
+        verified: true,
+        mode: "git-apply",
+        materializationMode: "working-tree",
+        changedPaths: ["app.txt"],
+        changedPathCount: 1,
+        checks: [{ id: "changed-paths", status: "passed", summary: "1 changed path detected." }],
+      },
+      consultation: {},
+      status: {},
     } as never);
     mockedRunPlanAction.mockResolvedValue({
       mode: "plan",
@@ -275,6 +302,22 @@ describe("orc command", () => {
       kind: "apply-approval",
       runId: "run_1",
       answer: "Apply",
+    });
+  });
+  it("forwards crown branch options separately from materialization labels", async () => {
+    const program = createProgram();
+
+    await captureStdout(async () => {
+      await program.parseAsync(["orc", "crown", "release-label", "--branch", "fix/session-loss"], {
+        from: "user",
+      });
+    });
+
+    expect(mockedRunCrownAction).toHaveBeenCalledWith({
+      cwd: process.cwd(),
+      materializationName: "release-label",
+      branchName: "fix/session-loss",
+      withReport: false,
     });
   });
   it("rejects the removed draft subcommand", async () => {
